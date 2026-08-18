@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { chatService } from '../api/services';
 import type { Conversation } from '../api/types';
@@ -21,7 +22,7 @@ export default function Messages() {
     <>
       <PageHeader title={user?.role === 'seller' ? 'Seller messages' : 'Messages'} sub="Shared inbox — conversations with buyers & sellers sync with the mobile app." />
       {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={load} /> :
-        items.length === 0 ? <Empty emoji="💬" title="No conversations yet" subtitle="Message a seller from any product page to start chatting." /> :
+        items.length === 0 ? <Empty icon={<MessageCircle size={28} />} title="No conversations yet" subtitle="Message a seller from any product page to start chatting." /> :
         <div className="card" style={{ padding: 8 }}>
           {items.map((c) => (
             <Link to={`/messages/${c.id}`} key={c.id} className={`chat-list-item ${c.unread > 0 ? '' : ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>

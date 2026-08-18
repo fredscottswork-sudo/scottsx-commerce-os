@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Heart } from 'lucide-react';
 import { buyerService } from '../../api/services';
 import type { Product } from '../../api/types';
 import { Empty, ErrorBox, Loading, PageHeader } from '../../components/ui';
@@ -17,7 +18,7 @@ export default function Saved() {
     <>
       <PageHeader title="Saved products" sub="Your wishlist — shared with the mobile app." />
       {loading ? <Loading /> : error ? <ErrorBox message={error} /> :
-        products.length === 0 ? <Empty emoji="❤️" title="Nothing saved yet" subtitle="Tap the heart on any product to save it here." /> :
+        products.length === 0 ? <Empty icon={<Heart size={28} />} title="Nothing saved yet" subtitle="Tap the heart on any product to save it here." /> :
         <div className="pgrid">{products.map((p) => <ProductCard key={p.id} product={p} />)}</div>}
     </>
   );

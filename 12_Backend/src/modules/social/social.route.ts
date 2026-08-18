@@ -13,6 +13,7 @@
  *   PATCH  /api/v1/me/cart/:productId { quantity }
  *   DELETE /api/v1/me/cart/:productId
  *   DELETE /api/v1/me/cart
+ *   POST   /api/v1/me/cart/checkout   { addressId?, phone?, note? } -> orders
  *
  * DEVICES (real phone push)
  *   POST   /api/v1/me/devices         { token, platform }
@@ -31,7 +32,7 @@ import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { requireAuth, authedUser } from '../../auth.js';
 import { NotFoundError, ConflictError } from '../../errors.js';
-import { registerDevice, unregisterDevice } from '../notifications/notify.service.js';
+import { registerDevice, unregisterDevice, notify } from '../notifications/notify.service.js';
 
 export default async function registerSocialRoute(app: FastifyInstance) {
   const pool = getPool();
@@ -120,8 +121,11 @@ export default async function registerSocialRoute(app: FastifyInstance) {
   });
 
   // ── Cart ──────────────────────────────────────────────────────────────────
-  app.get('/api/v1/me/cart', { preHandler: requireAuth }, async (request) => {
-    const me = authedUser(request);
+  /**
+   * Single source of truth for the cart payload. Every mutation returns the
+   * recomputed cart so clients never need a follow-up GET (and can't drift).
+   */
+  async function loadCart(userId: string) {
     const { rows } = await pool.query(
       `SELECT c.product_id AS "productId", c.quantity,
               p.title, p.price_minor::int AS "priceMinor", p.stock_quantity AS "stockQuantity",
@@ -134,7 +138,7 @@ export default async function registerSocialRoute(app: FastifyInstance) {
        LEFT JOIN store_settings s ON s.user_id = p.seller_id
        WHERE c.user_id = $1
        ORDER BY c.created_at DESC`,
-      [me.id]
+      [userId]
     );
     const items = rows.map((r) => ({ ...r, lineTotalMinor: r.priceMinor * r.quantity }));
     const subtotalMinor = items.reduce((sum, i) => sum + i.lineTotalMinor, 0);
@@ -144,7 +148,11 @@ export default async function registerSocialRoute(app: FastifyInstance) {
       itemCount: items.reduce((n, i) => n + i.quantity, 0),
       currency: 'UGX',
     };
-  });
+  }
+
+  app.get('/api/v1/me/cart', { preHandler: requireAuth }, async (request) =>
+    loadCart(authedUser(request).id)
+  );
 
   app.post('/api/v1/me/cart', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
@@ -165,7 +173,7 @@ export default async function registerSocialRoute(app: FastifyInstance) {
        ON CONFLICT (user_id, product_id) DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity`,
       [me.id, productId, quantity]
     );
-    return { ok: true };
+    return loadCart(me.id);
   });
 
   app.patch('/api/v1/me/cart/:productId', { preHandler: requireAuth }, async (request) => {
@@ -174,27 +182,126 @@ export default async function registerSocialRoute(app: FastifyInstance) {
     const { quantity } = z.object({ quantity: z.coerce.number().int().min(0) }).parse(request.body);
     if (quantity === 0) {
       await pool.query('DELETE FROM cart_items WHERE user_id = $1 AND product_id = $2', [me.id, productId]);
-      return { ok: true, removed: true };
+      return loadCart(me.id);
     }
     const res = await pool.query(
       'UPDATE cart_items SET quantity = $3 WHERE user_id = $1 AND product_id = $2 RETURNING product_id',
       [me.id, productId, quantity]
     );
     if (!res.rows[0]) throw new NotFoundError('Item not in cart');
-    return { ok: true };
+    return loadCart(me.id);
   });
 
   app.delete('/api/v1/me/cart/:productId', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     const { productId } = request.params as { productId: string };
     await pool.query('DELETE FROM cart_items WHERE user_id = $1 AND product_id = $2', [me.id, productId]);
-    return { ok: true };
+    return loadCart(me.id);
   });
 
   app.delete('/api/v1/me/cart', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     await pool.query('DELETE FROM cart_items WHERE user_id = $1', [me.id]);
-    return { ok: true };
+    return loadCart(me.id);
+  });
+
+  /**
+   * Cart checkout. Creates one order per cart line (orders are per-product in
+   * this schema), decrements stock atomically, notifies each seller, and
+   * empties the cart. Payment stays 'pending' — the buyer settles on delivery
+   * or via the payment link from POST /orders/:id/pay when a gateway is
+   * configured. Everything runs in a single transaction so a mid-flight stock
+   * conflict leaves the cart untouched.
+   */
+  app.post('/api/v1/me/cart/checkout', { preHandler: requireAuth }, async (request, reply) => {
+    const me = authedUser(request);
+    const body = z
+      .object({
+        addressId: z.string().optional(),
+        phone: z.string().optional().default(''),
+        note: z.string().max(500).optional().default(''),
+      })
+      .parse(request.body ?? {});
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Lock the product rows we are about to sell so two buyers can't
+      // oversell the same unit.
+      const { rows: lines } = await client.query(
+        `SELECT c.product_id AS "productId", c.quantity,
+                p.title, p.price_minor::int AS "priceMinor",
+                p.stock_quantity AS "stockQuantity", p.status, p.seller_id AS "sellerId"
+         FROM cart_items c
+         JOIN products p ON p.id = c.product_id
+         WHERE c.user_id = $1
+         ORDER BY c.product_id
+         FOR UPDATE OF p`,
+        [me.id]
+      );
+
+      if (lines.length === 0) throw new ConflictError('Your cart is empty');
+
+      for (const l of lines) {
+        if (l.status !== 'approved') {
+          throw new ConflictError(`"${l.title}" is no longer available`);
+        }
+        if (l.stockQuantity < l.quantity) {
+          throw new ConflictError(`Only ${l.stockQuantity} left of "${l.title}"`);
+        }
+      }
+
+      const created: any[] = [];
+      for (const l of lines) {
+        const { rows } = await client.query(
+          `INSERT INTO orders (buyer_id, seller_id, product_id, product_title, price_minor, quantity, status, payment_provider)
+           VALUES ($1,$2,$3,$4,$5,$6,'pending','cod')
+           RETURNING id, seller_id AS "sellerId", product_id AS "productId", product_title AS title,
+                     price_minor::int AS amount, quantity, status, created_at AS "createdAt"`,
+          [me.id, l.sellerId, l.productId, l.title, l.priceMinor, l.quantity]
+        );
+        await client.query(
+          'UPDATE products SET stock_quantity = stock_quantity - $2 WHERE id = $1',
+          [l.productId, l.quantity]
+        );
+        created.push(rows[0]);
+      }
+
+      await client.query('DELETE FROM cart_items WHERE user_id = $1', [me.id]);
+      await client.query('COMMIT');
+
+      // Notify sellers outside the transaction — a push failure must never
+      // roll back a placed order.
+      for (const o of created) {
+        await notify(pool, {
+          userId: o.sellerId,
+          title: 'New order received',
+          body: `${me.name || 'A buyer'} ordered ${o.quantity} × ${o.title}`,
+          type: 'order_update',
+          data: { screen: 'order', id: o.id },
+        }).catch(() => undefined);
+      }
+
+      const totalMinor = created.reduce((sum, o) => sum + o.amount * o.quantity, 0);
+      return reply.code(201).send({
+        orders: created,
+        orderCount: created.length,
+        totalMinor,
+        currency: 'UGX',
+        paymentMode: 'cod',
+        message:
+          created.length === 1
+            ? 'Order placed. The seller has been notified.'
+            : `${created.length} orders placed across ${new Set(created.map((o) => o.sellerId)).size} seller(s).`,
+        note: body.note,
+      });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
   });
 
   // ── Device tokens (push) ──────────────────────────────────────────────────

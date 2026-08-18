@@ -34,10 +34,10 @@ export default function Notifications() {
       <PageHeader title="Notifications" sub="Read/unread state syncs with the mobile app."
         actions={items.some((n) => !n.read) ? <Btn size="sm" onClick={markAll}><CheckCheck size={15} /> Mark all read</Btn> : undefined} />
       {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={load} /> :
-        items.length === 0 ? <Empty emoji="🔔" title="No notifications" /> : (
+        items.length === 0 ? <Empty icon={<Bell size={28} />} title="No notifications" /> : (
         <div className="grid" style={{ gap: 10 }}>
           {items.map((n) => (
-            <Card key={n.id} className={n.read ? '' : ''} pad={false}>
+            <Card key={n.id} className={n.read ? '' : ''} flush>
               <div className="row" style={{ padding: '13px 16px', cursor: n.read ? 'default' : 'pointer', opacity: n.read ? 0.72 : 1 }} onClick={() => markOne(n)}>
                 <span className="stat-icon" style={{ background: n.read ? 'var(--surface-3)' : 'linear-gradient(135deg, var(--primary), var(--purple))', color: n.read ? 'var(--text-2)' : '#fff' }}>
                   <Bell size={17} />

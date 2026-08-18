@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Star, MapPin, BadgeCheck } from 'lucide-react';
+import { BadgeCheck, MapPin, Package, Star } from 'lucide-react';
 import { productService, chatService } from '../api/services';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
@@ -65,7 +65,7 @@ export default function SellerStorefront() {
       </div>
 
       {products.length === 0 ? (
-        <Empty emoji="📦" title="No products yet" />
+        <Empty icon={<Package size={28} />} title="No products yet" />
       ) : (
         <>
           <h2 className="mb-16">Products ({products.length})</h2>

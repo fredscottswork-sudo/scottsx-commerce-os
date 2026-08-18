@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Send, Star } from 'lucide-react';
+import { Inbox, Send, Star } from 'lucide-react';
 import { chatService } from '../api/services';
 import type { ChatMessage, Conversation } from '../api/types';
 import { useAuth } from '../store/AuthContext';
@@ -64,7 +64,7 @@ export default function Thread() {
       </div>
 
       <div className="card grow" style={{ padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {messages.length === 0 ? <Empty emoji="👋" title="Say hello" subtitle="Start the conversation with the seller." /> :
+        {messages.length === 0 ? <Empty icon={<Inbox size={28} />} title="Say hello" subtitle="Start the conversation with the seller." /> :
           messages.map((m) => {
             const mine = m.senderId === user?.id;
             return (

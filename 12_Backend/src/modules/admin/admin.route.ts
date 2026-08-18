@@ -4,6 +4,7 @@
  *   GET    /api/v1/admin/stats
  *   GET    /api/v1/admin/users?search=&role=&page=&pageSize=
  *   PATCH  /api/v1/admin/users/:id/role
+ *   DELETE /api/v1/admin/users/:id               remove an account
  *   GET    /api/v1/admin/products?search=&status=&page=&pageSize=
  *   GET    /api/v1/admin/products/queue           pending review queue
  *   POST   /api/v1/admin/products/:id/approve
@@ -21,7 +22,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { requireAuth, requireAdmin } from '../../auth.js';
-import { NotFoundError, ForbiddenError } from '../../errors.js';
+import { NotFoundError, ForbiddenError, ConflictError } from '../../errors.js';
 import { notify, notifyFavoritesOfNewProduct } from '../notifications/notify.service.js';
 
 export default async function registerAdminRoute(app: FastifyInstance) {
@@ -187,6 +188,40 @@ export default async function registerAdminRoute(app: FastifyInstance) {
     }).catch(() => undefined);
 
     return { user: rows[0] };
+  });
+
+  /**
+   * Delete a user account. Guardrails mirror the role endpoint: an admin can
+   * never delete themselves, and the last remaining admin cannot be removed.
+   * Sellers with live listings must be cleared first so buyers never end up
+   * with orphaned products in their cart or order history.
+   */
+  app.delete('/api/v1/admin/users/:id', { preHandler: requireAuth }, async (request) => {
+    const admin = requireAdmin(request);
+    const { id } = request.params as { id: string };
+
+    if (id === admin.id) throw new ForbiddenError('You cannot delete your own account');
+
+    const target = await pool.query('SELECT id, email, role FROM users WHERE id = $1', [id]);
+    if (!target.rows[0]) throw new NotFoundError('User not found');
+
+    if (target.rows[0].role === 'admin') {
+      const admins = await pool.query(`SELECT COUNT(*)::int AS n FROM users WHERE role = 'admin'`);
+      if (admins.rows[0].n <= 1) throw new ForbiddenError('Cannot delete the last admin');
+    }
+
+    const live = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM products WHERE seller_id = $1 AND status = 'approved'`,
+      [id]
+    );
+    if (live.rows[0].n > 0) {
+      throw new ConflictError(
+        `This seller still has ${live.rows[0].n} live listing(s). Suspend or delete them first.`
+      );
+    }
+
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    return { ok: true, deleted: target.rows[0].email };
   });
 
   // ── Product moderation ────────────────────────────────────────────────────

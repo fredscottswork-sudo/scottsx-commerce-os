@@ -14,8 +14,19 @@ const RAW_BODY = Symbol('rawBody');
 export function installRawBodyParser(app: FastifyInstance) {
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, body: Buffer, done) => {
     (request as unknown as Record<symbol, Buffer | undefined>)[RAW_BODY] = body;
+
+    // A POST/DELETE that declares application/json but sends no body is a
+    // normal client pattern (e.g. `fetch(url, { method: 'POST', headers })`).
+    // Fastify's built-in parser yields `undefined` for that; match it instead
+    // of throwing "Unexpected end of JSON input".
+    const text = body.toString('utf8').trim();
+    if (text.length === 0) {
+      done(null, undefined);
+      return;
+    }
+
     try {
-      done(null, JSON.parse(body.toString('utf8')));
+      done(null, JSON.parse(text));
     } catch (err) {
       done(err as Error);
     }

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Plus, LifeBuoy } from 'lucide-react';
+import { Inbox, LifeBuoy, Plus } from 'lucide-react';
 import { buyerService } from '../../api/services';
 import type { Faq, SupportTicket } from '../../api/types';
 import { useToast } from '../../store/ToastContext';
@@ -58,7 +58,7 @@ export default function Support() {
           </div>
 
           <h2 className="mb-16">Your tickets</h2>
-          {tickets.length === 0 ? <Empty emoji="🎫" title="No tickets yet" /> : (
+          {tickets.length === 0 ? <Empty icon={<Inbox size={28} />} title="No tickets yet" /> : (
             <div className="grid grid-2">
               {tickets.map((t) => (
                 <Card key={t.id}>

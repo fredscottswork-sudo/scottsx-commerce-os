@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Inbox } from 'lucide-react';
 import { buyerService } from '../../api/services';
 import type { Order, Refund } from '../../api/types';
 import { formatUgx } from '../../api/types';
@@ -45,7 +46,7 @@ export default function Refunds() {
       <PageHeader title="Refunds" sub="Open and track refund claims — statuses are shared with mobile."
         actions={<Btn variant="primary" onClick={() => setOpen(true)} disabled={orders.length === 0}>New claim</Btn>} />
       {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={load} /> :
-        refunds.length === 0 ? <Empty emoji="↩️" title="No refund claims" subtitle="If an order isn't right, open a claim within 7 days." /> :
+        refunds.length === 0 ? <Empty icon={<Inbox size={28} />} title="No refund claims" subtitle="If an order isn't right, open a claim within 7 days." /> :
         <div className="grid grid-2">
           {refunds.map((r) => (
             <Card key={r.id}>
