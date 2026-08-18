@@ -1039,10 +1039,77 @@ check('the favicon is the real mark, not an inline placeholder',
   indexHtml.includes('/brand/favicon-32.png') && !indexHtml.includes('data:image/svg+xml'));
 check('the build links a web app manifest', indexHtml.includes('manifest.webmanifest'));
 
+// ── 17. Stored XSS ──────────────────────────────────────────────────────────
+// Seller-supplied text reaches many screens, and the AI answer renderer uses
+// dangerouslySetInnerHTML to support its little markdown subset. Publish a
+// listing whose every text field is an XSS payload and confirm the real,
+// rendered page never materialises an executable element.
+section('17. Stored XSS (seller-supplied content)');
+let xssProductId = null;
+{
+  const PAYLOAD = '<img src=x onerror="window.__xss=1">';
+  const made = await apiFetch('/seller/products', {
+    method: 'POST',
+    headers: sellerAuth,
+    body: JSON.stringify({
+      title: `UI Test XSS ${PAYLOAD}`,
+      description: `Payload <script>window.__xss=1<\/script> and **${PAYLOAD}**`,
+      category: 'Electronics',
+      brand: `<svg/onload="window.__xss=1">`,
+      priceMinor: 111000,
+      stockQuantity: 3,
+      imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e',
+    }),
+  });
+  check('a listing with script payloads can be created', made.status === 200, `got ${made.status}`);
+  xssProductId = made.body?.product?.id;
+
+  if (xssProductId) {
+    await apiFetch(`/admin/products/${xssProductId}/approve`, {
+      method: 'POST', headers: { authorization: `Bearer ${admin.token}` },
+    });
+
+    // The payload must survive as DATA — escaping is the renderer's job, so a
+    // mangled title here would mean the API is silently corrupting content.
+    const detail = await apiFetch(`/products/${xssProductId}`);
+    check('the payload is stored verbatim, not silently mangled',
+      (detail.body?.product?.title || detail.body?.title || '').includes('<img src=x'));
+
+    for (const route of [`/product/${xssProductId}`, '/search?q=UI%20Test%20XSS']) {
+      const app = await mount(route);
+      const doc = app.window.document;
+      // Real check: did an executable element or inline handler appear?
+      const dangerous = [...doc.querySelectorAll('script,iframe,object,embed')]
+        .filter((el) => !el.src || !el.src.includes('/assets/'));
+      let handlers = 0;
+      doc.querySelectorAll('*').forEach((el) => {
+        for (const at of el.attributes) if (/^on/i.test(at.name)) handlers++;
+      });
+      // An <img> injected by the payload would have src="x"; real product
+      // images point at a URL.
+      const injectedImgs = [...doc.querySelectorAll('img')].filter((i) => i.getAttribute('src') === 'x');
+
+      check(`${route} creates no executable element`, dangerous.length === 0,
+        dangerous.map((e) => e.tagName).join(','));
+      check(`${route} creates no inline event handler`, handlers === 0, `${handlers} found`);
+      check(`${route} does not inject the payload image`, injectedImgs.length === 0);
+      check(`${route} did not execute the payload`, app.window.__xss === undefined);
+      check(`${route} still shows the payload as visible text`,
+        app.text().includes('UI Test XSS'));
+      app.close();
+    }
+  }
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {
   const adminAuth = { authorization: `Bearer ${admin.token}` };
+  if (xssProductId) {
+    const del = await apiFetch(`/admin/products/${xssProductId}`, { method: 'DELETE', headers: adminAuth });
+    check('XSS test product removed', del.status === 200 || del.status === 204 || del.status === 404,
+      `got ${del.status}`);
+  }
   if (createdProductId) {
     const del = await apiFetch(`/admin/products/${createdProductId}`, { method: 'DELETE', headers: adminAuth });
     check('test product removed', del.status === 200 || del.status === 204 || del.status === 404,
