@@ -1724,6 +1724,35 @@ section('28. Logout reachable on mobile');
   app.close();
 }
 
+// ── 29. Auth screens fit vertically on a phone ──────────────────────────────
+// Login/Register render inside the public shell, so the two-row topbar, the
+// category bar and the fixed bottom nav all take height from them. The wrap
+// nonetheless asked for min-height:100dvh, and the decorative brand panel
+// stacked above the form, so the email field started below the fold.
+section('29. Auth screens fit vertically on a phone');
+{
+  for (const route of ['/login', '/register']) {
+    const app = await mount(route, null, { settleMs: 1500 });
+
+    // The form must exist and come with its inputs.
+    const emailInput = app.$('input[type="email"]');
+    const pwInput = app.$('input[type="password"]');
+    check(`${route} renders the email field`, !!emailInput);
+    check(`${route} renders the password field`, !!pwInput);
+
+    // The decorative marketing paragraph must not sit above the form on a
+    // phone — it was the single largest block pushing the fields down.
+    check(`${route} hides the brand marketing paragraph on phones`,
+      /@media[^{]*max-width:\s*620px[\s\S]*?\.auth-brand\s*>\s*p\{[^}]*display:\s*none/.test(bundleCss));
+
+    // The wrap must not demand a full viewport inside the shell.
+    check(`${route} auth wrap releases min-height:100dvh on phones`,
+      /@media[^{]*max-width:\s*620px[\s\S]*?\.auth-wrap\{[^}]*min-height:\s*0/.test(bundleCss));
+
+    app.close();
+  }
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {

@@ -1420,9 +1420,30 @@ tbody tr.row-click { cursor: pointer; }
   /* `max-width: 46ch` is ~373px, wider than the 312px of usable column on a
      360px phone, so the marketing copy pushed the panel sideways. Cap every
      child at the column width and tighten the padding. */
-  .auth-brand { padding: 26px 16px; }
+  /* THE REAL PROBLEM ON THE AUTH SCREENS WAS VERTICAL, NOT HORIZONTAL.
+     Login/Register render INSIDE the public shell, so 160px of chrome (the
+     two-row topbar + category bar + content padding) sits above them and a
+     76px fixed bottom nav sits below — about 544px of usable height on a
+     360x780 phone. But `.auth-wrap` asked for `min-height: 100dvh` = 780px,
+     so the page was 236px too tall before a single field was drawn. On top of
+     that the decorative dark brand panel stacks ABOVE the form on mobile and
+     ate another ~314px, pushing the email input below the fold: the user saw
+     a big blue banner and had to scroll to find the form at all.
+
+     On a phone the brand panel is pure decoration, so collapse it to just the
+     logo and one short line, and let the wrap size to its content. */
+  .auth-wrap { min-height: 0; }
+  .auth-brand {
+    padding: 14px 16px 12px;
+    gap: 8px;
+    text-align: center;
+    align-items: center;
+  }
   .auth-brand p, .auth-brand h1, .auth-tagline { max-width: 100%; }
-  .auth-form { padding: 22px 14px; }
+  /* The marketing paragraph is the single biggest block above the form. */
+  .auth-brand > p { display: none; }
+  .auth-tagline { font-size: var(--fs-md); line-height: 1.25; }
+  .auth-form { padding: 16px 14px 22px; }
   .auth-card {
     padding: 22px 17px 24px;
     /* The base rule is `max-width: 400px`, which is wider than the 332px the
@@ -1431,7 +1452,7 @@ tbody tr.row-click { cursor: pointer; }
        max-width wins. */
     max-width: 100%;
   }
-  .auth-lockup { width: min(200px, 66%); }
+  .auth-lockup { width: min(140px, 46%); margin-bottom: 0; }
   /* The demo-credentials line is a run of long unbreakable emails; let it
      break rather than stretch the card. */
   .auth-card .muted { overflow-wrap: anywhere; }

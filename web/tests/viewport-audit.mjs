@@ -148,6 +148,39 @@ else if (cardMax === null) {
 } else if (cardMax > avail) bad(`.auth-card max-width ${cardMax}px > available ${avail}px`);
 else ok(`.auth-card max-width ${cardMax}px fits available ${avail}px`);
 
+// 4b. Arithmetic: do the AUTH screens fit vertically?
+// The audit originally only asked whether the auth CARD was too WIDE. It was
+// not — the real fault was vertical. Login/Register render inside the public
+// shell, so ~160px of chrome sits above them and a 76px fixed bottom nav sits
+// below, leaving ~544px on a 360x780 phone. `.auth-wrap { min-height: 100dvh }`
+// demanded the full 780px inside that 544px, and the decorative brand panel
+// stacked above the form pushed the email field below the fold.
+if (WIDTH <= 620) {
+  const HEIGHT = 780;
+  const PUBLIC_CHROME = 160;   // two-row topbar (100) + category bar (44) + padding (16)
+  const BOTTOM_NAV = 76;
+  const availAuth = HEIGHT - PUBLIC_CHROME - BOTTOM_NAV;
+
+  const wrapMin = authWrap['min-height']?.value || '';
+  if (/100dvh|100vh/.test(wrapMin)) {
+    bad(`.auth-wrap min-height "${wrapMin}" demands the full viewport, but it sits `
+      + `inside the public shell with only ${availAuth}px available `
+      + `-> the page is ${HEIGHT - availAuth}px too tall before any field is drawn`);
+  } else {
+    ok(`.auth-wrap min-height "${wrapMin || '0'}" lets the page size to its content`);
+  }
+
+  // The brand panel is decoration; if it is tall it pushes the form off screen.
+  const brandPad = authBrand['padding']?.value || '';
+  const padTop = parseFloat((/^([\d.]+)px/.exec(brandPad) || [])[1] || '0');
+  if (padTop > 30) {
+    bad(`.auth-brand padding "${brandPad}" keeps the decorative panel tall on a phone, `
+      + 'pushing the form below the fold');
+  } else {
+    ok(`.auth-brand padding "${brandPad || 'default'}" is compact enough for a phone`);
+  }
+}
+
 // 5. Arithmetic: does the whole AI card fit the space left under the chrome?
 if (WIDTH <= 620) {
   const CHROME = 414;                 // measured: topbar+mainnav+padding+header+rail+gap+bottomnav
