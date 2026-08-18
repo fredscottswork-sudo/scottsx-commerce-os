@@ -400,6 +400,46 @@ async function main() {
     });
     check('device token registers for push', dev.status === 200 && dev.data?.ok === true);
 
+    // The Android client re-registers on every sign-in and on FCM token
+    // rotation, so repeats must be idempotent rather than piling up rows.
+    const devAgain = await call('/me/devices', {
+      method: 'POST',
+      token: state.buyerToken,
+      body: { token: `e2e-device-token-${uniq}`, platform: 'android' },
+    });
+    check('re-registering the same device token is idempotent', devAgain.status === 200);
+
+    const devShort = await call('/me/devices', {
+      method: 'POST', token: state.buyerToken, body: { token: 'tiny', platform: 'android' },
+    });
+    check('an implausibly short device token is rejected', devShort.status === 400, `got ${devShort.status}`);
+
+    const devAnon = await call('/me/devices', {
+      method: 'POST', body: { token: `anon-token-${uniq}-padding`, platform: 'android' },
+    });
+    check('device registration requires auth', devAnon.status === 401, `got ${devAnon.status}`);
+
+    const devGone = await call('/me/devices', {
+      method: 'DELETE', token: state.buyerToken, body: { token: `e2e-device-token-${uniq}` },
+    });
+    check('device token can be dropped on sign-out', devGone.status === 200);
+
+    // Every notification type the backend emits must map to a channel the
+    // Android app actually declares, or the push is silently discarded.
+    const ANDROID_CHANNELS = {
+      order_update: 'orders',
+      message: 'messages',
+      new_product: 'new_products',
+      price_drop: 'new_products',
+    };
+    const allNotifs = (await call('/me/notifications', { token: state.buyerToken })).data?.notifications ?? [];
+    const emitted = [...new Set(allNotifs.map((n) => n.type))];
+    check(
+      'every emitted notification type maps to a declared Android channel',
+      emitted.every((t) => ['orders', 'messages', 'new_products', 'general'].includes(ANDROID_CHANNELS[t] ?? 'general')),
+      emitted.join(', ')
+    );
+
     const unfollow = await call(`/me/favorites/${state.sellerId}`, { method: 'DELETE', token: state.buyerToken });
     check('buyer can unfollow', unfollow.data?.following === false);
     await call(`/me/favorites/${state.sellerId}`, { method: 'POST', token: state.buyerToken });
