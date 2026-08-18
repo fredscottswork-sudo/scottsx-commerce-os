@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# ScottsTechX — Android resource check.
+#
+# aapt2 cannot run here (no Android SDK), so a reference to a drawable, mipmap,
+# colour or string that does not exist would survive until the first Gradle
+# build and fail it. This script resolves those references statically.
+#
+# It also enforces two platform rules that are easy to get wrong and that a
+# compiler would never catch, because they are runtime-visual bugs:
+#
+#   * a notification small icon must have an ALPHA channel — Android throws the
+#     colour away and draws the alpha silhouette tinted white, so an opaque PNG
+#     renders as a solid white square;
+#   * the adaptive-icon foreground must be transparent, or the launcher mask
+#     shows an opaque square instead of the icon shape.
+#
+# Usage:  tools/res-check.sh      (from scottsx-android/)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+RES="app/src/main/res"
+SRC="app/src/main/java"
+MANIFEST="app/src/main/AndroidManifest.xml"
+
+pass=0; fail=0
+ok()   { pass=$((pass+1)); printf '  \033[32m✓\033[0m %s\n' "$1"; }
+bad()  { fail=$((fail+1)); printf '  \033[31m✗\033[0m %s\n' "$1"; }
+
+echo "Android resource check"
+
+# ── 1. Collect what exists ──────────────────────────────────────────────────
+have_res() {                      # have_res <type> <name>
+  local type="$1" name="$2"
+  # file-based resources: res/<type>*/<name>.(png|xml|webp|jpg)
+  if compgen -G "$RES/${type}*/${name}.*" > /dev/null; then return 0; fi
+  # value-based resources: <color name="…">, <string name="…">
+  if grep -rqE "<${type}[^>]*name=\"${name}\"" "$RES"/values*/*.xml 2>/dev/null; then return 0; fi
+  return 1
+}
+
+# ── 2. Every @drawable/@mipmap/@color/@string in XML resolves ───────────────
+missing=0
+while IFS= read -r ref; do
+  type="${ref%%/*}"; name="${ref##*/}"
+  have_res "$type" "$name" || { bad "unresolved @$type/$name (referenced in XML)"; missing=1; }
+done < <(grep -rhoE '@(drawable|mipmap|color|string)/[A-Za-z0-9_]+' \
+           "$MANIFEST" "$RES"/values*/*.xml "$RES"/*anydpi*/*.xml "$RES"/xml/*.xml 2>/dev/null \
+         | sed 's/^@//' | sort -u)
+[ "$missing" -eq 0 ] && ok "every @drawable/@mipmap/@color/@string in XML resolves"
+
+# ── 3. Every R.<type>.<name> in Kotlin resolves ─────────────────────────────
+missing=0
+while IFS= read -r ref; do
+  type="$(echo "$ref" | cut -d. -f2)"; name="$(echo "$ref" | cut -d. -f3)"
+  case "$type" in
+    drawable|mipmap|color|string) ;;
+    *) continue ;;
+  esac
+  have_res "$type" "$name" || { bad "unresolved R.$type.$name (referenced in Kotlin)"; missing=1; }
+done < <(grep -rhoE '\bR\.(drawable|mipmap|color|string)\.[A-Za-z0-9_]+' "$SRC" 2>/dev/null | sort -u)
+[ "$missing" -eq 0 ] && ok "every R.drawable/mipmap/color/string in Kotlin resolves"
+
+# ── 4. The notification small icon must be an alpha silhouette ──────────────
+notif_icon="$(grep -oE 'default_notification_icon"[[:space:]]*$|@drawable/[A-Za-z0-9_]+' "$MANIFEST" \
+              | grep -A0 'drawable' | tail -1 | sed 's|@drawable/||')"
+notif_kt="$(grep -rhoE 'setSmallIcon\(R\.drawable\.[A-Za-z0-9_]+' "$SRC" | sed 's/.*\.//' | sort -u)"
+
+check_alpha() {                   # check_alpha <name> <where>
+  local name="$1" where="$2" f
+  f="$(compgen -G "$RES/drawable*/${name}.png" | head -1 || true)"
+  if [ -z "$f" ]; then
+    # a vector drawable carries no alpha channel concept; accept it
+    compgen -G "$RES/drawable*/${name}.xml" > /dev/null \
+      && { ok "$where uses a vector drawable ($name)"; return; }
+    bad "$where icon @drawable/$name not found"; return
+  fi
+  # PNG colour type lives at byte 25: 4 and 6 carry alpha.
+  local ct
+  ct="$(od -An -tu1 -j25 -N1 "$f" | tr -d ' ')"
+  if [ "$ct" = "4" ] || [ "$ct" = "6" ]; then
+    ok "$where icon '$name' has an alpha channel (colour type $ct)"
+  else
+    bad "$where icon '$name' is OPAQUE (PNG colour type $ct) — Android will draw a solid white square"
+  fi
+}
+
+[ -n "$notif_icon" ] && check_alpha "$notif_icon" "manifest notification"
+for n in $notif_kt; do check_alpha "$n" "setSmallIcon"; done
+
+# ── 5. Adaptive icon: foreground must be transparent, background must exist ─
+for ai in "$RES"/mipmap-anydpi-v26/*.xml; do
+  [ -e "$ai" ] || continue
+  base="$(basename "$ai" .xml)"
+  fg="$(grep -oE '<foreground[^>]*android:drawable="@[a-z]+/[A-Za-z0-9_]+"' "$ai" | sed 's|.*/||; s|"||')"
+  bg="$(grep -oE '<background[^>]*android:drawable="@[a-z]+/[A-Za-z0-9_]+"' "$ai" | sed 's|.*/||; s|"||')"
+  if [ -n "$fg" ]; then
+    f="$(compgen -G "$RES"/mipmap-*/"${fg}".png | head -1 || true)"
+    if [ -n "$f" ]; then
+      ct="$(od -An -tu1 -j25 -N1 "$f" | tr -d ' ')"
+      if [ "$ct" = "6" ] || [ "$ct" = "4" ]; then
+        ok "$base foreground '$fg' is transparent (colour type $ct)"
+      else
+        bad "$base foreground '$fg' is opaque (colour type $ct) — the launcher mask will show a square"
+      fi
+    fi
+  fi
+  [ -n "$bg" ] && { have_res color "$bg" || have_res mipmap "$bg" || have_res drawable "$bg"; } \
+    && ok "$base background '$bg' resolves"
+done
+
+# ── 6. Launcher icons exist at every density the manifest promises ──────────
+for icon in ic_launcher ic_launcher_round; do
+  grep -q "@mipmap/$icon" "$MANIFEST" || continue
+  n=0
+  for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+    [ -f "$RES/mipmap-$d/$icon.png" ] && n=$((n+1))
+  done
+  if [ "$n" -eq 5 ]; then ok "$icon ships at all 5 densities"
+  else bad "$icon only ships at $n/5 densities"; fi
+done
+
+# ── 7. The notification icon ships at every density ─────────────────────────
+if [ -n "$notif_icon" ]; then
+  n=0
+  for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+    [ -f "$RES/drawable-$d/$notif_icon.png" ] && n=$((n+1))
+  done
+  if [ "$n" -eq 5 ]; then ok "$notif_icon ships at all 5 densities"
+  else bad "$notif_icon only ships at $n/5 densities"; fi
+fi
+
+# ── 8. Every referenced theme/style is declared ─────────────────────────────
+missing=0
+while IFS= read -r st; do
+  grep -rqE "<style[^>]*name=\"${st}\"" "$RES"/values*/*.xml || { bad "undeclared @style/$st"; missing=1; }
+done < <(grep -ohE '@style/[A-Za-z0-9_.]+' "$MANIFEST" | sed 's|@style/||' | sort -u)
+[ "$missing" -eq 0 ] && ok "every @style referenced by the manifest is declared"
+
+echo
+if [ "$fail" -eq 0 ]; then
+  printf '\033[32m\033[1m✅ Android resources are consistent (%d checks).\033[0m\n' "$pass"
+else
+  printf '\033[31m\033[1m❌ %d resource problem(s), %d ok.\033[0m\n' "$fail" "$pass"
+  exit 1
+fi

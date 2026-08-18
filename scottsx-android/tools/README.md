@@ -89,3 +89,25 @@ On any machine with Android Studio / the SDK:
 ```
 
 Expect to fix genuine type errors there first — that is the authoritative check.
+
+## `res-check.sh` — Android resource check
+
+`aapt2` needs the Android SDK, which is not available here, so a reference to a
+drawable, mipmap, colour or string that does not exist would survive until the
+first Gradle build. This script resolves every such reference statically.
+
+It also enforces two platform rules a compiler can never catch, because they are
+runtime-visual bugs:
+
+* **A notification small icon must have an alpha channel.** Android throws away
+  the icon's colour and draws its *alpha* silhouette tinted white. An opaque PNG
+  therefore renders as a solid white square. The check reads the PNG colour type
+  straight from the IHDR (byte 25) and fails on types 0 and 2.
+* **An adaptive-icon foreground must be transparent**, or the launcher mask
+  shows an opaque square instead of the icon shape.
+
+```bash
+tools/res-check.sh      # from scottsx-android/, ~0.2s
+```
+
+It is gate 7 in `./verify.sh`.

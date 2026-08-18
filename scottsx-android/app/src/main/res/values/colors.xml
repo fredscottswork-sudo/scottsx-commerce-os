@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mirrors the web design tokens in web/src/styles/globals.css so the app and
+     the site render the same brand. -->
+<resources>
+    <!-- web token: primary (dark theme) -->
+    <color name="brand_primary">#FF2B7CFF</color>
+    <!-- web token: bg (dark theme) -->
+    <color name="brand_background">#FF05070D</color>
+    <!-- web token: surface -->
+    <color name="brand_surface">#FF0B1020</color>
+</resources>

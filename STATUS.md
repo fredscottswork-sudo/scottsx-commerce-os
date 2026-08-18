@@ -15,9 +15,9 @@ Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / 
 ## Verify it
 
 ```bash
-./verify.sh          # all seven gates
+./verify.sh          # all nine gates
 
-# Gates 6-7 need a Kotlin toolchain. It lives in /tmp, so if that has been
+# Gates 8-9 need a Kotlin toolchain. It lives in /tmp, so if that has been
 # cleared, restore it in one step (~15s, no root, no Android SDK):
 scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 ```
@@ -27,13 +27,14 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 1 | Backend end-to-end | 253 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 3 | Android ⇆ backend contract | 91 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 201 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 217 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
-| 7 | Kotlin syntax (56 files) | — | clean |
-| 8 | Kotlin parsers vs real API JSON | — | passing |
+| 7 | Android resources (icons, colours, themes) | 12 | clean |
+| 8 | Kotlin syntax (56 files) | — | clean |
+| 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**568 checks.** Every suite cleans up after itself; the database returns to 7
+**596 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -108,8 +109,47 @@ These were all found by running things, not by reading code:
 | Profile save called `updateMe` twice, dropping photo and city | Avatar/location edits silently discarded |
 | Raw-body parser 500'd on empty JSON bodies | Every bodyless POST/DELETE failed |
 | Android had no cart; "Buy now" called a 503 payment route | **Buying anything on the phone was impossible** |
+| Notification small icon was the opaque logo PNG | Android draws small icons from **alpha only** — every push would have shown a solid white square |
+| Launch theme was `Material.Light` under a dark UI | White flash before the first frame; invisible status-bar icons |
+| Launcher icon was a 1.77 MB nodpi PNG, no adaptive icon | Oversized in the APK; no themed/adaptive icon on API 26+ |
+| Web shipped a placeholder "S" tile and an inline-SVG favicon | Web and app did not share a brand |
 
 ---
+
+## Branding
+
+Web and app render the same artwork. Everything derives from the single source
+`scottsx-android/app/src/main/res/drawable-nodpi/logo.png`:
+
+| Surface | Asset |
+|---|---|
+| Web topbars (both shells) | `web/public/brand/scottstechx-mark.png` |
+| Web sign-in / register hero | `web/public/brand/scottstechx-logo-transparent.png` |
+| Web favicon, PWA, apple-touch | `web/public/brand/favicon-{32,180,192,512}.png` |
+| Android launcher | `mipmap-*/ic_launcher*.png` + adaptive icon (API 26+) |
+| Android notifications | `drawable-*/ic_notification.png` |
+| Android welcome screen | `R.drawable.logo` |
+
+The source has its dark backdrop baked in, and that backdrop is a textured
+vignette rather than flat black — it peaks near luminance 35 while the tagline
+reaches 255. Transparent variants therefore key at a measured floor of 42
+(ramping to 95), which clears the vignette without eroding the type.
+
+Two real bugs surfaced while wiring this up, both invisible to a compiler:
+
+* **the notification icon was the opaque logo.** Android discards the colour of
+  a small icon and draws its *alpha* tinted white, so it would have shipped as a
+  solid white square. It is now a flat silhouette (keyed on luminance *and*
+  chroma, so the dark-navy `S` survives) with interior holes filled, legible
+  down to 24 px.
+* **the launch theme was `Material.Light`** under a dark-blue Compose UI, giving
+  a white flash before the first frame and dark-on-dark status-bar icons. The
+  window background is now the brand token `#05070D`.
+
+Gate 7 (`scottsx-android/tools/res-check.sh`) enforces all of this statically,
+since aapt2 cannot run here: it resolves every `@drawable/@mipmap/@color/@string`
+and `R.*` reference, and fails if a notification icon is opaque or an adaptive
+foreground is not transparent.
 
 ## Not done / known limits
 

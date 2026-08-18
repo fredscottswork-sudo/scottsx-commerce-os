@@ -22,34 +22,37 @@ if ! curl -sf -m 5 "$API/healthz" >/dev/null; then
   exit 1
 fi
 
-hr "1/8  Backend end-to-end"
+hr "1/9  Backend end-to-end"
 (cd "$ROOT/12_Backend" && node tests/e2e.mjs) || FAILED=1
 
-hr "2/8  Google Sign-In (local IdP, no egress)"
+hr "2/9  Google Sign-In (local IdP, no egress)"
 (cd "$ROOT/12_Backend" && node tests/google-auth.mjs) || FAILED=1
 
-hr "3/8  Android ⇆ backend contract"
+hr "3/9  Android ⇆ backend contract"
 (cd "$ROOT/12_Backend" && node tests/android-contract.mjs) || FAILED=1
 
-hr "4/8  Web UI (real bundle, real backend)"
+hr "4/9  Web UI (real bundle, real backend)"
 (cd "$ROOT/web" && npm run build >/dev/null 2>&1 && node tests/ui.mjs) || FAILED=1
 
-hr "5/8  TypeScript"
+hr "5/9  TypeScript"
 (cd "$ROOT/12_Backend" && npx tsc --noEmit && echo "backend: clean") || FAILED=1
 (cd "$ROOT/web" && npx tsc --noEmit -p tsconfig.json && echo "web: clean") || FAILED=1
 
-hr "6/8  Android wiring (routes, client calls, screen reachability)"
+hr "6/9  Android wiring (routes, client calls, screen reachability)"
 (cd "$ROOT/scottsx-android" && ./tools/wiring-check.sh) || FAILED=1
+
+hr "7/9  Android resources (icons, colours, themes)"
+(cd "$ROOT/scottsx-android" && ./tools/res-check.sh) || FAILED=1
 
 KOTLINC="${KOTLINC:-$(command -v kotlinc || true)}"
 if [ -n "$KOTLINC" ] && [ -n "${JAVA_HOME:-}" ]; then
-  hr "7/8  Kotlin syntax"
+  hr "8/9  Kotlin syntax"
   (cd "$ROOT/scottsx-android" && ./tools/kotlin-syntax-check.sh "$KOTLINC") || FAILED=1
 
-  hr "8/8  Kotlin parsers vs real API JSON"
+  hr "9/9  Kotlin parsers vs real API JSON"
   (cd "$ROOT/scottsx-android" && ./tools/parser-check/run.sh "$KOTLINC") || FAILED=1
 else
-  hr "7-8/8  Kotlin checks"
+  hr "8-9/9  Kotlin checks"
   note "skipped — set \$JAVA_HOME and \$KOTLINC (see scottsx-android/tools/README.md)"
   note "on a machine with the Android SDK, run ./gradlew assembleDebug instead"
 fi
