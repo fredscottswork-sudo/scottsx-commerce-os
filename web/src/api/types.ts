@@ -174,22 +174,77 @@ export interface NearbySeller {
   withinServiceRadius: boolean;
 }
 
+export interface ChatParty {
+  id: string;
+  name: string;
+  role: string;
+  photoUrl?: string | null;
+  verified?: boolean;
+  location?: string | null;
+}
+
 export interface Conversation {
   id: string;
-  otherParty: { id: string; name: string; role: string };
+  otherParty: ChatParty;
   lastMessage: string;
   lastTime: string;
+  createdAt?: string;
   unread: number;
-  productTitle?: string | null;
   mySide: string;
+  messageCount?: number;
+  lastSenderId?: string | null;
+  productId?: string | null;
+  productTitle?: string | null;
+  productImageUrl?: string | null;
+  productPriceMinor?: number | null;
+  pinned?: boolean;
+  archived?: boolean;
+  muted?: boolean;
+  readByMe?: boolean;
+  pendingOffers?: number;
+  /** Only present on GET /conversations/:id. */
+  otherLastReadAt?: string | null;
+  otherTyping?: boolean;
 }
+
+export type MessageKind = 'text' | 'image' | 'offer' | 'system';
+export type OfferStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'withdrawn';
 
 export interface ChatMessage {
   id: string;
+  conversationId?: string;
   senderId: string;
   text: string;
   imageUrl?: string | null;
+  attachmentName?: string | null;
+  kind: MessageKind;
+  productId?: string | null;
+  productTitle?: string | null;
+  productImageUrl?: string | null;
+  productPriceMinor?: number | null;
+  offerMinor?: number | null;
+  offerStatus?: OfferStatus | null;
+  offerQuantity?: number;
+  replyToId?: string | null;
+  deletedAt?: string | null;
+  readByOther?: boolean;
   createdAt: string;
+}
+
+export interface InboxCounts {
+  all: number;
+  unread: number;
+  pinned: number;
+  archived: number;
+  offers: number;
+}
+
+export type InboxFilter = 'all' | 'unread' | 'pinned' | 'archived' | 'offers';
+
+export interface QuickReply {
+  id: string;
+  text: string;
+  sortOrder: number;
 }
 
 export interface Order {

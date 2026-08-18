@@ -187,7 +187,12 @@ export default function Orders() {
       >
         <div className="row center mb-16" style={{ gap: 6, justifyContent: 'center' }}>
           {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} className="star-btn" onClick={() => setStars(n)} aria-label={`${n} star${n > 1 ? 's' : ''}`}>
+            <button
+              key={n}
+              className={`star-btn${n <= stars ? ' on' : ''}`}
+              onClick={() => setStars(n)}
+              aria-label={`${n} star${n > 1 ? 's' : ''}`}
+            >
               <Star size={30} fill={n <= stars ? 'currentColor' : 'none'}
                 style={{ color: n <= stars ? 'var(--warning)' : 'var(--text-3)' }} />
             </button>

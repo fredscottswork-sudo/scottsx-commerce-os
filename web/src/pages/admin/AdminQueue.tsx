@@ -154,7 +154,11 @@ export default function AdminQueue() {
       ) : (
         <div className="col stagger">
           {items.map((item, i) => (
-            <article key={item.id} className="card review-card stagger-item" style={{ '--i': i } as React.CSSProperties}>
+            <article
+              key={item.id}
+              className={`card review-card stagger-item${selected.has(item.id) ? ' selected' : ''}`}
+              style={{ '--i': i } as React.CSSProperties}
+            >
               <label className="review-check">
                 <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)}
                   aria-label={`Select ${item.title}`} />

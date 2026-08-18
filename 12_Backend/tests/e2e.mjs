@@ -679,6 +679,183 @@ async function main() {
       body: { text: '' },
     });
     check('empty message rejected', empty.status === 400, `got ${empty.status}`);
+
+    state.outsiderToken = outsider.data?.token;
+    state.outsiderId = outsider.data?.user?.id;
+  }
+
+  // ── Messaging: offers, receipts, typing, pin/archive ──────────────────────
+  group('Messaging (advanced)');
+  {
+    const cid = state.convId;
+
+    // -- thread header ------------------------------------------------------
+    const head = await call(`/conversations/${cid}`, { token: state.buyerToken });
+    check('thread header loads', head.status === 200 && head.data?.conversation?.id === cid);
+    check(
+      'header carries counterparty identity',
+      !!head.data?.conversation?.otherParty?.name &&
+        typeof head.data?.conversation?.otherParty?.verified === 'boolean'
+    );
+
+    // -- image message ------------------------------------------------------
+    const img = await call(`/conversations/${cid}/messages`, {
+      method: 'POST',
+      token: state.sellerToken,
+      body: { kind: 'image', imageUrl: 'https://example.com/unit.jpg', attachmentName: 'unit.jpg' },
+    });
+    check(
+      'image message stores attachment metadata',
+      img.status === 200 && img.data?.message?.kind === 'image' && img.data?.message?.attachmentName === 'unit.jpg'
+    );
+
+    // -- typing indicator ---------------------------------------------------
+    await call(`/conversations/${cid}/typing`, {
+      method: 'POST', token: state.sellerToken, body: { typing: true },
+    });
+    const typingOn = await call(`/conversations/${cid}/messages`, { token: state.buyerToken });
+    check('buyer sees the seller typing', typingOn.data?.otherTyping === true);
+    await call(`/conversations/${cid}/typing`, {
+      method: 'POST', token: state.sellerToken, body: { typing: false },
+    });
+    const typingOff = await call(`/conversations/${cid}/messages`, { token: state.buyerToken });
+    check('typing indicator clears', typingOff.data?.otherTyping === false);
+
+    // -- read receipts ------------------------------------------------------
+    await call(`/conversations/${cid}/read`, { method: 'POST', token: state.sellerToken });
+    const receipts = await call(`/conversations/${cid}/messages`, { token: state.buyerToken });
+    check(
+      'buyer messages report readByOther',
+      (receipts.data?.messages ?? []).some((m) => m.senderId === state.buyerId && m.readByOther === true)
+    );
+
+    // -- offers -------------------------------------------------------------
+    const offer = await call(`/conversations/${cid}/messages`, {
+      method: 'POST',
+      token: state.buyerToken,
+      body: { kind: 'offer', offerMinor: 500000, offerQuantity: 2 },
+    });
+    check(
+      'buyer sends a price offer',
+      offer.status === 200 && offer.data?.message?.offerStatus === 'pending' && offer.data?.message?.offerQuantity === 2
+    );
+    const offerId = offer.data?.message?.id;
+
+    const noPrice = await call(`/conversations/${cid}/messages`, {
+      method: 'POST', token: state.buyerToken, body: { kind: 'offer' },
+    });
+    check('offer without a price rejected', noPrice.status === 400, `got ${noPrice.status}`);
+
+    const selfAccept = await call(`/conversations/${cid}/offers/${offerId}`, {
+      method: 'POST', token: state.buyerToken, body: { action: 'accept' },
+    });
+    check('cannot accept your own offer', selfAccept.status === 403, `got ${selfAccept.status}`);
+
+    const foreignWithdraw = await call(`/conversations/${cid}/offers/${offerId}`, {
+      method: 'POST', token: state.sellerToken, body: { action: 'withdraw' },
+    });
+    check('only the sender may withdraw', foreignWithdraw.status === 403, `got ${foreignWithdraw.status}`);
+
+    // A second pending offer must be voided when the first is accepted.
+    const rival = await call(`/conversations/${cid}/messages`, {
+      method: 'POST', token: state.buyerToken, body: { kind: 'offer', offerMinor: 400000 },
+    });
+
+    const accept = await call(`/conversations/${cid}/offers/${offerId}`, {
+      method: 'POST', token: state.sellerToken, body: { action: 'accept' },
+    });
+    check('seller accepts the offer', accept.status === 200 && accept.data?.status === 'accepted');
+    check('acceptance appends a system message', accept.data?.message?.kind === 'system');
+
+    const settled = await call(`/conversations/${cid}/messages`, { token: state.buyerToken });
+    const rivalRow = (settled.data?.messages ?? []).find((m) => m.id === rival.data?.message?.id);
+    check('accepting one offer declines the other', rivalRow?.offerStatus === 'declined', `got ${rivalRow?.offerStatus}`);
+
+    const reopen = await call(`/conversations/${cid}/offers/${offerId}`, {
+      method: 'POST', token: state.sellerToken, body: { action: 'decline' },
+    });
+    check('a settled offer cannot be changed', reopen.status === 409, `got ${reopen.status}`);
+
+    // -- retraction ---------------------------------------------------------
+    const retract = await call(`/conversations/${cid}/messages/${img.data?.message?.id}`, {
+      method: 'DELETE', token: state.sellerToken,
+    });
+    check('sender can retract a message', retract.status === 200);
+    const foreignDelete = await call(`/conversations/${cid}/messages/${offerId}`, {
+      method: 'DELETE', token: state.sellerToken,
+    });
+    check('cannot retract another user message', foreignDelete.status === 403, `got ${foreignDelete.status}`);
+    const afterRetract = await call(`/conversations/${cid}/messages`, { token: state.buyerToken });
+    const retracted = (afterRetract.data?.messages ?? []).find((m) => m.id === img.data?.message?.id);
+    check('retracted message is blanked but preserved', retracted?.text === '' && !!retracted?.deletedAt);
+
+    // -- pin / archive / mute ----------------------------------------------
+    const pin = await call(`/conversations/${cid}/state`, {
+      method: 'PATCH', token: state.buyerToken, body: { pinned: true },
+    });
+    check('thread can be pinned', pin.status === 200 && pin.data?.state?.pinned === true);
+    const pinned = await call('/conversations?filter=pinned', { token: state.buyerToken });
+    check('pinned filter finds it', (pinned.data?.conversations ?? []).some((c) => c.id === cid));
+
+    await call(`/conversations/${cid}/state`, {
+      method: 'PATCH', token: state.buyerToken, body: { archived: true },
+    });
+    const defaultInbox = await call('/conversations', { token: state.buyerToken });
+    check('archived threads leave the default inbox', !(defaultInbox.data?.conversations ?? []).some((c) => c.id === cid));
+    check(
+      'inbox exposes filter counts',
+      typeof defaultInbox.data?.counts?.all === 'number' && typeof defaultInbox.data?.totalUnread === 'number'
+    );
+    const archived = await call('/conversations?filter=archived', { token: state.buyerToken });
+    check('archived filter finds it', (archived.data?.conversations ?? []).some((c) => c.id === cid));
+
+    await call(`/conversations/${cid}/messages`, {
+      method: 'POST', token: state.sellerToken, body: { text: 'Are you still interested?' },
+    });
+    const revived = await call('/conversations', { token: state.buyerToken });
+    check('a new message un-archives the thread', (revived.data?.conversations ?? []).some((c) => c.id === cid));
+
+    const noop = await call(`/conversations/${cid}/state`, {
+      method: 'PATCH', token: state.buyerToken, body: {},
+    });
+    check('empty state patch rejected', noop.status === 400, `got ${noop.status}`);
+
+    // -- access control on the new endpoints -------------------------------
+    const outsiderHead = await call(`/conversations/${cid}`, { token: state.outsiderToken });
+    check('outsider cannot read the thread header', outsiderHead.status === 404, `got ${outsiderHead.status}`);
+    const outsiderTyping = await call(`/conversations/${cid}/typing`, {
+      method: 'POST', token: state.outsiderToken, body: { typing: true },
+    });
+    check('outsider cannot broadcast typing', outsiderTyping.status === 404, `got ${outsiderTyping.status}`);
+
+    // -- inbox search -------------------------------------------------------
+    const search = await call('/conversations?q=zzzznomatch', { token: state.buyerToken });
+    check('inbox search filters results', (search.data?.conversations ?? []).length === 0);
+  }
+
+  // ── Quick replies (canned seller responses) ───────────────────────────────
+  group('Quick replies');
+  {
+    const created = await call('/me/quick-replies', {
+      method: 'POST',
+      token: state.sellerToken,
+      body: { text: 'Yes — same-day delivery inside Kampala.' },
+    });
+    check('seller saves a quick reply', created.status === 201 && !!created.data?.quickReply?.id);
+    const qrId = created.data?.quickReply?.id;
+
+    const list = await call('/me/quick-replies', { token: state.sellerToken });
+    check('quick replies list back', (list.data?.quickReplies ?? []).some((q) => q.id === qrId));
+
+    const foreign = await call(`/me/quick-replies/${qrId}`, {
+      method: 'DELETE', token: state.buyerToken,
+    });
+    check('quick replies are private per user', foreign.status === 404, `got ${foreign.status}`);
+
+    const removed = await call(`/me/quick-replies/${qrId}`, {
+      method: 'DELETE', token: state.sellerToken,
+    });
+    check('seller deletes own quick reply', removed.status === 200);
   }
 
   // ── Support (AI + admin modes) ────────────────────────────────────────────
@@ -929,6 +1106,16 @@ async function main() {
       'every public product still has a real image',
       (stillThere.data?.products ?? []).every((p) => /^https?:\/\//.test(p.imageUrl || ''))
     );
+
+    // Throwaway accounts this run registered are removed so repeated runs do
+    // not silt up the users table. The seller/admin are permanent seed rows.
+    const throwaway = [state.buyerId, state.outsiderId].filter(Boolean);
+    let purged = 0;
+    for (const id of throwaway) {
+      const r = await call(`/admin/users/${id}`, { method: 'DELETE', token: state.adminToken });
+      if (r.status === 200) purged++;
+    }
+    check('test accounts removed', purged === throwaway.length, `${purged}/${throwaway.length}`);
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────

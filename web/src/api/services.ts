@@ -36,6 +36,10 @@ import type {
   ProductRating,
   AdminQueueItem,
   SellerDashboard,
+  InboxCounts,
+  InboxFilter,
+  OfferStatus,
+  QuickReply,
 } from './types';
 
 // ── Auth ────────────────────────────────────────────────────────────────────
@@ -234,19 +238,85 @@ export const paymentService = {
 };
 
 // ── Chat ────────────────────────────────────────────────────────────────────
+export interface SendMessageInput {
+  text?: string;
+  imageUrl?: string;
+  attachmentName?: string;
+  kind?: 'text' | 'image' | 'offer';
+  productId?: string;
+  offerMinor?: number;
+  offerQuantity?: number;
+  replyToId?: string;
+}
+
 export const chatService = {
-  conversations: () => api<{ conversations: Conversation[] }>('/conversations'),
+  /** Inbox. `filter` narrows the list; counts always describe the whole inbox. */
+  conversations: (params: { filter?: InboxFilter; q?: string } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.filter && params.filter !== 'all') qs.set('filter', params.filter);
+    if (params.q?.trim()) qs.set('q', params.q.trim());
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return api<{
+      conversations: Conversation[];
+      counts: InboxCounts;
+      totalUnread: number;
+      filter: string;
+    }>(`/conversations${suffix}`);
+  },
+
   open: (sellerId: string, productId?: string) =>
     api<{ conversation: { id: string; existing: boolean } }>('/conversations', {
       method: 'POST',
       body: { sellerId, productId },
     }),
+
+  /** Thread header: counterparty, product context, pin/mute state, typing. */
+  thread: (conversationId: string) =>
+    api<{ conversation: Conversation }>(`/conversations/${conversationId}`),
+
   messages: (conversationId: string) =>
-    api<{ messages: ChatMessage[] }>(`/conversations/${conversationId}/messages`),
-  send: (conversationId: string, text: string) =>
-    api<{ message: ChatMessage }>(`/conversations/${conversationId}/messages`, { method: 'POST', body: { text } }),
+    api<{ messages: ChatMessage[]; otherLastReadAt: string | null; otherTyping: boolean }>(
+      `/conversations/${conversationId}/messages`
+    ),
+
+  send: (conversationId: string, input: string | SendMessageInput) =>
+    api<{ message: ChatMessage }>(`/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: typeof input === 'string' ? { text: input } : input,
+    }),
+
   markRead: (conversationId: string) =>
     api<{ ok: boolean }>(`/conversations/${conversationId}/read`, { method: 'POST' }),
+
+  /** Heartbeat — the indicator expires server-side after ~6s. */
+  typing: (conversationId: string, typing: boolean) =>
+    api<{ ok: boolean }>(`/conversations/${conversationId}/typing`, {
+      method: 'POST',
+      body: { typing },
+    }),
+
+  setState: (conversationId: string, patch: { pinned?: boolean; archived?: boolean; muted?: boolean }) =>
+    api<{ state: { pinned: boolean; archived: boolean; muted: boolean } }>(
+      `/conversations/${conversationId}/state`,
+      { method: 'PATCH', body: patch }
+    ),
+
+  respondToOffer: (conversationId: string, messageId: string, action: 'accept' | 'decline' | 'withdraw') =>
+    api<{ ok: boolean; status: OfferStatus; message: ChatMessage }>(
+      `/conversations/${conversationId}/offers/${messageId}`,
+      { method: 'POST', body: { action } }
+    ),
+
+  retract: (conversationId: string, messageId: string) =>
+    api<{ ok: boolean }>(`/conversations/${conversationId}/messages/${messageId}`, {
+      method: 'DELETE',
+    }),
+
+  quickReplies: () => api<{ quickReplies: QuickReply[] }>('/me/quick-replies'),
+  addQuickReply: (text: string) =>
+    api<{ quickReply: QuickReply }>('/me/quick-replies', { method: 'POST', body: { text } }),
+  deleteQuickReply: (id: string) =>
+    api<{ ok: boolean }>(`/me/quick-replies/${id}`, { method: 'DELETE' }),
 };
 
 // ── AI ──────────────────────────────────────────────────────────────────────

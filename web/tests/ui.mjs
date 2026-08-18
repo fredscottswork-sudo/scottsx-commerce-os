@@ -192,6 +192,7 @@ const reg = await apiFetch('/auth/register', {
 if (reg.status !== 201) { console.error('Could not create the test buyer', reg); process.exit(1); }
 const buyer = reg.body;
 const buyerAuth = { authorization: `Bearer ${buyer.token}` };
+const sellerAuth = { authorization: `Bearer ${seller.token}` };
 
 // ── 1. Public marketplace ───────────────────────────────────────────────────
 section('1. Public marketplace (logged out)');
@@ -360,7 +361,6 @@ let createdProductId = null;
 {
   // Create a listing through the API exactly as the UI does, then verify the
   // moderation gate: it must NOT be publicly visible until an admin approves.
-  const sellerAuth = { authorization: `Bearer ${seller.token}` };
   const created = await apiFetch('/seller/products', {
     method: 'POST',
     headers: sellerAuth,
@@ -492,10 +492,15 @@ section('10. Support desk');
 // ── 11. Messaging ───────────────────────────────────────────────────────────
 section('11. Messaging');
 {
+  // Talk to the seller we hold a token for (techhub), not whichever seller
+  // happens to own the first catalogue row — otherwise every reply 404s.
+  const mine = await apiFetch(`/products?sellerId=${seller.user.id}&pageSize=1`);
+  const chatProduct = mine.body.products?.[0] ?? sampleProduct;
+
   const conv = await apiFetch('/conversations', {
     method: 'POST',
     headers: buyerAuth,
-    body: JSON.stringify({ sellerId: sampleProduct.seller.id, productId: sampleProduct.id }),
+    body: JSON.stringify({ sellerId: seller.user.id, productId: chatProduct.id }),
   });
   check('buyer can open a conversation with a seller', conv.status === 200 || conv.status === 201,
     `status ${conv.status}`);
@@ -505,13 +510,96 @@ section('11. Messaging');
     method: 'POST', headers: buyerAuth, body: JSON.stringify({ text: 'Hello, is this still available?' }),
   });
 
+  // A seller reply so the transcript has both sides.
+  await apiFetch(`/conversations/${convId}/messages`, {
+    method: 'POST', headers: sellerAuth,
+    body: JSON.stringify({ text: 'Yes it is, we deliver same day.' }),
+  });
+
   const app = await mount('/messages', buyer);
-  check('messages list renders the conversation', app.text().includes(sampleProduct.seller.name) || app.$$('a').length > 0);
+  const inboxText = app.text();
+  check('messages list renders the conversation', inboxText.includes(seller.user.displayName) || app.$$('a').length > 0);
+  check('inbox shows the latest message preview', inboxText.includes('we deliver same day'),
+    inboxText.slice(0, 160));
+  check('inbox exposes filter chips with counts',
+    /All/.test(inboxText) && /Unread|Offers|Pinned|Archived/.test(inboxText));
+
+  // Pin from the inbox row and confirm it survives a reload.
+  const pinBtn = app.$('[aria-label="Pin conversation"]');
+  check('inbox row exposes a pin control', !!pinBtn);
+  if (pinBtn) {
+    await app.click(pinBtn, 1100);
+    const state = await apiFetch('/conversations?filter=pinned', { headers: buyerAuth });
+    check('pinning from the inbox persists to the API',
+      (state.body.conversations || []).some((c) => c.id === convId));
+  }
   app.close();
 
   const thread = await mount(`/messages/${convId}`, buyer);
-  check('thread shows the sent message', thread.text().includes('Hello, is this still available?'));
+  const threadText = thread.text();
+  check('thread shows the sent message', threadText.includes('Hello, is this still available?'));
+  check('thread shows the seller reply', threadText.includes('we deliver same day'));
+  check('thread header names the counterparty', threadText.includes(seller.user.displayName));
+  check('thread shows the product context bar', threadText.includes(chatProduct.title));
+  check('thread renders a date separator', /Today|Yesterday/.test(threadText));
+
+  // Compose and send a message straight through the UI.
+  const composer = thread.$('input[placeholder="Type a message…"]');
+  check('composer input is present', !!composer);
+  if (composer) {
+    await thread.type(composer, 'Sending this from the web UI');
+    const sendBtn = thread.$('button[aria-label="Send"]');
+    await thread.click(sendBtn, 1500);
+    const after = await apiFetch(`/conversations/${convId}/messages`, { headers: buyerAuth });
+    check('message sent from the UI reaches the backend',
+      (after.body.messages || []).some((m) => m.text === 'Sending this from the web UI'));
+    check('sent message appears in the transcript',
+      thread.text().includes('Sending this from the web UI'));
+  }
+
+  // Offer controls are buyer-side only and require product context.
+  const offerBtn = thread.$('[aria-label="Make an offer"]');
+  check('buyer sees the make-an-offer control', !!offerBtn);
   thread.close();
+
+  // ---- offers rendered in the transcript ----------------------------------
+  const offer = await apiFetch(`/conversations/${convId}/messages`, {
+    method: 'POST', headers: buyerAuth,
+    body: JSON.stringify({ kind: 'offer', offerMinor: 4200000, offerQuantity: 3 }),
+  });
+  check('offer created for the UI to render', offer.status === 200, `status ${offer.status}`);
+  const offerId = offer.body.message?.id;
+
+  const withOffer = await mount(`/messages/${convId}`, buyer);
+  const offerText = withOffer.text();
+  check('transcript renders the offer card', offerText.includes('Your offer'));
+  check('offer card shows the formatted price', offerText.includes('42,000'), offerText.slice(0, 200));
+  check('offer card shows the quantity', offerText.includes('for 3 units'));
+  check('pending offer shows a withdraw action for the sender',
+    !!withOffer.byText('button', 'Withdraw'));
+  withOffer.close();
+
+  // The seller sees accept/decline on the same offer.
+  const sellerView = await mount(`/messages/${convId}`, seller);
+  check('seller sees the offer as received', sellerView.text().includes('Offer received'));
+  const acceptBtn = sellerView.byText('button', 'Accept');
+  check('seller sees an accept button', !!acceptBtn);
+  if (acceptBtn) {
+    await sellerView.click(acceptBtn, 1600);
+    const settled = await apiFetch(`/conversations/${convId}/messages`, { headers: sellerAuth });
+    const row = (settled.body.messages || []).find((m) => m.id === offerId);
+    check('accepting the offer in the UI updates the backend', row?.offerStatus === 'accepted',
+      `status ${row?.offerStatus}`);
+    check('acceptance renders a system event',
+      sellerView.text().includes('Offer accepted'), sellerView.text().slice(-200));
+  }
+  sellerView.close();
+
+  // ---- read receipts -------------------------------------------------------
+  await apiFetch(`/conversations/${convId}/read`, { method: 'POST', headers: sellerAuth });
+  const receipts = await apiFetch(`/conversations/${convId}/messages`, { headers: buyerAuth });
+  check('buyer messages report read receipts',
+    (receipts.body.messages || []).some((m) => m.senderId === buyer.user.id && m.readByOther === true));
 }
 
 // ── 12. Notifications and follow-driven push ────────────────────────────────
@@ -527,7 +615,6 @@ section('12. Notifications and favourites');
   const beforeCount = before.body.notifications.length;
 
   // Seller posts + admin approves → follower must be notified.
-  const sellerAuth = { authorization: `Bearer ${seller.token}` };
   const newP = await apiFetch('/seller/products', {
     method: 'POST', headers: sellerAuth,
     body: JSON.stringify({
