@@ -33,6 +33,7 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
 | 7b | Android layout (edge-to-edge insets, overflow, brand artwork) | 46 | passing |
 | 7c | Compose API contract (@Composable context, imports, call sites) | 7 | passing |
+| 4b | Web viewport audit (resolved CSS cascade, 6 widths) | 6 | passing |
 | 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 

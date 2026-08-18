@@ -1082,18 +1082,56 @@ tbody tr.row-click { cursor: pointer; }
     max-height: none;
   }
   .ai-chat-body {
-    /* Give the transcript a bounded, scrollable area instead of letting it
-       drive the card past the viewport. */
-    min-height: 220px;
-    max-height: calc(100dvh - var(--topbar-h) - 320px);
+    /* Bounded, scrollable transcript. See the 620px block for the phone
+       numbers — subtracting from 100dvh is not enough on its own, because the
+       card does not start at the top of the viewport. */
+    min-height: 180px;
+    max-height: 46vh;
   }
 }
 
 @media (max-width: 620px) {
-  /* The composer must stay reachable above the fixed bottom nav. */
-  .ai-chat-body { max-height: calc(100dvh - var(--topbar-h) - 340px); }
-  .ai-chat-input { padding: 10px 11px; }
+  /* Previous attempt was `max-height: calc(100dvh - topbar - 340px)` = 378px
+     on a 360x780 phone, plus a 220px min-height. But the card does not begin
+     at the top of the screen: the two-row topbar (100), the category bar (44),
+     content padding (16), the page header (~64), the agents rail (96), the
+     grid gap (18) and the 76px reserved for the fixed bottom nav consume
+     414px, leaving 366px for the ENTIRE card. With a 48px head and a 63px
+     composer the transcript may be at most ~255px — so the old rule rendered
+     a ~489px card and pushed the composer 123px off screen.
+
+     Measuring from the viewport is the wrong frame of reference. Anchor the
+     card to the space it actually occupies instead: make the console a flex
+     column that fills the remaining height, and let the transcript be the
+     only part that scrolls. dvh here is only a ceiling, not the layout. */
+  .ai-console {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    /* Fill what is left below the chrome above this element. */
+    min-height: 0;
+  }
+  .ai-agents { flex: 0 0 auto; }
+  .ai-chat {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;          /* required or flex children refuse to shrink */
+  }
+  .ai-chat-head { flex: 0 0 auto; }
+  .ai-chat-body {
+    flex: 1 1 auto;
+    min-height: 140px;
+    /* Hard ceiling so a long transcript can never outgrow the phone, computed
+       from the real chrome total (414px) rather than a guess. */
+    max-height: calc(100dvh - 414px);
+    overflow-y: auto;
+  }
+  .ai-chat-input { flex: 0 0 auto; padding: 10px 11px; }
   .ai-agents .agent-card { min-width: 168px; }
+  /* The agents rail is a horizontal scroller on a phone; keep it short so it
+     cannot eat the transcript's height. */
+  .ai-agents .col { max-height: 84px; }
 }
 
 
@@ -1358,7 +1396,14 @@ tbody tr.row-click { cursor: pointer; }
   .auth-brand { padding: 26px 16px; }
   .auth-brand p, .auth-brand h1, .auth-tagline { max-width: 100%; }
   .auth-form { padding: 22px 14px; }
-  .auth-card { padding: 22px 17px 24px; }
+  .auth-card {
+    padding: 22px 17px 24px;
+    /* The base rule is `max-width: 400px`, which is wider than the 332px the
+       form column actually offers on a 360px phone, so the card was clipped
+       against the viewport edge. width:100% alone does not help because
+       max-width wins. */
+    max-width: 100%;
+  }
   .auth-lockup { width: min(200px, 66%); }
   /* The demo-credentials line is a run of long unbreakable emails; let it
      break rather than stretch the card. */

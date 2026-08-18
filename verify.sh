@@ -44,6 +44,15 @@ hr "6/9  Android wiring (routes, client calls, screen reachability)"
 hr "7/9  Android resources (icons, colours, themes)"
 (cd "$ROOT/scottsx-android" && ./tools/res-check.sh) || FAILED=1
 
+hr "4b/9 Web viewport audit (resolved CSS cascade at real widths)"
+for W in 320 360 390 414 768 1280; do
+  (cd "$ROOT/web" && node tests/viewport-audit.mjs "$W" >/dev/null) || {
+    echo "  viewport audit FAILED at ${W}px — rerun: (cd web && node tests/viewport-audit.mjs $W)"
+    FAILED=1
+  }
+done
+echo "  audited 320 / 360 / 390 / 414 / 768 / 1280 px"
+
 hr "7b/9 Android layout (edge-to-edge insets, overflow, brand artwork)"
 (cd "$ROOT/scottsx-android" && node ./tools/layout-check.mjs) || FAILED=1
 
