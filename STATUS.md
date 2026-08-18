@@ -15,20 +15,26 @@ Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / 
 ## Verify it
 
 ```bash
-./verify.sh          # all six gates
+./verify.sh          # all seven gates
 ```
 
 | # | Gate | Checks | Status |
 |---|------|--------|--------|
-| 1 | Backend end-to-end | 246 | passing |
-| 2 | Android ⇆ backend contract | 55 | passing |
-| 3 | Web UI (real bundle in jsdom, real backend, no mocks) | 137 | passing |
-| 4 | TypeScript (backend + web) | — | clean |
-| 5 | Kotlin syntax (55 files) | — | clean |
-| 6 | Kotlin parsers vs real API JSON | — | passing |
+| 1 | Backend end-to-end | 253 | passing |
+| 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
+| 3 | Android ⇆ backend contract | 55 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 201 | passing |
+| 5 | TypeScript (backend + web) | — | clean |
+| 6 | Kotlin syntax (55 files) | — | clean |
+| 7 | Kotlin parsers vs real API JSON | — | passing |
 
-Every suite cleans up after itself; the database returns to 8 users and 24
-seeded products with zero residue.
+**532 checks.** Every suite cleans up after itself; the database returns to 7
+users and 24 approved seeded products with zero residue — including the stock
+that checkout consumes, so the suites are repeatable.
+
+Gate 2 stands up a local JWKS server and mints its own RS256 tokens, so the
+real verification path (signature, issuer, audience, expiry) is exercised
+without reaching Google. Nothing about it is mocked except the key source.
 
 ---
 
@@ -102,6 +108,16 @@ layouts. They compile and call valid endpoints, but have not been reworked.
 `12_Backend/secrets/firebase-admin-key.json` and `google-services.json` into
 `scottsx-android/app/`. Until then notifications persist in-app only —
 `pushToDevices()` returns `{sent:0, configured:false}` and never throws.
+
+**Google Sign-In has not been exercised against the real Google.** All Google
+endpoints are blocked from this sandbox, so the suite verifies tokens minted by
+a local IdP instead. The production code path is unchanged — only the JWKS URL
+differs — but before shipping, confirm in the Google Cloud console that the web
+origin is authorised for OAuth client
+`911393008938-f0an8p59rlkhimcnn9rdqbtbi1aa9hbk`, or the button will load and
+then refuse with `origin_mismatch`. Override the client id with
+`VITE_GOOGLE_CLIENT_ID` (web) and `GOOGLE_CLIENT_ID` (backend, comma-separated
+for several clients).
 
 **No live LLM test.** Outbound calls to OpenRouter are blocked from this
 sandbox, so the LLM path is unverified; the grounded local engine is what has
