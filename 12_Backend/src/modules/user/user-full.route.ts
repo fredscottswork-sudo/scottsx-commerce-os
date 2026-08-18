@@ -235,20 +235,41 @@ export default async function registerUserFullRoute(app: FastifyInstance) {
   // ── Notifications ────────────────────────────────────────────────────────
   app.get('/api/v1/me/notifications', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
+    // `data` carries the deep-link payload ({ screen, id }) so tapping a
+    // notification opens the right screen on mobile and the right route on web.
     const { rows } = await pool.query(
-      `SELECT id, title, body, type, read, created_at AS "createdAt"
+      `SELECT id, title, body, type, read, data, image_url AS "imageUrl",
+              created_at AS "createdAt"
        FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
       [me.id]
     );
-    return { notifications: rows };
+    const unread = rows.filter((r) => !r.read).length;
+    return { notifications: rows, unread };
   });
 
-  app.patch('/api/v1/me/notifications/:id/read', { preHandler: requireAuth }, async (request) => {
+  /** Badge count only — cheap enough to poll from the nav bar. */
+  app.get('/api/v1/me/notifications/unread-count', { preHandler: requireAuth }, async (request) => {
+    const me = authedUser(request);
+    const { rows } = await pool.query(
+      'SELECT COUNT(*)::int AS unread FROM notifications WHERE user_id = $1 AND read = false',
+      [me.id]
+    );
+    return { unread: rows[0].unread };
+  });
+
+  // Both verbs are accepted so every client (Android, web, curl) works.
+  const markRead = async (request: any) => {
     const me = authedUser(request);
     const { id } = request.params as { id: string };
     await pool.query('UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2', [id, me.id]);
-    return { ok: true };
-  });
+    const { rows } = await pool.query(
+      'SELECT COUNT(*)::int AS unread FROM notifications WHERE user_id = $1 AND read = false',
+      [me.id]
+    );
+    return { ok: true, unread: rows[0].unread };
+  };
+  app.patch('/api/v1/me/notifications/:id/read', { preHandler: requireAuth }, markRead);
+  app.post('/api/v1/me/notifications/:id/read', { preHandler: requireAuth }, markRead);
 
   app.post('/api/v1/me/notifications/read-all', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
