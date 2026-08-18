@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,12 @@ class MainActivity : ComponentActivity() {
     ) { /* Denied is fine: Nearby falls back to a city, push stays in-app. */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Targeting SDK 35 means Android 15+ lays this window out edge to edge
+        // whether we ask for it or not, and the opt-out is already deprecated
+        // for target 36. Declaring it explicitly makes the behaviour identical
+        // on older releases and lets the system pick readable status-bar icon
+        // colours for our dark UI instead of guessing.
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         requestStartupPermissions()
 

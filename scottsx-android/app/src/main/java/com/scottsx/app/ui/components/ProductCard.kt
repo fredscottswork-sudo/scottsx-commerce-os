@@ -22,10 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,14 +33,24 @@ import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
-/** Pure UI product card. Wishlist toggling is in-memory for now. */
+/**
+ * Product tile.
+ *
+ * `showWishlist` exists because the seller dashboard reuses this card for the
+ * seller's OWN listings, where a "save to wishlist" heart is meaningless — and
+ * the white circle drawn behind it was the thing making that grid look messy.
+ * Sellers get a status pill instead, which is information they actually need.
+ */
 @Composable
 fun ProductCard(
     product: Product,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    showWishlist: Boolean = true,
+    wished: Boolean = false,
+    onWishToggle: (() -> Unit)? = null,
+    statusLabel: String? = null,
 ) {
-    var wished by remember(product.id) { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -78,24 +84,42 @@ fun ProductCard(
                     )
                 }
             }
-            Surface(
-                color = Color.White.copy(alpha = 0.92f),
-                shape = CircleShape,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp),
-            ) {
+            if (showWishlist) {
+                // A soft scrim disc, not an opaque white puck: it has to work on
+                // both a bright product photo and a dark placeholder without
+                // stamping a hard circle across the artwork.
                 Box(
                     modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
                         .size(32.dp)
-                        .clickable { wished = !wished },
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.28f))
+                        .clickable(enabled = onWishToggle != null) { onWishToggle?.invoke() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = if (wished) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = if (wished) "Saved" else "Save",
-                        tint = if (wished) ScottsTechXColors.ErrorRed else ScottsTechXColors.OnLightSecondary,
+                        tint = if (wished) ScottsTechXColors.ErrorRed else Color.White,
                         modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            if (statusLabel != null) {
+                Surface(
+                    color = statusPillColor(statusLabel).copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                ) {
+                    Text(
+                        text = statusLabel.replaceFirstChar { it.uppercase() },
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                     )
                 }
             }
@@ -143,3 +167,9 @@ fun ProductCard(
 
 @Composable
 private fun Spacer4() = androidx.compose.foundation.layout.Spacer(Modifier.size(4.dp))
+
+private fun statusPillColor(status: String): Color = when (status.lowercase()) {
+    "approved" -> ScottsTechXColors.SuccessGreen
+    "pending" -> ScottsTechXColors.WarningAmber
+    else -> ScottsTechXColors.ErrorRed
+}

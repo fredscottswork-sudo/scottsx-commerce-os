@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.SessionCache
@@ -49,8 +49,11 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.navigation.Routes
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.SectionHeader
+import com.scottsx.app.ui.components.formatUgxCompact
 import com.scottsx.app.ui.components.SellerBottomBar
 import com.scottsx.app.ui.components.SellerBottomTab
+import com.scottsx.app.ui.components.bottomInset
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
 /**
@@ -77,7 +80,7 @@ fun SellerHomeScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 96.dp),
+            contentPadding = PaddingValues(bottom = 96.dp + bottomInset()),
         ) {
             item {
                 // Store stats hero card
@@ -90,6 +93,7 @@ fun SellerHomeScreen(
                             ),
                             RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                         )
+                        .statusBarSpacer()
                         .padding(20.dp),
                 ) {
                     Column {
@@ -118,39 +122,86 @@ fun SellerHomeScreen(
                             fontSize = 13.sp,
                         )
                         Spacer(Modifier.height(16.dp))
+                        // Two rows of two. Four raw figures in one row overflowed
+                        // a 360dp screen as soon as revenue passed a million, and
+                        // an un-abbreviated UGX total is up to 13 characters.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            StatBox("UGX", stats?.revenueUgx?.toString() ?: "0", "Revenue")
-                            StatBox("", (stats?.orders ?: 0).toString(), "Orders")
-                            StatBox("", (stats?.totalProducts ?: 0).toString(), "Listings")
-                            StatBox("", (stats?.lowStock ?: 0).toString(), "Low stock")
+                            StatBox(
+                                value = "UGX " + formatUgxCompact(stats?.revenueUgx ?: 0L),
+                                label = "Revenue",
+                                modifier = Modifier.weight(1f),
+                            )
+                            StatBox(
+                                value = (stats?.orders ?: 0).toString(),
+                                label = "Orders",
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            StatBox(
+                                value = (stats?.totalProducts ?: 0).toString(),
+                                label = "Listings",
+                                modifier = Modifier.weight(1f),
+                            )
+                            StatBox(
+                                value = (stats?.lowStock ?: 0).toString(),
+                                label = "Low stock",
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                 }
             }
 
-            if (stats?.lowStock != null && stats!!.lowStock > 0) {
+            // Low stock used to be stated THREE times on this one screen: a
+            // stat tile, a warning banner, and an "Inventory alerts" row whose
+            // own comment called it a duplicate. The tile carries the count and
+            // the named list below carries the action; the banner added nothing.
+
+            // Needs restocking — placed BEFORE the full grid because it is the
+            // only time-sensitive thing on the screen. Rendered only when the
+            // list is non-empty; the previous version drew its heading
+            // unconditionally and left an empty strip underneath.
+            val lowStockItems = products.filter { it.stockQuantity <= 5 }
+            if (lowStockItems.isNotEmpty()) {
                 item {
-                    Surface(
-                        color = ScottsTechXColors.WarningAmber.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
+                    SectionHeader("Needs restocking")
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Icon(Icons.Filled.WarningAmber, contentDescription = null, tint = ScottsTechXColors.WarningAmber)
-                            Text(
-                                "${stats!!.lowStock} product(s) low on stock — restock soon.",
-                                color = ScottsTechXColors.WarningAmber,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                        items(lowStockItems) { product ->
+                            Surface(
+                                color = ScottsTechXColors.WarningAmber.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Inventory2,
+                                        contentDescription = null,
+                                        tint = ScottsTechXColors.WarningAmber,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Text(
+                                        product.title.take(18) + "\u2026 \u00b7 " + product.stockQuantity + " left",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -188,6 +239,12 @@ fun SellerHomeScreen(
                                     product = product,
                                     onClick = { onProductClick(product.id) },
                                     modifier = Modifier.weight(1f),
+                                    // A seller cannot wishlist their own stock;
+                                    // what they need at a glance is whether the
+                                    // listing is live, waiting on an admin, or
+                                    // was rejected.
+                                    showWishlist = false,
+                                    statusLabel = product.status,
                                 )
                             }
                         }
@@ -242,36 +299,6 @@ fun SellerHomeScreen(
                 }
             }
 
-            if (products.isNotEmpty()) {
-                item {
-                    // Low-stock inline list (duplicate of the alert, kept as a full row set)
-                    SectionHeader("Inventory alerts")
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(products.filter { it.stockQuantity <= 5 }) { product ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                shape = RoundedCornerShape(12.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Icon(Icons.Filled.Inventory2, contentDescription = null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(18.dp))
-                                    Text(
-                                        "${product.title.take(18)}… · ${product.stockQuantity} left",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         SellerBottomBar(
@@ -290,16 +317,36 @@ fun SellerHomeScreen(
     }
 }
 
+/**
+ * One dashboard figure. Sized by weight from the caller and allowed to shrink
+ * its own text, so a long revenue figure narrows instead of pushing the tile
+ * next to it off-screen.
+ */
 @Composable
-private fun StatBox(prefix: String, value: String, label: String) {
-    Column(horizontalAlignment = Alignment.Start) {
+private fun StatBox(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.14f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.Start,
+    ) {
         Text(
-            text = if (prefix.isBlank()) value else "$prefix $value",
+            text = value,
             color = Color.White,
-            fontSize = 18.sp,
+            fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
-        Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.85f),
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

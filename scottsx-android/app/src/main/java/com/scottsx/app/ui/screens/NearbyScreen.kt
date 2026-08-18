@@ -50,6 +50,8 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
 import com.scottsx.app.ui.components.ListDivider
 import com.scottsx.app.ui.components.LoadingRow
+import com.scottsx.app.ui.components.bottomInset
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -169,6 +171,7 @@ fun NearbyScreen(onBack: () -> Unit) {
                     Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
                     RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                 )
+                .statusBarSpacer()
                 .padding(16.dp),
         ) {
             Column {
@@ -382,7 +385,7 @@ fun NearbyScreen(onBack: () -> Unit) {
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp),
+                contentPadding = PaddingValues(bottom = 16.dp + bottomInset()),
             ) {
                 items(filtered, key = { it.id }) { seller ->
                     SellerRow(seller)

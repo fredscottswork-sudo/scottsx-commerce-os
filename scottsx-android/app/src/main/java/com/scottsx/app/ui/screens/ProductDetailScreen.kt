@@ -52,6 +52,8 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.components.RatingRow
 import com.scottsx.app.ui.components.formatUgx
+import com.scottsx.app.ui.components.navBarSpacer
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -97,6 +99,9 @@ fun ProductDetailScreen(
             )
             Box(
                 modifier = Modifier
+                    // The hero photo deliberately runs under the status bar,
+                    // but the back button must stay tappable below it.
+                    .statusBarSpacer()
                     .padding(16.dp)
                     .size(40.dp)
                     .clip(CircleShape)
@@ -106,23 +111,28 @@ fun ProductDetailScreen(
             ) {
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back", tint = Color.White)
             }
-            Surface(
-                color = Color.White.copy(alpha = 0.92f),
-                shape = CircleShape,
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
+                    .statusBarSpacer()
                     .padding(16.dp)
                     .size(40.dp)
                     .clip(CircleShape)
-                    .clickable { wished = !wished },
+                    // Same translucent scrim as the back button, so the two
+                    // controls read as a pair instead of one white puck and one
+                    // dark circle.
+                    .background(Color.Black.copy(alpha = 0.35f))
+                    .clickable {
+                        wished = !wished
+                        scope.launch { V2Client.toggleBookmark(p.id) }
+                    },
+                contentAlignment = Alignment.Center,
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        if (wished) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = null,
-                        tint = if (wished) ScottsTechXColors.ErrorRed else ScottsTechXColors.OnLightSecondary,
-                    )
-                }
+                Icon(
+                    if (wished) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = if (wished) "Saved" else "Save",
+                    tint = if (wished) ScottsTechXColors.ErrorRed else Color.White,
+                )
             }
             if (p.isFlashDeal) {
                 Surface(
@@ -219,6 +229,7 @@ fun ProductDetailScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navBarSpacer()
                     .padding(14.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {

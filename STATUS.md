@@ -31,10 +31,11 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
-| 8 | Kotlin syntax (56 files) | — | clean |
+| 7b | Android layout (edge-to-edge insets, overflow, brand artwork) | 40 | passing |
+| 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**790 checks.** Every suite cleans up after itself; the database returns to 7
+**830 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -114,6 +115,12 @@ These were all found by running things, not by reading code:
 | Launcher icon was a 1.77 MB nodpi PNG, no adaptive icon | Oversized in the APK; no themed/adaptive icon on API 26+ |
 | Web shipped a placeholder "S" tile and an inline-SVG favicon | Web and app did not share a brand |
 | A price above int4 committed the INSERT, then 500'd on the read-back cast | Seller saw "integer out of range" while the product **silently existed** — and the raw Postgres message leaked to the client |
+| Nothing in 56 Kotlin files referenced `WindowInsets`, at `targetSdk = 35` | Android 15 forces edge-to-edge, so headers rendered under the status bar and bottom bars under the gesture pill — the "doesn't fit on the screen" report, on every screen at once |
+| The welcome screen crushed the full brand lockup into a 112dp square | The company wordmark became an illegible smudge, its black backdrop sat as a panel on the gradient, and "ScottsTechX" was then printed again underneath |
+| A third of the web logo's height was near-invisible ghost alpha | The lockup rendered undersized and top-heavy on the sign-in pages |
+| Four raw stat figures in one `SpaceBetween` row | An unabbreviated UGX revenue is 13 characters; the seller dashboard's numbers ran off a 360dp screen |
+| Low stock was stated three times on the seller dashboard | Stat tile + warning banner + an "Inventory alerts" strip whose own comment called it a duplicate; the strip drew its heading even with nothing to show |
+| `ProductCard`'s wishlist heart sat on an opaque white disc, state in a local `var` | The discs were the circles making the grid look messy, the heart appeared on sellers' own products, and taps never reached the backend |
 | An unreachable backend made the cart render "Your cart is empty" | `Promise.allSettled` swallowed the failure, so a buyer whose basket was safe on the server was told it had been emptied — the worst possible moment to lose trust |
 
 ---
@@ -180,7 +187,7 @@ satisfies AGP `8.5.2`. Note `compileSdk = 35` officially wants AGP `8.6+`;
 `8.5.2` generally builds it but may warn. If CI complains, bump AGP to `8.6.0`
 in `scottsx-android/build.gradle.kts` — Gradle 8.7 already meets its minimum.
 
-Locally, the real Kotlin compiler frontend runs over all 56 files (catching
+Locally, the real Kotlin compiler frontend runs over all 57 files (catching
 syntax errors, duplicate declarations, `val` reassignment and import shadowing)
 and the real model parsers are executed against real captured API responses
 using a real `org.json`. **Still expect to fix some type errors on the first
@@ -189,6 +196,15 @@ Gradle build** — see `scottsx-android/tools/README.md` for the two blind spots
 
 **Android UI screens beyond messaging/nearby/add-product** still use the older
 layouts. They compile and call valid endpoints, but have not been reworked.
+
+**Layout is verified statically, not on a device.** `tools/layout-check.mjs`
+(gate 7b) reads the source and proves every one of the 30 screens pads for the
+status bar and navigation bar, that no fixed width exceeds a 360dp phone, that
+the worst-case revenue figure fits its tile by arithmetic on Roboto advance
+widths, and that the brand PNG's real aspect ratio matches the one the Kotlin
+declares. That catches the whole class of bug that made the app render off
+screen, but it is not a pixel oracle — final spacing still wants one look on a
+real handset.
 
 **FCM is inert until credentials are added.** Drop the service-account JSON at
 `12_Backend/secrets/firebase-admin-key.json` and `google-services.json` into

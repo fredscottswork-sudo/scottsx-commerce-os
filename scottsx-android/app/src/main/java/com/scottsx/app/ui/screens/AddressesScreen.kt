@@ -47,6 +47,8 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
 import com.scottsx.app.ui.components.LoadingRow
 import com.scottsx.app.ui.components.PrimaryButton
+import com.scottsx.app.ui.components.navBarSpacer
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -144,8 +146,14 @@ fun AddressesScreen(onBack: () -> Unit) {
             }
         }
 
-        // Floating add button
-        Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+        // Floating add button. navBarSpacer keeps it above the gesture pill;
+        // without it the button was half-swallowed by the navigation bar.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navBarSpacer()
+                .padding(16.dp),
+        ) {
             Surface(
                 color = ScottsTechXColors.BluePrimary,
                 shape = RoundedCornerShape(14.dp),
@@ -184,6 +192,11 @@ internal fun ScreenHeader(title: String, onBack: () -> Unit) {
                 Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
                 RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
             )
+            // Shared by twelve screens. The gradient keeps bleeding to the top
+            // of the window (edge-to-edge is mandatory at targetSdk 35), but the
+            // back arrow and title are pushed below the status bar instead of
+            // sitting under the clock.
+            .statusBarSpacer()
             .padding(horizontal = 8.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

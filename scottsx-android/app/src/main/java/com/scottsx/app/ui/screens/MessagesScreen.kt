@@ -60,6 +60,7 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
 import com.scottsx.app.ui.components.ListDivider
 import com.scottsx.app.ui.components.LoadingRow
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -159,6 +160,7 @@ fun ConversationListScreen(
                     ),
                     RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
                 )
+                .statusBarSpacer()
                 .padding(14.dp),
         ) {
             Column {

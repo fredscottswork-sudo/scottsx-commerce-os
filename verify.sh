@@ -44,6 +44,9 @@ hr "6/9  Android wiring (routes, client calls, screen reachability)"
 hr "7/9  Android resources (icons, colours, themes)"
 (cd "$ROOT/scottsx-android" && ./tools/res-check.sh) || FAILED=1
 
+hr "7b/9 Android layout (edge-to-edge insets, overflow, brand artwork)"
+(cd "$ROOT/scottsx-android" && node ./tools/layout-check.mjs) || FAILED=1
+
 KOTLINC="${KOTLINC:-$(command -v kotlinc || true)}"
 if [ -n "$KOTLINC" ] && [ -n "${JAVA_HOME:-}" ]; then
   hr "8/9  Kotlin syntax"

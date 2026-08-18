@@ -3,14 +3,17 @@ package com.scottsx.app.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -21,7 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -61,25 +64,32 @@ fun WelcomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // Full-bleed gradient, but the buttons must not sit under the
+                // status bar or the gesture pill.
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // The official brand mark — the same artwork the web app serves at
-            // /brand/scottstechx-mark.png and the launcher uses as its icon.
+            // The full brand lockup, transparent and at its true 720x475
+            // aspect ratio.
+            //
+            // This used to be `logo.png` — the complete artwork including the
+            // "SCOTTSTECHX ENTERPRISES (U) LTD" wordmark and tagline, on its own
+            // black square — crushed into a 112dp box. At that size the company
+            // name was an illegible smudge, the black square sat as a visible
+            // panel on top of the gradient, and the word "ScottsTechX" was then
+            // printed AGAIN underneath it. One brand, shown twice, both badly.
+            //
+            // fillMaxWidth(0.82f) + aspectRatio keeps it sharp on a 360dp phone
+            // and stops it dominating a tablet.
             Image(
-                painter = painterResource(id = R.drawable.logo),
-                contentDescription = "ScottsTechX",
+                painter = painterResource(id = R.drawable.brand_lockup),
+                contentDescription = "ScottsTechX Enterprises (U) Ltd",
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .size(112.dp)
-                    .clip(RoundedCornerShape(26.dp)),
-            )
-            Spacer(Modifier.height(20.dp))
-            Text(
-                "ScottsTechX",
-                color = Color.White,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
+                    .fillMaxWidth(0.82f)
+                    .aspectRatio(720f / 475f),
             )
             Text(
                 "Uganda's marketplace. Buy from real local sellers with Mobile Money, cash on delivery, and an AI assistant that knows the live catalog.",

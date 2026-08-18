@@ -74,6 +74,8 @@ import com.scottsx.app.data.remote.MessageStream
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.QuickChip
 import com.scottsx.app.ui.components.formatUgx
+import com.scottsx.app.ui.components.navBarSpacer
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -187,6 +189,7 @@ fun MessageThreadScreen(
                         listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent),
                     ),
                 )
+                .statusBarSpacer()
                 .padding(horizontal = 8.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -395,6 +398,10 @@ fun MessageThreadScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // imePadding lifts the composer above the keyboard;
+                    // navBarSpacer keeps it above the gesture pill when the
+                    // keyboard is closed.
+                    .navBarSpacer()
                     .imePadding()
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,

@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.scottsx.app.SessionCache
 import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.Product
@@ -58,6 +60,9 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.navigation.Routes
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.SectionHeader
+import com.scottsx.app.ui.components.bottomInset
+import com.scottsx.app.ui.components.navBarSpacer
+import com.scottsx.app.ui.components.topInset
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
 /**
@@ -72,6 +77,11 @@ fun BuyerHomeScreen(
     var products by remember { mutableStateOf<List<Product>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var cartCount by remember { mutableIntStateOf(0) }
+    // Real wishlist state. The heart used to be a local `var wished` inside the
+    // card, so it reset on every recomposition and never reached the backend —
+    // tapping it looked like it worked and saved nothing.
+    var savedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val scope = rememberCoroutineScope()
     val currentUser by SessionCache.user.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -85,8 +95,10 @@ fun BuyerHomeScreen(
     LaunchedEffect(currentUser?.id) {
         if (currentUser != null) {
             V2Client.fetchCart().onSuccess { cartCount = it.itemCount }
+            savedIds = V2Client.fetchBookmarks().map { it.id }.toSet()
         } else {
             cartCount = 0
+            savedIds = emptySet()
         }
     }
 
@@ -107,7 +119,11 @@ fun BuyerHomeScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp),
+            contentPadding = PaddingValues(
+                // Edge-to-edge: the first row would otherwise sit under the clock.
+                top = topInset(),
+                bottom = padding.calculateBottomPadding() + 16.dp,
+            ),
         ) {
             item {
                 // Top bar: menu / location chip / avatar
@@ -264,6 +280,13 @@ fun BuyerHomeScreen(
                                 product = product,
                                 onClick = { onProductClick(product.id) },
                                 modifier = Modifier.width(160.dp),
+                                wished = savedIds.contains(product.id),
+                                onWishToggle = {
+                                    scope.launch {
+                                        val on = V2Client.toggleBookmark(product.id)
+                                        savedIds = if (on) savedIds + product.id else savedIds - product.id
+                                    }
+                                },
                             )
                         }
                     }
@@ -288,6 +311,13 @@ fun BuyerHomeScreen(
                                     product = product,
                                     onClick = { onProductClick(product.id) },
                                     modifier = Modifier.weight(1f),
+                                    wished = savedIds.contains(product.id),
+                                    onWishToggle = {
+                                        scope.launch {
+                                            val on = V2Client.toggleBookmark(product.id)
+                                            savedIds = if (on) savedIds + product.id else savedIds - product.id
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -310,7 +340,9 @@ private fun ScaffoldWithBottomBar(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        content(PaddingValues(bottom = 76.dp))
+        // 76dp of bar + whatever the gesture pill / nav bar occupies, so the
+        // last product row can always be scrolled fully into view.
+        content(PaddingValues(bottom = 76.dp + bottomInset()))
 
         Column(
             modifier = Modifier
@@ -335,6 +367,9 @@ private fun ScaffoldWithBottomBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        // The surface keeps painting to the screen edge; only the
+                        // tappable row is lifted above the navigation bar.
+                        .navBarSpacer()
                         .height(60.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

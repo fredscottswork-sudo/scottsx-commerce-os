@@ -42,6 +42,24 @@ fun formatUgx(amount: Long): String {
     return "UGX $formatted"
 }
 
+/**
+ * Compact money for dashboard tiles: 45,000,000 -> "45.0M", 320,500 -> "320.5K".
+ *
+ * A seller's revenue is a full UGX figure. Printed in full it is up to 13
+ * characters, and four of those side by side overflow a 360dp phone — which is
+ * exactly what the stats row used to do.
+ */
+fun formatUgxCompact(amount: Long): String {
+    val a = kotlin.math.abs(amount)
+    val sign = if (amount < 0) "-" else ""
+    return when {
+        a >= 1_000_000_000L -> sign + DecimalFormat("#,##0.0").format(a / 1_000_000_000.0) + "B"
+        a >= 1_000_000L -> sign + DecimalFormat("#,##0.0").format(a / 1_000_000.0) + "M"
+        a >= 10_000L -> sign + DecimalFormat("#,##0.0").format(a / 1_000.0) + "K"
+        else -> sign + DecimalFormat("#,###").format(a)
+    }
+}
+
 /** Full price with strikethrough old price, e.g. for detail screens. */
 @Composable
 fun PriceTag(product: Product, large: Boolean = false) {
@@ -188,6 +206,8 @@ fun GradientHeader(
                 Brush.horizontalGradient(colors),
                 RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
             )
+            // Gradient bleeds to the top edge; the title clears the status bar.
+            .statusBarSpacer()
             .padding(horizontal = 16.dp, vertical = 18.dp),
     ) {
         Column {
