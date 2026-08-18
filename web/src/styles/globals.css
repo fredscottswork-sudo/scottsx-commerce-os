@@ -1066,7 +1066,34 @@ tbody tr.row-click { cursor: pointer; }
   .ai-agents { position: static; }
   .ai-agents .col { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
   .ai-agents .agent-card { min-width: 190px; }
-  .ai-chat { height: calc(100vh - var(--topbar-h) - 210px); }
+  /* The old rule was `height: calc(100vh - topbar - 210px)` with
+     `min-height: 520px` still in force. On a 360x780 phone the calc gives
+     508px but the min-height wins at 520px, while the space actually left
+     after the topbar (70), the category bar (44), the page header (~64), the
+     content padding and the 76px reserved for the fixed bottom nav is ~510px
+     — and the horizontal agents rail eats ~96px more. Net result: the message
+     composer sat ~106px below the fold and could not be reached.
+
+     100dvh tracks the real viewport as mobile browser chrome hides, and the
+     min-height has to be released or it re-creates the overflow. */
+  .ai-chat {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+  }
+  .ai-chat-body {
+    /* Give the transcript a bounded, scrollable area instead of letting it
+       drive the card past the viewport. */
+    min-height: 220px;
+    max-height: calc(100dvh - var(--topbar-h) - 320px);
+  }
+}
+
+@media (max-width: 620px) {
+  /* The composer must stay reachable above the fixed bottom nav. */
+  .ai-chat-body { max-height: calc(100dvh - var(--topbar-h) - 340px); }
+  .ai-chat-input { padding: 10px 11px; }
+  .ai-agents .agent-card { min-width: 168px; }
 }
 
 
@@ -1190,7 +1217,27 @@ tbody tr.row-click { cursor: pointer; }
   .grid-2 { grid-template-columns: 1fr; }
   .pgrid { grid-template-columns: repeat(2, 1fr); gap: 11px; }
   .content { padding: 13px; }
-  .topbar { padding: 0 13px; gap: 7px; }
+  /* The authenticated header packs a menu button, the search field and up to
+     four icon buttons onto one line: 431px of demand on a 360px screen, which
+     squeezed the search field to 129px — narrower than its own placeholder.
+     Stack it like the public header: row 1 is the menu and the icons, row 2 is
+     the search at full width. */
+  .topbar {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 8px 13px;
+    gap: 8px;
+  }
+  .topbar .topbar-search {
+    order: 2;
+    flex: 1 0 100%;
+    max-width: none;
+  }
+  .topbar .menu-btn { order: 1; }
+  .topbar .grow { order: 1; }
+  .topbar > .btn-icon,
+  .topbar > a.btn-icon,
+  .topbar > .icon-badge-wrap { order: 1; }
   .public-topbar { padding: 8px 13px; gap: 8px; }
   /* "Market / Nearby / AI Shopper" duplicate the bottom nav on a phone, and
      three text links plus two CTAs cannot share a 360px row with the brand.
@@ -1302,6 +1349,20 @@ tbody tr.row-click { cursor: pointer; }
   .auth-brand { padding: 34px 24px; min-height: auto; }
   .auth-brand h1 { font-size: 27px; }
   .auth-lockup { width: min(230px, 70%); }
+}
+
+@media (max-width: 620px) {
+  /* `max-width: 46ch` is ~373px, wider than the 312px of usable column on a
+     360px phone, so the marketing copy pushed the panel sideways. Cap every
+     child at the column width and tighten the padding. */
+  .auth-brand { padding: 26px 16px; }
+  .auth-brand p, .auth-brand h1, .auth-tagline { max-width: 100%; }
+  .auth-form { padding: 22px 14px; }
+  .auth-card { padding: 22px 17px 24px; }
+  .auth-lockup { width: min(200px, 66%); }
+  /* The demo-credentials line is a run of long unbreakable emails; let it
+     break rather than stretch the card. */
+  .auth-card .muted { overflow-wrap: anywhere; }
 }
 
 /* Neutral blue badge used by notifications / product detail / threads -------- */

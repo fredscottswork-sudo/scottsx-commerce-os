@@ -164,7 +164,7 @@ export function AiConsole({
                 <Sparkles size={22} />
               </div>
               <h3 className="mt-12" style={{ fontFamily: 'var(--font-display)' }}>{title}</h3>
-              <p className="muted mt-4" style={{ maxWidth: 460 }}>{subtitle}</p>
+              <p className="muted mt-4" style={{ maxWidth: 'min(460px, 100%)' }}>{subtitle}</p>
 
               <div className="row wrap center mt-16" style={{ gap: 8, justifyContent: 'center' }}>
                 {(activeAgent?.starters ?? []).map((s) => (

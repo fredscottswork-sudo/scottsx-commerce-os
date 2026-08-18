@@ -39,7 +39,7 @@ export default function Login() {
       <div className="auth-brand">
         <BrandLockup width={300} className="auth-lockup" />
         <h1 className="auth-tagline">Uganda's marketplace, everywhere you are.</h1>
-        <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 420 }}>
+        <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
           Same account, same data on mobile and web — buy from local sellers, pay with
           Mobile Money, and chat in real time.
         </p>

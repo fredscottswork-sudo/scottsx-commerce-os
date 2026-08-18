@@ -53,7 +53,7 @@ export default function Register() {
       <div className="auth-brand">
         <BrandLockup width={300} className="auth-lockup" />
         <h1 className="auth-tagline">Join the marketplace built for Uganda.</h1>
-        <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 420 }}>
+        <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
           One account for web and mobile. Buy from local sellers or open your own store —
           the same backend powers every screen.
         </p>

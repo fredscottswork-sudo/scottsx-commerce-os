@@ -1568,6 +1568,65 @@ section('25. Header brand and search layout');
   home.close();
 }
 
+// ── 26. Auth + AI screens fit a phone ───────────────────────────────────────
+// All three were reported as "not fitting". Each had a fixed dimension that no
+// media query could override.
+section('26. Login, sign-up and AI fit a small screen');
+{
+  // (a) A px maxWidth cannot shrink. 420px of copy in a 312px column pushed
+  // the auth panel sideways; min(420px, 100%) keeps the desktop measure.
+  const loginSrc = readFileSync(join(ROOT, 'src/pages/Login.tsx'), 'utf8');
+  const regSrc = readFileSync(join(ROOT, 'src/pages/Register.tsx'), 'utf8');
+  const aiSrc = readFileSync(join(ROOT, 'src/components/AiConsole.tsx'), 'utf8');
+  check('login intro copy cannot exceed its column', /maxWidth: 'min\(420px, 100%\)'/.test(loginSrc));
+  check('sign-up intro copy cannot exceed its column', /maxWidth: 'min\(420px, 100%\)'/.test(regSrc));
+  check('AI welcome copy cannot exceed its column', /maxWidth: 'min\(460px, 100%\)'/.test(aiSrc));
+  check('no bare pixel maxWidth is left in the auth pages',
+    !/maxWidth:\s*\d+\s*[,}]/.test(loginSrc) && !/maxWidth:\s*\d+\s*[,}]/.test(regSrc));
+
+  // (b) The 46ch marketing paragraph is ~373px — wider than a 360px phone.
+  check('auth panel children are capped at the column width on a phone',
+    /@media[^{]*max-width:\s*620px[\s\S]*?\.auth-brand p[^}]*max-width:\s*100%/.test(bundleCss));
+  check('the demo credentials line can break instead of stretching the card',
+    /\.auth-card \.muted[^}]*overflow-wrap:\s*anywhere/.test(bundleCss));
+
+  // (c) The AI console had height:calc(100vh - topbar - 210px) AND
+  // min-height:520px. The min-height won and pushed the composer off screen.
+  check('the AI chat releases its desktop min-height on mobile',
+    /@media[^{]*max-width:\s*960px[\s\S]*?\.ai-chat\s*\{[^}]*min-height:\s*0/.test(bundleCss));
+  check('the AI transcript is bounded by the real viewport (dvh)',
+    /\.ai-chat-body[^}]*max-height:\s*calc\(100dvh/.test(bundleCss));
+
+  // (d) The logged-in header squeezed search to 129px on a 360px screen.
+  // The bundle is minified, so match the rule itself rather than trying to
+  // walk the media query: the mobile override is the .topbar block that sets
+  // height:auto (the desktop one sets a fixed --topbar-h).
+  check('the authenticated header wraps to a second row on a phone',
+    /\.topbar\{height:auto;flex-wrap:wrap/.test(bundleCss.replace(/\s+/g, '')) ||
+    /\.topbar\s*\{[^}]*height:\s*auto[^}]*flex-wrap:\s*wrap/.test(bundleCss));
+  check('the authenticated search takes a full row of its own',
+    /\.topbar\.topbar-search\{[^}]*flex:1 0 100%/.test(bundleCss.replace(/\s*([{;:,])\s*/g, '$1')) ||
+    /\.topbar \.topbar-search[^}]*flex:\s*1 0 100%/.test(bundleCss));
+
+  // (e) And the pages must still render and work.
+  const login = await mount('/login');
+  check('login renders its form', !!login.$('input[type="email"]') && !!login.$('input[type="password"]'));
+  check('login shows the brand lockup', !!login.$('.auth-lockup'));
+  check('login logs no console errors', login.consoleErrors.length === 0, login.consoleErrors[0]);
+  login.close();
+
+  const reg = await mount('/register');
+  check('sign-up renders its form', !!reg.$('input[type="email"]'));
+  check('sign-up logs no console errors', reg.consoleErrors.length === 0, reg.consoleErrors[0]);
+  reg.close();
+
+  const ai = await mount('/ai', null, { settleMs: 2000 });
+  check('the AI page renders its console', !!ai.$('.ai-console'));
+  check('the AI composer is present', !!ai.$('.ai-chat-input textarea'));
+  check('the AI page logs no console errors', ai.consoleErrors.length === 0, ai.consoleErrors[0]);
+  ai.close();
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {
