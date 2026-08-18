@@ -649,7 +649,66 @@ section('12. Notifications and favourites');
 }
 
 // ── 13. Theme switching ─────────────────────────────────────────────────────
-section('13. Theming');
+section('13. Account settings');
+{
+  const app = await mount('/buyer/settings', buyer);
+  const t = app.text();
+  check('settings page renders the identity summary', t.includes(buyerEmail));
+  check('settings shows every tab',
+    ['Profile', 'Appearance', 'Notifications', 'Privacy', 'Security'].every((x) => t.includes(x)));
+  check('profile form is prefilled with the account name',
+    !!app.$$('input').find((i) => i.value === 'UI Test Buyer'));
+
+  // Edit the display name through the UI and confirm it reaches Postgres.
+  const nameInput = app.$$('input').find((i) => i.value === 'UI Test Buyer');
+  if (nameInput) {
+    await app.type(nameInput, 'Renamed Via UI');
+    const saveBtn = app.byText('button', 'Save changes');
+    check('save button enables once the form is dirty', !!saveBtn && !saveBtn.disabled);
+    if (saveBtn) {
+      await app.click(saveBtn, 1500);
+      const me = await apiFetch('/auth/me', { headers: buyerAuth });
+      check('profile edit persists to the backend', me.body.user?.displayName === 'Renamed Via UI',
+        `got ${me.body.user?.displayName}`);
+    }
+  }
+
+  // Notifications tab: toggles write straight through.
+  const notifTab = app.byText('button', 'Notifications');
+  if (notifTab) {
+    await app.click(notifTab, 700);
+    check('notification preferences render', app.text().includes('Order updates'));
+    const boxes = app.$$('input[type="checkbox"]');
+    check('preference switches are present', boxes.length >= 3, `found ${boxes.length}`);
+    if (boxes.length) {
+      const before = await apiFetch('/me/preferences', { headers: buyerAuth });
+      await app.click(boxes[0], 1200);
+      const after = await apiFetch('/me/preferences', { headers: buyerAuth });
+      check('toggling a switch persists the preference',
+        after.body.preferences.notifyOrderUpdates !== before.body.preferences.notifyOrderUpdates,
+        `${before.body.preferences.notifyOrderUpdates} -> ${after.body.preferences.notifyOrderUpdates}`);
+    }
+  }
+
+  // Security tab: strength meter + validation.
+  const secTab = app.byText('button', 'Security');
+  if (secTab) {
+    await app.click(secTab, 700);
+    check('password form renders', app.text().includes('Change password'));
+    const pwInputs = app.$$('input[type="password"]');
+    check('three password fields are present', pwInputs.length === 3, `found ${pwInputs.length}`);
+    if (pwInputs.length === 3) {
+      await app.type(pwInputs[1], 'Sh0rt!Passw0rd');
+      check('password strength meter appears', /Strong|Good|Fair|Weak/.test(app.text()));
+      await app.type(pwInputs[2], 'different');
+      check('mismatched confirmation is flagged', app.text().includes('Passwords do not match'));
+    }
+  }
+  app.close();
+}
+
+// ── 13b. Theming ────────────────────────────────────────────────────────────
+section('13b. Theming');
 {
   const app = await mount('/buyer', buyer);
   const root = app.window.document.documentElement;

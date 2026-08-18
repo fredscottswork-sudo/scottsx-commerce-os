@@ -24,6 +24,7 @@ function toStoredUser(u: any): StoredUser {
     emailVerified: !!u.emailVerified,
     profilePhotoUrl: u.profilePhotoUrl ?? u.profile_photo_url ?? null,
     city: u.city ?? '',
+    createdAt: u.createdAt ?? u.created_at ?? undefined,
   };
 }
 

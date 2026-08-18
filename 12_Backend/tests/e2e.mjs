@@ -1028,6 +1028,55 @@ async function main() {
       body: { displayName: 'Renamed Buyer' },
     });
     check('profile update', upd.status === 200 && upd.data?.user?.displayName === 'Renamed Buyer');
+
+    // Account settings writes city + avatar in the same request.
+    const full = await call('/auth/me', {
+      method: 'PATCH',
+      token: state.buyerToken,
+      body: {
+        displayName: 'Renamed Buyer',
+        phone: '+256700111222',
+        city: 'Entebbe',
+        profilePhotoUrl: 'https://example.com/avatar.jpg',
+      },
+    });
+    check('profile accepts city and photo', full.status === 200, `got ${full.status}`);
+    check('city persisted', full.data?.user?.city === 'Entebbe', full.data?.user?.city);
+    check('photo persisted', full.data?.user?.profilePhotoUrl === 'https://example.com/avatar.jpg');
+    check('createdAt exposed for the settings page', !!full.data?.user?.createdAt);
+
+    const partial = await call('/auth/me', {
+      method: 'PATCH', token: state.buyerToken, body: { phone: '+256788999000' },
+    });
+    check(
+      'partial profile update preserves other fields',
+      partial.data?.user?.city === 'Entebbe' && partial.data?.user?.displayName === 'Renamed Buyer'
+    );
+
+    const badPhoto = await call('/auth/me', {
+      method: 'PATCH', token: state.buyerToken, body: { profilePhotoUrl: 'not-a-url' },
+    });
+    check('invalid photo URL rejected', badPhoto.status === 400, `got ${badPhoto.status}`);
+
+    // Preference round-trip backing the Appearance/Notifications tabs.
+    const settingsPrefs = await call('/me/preferences', {
+      method: 'PATCH',
+      token: state.buyerToken,
+      body: { theme: 'light', language: 'sw', currency: 'KES', notifyMarketing: true },
+    });
+    check(
+      'preferences save',
+      settingsPrefs.status === 200 && settingsPrefs.data?.preferences?.theme === 'light' &&
+        settingsPrefs.data?.preferences?.currency === 'KES' &&
+        settingsPrefs.data?.preferences?.notifyMarketing === true
+    );
+    const prefPartial = await call('/me/preferences', {
+      method: 'PATCH', token: state.buyerToken, body: { notifyMessages: false },
+    });
+    check(
+      'partial preference update keeps the rest',
+      prefPartial.data?.preferences?.theme === 'light' && prefPartial.data?.preferences?.notifyMessages === false
+    );
   }
 
   // ── Seller dashboard ──────────────────────────────────────────────────────

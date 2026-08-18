@@ -49,7 +49,7 @@ export const authService = {
   register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string }) =>
     api<{ token: string; user: any }>('/auth/register', { method: 'POST', auth: false, body }),
   me: () => api<{ user: any }>('/auth/me'),
-  updateMe: (body: { displayName?: string; phone?: string }) =>
+  updateMe: (body: { displayName?: string; phone?: string; profilePhotoUrl?: string | null; city?: string }) =>
     api<{ user: any }>('/auth/me', { method: 'PATCH', body }),
   upgradeToSeller: () => api<{ token: string; user: any }>('/auth/upgrade-to-seller', { method: 'POST' }),
   uploadPhoto: (file: File) => {
