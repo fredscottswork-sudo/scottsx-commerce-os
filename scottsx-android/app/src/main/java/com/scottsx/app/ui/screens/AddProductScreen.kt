@@ -236,7 +236,13 @@ fun AddProductScreen(onBack: () -> Unit) {
                         Spacer(Modifier.height(6.dp))
                     }
                     if (published) {
-                        Text("✅ Published! You can add another or go back.", color = ScottsTechXColors.SuccessGreen, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "✅ Sent for review. An admin approves listings before they go " +
+                                "live — you'll get a notification either way. Track it under " +
+                                "\"In review\" in your inventory.",
+                            color = ScottsTechXColors.SuccessGreen,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
             }
@@ -253,7 +259,7 @@ fun AddProductScreen(onBack: () -> Unit) {
                     }
                 }
                 PrimaryButton(
-                    text = if (step == 3) "Publish listing" else "Next",
+                    text = if (step == 3) "Submit for review" else "Next",
                     loading = publishing,
                     onClick = {
                         when (step) {
@@ -279,7 +285,7 @@ fun AddProductScreen(onBack: () -> Unit) {
                                     if (created != null) {
                                         published = true
                                     } else {
-                                        error = "Publishing failed — check your connection and try again."
+                                        error = "Could not submit — check your connection and try again."
                                     }
                                     publishing = false
                                 }

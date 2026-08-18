@@ -67,27 +67,51 @@ data class Product(
     val isFlashDeal: Boolean = false,
     val discountPercent: Int = 0,
     val location: String = "",
+    /** draft | pending | approved | rejected | suspended */
+    val status: String = "approved",
+    val rejectionReason: String? = null,
+    val viewCount: Int = 0,
 ) {
     val priceUgx: Long get() = priceMinor
+
+    /** Live on the marketplace and visible to buyers. */
+    val isPubliclyVisible: Boolean get() = status == "approved"
+
+    /** Waiting on an admin decision — the seller cannot self-publish. */
+    val isAwaitingReview: Boolean get() = status == "pending"
+
+    /** Human label for the seller's inventory list. */
+    val statusLabel: String
+        get() = when (status) {
+            "approved" -> "Live"
+            "pending" -> "In review"
+            "rejected" -> "Rejected"
+            "suspended" -> "Suspended"
+            "draft" -> "Draft"
+            else -> status.replaceFirstChar { it.uppercase() }
+        }
 
     companion object {
         fun fromJson(o: JSONObject): Product = Product(
             id = o.optString("id"),
-            title = o.optString("title"),
-            description = o.optString("description"),
+            title = o.optStringSafe("title"),
+            description = o.optStringSafe("description"),
             priceMinor = o.optLong("priceMinor", 0),
             oldPriceMinor = if (o.isNull("oldPriceMinor")) null else o.optLong("oldPriceMinor"),
             currency = o.optString("currency", "UGX"),
             stockQuantity = o.optInt("stockQuantity", 1),
-            imageUrl = o.optString("imageUrl"),
-            category = o.optString("category", "Other"),
-            brand = o.optString("brand"),
+            imageUrl = o.optStringSafe("imageUrl"),
+            category = o.optStringSafe("category", "Other").ifBlank { "Other" },
+            brand = o.optStringSafe("brand"),
             seller = Seller.fromJson(o.optJSONObject("seller") ?: JSONObject()),
             rating = o.optDouble("rating", 0.0),
             ratingCount = o.optInt("ratingCount", 0),
             isFlashDeal = o.optBoolean("isFlashDeal"),
             discountPercent = o.optInt("discountPercent", 0),
-            location = o.optString("location"),
+            location = o.optStringSafe("location"),
+            status = o.optStringSafe("status", "approved").ifBlank { "approved" },
+            rejectionReason = o.optStringOrNull("rejectionReason"),
+            viewCount = o.optInt("viewCount", 0),
         )
 
         fun fromJsonArray(arr: JSONArray): List<Product> =

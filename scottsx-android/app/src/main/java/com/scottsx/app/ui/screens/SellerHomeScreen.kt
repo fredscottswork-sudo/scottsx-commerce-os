@@ -195,6 +195,53 @@ fun SellerHomeScreen(
                 }
             }
 
+            // Moderation status. Listings are not live until an admin approves
+            // them, so the seller needs to see what is still in review and what
+            // was rejected (and why) — otherwise a rejected listing just looks
+            // like it silently vanished.
+            val inReview = products.filter { it.status == "pending" }
+            val rejected = products.filter { it.status == "rejected" }
+            val suspended = products.filter { it.status == "suspended" }
+            if (inReview.isNotEmpty() || rejected.isNotEmpty() || suspended.isNotEmpty()) {
+                item {
+                    SectionHeader("Listing status")
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (inReview.isNotEmpty()) {
+                            ModerationBanner(
+                                emoji = "⏳",
+                                tint = ScottsTechXColors.WarningAmber,
+                                title = "${inReview.size} listing${if (inReview.size == 1) "" else "s"} in review",
+                                body = "An admin approves new listings before buyers can see them. " +
+                                    "You'll be notified as soon as they decide.",
+                            )
+                        }
+                        rejected.forEach { product ->
+                            ModerationBanner(
+                                emoji = "⚠️",
+                                tint = ScottsTechXColors.ErrorRed,
+                                title = "Rejected: ${product.title.take(38)}",
+                                body = product.rejectionReason
+                                    ?: "Edit the listing and resubmit it for review.",
+                            )
+                        }
+                        suspended.forEach { product ->
+                            ModerationBanner(
+                                emoji = "⛔",
+                                tint = ScottsTechXColors.ErrorRed,
+                                title = "Suspended: ${product.title.take(36)}",
+                                body = product.rejectionReason
+                                    ?: "This listing was taken down. Contact support for details.",
+                            )
+                        }
+                    }
+                }
+            }
+
             if (products.isNotEmpty()) {
                 item {
                     // Low-stock inline list (duplicate of the alert, kept as a full row set)
@@ -253,5 +300,33 @@ private fun StatBox(prefix: String, value: String, label: String) {
             fontWeight = FontWeight.Bold,
         )
         Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+    }
+}
+
+/** One-line moderation notice on the seller dashboard. */
+@Composable
+private fun ModerationBanner(
+    emoji: String,
+    tint: androidx.compose.ui.graphics.Color,
+    title: String,
+    body: String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(tint.copy(alpha = 0.10f))
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(emoji, fontSize = 16.sp)
+        Column {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = tint)
+            Text(
+                body,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
