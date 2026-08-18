@@ -177,8 +177,8 @@ data class Conversation(
         fun fromJson(o: JSONObject): Conversation = Conversation(
             id = o.optString("id"),
             otherParty = OtherParty.fromJson(o.optJSONObject("otherParty") ?: JSONObject()),
-            lastMessage = o.optString("lastMessage"),
-            lastTime = o.optString("lastTime"),
+            lastMessage = o.optStringSafe("lastMessage"),
+            lastTime = o.optStringSafe("lastTime"),
             unread = o.optInt("unread", 0),
             productId = o.optStringOrNull("productId"),
             productTitle = o.optStringOrNull("productTitle"),
@@ -253,7 +253,7 @@ data class ChatMessage(
         fun fromJson(o: JSONObject): ChatMessage = ChatMessage(
             id = o.optString("id"),
             senderId = o.optString("senderId"),
-            text = o.optString("text"),
+            text = o.optStringSafe("text"),
             imageUrl = o.optStringOrNull("imageUrl"),
             attachmentName = o.optStringOrNull("attachmentName"),
             kind = o.optString("kind", "text").ifBlank { "text" },
@@ -265,7 +265,7 @@ data class ChatMessage(
             replyToId = o.optStringOrNull("replyToId"),
             deletedAt = o.optStringOrNull("deletedAt"),
             readByOther = o.optBoolean("readByOther", false),
-            createdAt = o.optString("createdAt"),
+            createdAt = o.optStringSafe("createdAt"),
         )
     }
 }
@@ -707,6 +707,14 @@ data class CheckoutResult(
 
 internal fun JSONObject.optStringOrNull(key: String): String? =
     if (isNull(key) || optString(key).isBlank()) null else optString(key)
+
+/**
+ * org.json's [JSONObject.optString] returns the literal string "null" when the
+ * value is a JSON null — verified against org.json 1.8. That leaks "null" into
+ * the UI, so anything reading a nullable column must use this instead.
+ */
+internal fun JSONObject.optStringSafe(key: String, fallback: String = ""): String =
+    if (isNull(key)) fallback else optString(key, fallback)
 
 internal fun JSONObject.optLongOrNull(key: String): Long? =
     if (isNull(key)) null else optLong(key)

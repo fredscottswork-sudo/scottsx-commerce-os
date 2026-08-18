@@ -69,6 +69,24 @@ ck('message JSON matches the Kotlin ChatMessage model',
 
 const off=await call(`/conversations/${cid}/messages`,{method:'POST',token:bt,body:{kind:'offer',offerMinor:250000,offerQuantity:2}});
 ck('POST offer -> pending', off.data.message?.offerStatus==='pending' && off.data.message?.offerQuantity===2);
+// Kotlin reads these with optLong(); a bigint returned as a JSON string would
+// silently parse to 0 and every offer would display as "UGX 0".
+ck('offerMinor is a JSON number (Kotlin optLong)', typeof off.data.message?.offerMinor === 'number',
+   `got ${typeof off.data.message?.offerMinor}`);
+ck('productPriceMinor is a JSON number', head.data.conversation?.productPriceMinor === null ||
+   typeof head.data.conversation?.productPriceMinor === 'number',
+   `got ${typeof head.data.conversation?.productPriceMinor}`);
+// A brand-new thread has lastTime: null. Kotlin's optString would turn that
+// into the literal string "null", so the model uses optStringSafe and
+// chatTimeLabel tolerates blanks. Assert the shape the parser must survive.
+ck('conversation.lastTime is a string or null (both handled by the parser)',
+   c0.lastTime === null || typeof c0.lastTime === 'string', `got ${typeof c0.lastTime}`);
+const freshConv = await call('/conversations',{method:'POST',token:bt,body:{sellerId:(await call('/products?pageSize=30')).data.products.map(x=>x.seller.id).find(x=>x!==sid)}});
+const freshList = await call('/conversations',{token:bt});
+const freshRow = freshList.data.conversations.find(c=>c.id===freshConv.data.conversation.id);
+ck('a message-less thread really does return a null lastTime',
+   freshRow !== undefined && !freshRow.lastTime,
+   `lastTime=${JSON.stringify(freshRow?.lastTime)}`);
 ck('POST accept offer', (await call(`/conversations/${cid}/offers/${off.data.message.id}`,{method:'POST',token:st,body:{action:'accept'}})).data.ok===true);
 ck('POST typing', (await call(`/conversations/${cid}/typing`,{method:'POST',token:bt,body:{typing:true}})).data.ok===true);
 ck('PATCH state -> {state}', !!(await call(`/conversations/${cid}/state`,{method:'PATCH',token:bt,body:{pinned:true}})).data.state);

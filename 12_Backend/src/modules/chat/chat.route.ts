@@ -41,7 +41,7 @@ const MESSAGE_COLUMNS = `
   m.attachment_name AS "attachmentName",
   m.kind,
   m.product_id     AS "productId",
-  m.offer_minor    AS "offerMinor",
+  m.offer_minor::int AS "offerMinor",
   m.offer_status   AS "offerStatus",
   m.offer_quantity AS "offerQuantity",
   m.reply_to_id    AS "replyToId",
@@ -120,7 +120,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
          ) AS "otherParty",
          p.title AS "productTitle",
          p.image_url AS "productImageUrl",
-         p.price_minor AS "productPriceMinor",
+         p.price_minor::int AS "productPriceMinor",
          COALESCE(st.pinned, false) AS pinned,
          COALESCE(st.archived, false) AS archived,
          COALESCE(st.muted, false) AS muted,
@@ -253,7 +253,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
          ) AS "otherParty",
          p.title AS "productTitle",
          p.image_url AS "productImageUrl",
-         p.price_minor AS "productPriceMinor",
+         p.price_minor::int AS "productPriceMinor",
          COALESCE(st.pinned, false) AS pinned,
          COALESCE(st.archived, false) AS archived,
          COALESCE(st.muted, false) AS muted,
@@ -292,7 +292,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
       `SELECT ${MESSAGE_COLUMNS},
               p.title AS "productTitle",
               p.image_url AS "productImageUrl",
-              p.price_minor AS "productPriceMinor"
+              p.price_minor::int AS "productPriceMinor"
        FROM messages m
        LEFT JOIN products p ON p.id = m.product_id
        WHERE m.conversation_id = $1
@@ -507,7 +507,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
 
       const { rows } = await pool.query(
         `SELECT id, sender_id AS "senderId", offer_status AS "offerStatus",
-                offer_minor AS "offerMinor", offer_quantity AS "offerQuantity",
+                offer_minor::int AS "offerMinor", offer_quantity AS "offerQuantity",
                 product_id AS "productId"
          FROM messages
          WHERE id = $1 AND conversation_id = $2 AND kind = 'offer'`,

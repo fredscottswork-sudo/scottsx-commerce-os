@@ -831,6 +831,44 @@ async function main() {
     // -- inbox search -------------------------------------------------------
     const search = await call('/conversations?q=zzzznomatch', { token: state.buyerToken });
     check('inbox search filters results', (search.data?.conversations ?? []).length === 0);
+
+    // -- numeric types ------------------------------------------------------
+    // Postgres returns bigint as a STRING through node-postgres. Money columns
+    // must be cast (::int) or clients that expect numbers break: the Android
+    // optLong parse and every JS price format silently produce garbage.
+    const typed = await call(`/conversations/${cid}`, { token: state.buyerToken });
+    check(
+      'productPriceMinor is a number, not a string',
+      typed.data?.conversation?.productPriceMinor === null ||
+        typeof typed.data?.conversation?.productPriceMinor === 'number',
+      `got ${typeof typed.data?.conversation?.productPriceMinor}`
+    );
+
+    const priced = await call(`/conversations/${cid}/messages`, {
+      method: 'POST',
+      token: state.buyerToken,
+      body: { kind: 'offer', offerMinor: 12345600 },
+    });
+    check(
+      'offerMinor is a number on create',
+      typeof priced.data?.message?.offerMinor === 'number',
+      `got ${typeof priced.data?.message?.offerMinor} ${JSON.stringify(priced.data?.message?.offerMinor)}`
+    );
+    const reread = await call(`/conversations/${cid}/messages`, { token: state.buyerToken });
+    const offerRow = (reread.data?.messages ?? []).find((m) => m.id === priced.data?.message?.id);
+    check(
+      'offerMinor is a number on read',
+      typeof offerRow?.offerMinor === 'number',
+      `got ${typeof offerRow?.offerMinor}`
+    );
+    check(
+      'offerMinor round-trips exactly',
+      offerRow?.offerMinor === 12345600,
+      String(offerRow?.offerMinor)
+    );
+    await call(`/conversations/${cid}/offers/${priced.data?.message?.id}`, {
+      method: 'POST', token: state.sellerToken, body: { action: 'decline' },
+    });
   }
 
   // ── Quick replies (canned seller responses) ───────────────────────────────
