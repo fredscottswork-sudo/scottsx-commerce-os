@@ -320,6 +320,10 @@ fun BuyerHomeScreen(
                                     },
                                 )
                             }
+                            // chunked(2) leaves the last row holding a single
+                            // item when the count is odd; without a filler the
+                            // lone card takes the full row width.
+                            if (rowItems.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }

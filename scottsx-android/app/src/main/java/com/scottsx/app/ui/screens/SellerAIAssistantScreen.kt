@@ -126,6 +126,9 @@ fun SellerAIAssistantScreen(onBack: () -> Unit) {
                             modifier = Modifier.weight(1f),
                         )
                     }
+                    // An odd number of tools would stretch the last card across
+                    // the whole row; keep the grid on its 2-column rhythm.
+                    if (rowTools.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }

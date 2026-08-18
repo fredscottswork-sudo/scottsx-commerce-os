@@ -75,6 +75,12 @@ fun SavedProductsScreen(onBack: () -> Unit) {
                                     modifier = Modifier.weight(1f),
                                 )
                             }
+                            // chunked(2) leaves the last row with a single
+                            // item when the count is odd. Without this the
+                            // lone card takes weight(1f) of the whole row
+                            // and renders at double width. An empty
+                            // weighted spacer holds the missing cell.
+                            if (rowItems.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }

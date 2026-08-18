@@ -245,6 +245,31 @@ console.log('\n\x1b[1m4. Seller dashboard stat tiles\x1b[0m');
     /\.size\(40\.dp\)\s*\n\s*\.clip\(CircleShape\)/.test(uk));
 }
 
+{
+  // chunked(2) + weight(1f) is a trap: an odd item count leaves the last row
+  // with one child, which then takes the ENTIRE row width and renders at
+  // double size. Every such grid needs a weighted filler.
+  // Scan EVERY file rather than a hand-list, so a new grid cannot slip in
+  // without the filler. Each chunked(2) row must have a weighted Spacer keyed
+  // to the same loop variable.
+  const unfilled = [];
+  for (const f of files) {
+    const src = read(f);
+    if (!src.includes('.chunked(2)')) continue;
+    for (const m of src.matchAll(/(\w+)\.chunked\(2\)/g)) {
+      const v = m[1];
+      // the loop variable is the lambda parameter, e.g. `.forEach { rowItems ->`
+      const after = src.slice(m.index, m.index + 200);
+      const lv = (/forEach\s*\{\s*(\w+)\s*->/.exec(after) || [])[1];
+      if (!lv) continue;
+      const re = new RegExp(`if \\(${lv}\\.size == 1\\)\\s*Spacer\\(Modifier\\.weight\\(1f\\)\\)`);
+      if (!re.test(src)) unfilled.push(`${rel(f).split('/').pop()} (${v})`);
+    }
+  }
+  ok_if('every chunked(2) grid pads a lone last item so it cannot double in width',
+    unfilled.length === 0, unfilled.join(', '));
+}
+
 console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
 {
   const w = files.find((x) => rel(x).endsWith('screens/WelcomeScreen.kt'));
