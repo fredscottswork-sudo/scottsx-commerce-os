@@ -124,6 +124,19 @@ jobs:
         # or a screen nobody can navigate to.
         run: ./tools/wiring-check.sh
 
+      - name: Android layout check (edge-to-edge insets, overflow, artwork)
+        working-directory: scottsx-android
+        # Catches the class of bug that made the app render under the status
+        # bar and off the right edge of a 360dp phone.
+        run: node ./tools/layout-check.mjs
+
+      - name: Compose API contract check
+        working-directory: scottsx-android
+        # The syntax gate runs without the Android SDK and cannot resolve
+        # androidx symbols, so it cannot catch a misuse of a real API such as
+        # reading a @Composable getter from a plain function. This can.
+        run: node ./tools/compose-contract-check.mjs
+
       - name: Build debug APK
         working-directory: scottsx-android
         # The app talks to whatever API_BASE_URL is baked in at build time.
