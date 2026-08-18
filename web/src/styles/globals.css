@@ -311,7 +311,20 @@ img { max-width: 100%; }
   padding: 18px 16px; font-family: var(--font-display);
   font-weight: 800; font-size: var(--fs-lg); color: var(--text);
   letter-spacing: -0.03em;
+  /* body sets overflow-wrap/word-break:break-word so long URLs and order ids
+     wrap instead of stretching their container. The company name is the one
+     string that must never obey that: as a shrinkable flex item in a crowded
+     header it was broken letter-by-letter and rendered as a vertical column.
+     Opt out here, and refuse to shrink below the text's own width. */
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  text-decoration: none;
 }
+.brand-name { white-space: nowrap; }
+.cta-long { display: inline; }
+.cta-short { display: none; }
 /* Official STX mark, shared with the Android app (see BrandLogo.tsx). */
 .brand-logo {
   width: 36px; height: 36px; border-radius: 11px;
@@ -392,14 +405,30 @@ img { max-width: 100%; }
 /* ═══ PUBLIC (logged-out) CHROME ══════════════════════════════════════════ */
 .public-shell { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg); }
 .public-topbar {
-  display: flex; align-items: center; gap: 12px; padding: 0 22px;
-  height: calc(var(--topbar-h) + 8px);
+  /* Column by default so the brand row and the search row stack on a phone;
+     the media query below puts them back on one line when there is room. */
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 9px; padding: 9px 22px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30;
 }
+.public-topbar-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .public-topbar .brand { padding: 0; }
-.public-search { max-width: 480px; flex: 1; }
+.public-search { flex: 1; min-width: 0; }
+
+@media (min-width: 900px) {
+  /* Wide enough for the original single line. */
+  .public-topbar {
+    flex-direction: row; align-items: center; gap: 12px;
+    padding: 0 22px; height: calc(var(--topbar-h) + 8px);
+  }
+  .public-topbar-main { flex: 0 1 auto; order: 1; }
+  .public-search { order: 2; max-width: 480px; }
+  /* The links/theme/CTAs live inside row 1, so let it grow and push them
+     right, keeping the desktop arrangement identical to before. */
+  .public-topbar-main { flex: 1 1 auto; }
+}
 .public-links { gap: 4px; }
 .top-link {
   padding: 8px 13px; border-radius: var(--radius-sm); color: var(--text-2);
@@ -1162,7 +1191,17 @@ tbody tr.row-click { cursor: pointer; }
   .pgrid { grid-template-columns: repeat(2, 1fr); gap: 11px; }
   .content { padding: 13px; }
   .topbar { padding: 0 13px; gap: 7px; }
-  .public-topbar { padding: 0 13px; gap: 8px; }
+  .public-topbar { padding: 8px 13px; gap: 8px; }
+  /* "Market / Nearby / AI Shopper" duplicate the bottom nav on a phone, and
+     three text links plus two CTAs cannot share a 360px row with the brand.
+     Hide the links, keep the theme switch (asked for explicitly) and shorten
+     the CTAs so row 1 is: logo + name .......... theme  Sign in  Join. */
+  .public-links { display: none; }
+  .public-topbar .brand { font-size: var(--fs-base); }
+  .public-topbar .brand-logo { width: 30px; height: 30px; border-radius: 9px; }
+  .public-cta { padding: 7px 10px; font-size: var(--fs-xs); }
+  .cta-long { display: none; }
+  .cta-short { display: inline; }
   .public-content { padding: 16px 13px 34px; }
   .topbar-search, .public-search { max-width: none; }
   .topbar-search input, .public-search input { font-size: var(--fs-sm); }

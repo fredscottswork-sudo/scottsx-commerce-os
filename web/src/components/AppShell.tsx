@@ -68,8 +68,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!user) {
     return (
       <div className="public-shell">
+        {/* Two explicit rows. Everything used to sit on ONE flex line, which
+            needs ~609px; on a 360px phone the only shrinkable item is the
+            wordmark, so "ScottsTechX" collapsed to a single character wide and
+            stacked vertically down the page. Row 1 keeps the brand and the
+            theme switch together; row 2 gives the search bar the full width.
+            On desktop the two rows collapse back onto one line via CSS. */}
         <header className="public-topbar">
-          <Link to="/" className="brand"><BrandMark /> ScottsTechX</Link>
+          <div className="public-topbar-row public-topbar-main">
+            <Link to="/" className="brand"><BrandMark /> <span className="brand-name">ScottsTechX</span></Link>
+            <span className="grow" />
+            <nav className="row public-links">
+              <NavLink to="/" end className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Market</NavLink>
+              <NavLink to="/nearby" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Nearby</NavLink>
+              <NavLink to="/ai" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>AI Shopper</NavLink>
+            </nav>
+            <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
+              {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            {/* "Get started" is 93px at the mobile type scale and pushes row 1
+                23px past a 360px screen. Show the short label on a phone and
+                the full one from 480px up — same link, same destination. */}
+            <Link to="/login" className="btn btn-sm public-cta">Sign in</Link>
+            <Link to="/register" className="btn btn-primary btn-sm public-cta">
+              <span className="cta-long">Get started</span>
+              <span className="cta-short">Join</span>
+            </Link>
+          </div>
           <form className="searchbar public-search" onSubmit={submitSearch}>
             <Search size={17} className="muted-2" />
             <input
@@ -79,17 +104,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-label="Search products"
             />
           </form>
-          <span className="grow" />
-          <nav className="row public-links">
-            <NavLink to="/" end className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Market</NavLink>
-            <NavLink to="/nearby" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Nearby</NavLink>
-            <NavLink to="/ai" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>AI Shopper</NavLink>
-          </nav>
-          <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
-            {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <Link to="/login" className="btn btn-sm">Sign in</Link>
-          <Link to="/register" className="btn btn-primary btn-sm">Get started</Link>
         </header>
         <MainNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
         <main className="public-content">{children}</main>

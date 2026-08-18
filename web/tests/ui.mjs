@@ -1523,6 +1523,51 @@ section('24. Unreachable backend degrades honestly');
   }
 }
 
+// ── 25. Header: the brand must never stack vertically ───────────────────────
+// The company name rendered as a one-character-wide vertical column on a
+// phone. body sets `word-break: break-word` (right for long URLs and order
+// ids) and .brand was a shrinkable flex item in a row needing ~609px on a
+// 360px screen — so the wordmark was the only thing that could give, and the
+// browser broke it letter by letter.
+section('25. Header brand and search layout');
+{
+  const brandRule = (bundleCss.match(/\.brand\s*\{[^}]*\}/) || [''])[0];
+  check('the brand opts out of the global word-break', /word-break:\s*keep-all/.test(brandRule));
+  check('the brand never wraps', /white-space:\s*nowrap/.test(brandRule));
+  check('the brand refuses to shrink in a crowded flex row', /flex-shrink:\s*0/.test(brandRule));
+
+  // The name itself is wrapped in its own span so it can be targeted.
+  const nameRule = (bundleCss.match(/\.brand-name\s*\{[^}]*\}/) || [''])[0];
+  check('the wordmark span is nowrap', /white-space:\s*nowrap/.test(nameRule));
+
+  // Two rows on a phone: brand row on top, search underneath.
+  const topbarRule = (bundleCss.match(/\.public-topbar\s*\{[^}]*\}/) || [''])[0];
+  check('the public header stacks into rows by default', /flex-direction:\s*column/.test(topbarRule));
+  check('the header returns to one line on a wide screen',
+    /@media[^{]*min-width:\s*900px[^{]*\{[\s\S]*?\.public-topbar\s*\{[^}]*flex-direction:\s*row/.test(bundleCss));
+
+  // The nav links are what made row 1 overflow; they duplicate the bottom nav.
+  check('the duplicate top links are hidden on a phone',
+    /\.public-links\s*\{\s*display:\s*none/.test(bundleCss));
+  check('the long CTA label is swapped for a short one on a phone',
+    /\.cta-long\s*\{\s*display:\s*none/.test(bundleCss) && /\.cta-short\s*\{\s*display:\s*inline/.test(bundleCss));
+
+  // And it must actually render.
+  const home = await mount('/');
+  check('the home page renders the brand name as one string',
+    home.text().includes('ScottsTechX'));
+  const brandEl = home.$('.brand');
+  check('the brand element exists', !!brandEl);
+  check('the brand contains a non-breaking name span', !!home.$('.brand .brand-name'));
+  check('the search field is present and outside the brand row',
+    !!home.$('.public-search input') && !home.$('.public-topbar-main .public-search'));
+  check('the theme toggle stays in the top row',
+    !!home.$('.public-topbar-main [aria-label="Toggle theme"]'));
+  check('the home header logs no console errors', home.consoleErrors.length === 0,
+    home.consoleErrors.join(' | '));
+  home.close();
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {
