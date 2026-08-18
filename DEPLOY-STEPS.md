@@ -312,8 +312,9 @@ fine and then fails on every screen, so it is better to fail the build.
 
 | To enable | Do this |
 |---|---|
-| **Google Sign-In** | In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → your OAuth client → **Authorised JavaScript origins** → add `https://scottstechx.pages.dev`. Then set `VITE_GOOGLE_CLIENT_ID` (Cloudflare) and `GOOGLE_CLIENT_ID` (Render). |
+| **Google Sign-In** | Two things, and both are required. (1) In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → your OAuth client → **Authorised JavaScript origins** → add `https://scottstechx.pages.dev`. Without it Google refuses to render the button at all. (2) Make sure the site can reach the API — see the troubleshooting row about the button doing nothing. Optionally set `VITE_GOOGLE_CLIENT_ID` (Cloudflare) and `GOOGLE_CLIENT_ID` (Render) to use a different OAuth client. |
 | **Phone push notifications** | Firebase Console → Project settings → Service accounts → **Generate new private key**. Add the JSON to Render as a secret file at `12_Backend/secrets/firebase-admin-key.json`. Until then, in-app and web notifications still work and are stored. |
+| **Verification emails** | Add `SMTP_HOST`, `SMTP_PORT` (465), `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` on Render. Until then sign-up still requires a code, but with no mail server the code is returned to the browser and shown on screen instead of emailed — fine for testing, **not** for real users. |
 | **Real AI (instead of the built-in engine)** | Add `LLM_API_KEY` on Render. Without it the catalogue-grounded local engine handles search and agents. |
 | **Card / mobile-money payments** | Add `NYLON_PAY_API_KEY` and `NYLON_PAY_API_SECRET`. Until then `POST /orders/checkout` returns 503 and cash-on-delivery is the only buy path — which works fully on both web and Android. |
 
@@ -337,6 +338,7 @@ GitHub Actions  -> APK artifact  (API_BASE_URL = Render URL + /api/v1)
 |---|---|
 | `{"ready":false}` from `/geo/status` | The gazetteer asset did not reach `dist/`. Build command must be `npm ci && npm run build`. |
 | Website loads, but every request fails | `VITE_API_URL` wrong, or it has `/api/v1` on the end (it must not). Rebuild after changing it. |
+| "Continue with Google" pops up, I pick my account, then nothing happens | The site cannot reach the API. `_redirects` sends every unmatched path to `index.html` with a **200**, so if `VITE_API_URL` is missing the API call returns the site's own HTML and the app has no session to store. The build now falls back to `https://scottstechx-api.onrender.com` and shows a real error instead of failing silently, but the proper fix is to set `VITE_API_URL` in Cloudflare and redeploy. Note the Render free tier sleeps after ~15 min idle, so the first request after a pause can take ~50s. |
 | Hard-refresh on a sub-page 404s | Missing SPA rewrite. `web/public/_redirects` is in the repo; confirm output directory is `dist`. |
 | First request after idle takes 30 s | Render free tier cold start. Expected. |
 | APK installs but nothing loads | Built with the emulator default URL. Set `API_BASE_URL` and rebuild. |

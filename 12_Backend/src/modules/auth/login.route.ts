@@ -19,6 +19,7 @@ import {
   authedUser,
 } from '../../auth.js';
 import { UnauthorizedError, ConflictError, NotFoundError } from '../../errors.js';
+import { issueVerification } from './verify.route.js';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -74,8 +75,13 @@ export default async function registerAuthRoute(app: FastifyInstance) {
 
     const hash = await hashPassword(body.password);
     const { rows } = await pool.query(
+      // email_verified is FALSE on purpose. It used to be hardcoded true, so
+      // any string that merely parsed as an address became a full account and
+      // nothing stopped fake@nowhere.invalid from signing up. A code is mailed
+      // immediately after this insert and the flag is set only once the user
+      // proves they can read that inbox.
       `INSERT INTO users (email, password_hash, display_name, phone, role, city, email_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, true)
+       VALUES ($1, $2, $3, $4, $5, $6, false)
        RETURNING *`,
       [body.email, hash, body.displayName, body.phone, body.role, body.city]
     );
@@ -90,8 +96,23 @@ export default async function registerAuthRoute(app: FastifyInstance) {
       );
     }
 
+    // Mail the verification code. The account exists and is usable for
+    // browsing, but email_verified stays false until the code is confirmed —
+    // and selling already requires a verified address.
+    const issued = await issueVerification(user.id, user.email, user.display_name);
+
     const token = await tokenForUser(user);
-    return reply.code(201).send({ token, user: publicUser(user) });
+    return reply.code(201).send({
+      token,
+      user: publicUser(user),
+      verification: {
+        required: true,
+        sent: issued.delivered,
+        // Only present when no SMTP is configured (local/dev), so the flow can
+        // still be completed. With a real mailer this is undefined.
+        devCode: issued.devCode,
+      },
+    });
   });
 
   app.post('/api/v1/auth/login', async (request, reply) => {

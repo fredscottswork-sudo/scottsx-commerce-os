@@ -6,8 +6,50 @@
 // Trailing slashes are stripped: a VITE_API_URL of "https://api.example.com/"
 // would otherwise build "https://api.example.com//api/v1", which the backend
 // answers with 404 on every single request. Easy to type, painful to diagnose.
-const BASE = ((import.meta.env.VITE_API_URL as string | undefined) || '').replace(/\/+$/, '');
+const CONFIGURED = ((import.meta.env.VITE_API_URL as string | undefined) || '').replace(/\/+$/, '');
+
+/**
+ * Where the API lives when VITE_API_URL was not supplied at build time.
+ *
+ * This is not belt-and-braces, it is a real bug fix. The static host serves
+ * `/*  /index.html  200` (see public/_redirects) so that deep links work. With
+ * an empty BASE every API call resolves same-origin, hits that catch-all, and
+ * comes back as **200 with the SPA's HTML**. `res.ok` is true, `res.json()`
+ * throws, the catch swallows it as "empty body", and `api()` returns null — so
+ * `loginWithGoogle` did `null.token` and threw a TypeError. GoogleButton only
+ * catches ApiError, so the user saw the Google popup succeed and then simply
+ * nothing happen. Same silent nothing for email login and registration.
+ *
+ * Deploying without the env var is therefore a total outage that looks like a
+ * broken button, so we ship a working default instead of trusting a dashboard
+ * field to have been filled in. Override it any time with VITE_API_URL.
+ */
+const FALLBACK_API = 'https://scottstechx-api.onrender.com';
+
+/** Hosts that legitimately serve the API from their own origin (dev proxy). */
+function isSameOriginApiHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '[::1]' ||
+    hostname.endsWith('.local')
+  );
+}
+
+function resolveBase(): string {
+  if (CONFIGURED) return CONFIGURED;
+  if (typeof window === 'undefined' || !window.location) return '';
+  // Vite dev server and the test harness proxy /api themselves.
+  if (isSameOriginApiHost(window.location.hostname)) return '';
+  return FALLBACK_API;
+}
+
+const BASE = resolveBase();
 export const API_ROOT = `${BASE}/api/v1`;
+
+/** True when the deployment is relying on the fallback rather than config. */
+export const API_URL_IS_FALLBACK = !CONFIGURED && BASE === FALLBACK_API;
 
 const TOKEN_KEY = 'stx_token';
 const USER_KEY = 'stx_user';
@@ -124,11 +166,26 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
     throw new ApiError(0, 'Network error — check your connection and try again.');
   }
 
+  // A JSON API must answer with JSON. If the static host's SPA catch-all (or a
+  // captive portal, or a proxy error page) answers instead, the body is HTML
+  // with a 200. Treating that as "empty body" is what turned a misconfigured
+  // API URL into buttons that silently did nothing, so name it explicitly.
+  const contentType = res.headers.get('content-type') || '';
+  const looksLikeJson = contentType.includes('json');
+
   let data: any = null;
   try {
     data = await res.json();
   } catch {
-    /* empty body */
+    /* empty or non-JSON body — handled below */
+  }
+
+  if (res.ok && !looksLikeJson && data === null) {
+    throw new ApiError(
+      502,
+      'The server did not return data. The app is not connected to its API — ' +
+        'please try again shortly.'
+    );
   }
 
   if (!res.ok) {

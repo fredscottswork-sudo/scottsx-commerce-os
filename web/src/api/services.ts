@@ -48,7 +48,20 @@ export const authService = {
   login: (email: string, password: string) =>
     api<{ token: string; user: any }>('/auth/login', { method: 'POST', auth: false, body: { email, password } }),
   register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string }) =>
-    api<{ token: string; user: any }>('/auth/register', { method: 'POST', auth: false, body }),
+    api<{
+      token: string;
+      user: any;
+      /** Accounts start unverified; a code is emailed on registration. */
+      verification?: { required: boolean; sent: boolean; devCode?: string };
+    }>('/auth/register', { method: 'POST', auth: false, body }),
+  /** Re-send the six-digit email verification code. */
+  requestVerification: () =>
+    api<{ alreadyVerified: boolean; sent: boolean; devCode?: string }>(
+      '/auth/verify/request', { method: 'POST' }),
+  /** Confirm the six-digit code and mark the address verified. */
+  confirmVerification: (code: string) =>
+    api<{ verified: boolean; user: any }>(
+      '/auth/verify/confirm', { method: 'POST', body: { code } }),
   me: () => api<{ user: any }>('/auth/me'),
   updateMe: (body: { displayName?: string; phone?: string; profilePhotoUrl?: string | null; city?: string }) =>
     api<{ user: any }>('/auth/me', { method: 'PATCH', body }),

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { rememberDevCode } from '../components/VerifyEmailBanner';
 import { authService } from '../api/services';
 import { forgetGoogleSession } from '../lib/google';
 import { tokenStore, userStore, onUnauthorized, type StoredUser } from '../api/client';
@@ -8,7 +9,8 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<StoredUser>;
-  register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string }) => Promise<void>;
+  register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string })
+    => Promise<{ required: boolean; sent: boolean; devCode?: string } | undefined>;
   logout: () => void;
   refresh: () => Promise<void>;
   setUser: (u: StoredUser) => void;
@@ -43,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const res = await authService.login(email, password);
+      if (!res?.token) throw new Error('The server did not return a session. Please try again.');
       tokenStore.set(res.token);
       setUser(toStoredUser(res.user));
     } finally {
@@ -55,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       try {
         const res = await authService.google(idToken);
+        if (!res?.token) throw new Error('The server did not return a session. Please try again.');
         tokenStore.set(res.token);
         const stored = toStoredUser(res.user);
         setUser(stored);
@@ -71,8 +75,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       try {
         const res = await authService.register(body);
+        if (!res?.token) throw new Error('The server did not return a session. Please try again.');
         tokenStore.set(res.token);
         setUser(toStoredUser(res.user));
+        // With no SMTP configured the API hands back the code so the flow is
+        // still completable; the banner reads it from sessionStorage.
+        rememberDevCode(res.verification?.devCode);
+        return res.verification;
       } finally {
         setLoading(false);
       }

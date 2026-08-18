@@ -12,6 +12,7 @@ import { useCart } from '../store/CartContext';
 import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
 import { BrandMark } from './BrandLogo';
+import VerifyEmailBanner from './VerifyEmailBanner';
 
 interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }
 
@@ -301,7 +302,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <MainNav role={user.role} counts={navCounts} />
 
-        <main className="content page" key={location.pathname}>{children}</main>
+        <main className="content page" key={location.pathname}>
+          {/* Renders itself away for verified users. */}
+          <VerifyEmailBanner />
+          {children}
+        </main>
         <BottomNav role={user.role} counts={navCounts} />
       </div>
     </div>

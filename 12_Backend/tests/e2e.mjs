@@ -1601,6 +1601,69 @@ async function main() {
     check('about page names the founder', /Kato Fred/.test(body));
   }
 
+  // ── Email verification ────────────────────────────────────────────────────
+  group('Email verification');
+  {
+    const email = `verify_${uniq}@test.ug`;
+    const reg = await call('/auth/register', {
+      method: 'POST',
+      body: { email, password: 'Verify123!', displayName: 'Verify User' },
+    });
+    check('registration returns a session', reg.status === 201 && !!reg.data?.token);
+    check('a fresh account is unverified', reg.data?.user?.emailVerified === false,
+      `emailVerified=${reg.data?.user?.emailVerified}`);
+    check('registration reports that verification is required',
+      reg.data?.verification?.required === true);
+
+    const token = reg.data?.token;
+    const code = reg.data?.verification?.devCode;
+    check('a six-digit code is issued', /^\d{6}$/.test(String(code)), String(code));
+
+    check('verification requires a session',
+      (await call('/auth/verify/confirm', { method: 'POST', body: { code } })).status === 401);
+
+    const bad = await call('/auth/verify/confirm', {
+      method: 'POST', token, body: { code: '999999' },
+    });
+    check('a wrong code is refused', bad.status >= 400, `got ${bad.status}`);
+
+    const malformed = await call('/auth/verify/confirm', {
+      method: 'POST', token, body: { code: 'abc' },
+    });
+    check('a malformed code is refused', malformed.status >= 400, `got ${malformed.status}`);
+
+    const gate = await call('/auth/upgrade-to-seller', { method: 'POST', token });
+    check('unverified accounts cannot open a store', gate.status >= 400, `got ${gate.status}`);
+
+    // Re-requesting supersedes the old code, so the original must stop working.
+    const resent = await call('/auth/verify/request', { method: 'POST', token });
+    check('a new code can be requested', resent.status === 200);
+    const fresh = resent.data?.devCode;
+    check('the resent code is different', /^\d{6}$/.test(String(fresh)));
+
+    const stale = await call('/auth/verify/confirm', { method: 'POST', token, body: { code } });
+    check('the superseded code no longer works', stale.status >= 400, `got ${stale.status}`);
+
+    const ok = await call('/auth/verify/confirm', { method: 'POST', token, body: { code: fresh } });
+    check('the current code verifies the address', ok.status === 200 && ok.data?.verified === true,
+      `got ${ok.status}`);
+
+    const me = await call('/auth/me', { token });
+    check('the account reads back as verified', me.data?.user?.emailVerified === true);
+
+    const twice = await call('/auth/verify/confirm', { method: 'POST', token, body: { code: fresh } });
+    check('a spent code cannot be replayed', twice.status >= 400, `got ${twice.status}`);
+
+    const already = await call('/auth/verify/request', { method: 'POST', token });
+    check('requesting again reports it is already verified',
+      already.status === 200 && already.data?.alreadyVerified === true);
+
+    const upgrade = await call('/auth/upgrade-to-seller', { method: 'POST', token });
+    check('a verified account can open a store', upgrade.status === 200, `got ${upgrade.status}`);
+
+    state.verifyUserId = reg.data?.user?.id;
+  }
+
   // ── Cleanup ───────────────────────────────────────────────────────────────
   group('Cleanup');
   {
@@ -1642,7 +1705,7 @@ async function main() {
 
     // Throwaway accounts this run registered are removed so repeated runs do
     // not silt up the users table. The seller/admin are permanent seed rows.
-    const throwaway = [state.buyerId, state.outsiderId].filter(Boolean);
+    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId].filter(Boolean);
     let purged = 0;
     for (const id of throwaway) {
       const r = await call(`/admin/users/${id}`, { method: 'DELETE', token: state.adminToken });

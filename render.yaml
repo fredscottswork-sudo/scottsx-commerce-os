@@ -108,6 +108,26 @@ services:
       - key: NYLON_PAY_API_SECRET
         sync: false
 
+      # ── Verification email (SMTP) ───────────────────────────────────────
+      # Sign-up always requires a 6-digit code, so that a fake address cannot
+      # become an account. Without these the backend cannot send it: the code
+      # is logged and returned to the browser instead, which is fine for
+      # testing and wrong for real users. Set them before launch.
+      #
+      # Any SMTP provider works (Zoho, Brevo, Mailgun, Gmail app password…).
+      # Port 465 is implicit TLS, which is what the sender speaks.
+      #   MAIL_FROM format: ScottsTechX <no-reply@yourdomain.com>
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: '465'
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
   # ── Web app (static) ──────────────────────────────────────────────────────
   - type: web
     name: scottstechx-web

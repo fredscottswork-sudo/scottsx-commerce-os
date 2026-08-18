@@ -1860,6 +1860,116 @@ section('31. AI product results are full width, not inside the bubble');
   app.close();
 }
 
+// ── 32. Email verification (no fake addresses) ──────────────────────────────
+section('32. Email verification blocks fake addresses');
+{
+  // Registration must NOT hand out a verified account any more. This is the
+  // whole point: previously email_verified was hardcoded true, so an address
+  // only had to parse to become a real user.
+  const email = `uitest_${Date.now()}_verify@scottstechx.test`;
+  const reg = await apiFetch('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password: 'Test123!', displayName: 'Verify Probe', role: 'buyer' }),
+  });
+  check('registration succeeds', reg.status === 201, `status ${reg.status}`);
+  check('a new account is NOT verified', reg.body.user.emailVerified === false,
+    `emailVerified=${reg.body.user.emailVerified}`);
+  check('the response says verification is required', reg.body.verification?.required === true);
+
+  const auth = { authorization: `Bearer ${reg.body.token}` };
+
+  // A wrong code must never verify.
+  const wrong = await apiFetch('/auth/verify/confirm', {
+    method: 'POST', headers: auth, body: JSON.stringify({ code: '000000' }),
+  });
+  check('a wrong code is rejected', wrong.status >= 400, `status ${wrong.status}`);
+
+  const stillUnverified = await apiFetch('/auth/me', { headers: auth });
+  check('a rejected code leaves the account unverified',
+    stillUnverified.body.user.emailVerified === false);
+
+  // The seller gate is the real-world consequence of being unverified.
+  const upgrade = await apiFetch('/auth/upgrade-to-seller', { method: 'POST', headers: auth });
+  check('an unverified user cannot become a seller', upgrade.status >= 400,
+    `status ${upgrade.status}`);
+
+  // With no SMTP configured the API returns the code so the flow stays testable.
+  const code = reg.body.verification?.devCode;
+  check('a code is issued', typeof code === 'string' && /^\d{6}$/.test(code || ''), String(code));
+
+  const ok = await apiFetch('/auth/verify/confirm', {
+    method: 'POST', headers: auth, body: JSON.stringify({ code }),
+  });
+  check('the correct code verifies the account', ok.status === 200 && ok.body.verified === true,
+    `status ${ok.status}`);
+
+  const reuse = await apiFetch('/auth/verify/confirm', {
+    method: 'POST', headers: auth, body: JSON.stringify({ code }),
+  });
+  check('a code cannot be used twice', reuse.status >= 400, `status ${reuse.status}`);
+
+  const after = await apiFetch('/auth/me', { headers: auth });
+  check('the account is verified afterwards', after.body.user.emailVerified === true);
+
+  const upgrade2 = await apiFetch('/auth/upgrade-to-seller', { method: 'POST', headers: auth });
+  check('a verified user can become a seller', upgrade2.status === 200, `status ${upgrade2.status}`);
+
+  await apiFetch(`/admin/users/${reg.body.user.id}`, {
+    method: 'DELETE', headers: { authorization: `Bearer ${admin.token}` },
+  }).catch(() => {});
+}
+
+// ── 33. Verification banner in the UI ───────────────────────────────────────
+section('33. The verification banner appears only when it should');
+{
+  const unverified = {
+    token: buyer.token,
+    user: { ...buyer.user, emailVerified: false },
+  };
+  const app = await mount('/buyer', unverified, { settleMs: 1700 });
+  const banner = app.$('[data-testid="verify-banner"]');
+  check('an unverified user sees the verification banner', !!banner);
+  if (banner) {
+    const t = banner.textContent || '';
+    check('the banner names the address to check', t.includes(buyer.user.email),
+      t.slice(0, 120));
+    check('the banner explains what to do', /verify/i.test(t));
+    check('the banner offers a way to enter the code',
+      !!app.$('[data-testid="verify-open"]'));
+    check('the banner offers a resend', !!app.$('[data-testid="verify-resend"]'));
+  }
+  check('no runtime errors with the banner mounted', app.consoleErrors.length === 0,
+    app.consoleErrors[0]);
+  app.close();
+
+  // Verified users must never see it.
+  const app2 = await mount('/buyer', { token: buyer.token, user: { ...buyer.user, emailVerified: true } },
+    { settleMs: 1700 });
+  check('a verified user sees no banner', !app2.$('[data-testid="verify-banner"]'));
+  app2.close();
+
+  // Signed-out visitors must never see it either.
+  const app3 = await mount('/', null, { settleMs: 1400 });
+  check('a logged-out visitor sees no banner', !app3.$('[data-testid="verify-banner"]'));
+  app3.close();
+}
+
+// ── 34. The API base URL is resolved, never left empty in production ────────
+section('34. Deployed builds always know where the API is');
+{
+  // The bug this locks down: with VITE_API_URL unset the bundle called the API
+  // same-origin, the static host answered every one of those calls with the
+  // SPA's own index.html at HTTP 200, res.json() threw, api() returned null,
+  // and "Continue with Google" silently did nothing at all.
+  check('the bundle carries a fallback API origin',
+    bundleJs.includes('scottstechx-api.onrender.com'),
+    'no fallback origin found in the built JS');
+  check('the client refuses to treat a non-JSON 200 as data',
+    /did not return data/i.test(bundleJs));
+  check('a missing session token is reported instead of dereferenced',
+    /did not return a session/i.test(bundleJs));
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {

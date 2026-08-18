@@ -15,6 +15,7 @@ import { UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, Servic
 import registerAuthRoute from './modules/auth/login.route.js';
 import registerFirebaseAuthRoute from './modules/auth/firebase-auth.route.js';
 import registerGoogleRoute from './modules/auth/google.route.js';
+import { registerVerifyRoutes } from './modules/auth/verify.route.js';
 import registerProductsRoute from './modules/products/products.route.js';
 import registerStoreSettingsRoute from './modules/seller/store-settings.route.js';
 import registerSellerPublicRoute from './modules/seller/seller-public.route.js';
@@ -100,6 +101,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerAuthRoute(app);
   registerFirebaseAuthRoute(app);
   registerGoogleRoute(app);
+  registerVerifyRoutes(app);
   registerProductsRoute(app);
   registerStoreSettingsRoute(app);
   registerSellerPublicRoute(app);

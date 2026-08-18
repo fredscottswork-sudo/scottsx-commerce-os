@@ -35,7 +35,16 @@ export default function GoogleButton({ redirectTo = '/' }: { redirectTo?: string
         navigate(user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : redirectTo);
       } catch (err) {
         if (!alive) return;
-        setError(err instanceof ApiError ? err.message : 'Google sign-in failed. Please try again.');
+        // Anything that is not an ApiError used to fall through as a bare
+        // TypeError and left the user staring at an unchanged page after a
+        // successful Google popup. Every failure now says something.
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error && err.message
+              ? `Google sign-in failed: ${err.message}`
+              : 'Google sign-in failed. Please try again.'
+        );
       }
     }
 
