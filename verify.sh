@@ -45,13 +45,14 @@ hr "7/9  Android resources (icons, colours, themes)"
 (cd "$ROOT/scottsx-android" && ./tools/res-check.sh) || FAILED=1
 
 hr "4b/9 Web viewport audit (resolved CSS cascade at real widths)"
-for W in 320 360 390 414 768 1280; do
-  (cd "$ROOT/web" && node tests/viewport-audit.mjs "$W" >/dev/null) || {
-    echo "  viewport audit FAILED at ${W}px — rerun: (cd web && node tests/viewport-audit.mjs $W)"
+for WH in "320 780" "360 780" "390 844" "414 896" "768 1024" "1280 800" "360 640" "320 568"; do
+  set -- $WH
+  (cd "$ROOT/web" && node tests/viewport-audit.mjs "$1" "$2" >/dev/null) || {
+    echo "  viewport audit FAILED at ${1}x${2} — rerun: (cd web && node tests/viewport-audit.mjs $1 $2)"
     FAILED=1
   }
 done
-echo "  audited 320 / 360 / 390 / 414 / 768 / 1280 px"
+echo "  audited 8 viewports incl. short screens (360x640, 320x568)"
 
 hr "7b/9 Android layout (edge-to-edge insets, overflow, brand artwork)"
 (cd "$ROOT/scottsx-android" && node ./tools/layout-check.mjs) || FAILED=1

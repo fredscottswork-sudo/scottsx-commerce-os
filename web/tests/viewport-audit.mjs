@@ -23,6 +23,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const DIST = join(ROOT, 'dist');
 const WIDTH = Number(process.argv[2] || 360);
+/** Reference phone height. Height-gated media queries are evaluated against
+    this, so a (max-height: …) fallback does not masquerade as the winner. */
+const HEIGHT_PX = Number(process.argv[3] || 780);
 
 const cssFile = readdirSync(join(DIST, 'assets')).find((f) => f.endsWith('.css'));
 const css = readFileSync(join(DIST, 'assets', cssFile), 'utf8');
@@ -35,12 +38,19 @@ function mediaMatches(params) {
   if (q.includes('prefers-reduced-motion')) return false;
   if (q.includes('hover') || q.includes('pointer')) return false;
   // Evaluate every comma-separated query; any match wins.
+  //
+  // HEIGHT matters too. Ignoring (max-height: …) made every height-gated block
+  // look like it matched, so a short-screen fallback silently overrode the
+  // rule that actually applies on a normal phone — and the audit then reported
+  // the fallback's value as the winner. That masked a genuine regression.
   return q.split(',').some((part) => {
     let ok = true;
-    for (const m of part.matchAll(/\(\s*(min|max)-width:\s*([\d.]+)px\s*\)/g)) {
-      const v = parseFloat(m[2]);
-      if (m[1] === 'min' && !(WIDTH >= v)) ok = false;
-      if (m[1] === 'max' && !(WIDTH <= v)) ok = false;
+    for (const m of part.matchAll(/\(\s*(min|max)-(width|height):\s*([\d.]+)px\s*\)/g)) {
+      const [, bound, axis, raw] = m;
+      const v = parseFloat(raw);
+      const actual = axis === 'width' ? WIDTH : HEIGHT_PX;
+      if (bound === 'min' && !(actual >= v)) ok = false;
+      if (bound === 'max' && !(actual <= v)) ok = false;
     }
     return ok;
   });
@@ -88,6 +98,8 @@ const aiChat = show('AI chat card', '.ai-chat', ['height', 'min-height', 'max-he
 const aiBody = show('AI transcript', '.ai-chat-body', ['height', 'min-height', 'max-height', 'flex', 'overflow-y']);
 const aiConsole = show('AI console grid', '.ai-console', ['grid-template-columns', 'display', 'gap']);
 show('AI composer', '.ai-chat-input', ['padding', 'flex-shrink']);
+const pageSub = resolve('.page-sub', ['font-size', 'line-height']);
+const aiWelcomeP = resolve('.ai-welcome p', ['font-size', 'line-height']);
 const authWrap = show('Auth grid', '.auth-wrap', ['grid-template-columns', 'min-height', 'display']);
 const authBrand = show('Auth brand panel', '.auth-brand', ['padding', 'min-height', 'display']);
 const authCard = show('Auth card', '.auth-card', ['max-width', 'padding', 'width']);
@@ -147,6 +159,37 @@ else if (cardMax === null) {
   ok(`.auth-card max-width "${cardMaxRaw}" is container-relative, so it cannot overflow`);
 } else if (cardMax > avail) bad(`.auth-card max-width ${cardMax}px > available ${avail}px`);
 else ok(`.auth-card max-width ${cardMax}px fits available ${avail}px`);
+
+// 4a. Legibility: nothing may be shrunk below a comfortable reading size.
+// Every previous fix made things FIT by making them smaller, and the result
+// read as cramped. Fitting and legibility are two constraints, not one: the
+// page scrolls vertically (only overflow-x is hidden), so shrinking body copy
+// to win vertical space is never necessary. Guard the floor.
+if (WIDTH <= 620) {
+  const FS = { '--fs-xs': 11.5, '--fs-sm': 12.5, '--fs-base': 14, '--fs-md': 15, '--fs-lg': 17, '--fs-xl': 20, '--fs-2xl': 26, '--fs-3xl': 34 };
+  const toPx = (v) => {
+    if (!v) return null;
+    const m = /var\((--fs-[a-z0-9]+)\)/.exec(v);
+    if (m) return FS[m[1]] ?? null;
+    const n = /^([\d.]+)px$/.exec(v.trim());
+    return n ? parseFloat(n[1]) : null;
+  };
+  // Body copy the user actually reads. 13px is the floor; below that a phone
+  // screen feels squeezed even though it technically fits.
+  const MIN_BODY = 13;
+  const bodyCopy = [
+    ['.page-sub', pageSub],
+    ['.ai-welcome p', aiWelcomeP],
+  ];
+  for (const [name, rule] of bodyCopy) {
+    const fs = toPx(rule?.['font-size']?.value);
+    if (fs === null) { ok(`${name} keeps the inherited body size`); continue; }
+    if (fs < MIN_BODY) {
+      bad(`${name} font-size ${fs}px is below the ${MIN_BODY}px legibility floor — `
+        + 'text will look squeezed');
+    } else ok(`${name} font-size ${fs}px is comfortably readable`);
+  }
+}
 
 // 4b. Arithmetic: do the AUTH screens fit vertically?
 // The audit originally only asked whether the auth CARD was too WIDE. It was
@@ -208,17 +251,35 @@ if (WIDTH <= 620) {
     return subs.length ? subs.reduce((a, b) => a + b, 0) : null;
   };
 
+  // The card must be bounded by the viewport in SOME viewport-relative way, so
+  // the composer can never be pushed out of reach. Two valid shapes:
+  //   calc(100dvh - Npx)  — strict "fit above the fold" budget
+  //   N dvh/vh            — a share of the viewport (the page scrolls, so this
+  //                         is fine and avoids cramming the card into 366px)
   const cardMax = aiChat['max-height']?.value || '';
   const cardSub = resolveCalc(cardMax);
-  if (cardSub === null) {
+  const vhShare = /^([\d.]+)(dvh|vh)$/.exec(cardMax.trim());
+  if (cardSub !== null) {
+    if (cardSub < CHROME) {
+      bad(`.ai-chat subtracts only ${cardSub}px but the chrome above it is ${CHROME}px `
+        + `-> card overflows by ~${CHROME - cardSub}px`);
+    } else {
+      ok(`.ai-chat max-height subtracts ${cardSub}px >= ${CHROME}px of chrome `
+        + `-> card fits in ${HEIGHT - cardSub}px`);
+    }
+  } else if (vhShare) {
+    const share = parseFloat(vhShare[1]);
+    const cardPx = Math.round((share / 100) * HEIGHT);
+    // A share this large would hide the composer even after scrolling.
+    if (share > 85) {
+      bad(`.ai-chat max-height ${cardMax} (${cardPx}px) leaves no room for the page chrome`);
+    } else {
+      ok(`.ai-chat max-height ${cardMax} = ${cardPx}px on a ${HEIGHT}px phone — `
+        + 'bounded, and the page scrolls to reach it');
+    }
+  } else {
     bad(`.ai-chat has no viewport-relative max-height (got "${cardMax || 'none'}") `
       + '— nothing bounds the card to the screen');
-  } else if (cardSub < CHROME) {
-    bad(`.ai-chat subtracts only ${cardSub}px but the chrome above it is ${CHROME}px `
-      + `-> card overflows by ~${CHROME - cardSub}px`);
-  } else {
-    ok(`.ai-chat max-height subtracts ${cardSub}px >= ${CHROME}px of chrome `
-      + `-> card fits in ${HEIGHT - cardSub}px`);
   }
 
   // The transcript must be able to shrink, or it re-inflates the card.
