@@ -3,7 +3,10 @@
  * One fetch wrapper, one token source, normalized errors. Every page uses this.
  */
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) || '';
+// Trailing slashes are stripped: a VITE_API_URL of "https://api.example.com/"
+// would otherwise build "https://api.example.com//api/v1", which the backend
+// answers with 404 on every single request. Easy to type, painful to diagnose.
+const BASE = ((import.meta.env.VITE_API_URL as string | undefined) || '').replace(/\/+$/, '');
 export const API_ROOT = `${BASE}/api/v1`;
 
 const TOKEN_KEY = 'stx_token';

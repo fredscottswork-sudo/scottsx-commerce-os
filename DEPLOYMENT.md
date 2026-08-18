@@ -66,6 +66,23 @@ Ordered by how hard they block you.
 
 ---
 
+## 0. Fastest route: the Blueprint
+
+`render.yaml` at the repo root defines the database, the API and the website
+together. In the Render dashboard: **New → Blueprint**, connect the repo, set
+**Branch** to `arena/01a01321-scottsx-commerce-os`, and leave **Blueprint Path**
+blank (it defaults to `render.yaml` at the root). Render prompts for
+`ADMIN_EMAIL` and `ADMIN_PASSWORD`; `JWT_SECRET`, `DATABASE_URL` and the site's
+`VITE_API_URL` are wired automatically.
+
+Caveat: it requests free Postgres, which **Render deletes after 30 days**.
+Switch `plan: free` to `plan: basic-256mb`, or drop the `databases:` block and
+use Neon, before you put real data in it.
+
+The sections below cover the same deployment done by hand.
+
+---
+
 ## 1. Backend → Render
 
 Render is the least fiddly host for this shape of app (persistent Node process,
