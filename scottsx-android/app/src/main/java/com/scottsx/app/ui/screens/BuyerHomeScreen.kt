@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,12 +71,23 @@ fun BuyerHomeScreen(
 ) {
     var products by remember { mutableStateOf<List<Product>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var cartCount by remember { mutableIntStateOf(0) }
     val currentUser by SessionCache.user.collectAsState()
 
     LaunchedEffect(Unit) {
         val live = V2Client.fetchProductsList()
         products = if (live.isNotEmpty()) live else MarketplaceDataSource.products
         loading = false
+    }
+
+    // Refresh the badge whenever this screen is shown again — the buyer may
+    // have just added something, or emptied the cart by checking out.
+    LaunchedEffect(currentUser?.id) {
+        if (currentUser != null) {
+            V2Client.fetchCart().onSuccess { cartCount = it.itemCount }
+        } else {
+            cartCount = 0
+        }
     }
 
     val flashDeals = products.filter { it.isFlashDeal }
@@ -134,6 +147,37 @@ fun BuyerHomeScreen(
                         }
                     }
                     Spacer(Modifier.weight(1f))
+                    // Cart, with a live count so the buyer can see they have
+                    // something waiting without opening the screen.
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { onNavigate(Routes.CART) }
+                            .padding(6.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.ShoppingCart,
+                            contentDescription = if (cartCount > 0) "Cart, $cartCount items" else "Cart",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(26.dp),
+                        )
+                        if (cartCount > 0) {
+                            Surface(
+                                color = ScottsTechXColors.ErrorRed,
+                                shape = CircleShape,
+                                modifier = Modifier.align(Alignment.TopEnd),
+                            ) {
+                                Text(
+                                    if (cartCount > 9) "9+" else cartCount.toString(),
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(6.dp))
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = CircleShape,

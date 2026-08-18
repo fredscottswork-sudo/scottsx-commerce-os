@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Trash2, Plus, Wallet } from 'lucide-react';
+import { CreditCard, Plus, Trash2, Wallet } from 'lucide-react';
 import { buyerService } from '../../api/services';
 import type { PaymentMethod } from '../../api/types';
 import { useToast } from '../../store/ToastContext';
@@ -53,7 +53,7 @@ export default function Payments() {
       <PageHeader title="Payment methods" sub="Mobile Money & cards — shared with the mobile app."
         actions={<Btn variant="primary" onClick={() => setOpen(true)}><Plus size={16} /> Add method</Btn>} />
       {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={load} /> :
-        items.length === 0 ? <Empty emoji="💳" title="No payment methods" subtitle="Add Mobile Money or a card." /> :
+        items.length === 0 ? <Empty icon={<CreditCard size={28} />} title="No payment methods" subtitle="Add Mobile Money or a card." /> :
         <div className="grid grid-2">
           {items.map((m) => (
             <Card key={m.id}>

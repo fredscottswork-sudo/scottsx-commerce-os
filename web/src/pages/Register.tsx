@@ -4,6 +4,7 @@ import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { Btn, Field, Input, Select } from '../components/ui';
 import { ApiError } from '../api/client';
+import GoogleButton from '../components/GoogleButton';
 
 export default function Register() {
   const { register } = useAuth();
@@ -90,6 +91,7 @@ export default function Register() {
               {busy ? 'Creating…' : 'Create account'}
             </Btn>
           </form>
+          <GoogleButton />
           <p className="muted mt-16" style={{ textAlign: 'center' }}>
             Already have an account? <Link to="/login">Sign in</Link>
           </p>

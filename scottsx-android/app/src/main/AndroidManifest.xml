@@ -25,5 +25,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Firebase Cloud Messaging receiver. The backend fans notifications out
+          to every device token registered for a user; this posts them to the
+          system tray. Without this <service> the app would register tokens but
+          never receive anything.
+        -->
+        <service
+            android:name=".data.push.ScottsMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Channel used when a push arrives without an explicit channel id. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="general" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/logo" />
     </application>
 </manifest>

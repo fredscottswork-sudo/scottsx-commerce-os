@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingBag, MapPin, Sparkles, CreditCard } from 'lucide-react';
+import { CreditCard, MapPin, Search, ShoppingBag, Sparkles } from 'lucide-react';
 import { productService, aiService } from '../api/services';
 import type { Product } from '../api/types';
 import { ProductCard } from '../components/ProductCard';
@@ -78,7 +78,7 @@ export default function Home() {
 
       <h2 className="mb-16">All products ({filtered.length})</h2>
       {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={load} /> :
-        filtered.length === 0 ? <Empty emoji="🔍" title="No products found" subtitle="Try another category or search." /> :
+        filtered.length === 0 ? <Empty icon={<Search size={28} />} title="No products found" subtitle="Try another category or search." /> :
         <div className="pgrid">
           {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
         </div>}

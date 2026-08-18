@@ -17,10 +17,43 @@ android {
         versionName = "0.22.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // API base URL. Override per build without touching Kotlin:
+        //   ./gradlew assembleRelease -PapiBaseUrl=https://api.example.com/api/v1
+        // Default is the emulator loopback (10.0.2.2 -> the host machine).
+        val apiBaseUrl = (project.findProperty("apiBaseUrl") as String?)
+            ?: "http://10.0.2.2:3001/api/v1"
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+    }
+
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
+    val keystoreProperties = java.util.Properties().apply {
+        if (keystorePropertiesFile.exists()) {
+            keystorePropertiesFile.inputStream().use { load(it) }
+        }
+    }
+    val storeFilePath = keystoreProperties.getProperty("storeFile")
+        ?: System.getenv("ANDROID_KEYSTORE_PATH")
+
+    signingConfigs {
+        if (storeFilePath != null && file(storeFilePath).exists()) {
+            create("release") {
+                storeFile = file(storeFilePath)
+                storePassword = keystoreProperties.getProperty("storePassword")
+                    ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                    ?: System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                    ?: System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
+            // Only sign for release when a keystore was actually supplied;
+            // otherwise the build still succeeds (debug-signed).
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -40,6 +73,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -74,6 +108,8 @@ dependencies {
     // Firebase Auth (google-services.json in app/)
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
     implementation("com.google.firebase:firebase-auth-ktx")
+    // Push notifications: the backend already fans out to device tokens.
+    implementation("com.google.firebase:firebase-messaging-ktx")
     implementation("com.google.android.gms:play-services-base:18.4.0")
 
     // Coil image loading (2.x, global ImageLoader in ScottsTechXApp)

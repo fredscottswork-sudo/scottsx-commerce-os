@@ -5,7 +5,7 @@
  * issuer `scottstechx`, audience `scottstechx-api`), plus Fastify
  * preHandler helpers that read the `Authorization: Bearer <jwt>` header.
  */
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { UnauthorizedError, ForbiddenError } from './errors.js';

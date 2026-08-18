@@ -67,27 +67,51 @@ data class Product(
     val isFlashDeal: Boolean = false,
     val discountPercent: Int = 0,
     val location: String = "",
+    /** draft | pending | approved | rejected | suspended */
+    val status: String = "approved",
+    val rejectionReason: String? = null,
+    val viewCount: Int = 0,
 ) {
     val priceUgx: Long get() = priceMinor
+
+    /** Live on the marketplace and visible to buyers. */
+    val isPubliclyVisible: Boolean get() = status == "approved"
+
+    /** Waiting on an admin decision — the seller cannot self-publish. */
+    val isAwaitingReview: Boolean get() = status == "pending"
+
+    /** Human label for the seller's inventory list. */
+    val statusLabel: String
+        get() = when (status) {
+            "approved" -> "Live"
+            "pending" -> "In review"
+            "rejected" -> "Rejected"
+            "suspended" -> "Suspended"
+            "draft" -> "Draft"
+            else -> status.replaceFirstChar { it.uppercase() }
+        }
 
     companion object {
         fun fromJson(o: JSONObject): Product = Product(
             id = o.optString("id"),
-            title = o.optString("title"),
-            description = o.optString("description"),
+            title = o.optStringSafe("title"),
+            description = o.optStringSafe("description"),
             priceMinor = o.optLong("priceMinor", 0),
             oldPriceMinor = if (o.isNull("oldPriceMinor")) null else o.optLong("oldPriceMinor"),
             currency = o.optString("currency", "UGX"),
             stockQuantity = o.optInt("stockQuantity", 1),
-            imageUrl = o.optString("imageUrl"),
-            category = o.optString("category", "Other"),
-            brand = o.optString("brand"),
+            imageUrl = o.optStringSafe("imageUrl"),
+            category = o.optStringSafe("category", "Other").ifBlank { "Other" },
+            brand = o.optStringSafe("brand"),
             seller = Seller.fromJson(o.optJSONObject("seller") ?: JSONObject()),
             rating = o.optDouble("rating", 0.0),
             ratingCount = o.optInt("ratingCount", 0),
             isFlashDeal = o.optBoolean("isFlashDeal"),
             discountPercent = o.optInt("discountPercent", 0),
-            location = o.optString("location"),
+            location = o.optStringSafe("location"),
+            status = o.optStringSafe("status", "approved").ifBlank { "approved" },
+            rejectionReason = o.optStringOrNull("rejectionReason"),
+            viewCount = o.optInt("viewCount", 0),
         )
 
         fun fromJsonArray(arr: JSONArray): List<Product> =
@@ -110,15 +134,46 @@ data class NearbySeller(
     val serviceRadiusKm: Int = 20,
     val productCount: Int = 0,
     val distanceKm: Double = 0.0,
+    /** True when the seller shares location AND the fix is under 30 min old. */
+    val live: Boolean = false,
+    val locationSharing: Boolean = false,
+    /** Minutes since the last position fix; null when never shared. */
+    val locationAgeMinutes: Int? = null,
+    val isOpen: Boolean = true,
+    val deliveryFeeUgx: Long = 0,
+    val freeAboveUgx: Long = 0,
+    val codEnabled: Boolean = true,
+    val newThisWeek: Int = 0,
+    val etaMinutes: Int = 0,
+    val withinServiceRadius: Boolean = false,
+    /** Reverse-geocoded pin, e.g. "Kireka, Central Region". May be blank. */
+    val placeLabel: String = "",
 ) {
+    /**
+     * What to show under the store pin.
+     *
+     * A seller who has not enabled location keeps their last known position —
+     * the pin must not disappear or jump to the buyer. This label makes the
+     * distinction visible instead of implying a stale pin is live.
+     */
+    val positionLabel: String
+        get() = when {
+            live -> "Live now"
+            locationAgeMinutes != null && locationAgeMinutes < 60 -> "$locationAgeMinutes min ago"
+            locationAgeMinutes != null && locationAgeMinutes < 1440 ->
+                "${locationAgeMinutes / 60}h ago"
+            locationAgeMinutes != null -> "${locationAgeMinutes / 1440}d ago"
+            else -> "Last known position"
+        }
+
     companion object {
         fun fromJson(o: JSONObject): NearbySeller = NearbySeller(
             id = o.optString("id"),
-            name = o.optString("name", o.optString("storeName")),
-            storeName = o.optString("storeName"),
-            description = o.optString("description"),
-            city = o.optString("city"),
-            address = o.optString("address"),
+            name = o.optStringSafe("name").ifBlank { o.optStringSafe("storeName") },
+            storeName = o.optStringSafe("storeName"),
+            description = o.optStringSafe("description"),
+            city = o.optStringSafe("city"),
+            address = o.optStringSafe("address"),
             verified = o.optBoolean("verified"),
             rating = o.optDouble("rating", 0.0),
             logoUrl = o.optStringOrNull("logoUrl"),
@@ -127,7 +182,84 @@ data class NearbySeller(
             serviceRadiusKm = o.optInt("serviceRadiusKm", 20),
             productCount = o.optInt("productCount", 0),
             distanceKm = o.optDouble("distanceKm", 0.0),
+            live = o.optBoolean("live", false),
+            locationSharing = o.optBoolean("locationSharing", false),
+            locationAgeMinutes = if (o.isNull("locationAgeMinutes")) null else o.optInt("locationAgeMinutes"),
+            isOpen = o.optBoolean("isOpen", true),
+            deliveryFeeUgx = o.optLong("deliveryFeeUgx", 0),
+            freeAboveUgx = o.optLong("freeAboveUgx", 0),
+            codEnabled = o.optBoolean("codEnabled", true),
+            newThisWeek = o.optInt("newThisWeek", 0),
+            etaMinutes = o.optInt("etaMinutes", 0),
+            withinServiceRadius = o.optBoolean("withinServiceRadius", false),
+            placeLabel = o.optStringSafe("placeLabel"),
         )
+    }
+}
+
+/**
+ * A reverse-geocoded position, resolved by the backend's offline gazetteer.
+ *
+ * Every field except [accuracyKm] can be absent — the ocean has no city — so
+ * they are nullable and the UI should prefer [label] / [shortLabel].
+ */
+data class Place(
+    val village: String? = null,
+    val city: String? = null,
+    val region: String? = null,
+    val country: String? = null,
+    val countryCode: String? = null,
+    val accuracyKm: Double = 0.0,
+    /** "Kabalagala, Kampala, Central Region, Uganda" */
+    val label: String = "",
+    /** "Kabalagala, Central Region" */
+    val shortLabel: String = "",
+) {
+    companion object {
+        fun fromJson(o: JSONObject): Place = Place(
+            village = o.optStringOrNull("village"),
+            city = o.optStringOrNull("city"),
+            region = o.optStringOrNull("region"),
+            country = o.optStringOrNull("country"),
+            countryCode = o.optStringOrNull("countryCode"),
+            accuracyKm = o.optDouble("accuracyKm", 0.0),
+            label = o.optStringSafe("label"),
+            shortLabel = o.optStringSafe("shortLabel"),
+        )
+    }
+}
+
+/** GET /sellers/nearby — the list plus how many are broadcasting live. */
+data class NearbyResult(
+    val sellers: List<NearbySeller> = emptyList(),
+    /** How many rows came back in this page. */
+    val count: Int = 0,
+    /** How many stores match in total, ignoring the page limit. */
+    val total: Int = 0,
+    val liveCount: Int = 0,
+    /** Where the buyer is, named. Null when the gazetteer can't place them. */
+    val place: Place? = null,
+)
+
+/** AI search / image-search / voice-search response. */
+data class AiSearchResult(
+    val query: String = "",
+    val explanation: String = "",
+    val products: List<Product> = emptyList(),
+    val detected: String? = null,
+) {
+    companion object {
+        fun fromJson(o: JSONObject): AiSearchResult {
+            val arr = o.optJSONArray("products")
+            return AiSearchResult(
+                query = o.optStringSafe("query"),
+                explanation = o.optStringSafe("explanation"),
+                products = if (arr == null) emptyList() else {
+                    (0 until arr.length()).map { Product.fromJson(arr.getJSONObject(it)) }
+                },
+                detected = o.optStringOrNull("detected"),
+            )
+        }
     }
 }
 
@@ -137,10 +269,19 @@ data class OtherParty(
     val id: String,
     val name: String,
     val role: String = "buyer",
+    val photoUrl: String? = null,
+    val verified: Boolean = false,
+    val location: String? = null,
 ) {
     companion object {
-        fun fromJson(o: JSONObject): OtherParty =
-            OtherParty(o.optString("id"), o.optString("name"), o.optString("role", "buyer"))
+        fun fromJson(o: JSONObject): OtherParty = OtherParty(
+            id = o.optString("id"),
+            name = o.optString("name"),
+            role = o.optString("role", "buyer"),
+            photoUrl = o.optStringOrNull("photoUrl"),
+            verified = o.optBoolean("verified", false),
+            location = o.optStringOrNull("location"),
+        )
     }
 }
 
@@ -150,39 +291,134 @@ data class Conversation(
     val lastMessage: String = "",
     val lastTime: String = "",
     val unread: Int = 0,
+    val productId: String? = null,
     val productTitle: String? = null,
+    val productImageUrl: String? = null,
+    val productPriceMinor: Long? = null,
     val mySide: String = "buyer",
+    val pinned: Boolean = false,
+    val archived: Boolean = false,
+    val muted: Boolean = false,
+    val pendingOffers: Int = 0,
+    val messageCount: Int = 0,
+    val lastSenderId: String? = null,
+    /** Only populated by GET /conversations/:id. */
+    val otherTyping: Boolean = false,
 ) {
     companion object {
         fun fromJson(o: JSONObject): Conversation = Conversation(
             id = o.optString("id"),
             otherParty = OtherParty.fromJson(o.optJSONObject("otherParty") ?: JSONObject()),
-            lastMessage = o.optString("lastMessage"),
-            lastTime = o.optString("lastTime"),
+            lastMessage = o.optStringSafe("lastMessage"),
+            lastTime = o.optStringSafe("lastTime"),
             unread = o.optInt("unread", 0),
+            productId = o.optStringOrNull("productId"),
             productTitle = o.optStringOrNull("productTitle"),
+            productImageUrl = o.optStringOrNull("productImageUrl"),
+            productPriceMinor = if (o.isNull("productPriceMinor")) null else o.optLong("productPriceMinor"),
             mySide = o.optString("mySide", "buyer"),
+            pinned = o.optBoolean("pinned", false),
+            archived = o.optBoolean("archived", false),
+            muted = o.optBoolean("muted", false),
+            pendingOffers = o.optInt("pendingOffers", 0),
+            messageCount = o.optInt("messageCount", 0),
+            lastSenderId = o.optStringOrNull("lastSenderId"),
+            otherTyping = o.optBoolean("otherTyping", false),
         )
     }
 }
+
+/** Inbox filter counts returned alongside GET /conversations. */
+data class InboxCounts(
+    val all: Int = 0,
+    val unread: Int = 0,
+    val pinned: Int = 0,
+    val archived: Int = 0,
+    val offers: Int = 0,
+) {
+    companion object {
+        fun fromJson(o: JSONObject): InboxCounts = InboxCounts(
+            all = o.optInt("all", 0),
+            unread = o.optInt("unread", 0),
+            pinned = o.optInt("pinned", 0),
+            archived = o.optInt("archived", 0),
+            offers = o.optInt("offers", 0),
+        )
+    }
+}
+
+/** GET /conversations response: the list plus whole-inbox counters. */
+data class Inbox(
+    val conversations: List<Conversation> = emptyList(),
+    val counts: InboxCounts = InboxCounts(),
+    val totalUnread: Int = 0,
+)
 
 data class ChatMessage(
     val id: String,
     val senderId: String,
     val text: String = "",
     val imageUrl: String? = null,
+    val attachmentName: String? = null,
+    /** text | image | offer | system */
+    val kind: String = "text",
+    val productId: String? = null,
+    val productTitle: String? = null,
+    val offerMinor: Long? = null,
+    /** pending | accepted | declined | countered | withdrawn */
+    val offerStatus: String? = null,
+    val offerQuantity: Int = 1,
+    val replyToId: String? = null,
+    val deletedAt: String? = null,
+    val readByOther: Boolean = false,
     val createdAt: String = "",
 ) {
     val timeLabel: String
         get() = createdAt.takeIf { it.isNotBlank() }?.substringAfter("T")?.substring(0, 5) ?: ""
 
+    val isOffer: Boolean get() = kind == "offer"
+    val isSystem: Boolean get() = kind == "system"
+    val isRetracted: Boolean get() = deletedAt != null
+    val offerPending: Boolean get() = offerStatus == "pending"
+
     companion object {
         fun fromJson(o: JSONObject): ChatMessage = ChatMessage(
             id = o.optString("id"),
             senderId = o.optString("senderId"),
-            text = o.optString("text"),
+            text = o.optStringSafe("text"),
             imageUrl = o.optStringOrNull("imageUrl"),
-            createdAt = o.optString("createdAt"),
+            attachmentName = o.optStringOrNull("attachmentName"),
+            kind = o.optString("kind", "text").ifBlank { "text" },
+            productId = o.optStringOrNull("productId"),
+            productTitle = o.optStringOrNull("productTitle"),
+            offerMinor = if (o.isNull("offerMinor")) null else o.optLong("offerMinor"),
+            offerStatus = o.optStringOrNull("offerStatus"),
+            offerQuantity = o.optInt("offerQuantity", 1),
+            replyToId = o.optStringOrNull("replyToId"),
+            deletedAt = o.optStringOrNull("deletedAt"),
+            readByOther = o.optBoolean("readByOther", false),
+            createdAt = o.optStringSafe("createdAt"),
+        )
+    }
+}
+
+/** GET /conversations/:id/messages */
+data class Transcript(
+    val messages: List<ChatMessage> = emptyList(),
+    val otherTyping: Boolean = false,
+)
+
+/** A saved canned response (GET /me/quick-replies). */
+data class QuickReplyItem(
+    val id: String,
+    val text: String,
+    val sortOrder: Int = 0,
+) {
+    companion object {
+        fun fromJson(o: JSONObject): QuickReplyItem = QuickReplyItem(
+            id = o.optString("id"),
+            text = o.optString("text"),
+            sortOrder = o.optInt("sortOrder", 0),
         )
     }
 }
@@ -599,10 +835,136 @@ data class CheckoutResult(
     }
 }
 
+// ── Cart (GET/POST /me/cart) ────────────────────────────────────────────────
+
+/**
+ * One line in the buyer's cart.
+ *
+ * [stockQuantity] is the seller's *current* stock, not what the buyer picked —
+ * it is what lets the UI stop someone increasing a line past what exists
+ * instead of failing at checkout with a 409.
+ */
+data class CartItem(
+    val productId: String,
+    val title: String = "",
+    val quantity: Int = 1,
+    val priceMinor: Long = 0,
+    val lineTotalMinor: Long = 0,
+    val stockQuantity: Int = 0,
+    val imageUrl: String = "",
+    /** approved | pending | rejected | suspended. */
+    val status: String = "approved",
+    val sellerId: String = "",
+    val sellerName: String = "",
+) {
+    /** A line the buyer cannot actually check out — moderation pulled it. */
+    val isUnavailable: Boolean get() = status != "approved" || stockQuantity <= 0
+
+    companion object {
+        fun fromJson(o: JSONObject): CartItem = CartItem(
+            productId = o.optString("productId"),
+            title = o.optStringSafe("title"),
+            quantity = o.optInt("quantity", 1),
+            priceMinor = o.optLong("priceMinor", 0),
+            lineTotalMinor = o.optLong("lineTotalMinor", 0),
+            stockQuantity = o.optInt("stockQuantity", 0),
+            imageUrl = o.optStringSafe("imageUrl"),
+            status = o.optStringSafe("status", "approved"),
+            sellerId = o.optStringSafe("sellerId"),
+            sellerName = o.optStringSafe("sellerName"),
+        )
+    }
+}
+
+/** The whole cart. Every mutation returns this, so the client never drifts. */
+data class Cart(
+    val items: List<CartItem> = emptyList(),
+    val subtotalMinor: Long = 0,
+    val itemCount: Int = 0,
+    val currency: String = "UGX",
+) {
+    val isEmpty: Boolean get() = items.isEmpty()
+
+    companion object {
+        fun fromJson(o: JSONObject): Cart {
+            val arr = o.optJSONArray("items") ?: JSONArray()
+            return Cart(
+                items = (0 until arr.length()).map { CartItem.fromJson(arr.getJSONObject(it)) },
+                subtotalMinor = o.optLong("subtotalMinor", 0),
+                itemCount = o.optInt("itemCount", 0),
+                currency = o.optStringSafe("currency", "UGX"),
+            )
+        }
+    }
+}
+
+/** One order created by cart checkout — the API makes one per cart line. */
+data class PlacedOrder(
+    val id: String,
+    val productId: String = "",
+    val sellerId: String = "",
+    val title: String = "",
+    val amountMinor: Long = 0,
+    val quantity: Int = 1,
+    val status: String = "pending",
+    val createdAt: String = "",
+) {
+    companion object {
+        fun fromJson(o: JSONObject): PlacedOrder = PlacedOrder(
+            id = o.optString("id"),
+            productId = o.optStringSafe("productId"),
+            sellerId = o.optStringSafe("sellerId"),
+            title = o.optStringSafe("title"),
+            amountMinor = o.optLong("amount", 0),
+            quantity = o.optInt("quantity", 1),
+            status = o.optStringSafe("status", "pending"),
+            createdAt = o.optStringSafe("createdAt"),
+        )
+    }
+}
+
+/**
+ * POST /me/cart/checkout — cash on delivery.
+ *
+ * Distinct from [CheckoutResult], which models the Nylon Pay hosted-payment
+ * flow and returns 503 until those credentials are configured. This is the
+ * path that works today and matches the web checkout.
+ */
+data class CartCheckoutResult(
+    val orders: List<PlacedOrder> = emptyList(),
+    val orderCount: Int = 0,
+    val totalMinor: Long = 0,
+    val currency: String = "UGX",
+    val paymentMode: String = "cod",
+    val message: String = "",
+) {
+    companion object {
+        fun fromJson(o: JSONObject): CartCheckoutResult {
+            val arr = o.optJSONArray("orders") ?: JSONArray()
+            return CartCheckoutResult(
+                orders = (0 until arr.length()).map { PlacedOrder.fromJson(arr.getJSONObject(it)) },
+                orderCount = o.optInt("orderCount", arr.length()),
+                totalMinor = o.optLong("totalMinor", 0),
+                currency = o.optStringSafe("currency", "UGX"),
+                paymentMode = o.optStringSafe("paymentMode", "cod"),
+                message = o.optStringSafe("message"),
+            )
+        }
+    }
+}
+
 // ── small JSON helpers ──────────────────────────────────────────────────────
 
 internal fun JSONObject.optStringOrNull(key: String): String? =
     if (isNull(key) || optString(key).isBlank()) null else optString(key)
+
+/**
+ * org.json's [JSONObject.optString] returns the literal string "null" when the
+ * value is a JSON null — verified against org.json 1.8. That leaks "null" into
+ * the UI, so anything reading a nullable column must use this instead.
+ */
+internal fun JSONObject.optStringSafe(key: String, fallback: String = ""): String =
+    if (isNull(key)) fallback else optString(key, fallback)
 
 internal fun JSONObject.optLongOrNull(key: String): Long? =
     if (isNull(key)) null else optLong(key)

@@ -1,13 +1,16 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode,
+} from 'react';
 import { buyerService } from '../api/services';
 import { tokenStore } from '../api/client';
 
-type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 interface ThemeState {
   mode: ThemeMode;
   resolved: 'light' | 'dark';
   setMode: (m: ThemeMode) => void;
+  toggle: () => void;
 }
 
 const ThemeContext = createContext<ThemeState | null>(null);
@@ -17,38 +20,49 @@ function systemPrefersDark(): boolean {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 }
 
+function readStored(): ThemeMode {
+  const saved = localStorage.getItem(KEY);
+  return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'dark';
+}
+
+function resolve(mode: ThemeMode): 'light' | 'dark' {
+  return mode === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : mode;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem(KEY);
-    return saved === 'light' || saved === 'dark' || saved === 'system' ? (saved as ThemeMode) : 'system';
-  });
-  const [resolved, setResolved] = useState<'light' | 'dark'>(
-    mode === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : mode
-  );
+  // Dark (deep blue + black) is the signature default; light flips black→white.
+  const [mode, setModeState] = useState<ThemeMode>(readStored);
+  const [resolved, setResolved] = useState<'light' | 'dark'>(() => resolve(readStored()));
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', resolved);
+    // Keep the browser UI (address bar / form controls) in sync.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const color = resolved === 'dark' ? '#05070d' : '#f5f7fc';
+    if (meta) meta.setAttribute('content', color);
   }, [resolved]);
 
   useEffect(() => {
-    const onSystem = () => {
-      if (mode === 'system') setResolved(systemPrefersDark() ? 'dark' : 'light');
-    };
-    window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', onSystem);
-    return () => window.matchMedia?.('(prefers-color-scheme: dark)').removeEventListener('change', onSystem);
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!mq) return;
+    const onSystem = () => { if (mode === 'system') setResolved(systemPrefersDark() ? 'dark' : 'light'); };
+    mq.addEventListener('change', onSystem);
+    return () => mq.removeEventListener('change', onSystem);
   }, [mode]);
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
     localStorage.setItem(KEY, m);
-    setResolved(m === 'system' ? (systemPrefersDark() ? 'dark' : 'light') : m);
-    // Persist to the backend when signed in (shared with mobile).
-    if (tokenStore.get()) {
-      buyerService.savePreferences({ theme: m }).catch(() => undefined);
-    }
+    setResolved(resolve(m));
+    // Persist to the backend so the phone and the web app agree.
+    if (tokenStore.get()) buyerService.savePreferences({ theme: m }).catch(() => undefined);
   }, []);
 
-  const value = useMemo(() => ({ mode, resolved, setMode }), [mode, resolved, setMode]);
+  const toggle = useCallback(() => {
+    setMode(resolve(readStored()) === 'dark' ? 'light' : 'dark');
+  }, [setMode]);
+
+  const value = useMemo(() => ({ mode, resolved, setMode, toggle }), [mode, resolved, setMode, toggle]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

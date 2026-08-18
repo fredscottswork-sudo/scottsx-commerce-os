@@ -9,7 +9,7 @@
  * Idempotent: it wipes the seed-owned rows and re-inserts fresh data.
  */
 import pg from 'pg';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import dotenv from 'dotenv';

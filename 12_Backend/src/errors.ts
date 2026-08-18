@@ -35,3 +35,11 @@ export class ServiceUnavailableError extends Error {
     this.name = 'ServiceUnavailableError';
   }
 }
+
+/** 400 — request understood but the payload fails a business rule. */
+export class ValidationError extends Error {
+  constructor(message = 'Validation error') {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}

@@ -6,21 +6,31 @@ import com.scottsx.app.data.domain.AiReply
 import com.scottsx.app.data.domain.AppNotification
 import com.scottsx.app.data.domain.AuthResult
 import com.scottsx.app.data.domain.ChatMessage
+import com.scottsx.app.data.domain.Cart
+import com.scottsx.app.data.domain.CartCheckoutResult
+import com.scottsx.app.BuildConfig
 import com.scottsx.app.data.domain.CheckoutResult
 import com.scottsx.app.data.domain.CmsPage
 import com.scottsx.app.data.domain.Conversation
 import com.scottsx.app.data.domain.CurrentUserPayload
 import com.scottsx.app.data.domain.Faq
+import com.scottsx.app.data.domain.Inbox
+import com.scottsx.app.data.domain.InboxCounts
+import com.scottsx.app.data.domain.AiSearchResult
+import com.scottsx.app.data.domain.NearbyResult
 import com.scottsx.app.data.domain.NearbySeller
 import com.scottsx.app.data.domain.NewProductPayload
 import com.scottsx.app.data.domain.Order
 import com.scottsx.app.data.domain.PaymentMethod
+import com.scottsx.app.data.domain.Place
 import com.scottsx.app.data.domain.Product
+import com.scottsx.app.data.domain.QuickReplyItem
 import com.scottsx.app.data.domain.Refund
 import com.scottsx.app.data.domain.SellerDashboardStats
 import com.scottsx.app.data.domain.SellerProfile
 import com.scottsx.app.data.domain.StoreSettings
 import com.scottsx.app.data.domain.SupportTicket
+import com.scottsx.app.data.domain.Transcript
 import com.scottsx.app.data.domain.UserSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -41,9 +51,11 @@ import java.util.concurrent.TimeUnit
  */
 object V2Client {
 
-    // Local dev. The emulator maps 10.0.2.2 -> the host machine;
-    // for a physical phone replace with your PC's LAN IP (e.g. http://192.168.1.10:3001).
-    private const val BASE_URL = "http://127.0.0.1:3001/api/v1"
+    // Set at build time from app/build.gradle.kts. Defaults to the emulator
+    // loopback (10.0.2.2 -> the host machine); override per build with
+    //   ./gradlew assembleRelease -PapiBaseUrl=https://api.example.com/api/v1
+    // For a physical phone on your LAN, pass your PC's IP the same way.
+    private val BASE_URL = BuildConfig.API_BASE_URL
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -187,10 +199,17 @@ object V2Client {
         null
     }
 
-    suspend fun updateMe(displayName: String? = null, phone: String? = null): Boolean = try {
+    suspend fun updateMe(
+        displayName: String? = null,
+        phone: String? = null,
+        city: String? = null,
+        profilePhotoUrl: String? = null,
+    ): Boolean = try {
         val body = JSONObject()
         displayName?.let { body.put("displayName", it) }
         phone?.let { body.put("phone", it) }
+        city?.let { body.put("city", it) }
+        profilePhotoUrl?.let { body.put("profilePhotoUrl", it) }
         call("/auth/me", "PATCH", body).has("user")
     } catch (e: Exception) {
         false
@@ -320,17 +339,98 @@ object V2Client {
         null
     }
 
+    /** Convenience wrapper. Null [radiusKm] searches the whole marketplace. */
     suspend fun fetchNearbySellers(
         lat: Double,
         lng: Double,
-        radiusKm: Int = 50,
-    ): List<NearbySeller> = try {
-        val r = call("/sellers/nearby?lat=$lat&lng=$lng&radiusKm=$radiusKm", auth = false)
+        radiusKm: Int? = null,
+    ): List<NearbySeller> = fetchNearby(lat, lng, radiusKm).sellers
+
+    /**
+     * Nearby stores, re-sorted by distance from the buyer's current position.
+     *
+     * Sellers who have not enabled location sharing keep their last known pin
+     * (the API coalesces last_lat/last_lng), so a store never vanishes from the
+     * map — it is simply reported as not live.
+     *
+     * @param sort distance | rating | products | newest
+     */
+    suspend fun fetchNearby(
+        lat: Double,
+        lng: Double,
+        /**
+         * Kilometres to search within. **Null means no limit** — the whole
+         * marketplace, nearest first — which is the default because a buyer
+         * with no store inside 50 km should still see the closest ones rather
+         * than an empty screen.
+         */
+        radiusKm: Int? = null,
+        category: String? = null,
+        query: String? = null,
+        verifiedOnly: Boolean = false,
+        openOnly: Boolean = false,
+        sort: String = "distance",
+        limit: Int = 60,
+    ): NearbyResult = try {
+        val params = StringBuilder("?lat=$lat&lng=$lng&sort=$sort&limit=$limit")
+        radiusKm?.let { params.append("&radiusKm=").append(it) }
+        category?.takeIf { it.isNotBlank() }?.let {
+            params.append("&category=").append(java.net.URLEncoder.encode(it, "UTF-8"))
+        }
+        query?.takeIf { it.isNotBlank() }?.let {
+            params.append("&q=").append(java.net.URLEncoder.encode(it, "UTF-8"))
+        }
+        if (verifiedOnly) params.append("&verifiedOnly=true")
+        if (openOnly) params.append("&openOnly=true")
+
+        val r = call("/sellers/nearby$params", auth = false)
         val arr = r.optJSONArray("sellers") ?: JSONArray()
-        (0 until arr.length()).map { NearbySeller.fromJson(arr.getJSONObject(it)) }
+        NearbyResult(
+            sellers = (0 until arr.length()).map { NearbySeller.fromJson(arr.getJSONObject(it)) },
+            count = r.optInt("count", 0),
+            total = r.optInt("total", r.optInt("count", 0)),
+            liveCount = r.optInt("liveCount", 0),
+            place = r.optJSONObject("place")?.let { Place.fromJson(it) },
+        )
     } catch (e: Exception) {
-        emptyList()
+        NearbyResult()
     }
+
+    // ── AI search (text / image / voice) ──────────────────────────────────────
+
+    /** Natural-language search: "cheap phone under 500k in Kampala". */
+    suspend fun aiSearch(query: String, limit: Int = 24): AiSearchResult = try {
+        AiSearchResult.fromJson(
+            call("/ai/search", "POST", JSONObject().put("q", query).put("limit", limit), auth = false),
+        )
+    } catch (e: Exception) {
+        AiSearchResult()
+    }
+
+    /** Image search. Pass a URL and/or on-device ML Kit labels. */
+    suspend fun aiImageSearch(
+        imageUrl: String? = null,
+        hint: String? = null,
+        labels: List<String> = emptyList(),
+    ): AiSearchResult = try {
+        val body = JSONObject()
+        imageUrl?.let { body.put("imageUrl", it) }
+        hint?.let { body.put("hint", it) }
+        if (labels.isNotEmpty()) body.put("labels", JSONArray(labels))
+        AiSearchResult.fromJson(call("/ai/image-search", "POST", body, auth = false))
+    } catch (e: Exception) {
+        AiSearchResult()
+    }
+
+    /** Voice search — the device does speech-to-text, we send the transcript. */
+    suspend fun aiVoiceSearch(transcript: String): AiSearchResult = try {
+        AiSearchResult.fromJson(
+            call("/ai/voice-search", "POST", JSONObject().put("transcript", transcript), auth = false),
+        )
+    } catch (e: Exception) {
+        AiSearchResult()
+    }
+
 
     // ── User settings (the BIG surface) ───────────────────────────────────────
 
@@ -391,7 +491,62 @@ object V2Client {
         null
     }
 
-    /** Create an order + hosted Nylon Pay payment link. Returns null on failure. */
+    // ── Cart (cash on delivery) ───────────────────────────────────────────────
+    //
+    // These return Result<T> rather than null because the failure *message*
+    // matters here: "Only 3 left in stock" is the difference between a buyer
+    // fixing their order and a buyer giving up on a silent no-op.
+
+    suspend fun fetchCart(): Result<Cart> = runCatching {
+        Cart.fromJson(call("/me/cart"))
+    }
+
+    /** Adds to the existing quantity server-side (upsert), not replace. */
+    suspend fun addToCart(productId: String, quantity: Int = 1): Result<Cart> = runCatching {
+        Cart.fromJson(
+            call("/me/cart", "POST", JSONObject().put("productId", productId).put("quantity", quantity)),
+        )
+    }
+
+    /** Sets an absolute quantity. Zero or less removes the line. */
+    suspend fun setCartQuantity(productId: String, quantity: Int): Result<Cart> = runCatching {
+        Cart.fromJson(
+            call("/me/cart/$productId", "PATCH", JSONObject().put("quantity", quantity)),
+        )
+    }
+
+    suspend fun removeFromCart(productId: String): Result<Cart> = runCatching {
+        Cart.fromJson(call("/me/cart/$productId", "DELETE"))
+    }
+
+    suspend fun clearCart(): Result<Cart> = runCatching {
+        Cart.fromJson(call("/me/cart", "DELETE"))
+    }
+
+    /**
+     * Cash-on-delivery checkout: one order per cart line, cart emptied, stock
+     * decremented. Use this rather than [checkout], which needs Nylon Pay
+     * credentials and returns 503 until they are configured.
+     */
+    suspend fun checkoutCart(
+        addressId: String? = null,
+        phone: String = "",
+        note: String = "",
+    ): Result<CartCheckoutResult> = runCatching {
+        val body = JSONObject()
+        addressId?.takeIf { it.isNotBlank() }?.let { body.put("addressId", it) }
+        if (phone.isNotBlank()) body.put("phone", phone)
+        if (note.isNotBlank()) body.put("note", note)
+        CartCheckoutResult.fromJson(call("/me/cart/checkout", "POST", body))
+    }
+
+    /**
+     * Create an order + hosted Nylon Pay payment link. Returns null on failure.
+     *
+     * Currently unused by the UI: POST /orders/checkout answers 503 until Nylon
+     * Pay credentials are configured on the backend, so the buy path is the
+     * cash-on-delivery cart ([checkoutCart]). Kept for when payments go live.
+     */
     suspend fun checkout(productId: String, quantity: Int = 1, buyerPhone: String = ""): CheckoutResult? = try {
         val body = JSONObject()
             .put("productId", productId)
@@ -526,11 +681,37 @@ object V2Client {
 
     // ── Chat ──────────────────────────────────────────────────────────────────
 
-    suspend fun fetchConversations(): List<Conversation> = try {
-        val arr = call("/conversations").optJSONArray("conversations") ?: JSONArray()
-        (0 until arr.length()).map { Conversation.fromJson(arr.getJSONObject(it)) }
+    suspend fun fetchConversations(): List<Conversation> = fetchInbox().conversations
+
+    /**
+     * Inbox with filter counts.
+     *
+     * @param filter one of all | unread | pinned | archived | offers
+     * @param query  free-text match on counterparty, product or last message
+     */
+    suspend fun fetchInbox(filter: String = "all", query: String = ""): Inbox = try {
+        val params = buildList {
+            if (filter.isNotBlank() && filter != "all") add("filter=$filter")
+            if (query.isNotBlank()) add("q=${java.net.URLEncoder.encode(query, "UTF-8")}")
+        }
+        val suffix = if (params.isEmpty()) "" else "?" + params.joinToString("&")
+        val r = call("/conversations$suffix")
+        val arr = r.optJSONArray("conversations") ?: JSONArray()
+        Inbox(
+            conversations = (0 until arr.length()).map { Conversation.fromJson(arr.getJSONObject(it)) },
+            counts = InboxCounts.fromJson(r.optJSONObject("counts") ?: JSONObject()),
+            totalUnread = r.optInt("totalUnread", 0),
+        )
     } catch (e: Exception) {
-        emptyList()
+        Inbox()
+    }
+
+    /** Thread header: counterparty, product context, pin/mute flags, typing. */
+    suspend fun fetchConversation(conversationId: String): Conversation? = try {
+        val o = call("/conversations/$conversationId").optJSONObject("conversation")
+        if (o == null) null else Conversation.fromJson(o)
+    } catch (e: Exception) {
+        null
     }
 
     suspend fun openConversation(sellerId: String, productId: String? = null): String? = try {
@@ -541,11 +722,19 @@ object V2Client {
         null
     }
 
-    suspend fun fetchMessages(conversationId: String): List<ChatMessage> = try {
-        val arr = call("/conversations/$conversationId/messages").optJSONArray("messages") ?: JSONArray()
-        (0 until arr.length()).map { ChatMessage.fromJson(arr.getJSONObject(it)) }
+    suspend fun fetchMessages(conversationId: String): List<ChatMessage> =
+        fetchTranscript(conversationId).messages
+
+    /** Transcript plus the other party's live typing flag. */
+    suspend fun fetchTranscript(conversationId: String): Transcript = try {
+        val r = call("/conversations/$conversationId/messages")
+        val arr = r.optJSONArray("messages") ?: JSONArray()
+        Transcript(
+            messages = (0 until arr.length()).map { ChatMessage.fromJson(arr.getJSONObject(it)) },
+            otherTyping = r.optBoolean("otherTyping", false),
+        )
     } catch (e: Exception) {
-        emptyList()
+        Transcript()
     }
 
     suspend fun sendMessage(conversationId: String, text: String): ChatMessage? = try {
@@ -553,6 +742,140 @@ object V2Client {
         ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
     } catch (e: Exception) {
         null
+    }
+
+    /** Share a photo in the thread. */
+    suspend fun sendImageMessage(
+        conversationId: String,
+        imageUrl: String,
+        attachmentName: String? = null,
+    ): ChatMessage? = try {
+        val body = JSONObject()
+            .put("kind", "image")
+            .put("imageUrl", imageUrl)
+        attachmentName?.let { body.put("attachmentName", it) }
+        val r = call("/conversations/$conversationId/messages", "POST", body)
+        ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Make a price offer. The thread's product is used when [productId] is null.
+     * Only the recipient can accept/decline it.
+     */
+    suspend fun sendOffer(
+        conversationId: String,
+        offerMinor: Long,
+        quantity: Int = 1,
+        productId: String? = null,
+        note: String? = null,
+    ): ChatMessage? = try {
+        val body = JSONObject()
+            .put("kind", "offer")
+            .put("offerMinor", offerMinor)
+            .put("offerQuantity", quantity)
+        productId?.let { body.put("productId", it) }
+        note?.takeIf { it.isNotBlank() }?.let { body.put("text", it) }
+        val r = call("/conversations/$conversationId/messages", "POST", body)
+        ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
+    } catch (e: Exception) {
+        null
+    }
+
+    /** @param action accept | decline | withdraw */
+    suspend fun respondToOffer(
+        conversationId: String,
+        messageId: String,
+        action: String,
+    ): Boolean = try {
+        call(
+            "/conversations/$conversationId/offers/$messageId",
+            "POST",
+            JSONObject().put("action", action),
+        ).optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Retract one of your own messages (soft delete — the row is kept). */
+    suspend fun deleteMessage(conversationId: String, messageId: String): Boolean = try {
+        call("/conversations/$conversationId/messages/$messageId", "DELETE").optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Typing heartbeat; the server expires it after ~6 seconds. */
+    suspend fun setTyping(conversationId: String, typing: Boolean): Boolean = try {
+        call(
+            "/conversations/$conversationId/typing",
+            "POST",
+            JSONObject().put("typing", typing),
+        ).optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Pin / archive / mute a thread for the current user. */
+    suspend fun setConversationState(
+        conversationId: String,
+        pinned: Boolean? = null,
+        archived: Boolean? = null,
+        muted: Boolean? = null,
+    ): Boolean = try {
+        val body = JSONObject()
+        pinned?.let { body.put("pinned", it) }
+        archived?.let { body.put("archived", it) }
+        muted?.let { body.put("muted", it) }
+        call("/conversations/$conversationId/state", "PATCH", body).has("state")
+    } catch (e: Exception) {
+        false
+    }
+
+    // ── Push device tokens ────────────────────────────────────────────────────
+
+    /**
+     * Register this device's FCM token so the backend can push to it.
+     * Called after sign-in and whenever FCM rotates the token.
+     */
+    suspend fun registerDevice(token: String, platform: String = "android"): Boolean = try {
+        call(
+            "/me/devices",
+            "POST",
+            JSONObject().put("token", token).put("platform", platform),
+        ).optBoolean("ok", true)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Drop this device's token — called on sign-out. */
+    suspend fun unregisterDevice(token: String): Boolean = try {
+        call("/me/devices", "DELETE", JSONObject().put("token", token)).optBoolean("ok", true)
+    } catch (e: Exception) {
+        false
+    }
+
+    // ── Saved quick replies ───────────────────────────────────────────────────
+
+    suspend fun fetchQuickReplies(): List<QuickReplyItem> = try {
+        val arr = call("/me/quick-replies").optJSONArray("quickReplies") ?: JSONArray()
+        (0 until arr.length()).map { QuickReplyItem.fromJson(arr.getJSONObject(it)) }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    suspend fun addQuickReply(text: String): QuickReplyItem? = try {
+        val r = call("/me/quick-replies", "POST", JSONObject().put("text", text))
+        val o = r.optJSONObject("quickReply")
+        if (o == null) null else QuickReplyItem.fromJson(o)
+    } catch (e: Exception) {
+        null
+    }
+
+    suspend fun deleteQuickReply(id: String): Boolean = try {
+        call("/me/quick-replies/$id", "DELETE").optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
     }
 
     suspend fun markConversationRead(conversationId: String): Boolean = try {
