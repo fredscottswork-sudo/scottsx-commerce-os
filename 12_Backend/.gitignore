@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.pgdata/
+.env
+.env.local
+secrets/firebase-admin-key.json
+*.log

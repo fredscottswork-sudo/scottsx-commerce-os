@@ -1,0 +1,12 @@
+# Files not uploaded with `firebase deploy` for the functions source (12_Backend).
+# NOTE: .env contains API keys/secrets — NEVER upload it. The cloud runtime
+# gets its environment from Firebase Secret Manager (see scripts/deploy-firebase.ps1).
+
+.env
+.env.local
+.pgdata/
+secrets/
+node_modules/
+dist/*.map
+*.log
+firebase_e2e_test.mjs

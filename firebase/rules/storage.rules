@@ -1,0 +1,18 @@
+// ScottsTechX — Cloud Storage rules. Locked by default; open only paths you
+// intentionally share (e.g. /public/** for marketplace images).
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Public product images (readable by everyone, writable by no one).
+    match /public/products/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

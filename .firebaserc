@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "scottstechx-52bab"
+  },
+  "targets": {
+    "scottstechx-52bab": {
+      "hosting": {
+        "web": ["scottstechx-52bab-web"]
+      }
+    }
+  }
+}

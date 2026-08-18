@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// ScottsTechX — Firestore rules (the marketplace data lives in PostgreSQL;
+// Firestore is reserved for future realtime features). Locked by default.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Deny everything unless a rule explicitly allows it.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Example: public catalog mirror (read-only) for anonymous browsing.
+    match /public/{document=**} {
+      allow read: if true;
+    }
+
+    // Example: authenticated user profiles (write only by owner, uid == doc id).
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

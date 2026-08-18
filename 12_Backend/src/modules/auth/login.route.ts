@@ -1,0 +1,168 @@
+/**
+ * ScottsTechX — local email/password auth (legacy path, kept alongside
+ * the Firebase-first flow).
+ *
+ *   POST /api/v1/auth/register
+ *   POST /api/v1/auth/login
+ *   GET  /api/v1/auth/me
+ *   PATCH /api/v1/auth/me
+ *   PATCH /api/v1/me/location
+ */
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { getPool } from '../../db.js';
+import {
+  hashPassword,
+  comparePassword,
+  tokenForUser,
+  requireAuth,
+  authedUser,
+} from '../../auth.js';
+import { UnauthorizedError, ConflictError, NotFoundError } from '../../errors.js';
+
+const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  displayName: z.string().optional().default(''),
+  phone: z.string().optional().default(''),
+  role: z.enum(['buyer', 'seller']).optional().default('buyer'),
+  storeName: z.string().optional().default(''),
+  storeDescription: z.string().optional().default(''),
+  city: z.string().optional().default(''),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+const updateMeSchema = z.object({
+  displayName: z.string().optional(),
+  phone: z.string().optional(),
+  profilePhotoUrl: z.string().url().optional().nullable(),
+});
+
+const locationSchema = z.object({
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  city: z.string().optional(),
+});
+
+export function publicUser(row: any) {
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name ?? '',
+    phone: row.phone ?? '',
+    role: row.role,
+    emailVerified: !!row.email_verified,
+    firebaseUid: row.firebase_uid ?? null,
+    profilePhotoUrl: row.profile_photo_url ?? null,
+    city: row.city ?? '',
+    createdAt: row.created_at,
+  };
+}
+
+export default async function registerAuthRoute(app: FastifyInstance) {
+  const pool = getPool();
+
+  app.post('/api/v1/auth/register', async (request, reply) => {
+    const body = registerSchema.parse(request.body);
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [body.email]);
+    if ((existing.rowCount ?? 0) > 0) throw new ConflictError('Email already registered');
+
+    const hash = await hashPassword(body.password);
+    const { rows } = await pool.query(
+      `INSERT INTO users (email, password_hash, display_name, phone, role, city, email_verified)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
+       RETURNING *`,
+      [body.email, hash, body.displayName, body.phone, body.role, body.city]
+    );
+    const user = rows[0];
+
+    if (body.role === 'seller') {
+      await pool.query(
+        `INSERT INTO store_settings (user_id, store_name, store_description, city, address)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [user.id, body.storeName || body.displayName || 'My Store', body.storeDescription, body.city, '']
+      );
+    }
+
+    const token = await tokenForUser(user);
+    return reply.code(201).send({ token, user: publicUser(user) });
+  });
+
+  app.post('/api/v1/auth/login', async (request, reply) => {
+    const body = loginSchema.parse(request.body);
+    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [body.email]);
+    const user = rows[0];
+    if (!user || !user.password_hash) throw new UnauthorizedError('Invalid email or password');
+    const ok = await comparePassword(body.password, user.password_hash);
+    if (!ok) throw new UnauthorizedError('Invalid email or password');
+    const token = await tokenForUser(user);
+    return { token, user: publicUser(user) };
+  });
+
+  app.get('/api/v1/auth/me', { preHandler: requireAuth }, async (request) => {
+    const me = authedUser(request);
+    const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [me.id]);
+    if (!rows[0]) throw new NotFoundError('User not found');
+    return { user: publicUser(rows[0]) };
+  });
+
+  app.patch('/api/v1/auth/me', { preHandler: requireAuth }, async (request) => {
+    const me = authedUser(request);
+    const body = updateMeSchema.parse(request.body);
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET display_name = COALESCE($2, display_name),
+           phone = COALESCE($3, phone),
+           profile_photo_url = COALESCE($4, profile_photo_url),
+           updated_at = now()
+       WHERE id = $1
+       RETURNING *`,
+      [me.id, body.displayName ?? null, body.phone ?? null, body.profilePhotoUrl ?? null]
+    );
+    return { user: publicUser(rows[0]) };
+  });
+
+  /**
+   * Local upgrade path (no Firebase needed): any authenticated, email-verified
+   * account may become a seller. Re-mints a JWT with role=seller.
+   */
+  app.post('/api/v1/auth/upgrade-to-seller', { preHandler: requireAuth }, async (request) => {
+    const me = authedUser(request);
+    const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [me.id]);
+    const user = rows[0];
+    if (!user) throw new NotFoundError('User not found');
+    if (!user.email_verified) throw new UnauthorizedError('Email must be verified to become a seller');
+    const updated = await pool.query(
+      `UPDATE users SET role = 'seller', updated_at = now() WHERE id = $1 RETURNING *`,
+      [me.id]
+    );
+    await pool.query(
+      `INSERT INTO store_settings (user_id, store_name)
+       VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING`,
+      [me.id, user.display_name || 'My Store']
+    );
+    const token = await tokenForUser(updated.rows[0]);
+    return { token, user: publicUser(updated.rows[0]) };
+  });
+
+  app.patch('/api/v1/me/location', { preHandler: requireAuth }, async (request) => {
+    const me = authedUser(request);
+    const body = locationSchema.parse(request.body);
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET lat = COALESCE($2, lat),
+           lng = COALESCE($3, lng),
+           city = COALESCE($4, city),
+           updated_at = now()
+       WHERE id = $1
+       RETURNING *`,
+      [me.id, body.lat ?? null, body.lng ?? null, body.city ?? null]
+    );
+    return { user: publicUser(rows[0]) };
+  });
+}

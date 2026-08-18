@@ -1,0 +1,42 @@
+{
+  "functions": {
+    "source": "12_Backend",
+    "runtime": "nodejs22",
+    "predeploy": ["npm --prefix 12_Backend run build"],
+    "postdeploy": []
+  },
+  "hosting": [
+    {
+      "target": "web",
+      "public": "web/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(js|css|png|jpg|jpeg|svg|webp|woff2)",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        }
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firebase/rules/firestore.rules",
+    "indexes": "firebase/indexes/firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "firebase/rules/storage.rules"
+  },
+  "emulators": {
+    "auth":      { "port": 9099 },
+    "firestore": { "port": 8080 },
+    "storage":   { "port": 9199 },
+    "functions": { "port": 5001 },
+    "ui":        { "enabled": true, "port": 4000 },
+    "singleProjectMode": true
+  }
+}

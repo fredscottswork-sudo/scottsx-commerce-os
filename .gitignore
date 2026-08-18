@@ -1,0 +1,22 @@
+# Build outputs
+**/build/
+**/.gradle/
+**/node_modules/
+**/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Embedded postgres data
+12_Backend/.pgdata/
+
+# Environment files
+.env
+.env.local
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
