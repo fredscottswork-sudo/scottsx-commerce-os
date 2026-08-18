@@ -6,8 +6,14 @@ import { Btn, Field, Input, Select } from '../components/ui';
 import { ApiError } from '../api/client';
 import GoogleButton from '../components/GoogleButton';
 import { BrandLockup } from '../components/BrandLogo';
+import { useSeo } from '../hooks/useSeo';
 
 export default function Register() {
+  useSeo({
+    title: 'Create an account',
+    description: 'Join ScottsTechX as a buyer or open a store as a seller. Free to sign up.',
+  });
+
   const { register } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();

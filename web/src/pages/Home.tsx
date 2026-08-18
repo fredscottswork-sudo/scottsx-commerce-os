@@ -5,10 +5,19 @@ import { productService, aiService } from '../api/services';
 import type { Product } from '../api/types';
 import { ProductCard } from '../components/ProductCard';
 import { Empty, ErrorBox, Loading, PageHeader, SearchInput, Btn } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
 
 const CATEGORIES = ['All', 'Electronics', 'Fashion', 'Sports', 'Beauty', 'Home & Living', 'Groceries', 'Automotive'];
 
 export default function Home() {
+  useSeo({
+    title: "Uganda's Marketplace",
+    description:
+      'Buy and sell on ScottsTechX — electronics, fashion, home goods and more ' +
+      'from verified sellers across Kampala, Entebbe, Jinja and beyond. ' +
+      'Cash on delivery available.',
+  });
+
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

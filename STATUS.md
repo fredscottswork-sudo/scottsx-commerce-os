@@ -27,14 +27,14 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 1 | Backend end-to-end | 314 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 3 | Android ⇆ backend contract | 98 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 298 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 316 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
 | 8 | Kotlin syntax (56 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**745 checks.** Every suite cleans up after itself; the database returns to 7
+**763 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -210,3 +210,14 @@ been tested.
 
 **Payments** are cash-on-delivery only. Nylon Pay is wired but unconfigured, so
 `/orders/checkout` returns 503; the web cart deliberately uses the COD route.
+
+**Link previews need server-side rendering.** Every page now sets its own
+`<title>`, description, canonical URL and Open Graph / Twitter card tags
+(`web/src/hooks/useSeo.ts`), and `GET /sitemap.xml` + `/robots.txt` are served
+from the backend. Because the web app is a single-page bundle, those tags are
+written by JavaScript after the page boots. Googlebot renders JavaScript and
+will see them; the scrapers behind WhatsApp, Facebook, X, Slack and iMessage do
+not, so a shared product link falls back to the generic title and description
+in `web/index.html`. Fixing that properly means prerendering the public routes
+(`/`, `/product/:id`, `/seller/:id`, `/cms/:slug`) at build time or putting the
+app behind an SSR host — a follow-up, not a bug in the tags themselves.

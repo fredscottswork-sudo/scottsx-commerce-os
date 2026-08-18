@@ -7,6 +7,8 @@ import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { Btn, Card, ErrorBox, Loading, Modal } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
+import { resolveMediaUrl } from '../api/client';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +27,18 @@ export default function ProductDetail() {
     setError('');
     productService.byId(id!).then((r) => setProduct(r.product)).catch((e: any) => setError(e.message)).finally(() => setLoading(false));
   }, [id]);
+
+  // A shared listing should show what is for sale and what it costs. Falling
+  // back to the site defaults while loading avoids flashing an empty title.
+  useSeo({
+    title: product ? product.title : undefined,
+    description: product
+      ? `${formatUgx(product.priceMinor)} — ${product.description || product.title}. ` +
+        `Available from ${product.seller?.name || 'a verified seller'} on ScottsTechX.`
+      : undefined,
+    image: product?.imageUrl ? resolveMediaUrl(product.imageUrl) : undefined,
+    type: 'product',
+  });
 
   async function buy() {
     if (!user) { navigate('/login'); return; }

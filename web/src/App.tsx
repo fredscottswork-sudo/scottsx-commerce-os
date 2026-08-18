@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './store/AuthContext';
 import { AppShell } from './components/AppShell';
+import { useSeo } from './hooks/useSeo';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -46,6 +47,10 @@ import AdminSupport from './pages/admin/AdminSupport';
 function RequireRole({ role, children }: { role: 'buyer' | 'seller' | 'admin'; children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
+  // Dashboards are per-user and behind auth; a crawler that reaches one must
+  // not index it. Declared here so every present and future private route
+  // inherits it automatically.
+  useSeo({ noIndex: true });
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   if (user.role !== role) {
     // Auto-redirect each role to its own home.
@@ -57,6 +62,7 @@ function RequireRole({ role, children }: { role: 'buyer' | 'seller' | 'admin'; c
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  useSeo({ noIndex: true });
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }

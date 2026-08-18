@@ -12,6 +12,7 @@ import { ProductGrid } from '../components/ProductCard';
 import {
   Btn, Empty, ErrorBox, SkeletonGrid, Field, Input, Select, Switch, Pagination, Modal, RichText,
 } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
 
 type Sort = 'relevance' | 'newest' | 'price_asc' | 'price_desc' | 'rating' | 'popular';
 
@@ -36,6 +37,13 @@ type SpeechRecognitionLike = {
 };
 
 export default function Search() {
+  useSeo({
+    title: 'Search products',
+    description:
+      'Search thousands of products from verified Ugandan sellers on ScottsTechX. ' +
+      'Filter by category, price and location.',
+  });
+
   const [params, setParams] = useSearchParams();
   const { add, favoriteSellerIds, toggleFavoriteSeller } = useCart();
   const { toast } = useToast();

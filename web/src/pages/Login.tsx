@@ -6,8 +6,11 @@ import { Btn, Field, Input } from '../components/ui';
 import { ApiError } from '../api/client';
 import GoogleButton from '../components/GoogleButton';
 import { BrandLockup } from '../components/BrandLogo';
+import { useSeo } from '../hooks/useSeo';
 
 export default function Login() {
+  useSeo({ title: 'Sign in', noIndex: true });
+
   const { login } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();

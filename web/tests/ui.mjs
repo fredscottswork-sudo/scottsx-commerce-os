@@ -1376,6 +1376,83 @@ section('22. Search Console verification file');
   }
 }
 
+// ── 23. Page metadata (titles, canonical, link previews) ────────────────────
+// Every route previously served the one <title> and description baked into
+// index.html. That made the 40 URLs in sitemap.xml look like near-duplicates
+// to a search engine, and a shared product link produced no preview at all.
+section('23. Per-page titles and link previews');
+{
+  const meta = (dom, sel, attr = 'content') =>
+    dom.$(sel)?.getAttribute(attr) || '';
+
+  // A product page must name the product, quote the price, and carry an image.
+  const app = await mount(`/product/${sampleProduct.id}`, null, { settleMs: 2200 });
+  const title = app.window.document.title;
+  check('a product page titles itself after the product',
+    title.includes(sampleProduct.title), title);
+  check('the site name is still present for brand recognition',
+    /ScottsTechX/.test(title), title);
+
+  const desc = meta(app, 'meta[name="description"]');
+  check('the description is product-specific, not the site boilerplate',
+    desc.length > 0 && !desc.startsWith("ScottsTechX — Uganda's AI-powered"), desc.slice(0, 80));
+  check('the description quotes the price', /UGX/.test(desc), desc.slice(0, 80));
+  check('the description is short enough for a search result',
+    desc.length <= 161, `${desc.length} chars`);
+
+  check('og:title is set for link previews', meta(app, 'meta[property="og:title"]').length > 0);
+  check('og:type marks it as a product',
+    meta(app, 'meta[property="og:type"]') === 'product');
+  const ogImage = meta(app, 'meta[property="og:image"]');
+  check('og:image is an absolute URL a scraper can fetch',
+    /^https?:\/\//.test(ogImage), ogImage || '(none)');
+  check('twitter uses the large-image card when there is an image',
+    meta(app, 'meta[name="twitter:card"]') === 'summary_large_image');
+
+  const canonical = app.$('link[rel="canonical"]')?.getAttribute('href') || '';
+  check('a canonical URL is declared', canonical.includes(`/product/${sampleProduct.id}`), canonical);
+  check('the canonical carries no query string', !canonical.includes('?'), canonical);
+  check('a public product page is indexable', !app.$('meta[name="robots"]'));
+  app.close();
+}
+{
+  // Distinct routes must not share a title, or they compete in search results.
+  const seen = new Map();
+  for (const route of ['/', '/search', '/nearby', '/ai', '/register']) {
+    const a = await mount(route, null, { settleMs: 1500 });
+    seen.set(route, a.window.document.title);
+    a.close();
+  }
+  const titles = [...seen.values()];
+  check('every public route has its own title', new Set(titles).size === titles.length,
+    JSON.stringify([...seen]));
+  check('no route is left with the bare default',
+    titles.every((t) => t && t !== ''), JSON.stringify(titles));
+}
+{
+  // Private pages must never be indexed, however a crawler reaches them.
+  const app = await mount('/buyer', { token: buyer.token, user: buyer.user }, { settleMs: 1800 });
+  const robots = app.$('meta[name="robots"]')?.getAttribute('content') || '';
+  check('a signed-in dashboard is marked noindex', /noindex/.test(robots), robots || '(missing)');
+  app.close();
+
+  const login = await mount('/login', null, { settleMs: 1400 });
+  check('the sign-in page is marked noindex',
+    /noindex/.test(login.$('meta[name="robots"]')?.getAttribute('content') || ''));
+  login.close();
+}
+{
+  // Regression: navigating from a page with an image to one without must not
+  // leave the previous product's photo attached to the new page.
+  const a = await mount(`/product/${sampleProduct.id}`, null, { settleMs: 2000 });
+  check('product page has og:image', !!a.$('meta[property="og:image"]'));
+  a.close();
+  const b = await mount('/register', null, { settleMs: 1500 });
+  check('a page with no image carries no stale og:image',
+    !b.$('meta[property="og:image"]'));
+  b.close();
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {

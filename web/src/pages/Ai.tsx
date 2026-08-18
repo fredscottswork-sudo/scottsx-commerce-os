@@ -1,8 +1,16 @@
 import { AiConsole } from '../components/AiConsole';
 import { PageHeader } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
 
 /** Public AI entry point — anonymous shoppers get the same grounded engine. */
 export default function Ai() {
+  useSeo({
+    title: 'AI shopping assistant',
+    description:
+      'Ask the ScottsTechX assistant to find products, compare prices and ' +
+      'recommend sellers across the whole marketplace.',
+  });
+
   return (
     <>
       <PageHeader

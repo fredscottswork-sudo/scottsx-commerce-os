@@ -5,6 +5,7 @@ import { productService, chatService } from '../api/services';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
+import { useSeo } from '../hooks/useSeo';
 import { useToast } from '../store/ToastContext';
 import { ProductCard } from '../components/ProductCard';
 import { Btn, Empty, ErrorBox, Loading } from '../components/ui';
@@ -17,6 +18,17 @@ export default function SellerStorefront() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useSeo({
+    title: seller?.name ? `${seller.name} — store` : undefined,
+    description: seller
+      ? `Shop ${products.length} product${products.length === 1 ? '' : 's'} from ${seller.name}` +
+        `${seller.city ? ` in ${seller.city}` : ''} on ScottsTechX. ` +
+        `${seller.verified ? 'Verified seller. ' : ''}Message the seller and buy with cash on delivery.`
+      : undefined,
+    image: seller?.logoUrl || undefined,
+    type: 'profile',
+  });
 
   useEffect(() => {
     setLoading(true);

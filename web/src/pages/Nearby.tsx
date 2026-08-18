@@ -24,6 +24,7 @@ import { useAuth } from '../store/AuthContext';
 import {
   Btn, Empty, ErrorBox, PageHeader, Select, SkeletonRows, Switch, Badge, SearchInput,
 } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
 
 type Sort = 'distance' | 'rating' | 'products' | 'newest';
 
@@ -51,6 +52,13 @@ function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: n
 }
 
 export default function Nearby() {
+  useSeo({
+    title: 'Stores near you',
+    description:
+      'Find shops near you on ScottsTechX. Stores are sorted by distance and ' +
+      're-sort as you move, so the closest seller is always first.',
+  });
+
   const { toast } = useToast();
   const { user } = useAuth();
 
