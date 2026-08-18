@@ -1101,6 +1101,65 @@ let xssProductId = null;
   }
 }
 
+// ── 18. Mobile & uploads ────────────────────────────────────────────────────
+// The site is used mostly on phones, so the seller flow has to work without a
+// keyboard-pasted URL, and no page may force sideways scrolling.
+section('18. Mobile readiness & photo upload');
+{
+  const app = await mount('/seller/add-product', { token: seller.token, user: seller.user });
+  check('the add-product page offers a real file picker',
+    !!app.$('[data-testid="image-file-input"]'));
+  const fileInput = app.$('[data-testid="image-file-input"]');
+  check('the picker accepts images only',
+    (fileInput?.getAttribute('accept') || '').includes('image/'),
+    fileInput?.getAttribute('accept') || 'no accept');
+  check('several photos can be attached at once', fileInput?.hasAttribute('multiple'));
+  check('there is an upload button', !!app.$('[data-testid="choose-photos"]'));
+  check('pasting a link is still possible', app.text().includes('Use a link'));
+  check('the old URL-only field is gone',
+    !app.text().includes('Paste a public link to a clear photo'));
+  check('no runtime errors on the add-product page', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+{
+  // The viewport contract: without these a phone renders a zoomed-out desktop.
+  const viewport = indexHtml.match(/name="viewport"\s+content="([^"]+)"/)?.[1] || '';
+  check('the viewport is device-width', /width=device-width/.test(viewport), viewport);
+  check('the viewport allows zoom (accessibility)',
+    !/user-scalable\s*=\s*no/.test(viewport) && !/maximum-scale\s*=\s*1/.test(viewport), viewport);
+  check('the viewport covers the notch', /viewport-fit=cover/.test(viewport), viewport);
+
+  // Guards that keep a stray wide element from panning the whole page.
+  check('horizontal overflow is guarded', /overflow-x:\s*hidden/.test(bundleCss));
+  check('long words wrap instead of stretching the page', /overflow-wrap:\s*break-word/.test(bundleCss));
+  check('media never exceeds its column', /img,\s*svg,\s*video,\s*canvas\s*\{[^}]*max-width:\s*100%/.test(bundleCss));
+  check('iOS text inflation is disabled', /text-size-adjust:\s*100%/.test(bundleCss));
+  check('form fields are 16px on phones so iOS does not zoom',
+    /@media \(max-width: 620px\)[^{]*\{[^@]*font-size:\s*16px/.test(bundleCss));
+  check('touch devices get 44px tap targets',
+    /pointer:\s*coarse[^{]*\{[\s\S]{0,400}min-height:\s*44px/.test(bundleCss));
+  check('a bottom nav appears on phones', /@media \(max-width: 620px\)[\s\S]{0,600}\.bottomnav\s*\{[\s\S]{0,120}display:\s*flex/.test(bundleCss));
+  check('the bottom bar respects the home indicator', /env\(safe-area-inset-bottom/.test(bundleCss));
+  check('wide tables scroll instead of stretching', /\.table-wrap\s*\{[^}]*overflow-x:\s*auto/.test(bundleCss));
+
+  // Every multi-column layout must collapse to one column on a phone.
+  for (const cls of ['search-layout', 'checkout-layout', 'ai-console', 'support-layout', 'form-row']) {
+    const collapses = new RegExp(`\\.${cls}\\s*\\{[^}]*grid-template-columns:\\s*1fr\\s*[;}]`).test(bundleCss);
+    check(`.${cls} collapses to one column on mobile`, collapses);
+  }
+}
+{
+  // The bottom nav is what makes the app usable one-handed.
+  const app = await mount('/', { token: buyer.token, user: buyer.user });
+  const nav = app.$('[data-testid="bottomnav"]');
+  check('the mobile bottom nav is rendered', !!nav);
+  check('it has enough destinations to be useful', (nav?.querySelectorAll('a').length || 0) >= 4,
+    `${nav?.querySelectorAll('a').length || 0} links`);
+  check('the bottom nav is labelled for screen readers',
+    (nav?.getAttribute('aria-label') || '').length > 0);
+  app.close();
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {

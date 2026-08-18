@@ -119,7 +119,11 @@ function assertListingReady(input: {
   priceMinor?: number;
 }) {
   const image = input.imageUrl || input.mediaUrls?.[0] || '';
-  if (!/^https?:\/\//i.test(image)) {
+  // Either an external link or one of our own uploads. The upload path form is
+  // accepted because sellers list from a phone, where the photo comes from the
+  // camera roll and there is no public URL to paste.
+  const isUpload = /^\/api\/v1\/uploads\/images\/[0-9a-f-]{36}$/i.test(image);
+  if (!/^https?:\/\//i.test(image) && !isUpload) {
     throw new ValidationError('A product photo is required before submitting for review');
   }
   if (!input.title || input.title.trim().length < 3) {

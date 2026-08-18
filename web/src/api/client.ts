@@ -66,6 +66,44 @@ interface RequestOptions {
   rawBody?: boolean;
 }
 
+/**
+ * Uploaded images are stored as API-relative paths ("/api/v1/uploads/images/…")
+ * so the same row works on localhost, a preview host and production without
+ * baking an origin into the database.
+ *
+ * In development the dev server proxies /api to the backend, so the bare path
+ * already resolves. In production the API lives on a different origin, so the
+ * path has to be prefixed — otherwise every uploaded photo 404s against the
+ * static host. Rewriting once here means every <img src={product.imageUrl}>
+ * in the app keeps working untouched.
+ */
+export function resolveMediaUrl(url: string): string {
+  if (!url) return url;
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  if (url.startsWith('/api/v1/')) return `${API_ROOT}${url.slice('/api/v1'.length)}`;
+  return url;
+}
+
+/** Recursively rewrite the media fields of a parsed API payload. */
+const MEDIA_KEYS = new Set(['imageUrl', 'profilePhotoUrl', 'logoUrl', 'bannerUrl', 'coverUrl']);
+function rewriteMedia(node: unknown, depth = 0): void {
+  if (depth > 6 || node === null || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const item of node) rewriteMedia(item, depth + 1);
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string') {
+      if (MEDIA_KEYS.has(key)) obj[key] = resolveMediaUrl(value);
+    } else if (key === 'mediaUrls' && Array.isArray(value)) {
+      obj[key] = value.map((v) => (typeof v === 'string' ? resolveMediaUrl(v) : v));
+    } else {
+      rewriteMedia(value, depth + 1);
+    }
+  }
+}
+
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true, rawBody = false } = opts;
   const headers: Record<string, string> = {};
@@ -101,6 +139,7 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
       `Request failed (${res.status})`;
     throw new ApiError(res.status, message, data?.issues);
   }
+  rewriteMedia(data);
   return data as T;
 }
 

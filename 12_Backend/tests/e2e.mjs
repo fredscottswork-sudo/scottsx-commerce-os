@@ -794,6 +794,145 @@ async function main() {
     );
   }
 
+  // ── Image uploads ─────────────────────────────────────────────────────────
+  // Sellers list from a phone: the photo is in the camera roll, so uploading
+  // has to work with no Firebase configured at all.
+  group('Seller image uploads');
+  {
+    // Smallest valid images we can build without an encoder: real magic bytes
+    // and real dimension headers, which is exactly what the sniffer reads.
+    const PNG_1x1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAHElEQVRoge3BAQ0AAADCoPdPbQ8H' +
+      'FAAAAAAAAAAAAAAAAAAAAADvBjhtAAG3n6f2AAAAAElFTkSuQmCC',
+      'base64'
+    );
+    const upload = async (bytes, filename, token = state.sellerToken, type = 'image/png') => {
+      const form = new FormData();
+      form.append('image', new Blob([bytes], { type }), filename);
+      const res = await fetch(`${V1}/uploads/images`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      return { status: res.status, data };
+    };
+
+    const anon = await upload(PNG_1x1, 'a.png', null);
+    check('an anonymous upload is rejected', anon.status === 401, `got ${anon.status}`);
+
+    const ok = await upload(PNG_1x1, 'photo.png');
+    check('a seller can upload a photo', ok.status === 200, JSON.stringify(ok.data).slice(0, 120));
+    check('the upload returns a usable url', typeof ok.data?.url === 'string' && ok.data.url.length > 0);
+    check('the real pixel size is read from the file', ok.data?.width === 32 && ok.data?.height === 32,
+      `${ok.data?.width}x${ok.data?.height}`);
+    state.uploadedImageUrl = ok.data?.url;
+    state.uploadedImageId = ok.data?.id;
+
+    // Identical bytes must not pile up duplicate rows.
+    const again = await upload(PNG_1x1, 'photo-copy.png');
+    check('re-uploading identical bytes reuses the same image',
+      again.data?.id === ok.data?.id, `${again.data?.id} vs ${ok.data?.id}`);
+
+    // The declared type must never be trusted.
+    const exe = Buffer.concat([Buffer.from([0x4d, 0x5a, 0x90, 0x00]), Buffer.alloc(2048, 0x41)]);
+    const fake = await upload(exe, 'virus.png');
+    check('a non-image with an image name is rejected', fake.status === 400, `got ${fake.status}`);
+    const empty = await upload(Buffer.alloc(0), 'empty.png');
+    check('an empty file is rejected', empty.status === 400, `got ${empty.status}`);
+
+    if (state.uploadedImageId) {
+      // Buyers are not signed in, so serving must be public.
+      const served = await fetch(`${V1}/uploads/images/${state.uploadedImageId}`);
+      const body = Buffer.from(await served.arrayBuffer());
+      check('the image is served publicly', served.status === 200, `got ${served.status}`);
+      check('the served bytes are byte-identical', body.equals(PNG_1x1),
+        `${body.length} vs ${PNG_1x1.length} bytes`);
+      check('it is served as an image', (served.headers.get('content-type') || '').startsWith('image/'));
+      check('it is cached immutably', /immutable/.test(served.headers.get('cache-control') || ''));
+
+      const etag = served.headers.get('etag');
+      const revalidate = await fetch(`${V1}/uploads/images/${state.uploadedImageId}`, {
+        headers: { 'if-none-match': etag },
+      });
+      check('a matching ETag returns 304', revalidate.status === 304, `got ${revalidate.status}`);
+
+      const missing = await fetch(`${V1}/uploads/images/00000000-0000-0000-0000-000000000000`);
+      check('an unknown image id is a 404', missing.status === 404, `got ${missing.status}`);
+
+      // Another seller must not be able to delete my upload.
+      const foreign = await call(`/uploads/images/${state.uploadedImageId}`, {
+        method: 'DELETE', token: state.buyerToken,
+      });
+      check('another user cannot delete my upload', foreign.status === 404, `got ${foreign.status}`);
+    }
+
+    const mine = await call('/me/uploads', { token: state.sellerToken });
+    check('a seller can list their uploads', mine.status === 200 && Array.isArray(mine.data?.images));
+
+    // An uploaded photo must be usable as a real listing image.
+    if (state.uploadedImageUrl) {
+      const listing = await call('/seller/products', {
+        method: 'POST',
+        token: state.sellerToken,
+        body: {
+          title: `E2E Uploaded Photo ${uniq}`,
+          description: 'Listing that uses an uploaded photo rather than a pasted link.',
+          category: 'Electronics',
+          priceMinor: 75000,
+          stockQuantity: 2,
+          imageUrl: state.uploadedImageUrl,
+        },
+      });
+      check('a listing can be published with an uploaded photo', listing.status === 200,
+        JSON.stringify(listing.data).slice(0, 120));
+      state.uploadedPhotoProductId = listing.data?.product?.id;
+      check('the listing keeps the uploaded photo',
+        listing.data?.product?.imageUrl === state.uploadedImageUrl,
+        listing.data?.product?.imageUrl);
+    }
+  }
+
+  // ── Reverse geocoding accuracy ────────────────────────────────────────────
+  // The packed gazetteer drops places under population 1,000, so it holds no
+  // urban neighbourhoods: every fix inside Kampala resolved to "Kampala", a
+  // 3-7 km error in the city where most users are.
+  group('Location accuracy (neighbourhood resolution)');
+  {
+    const at = async (lat, lng) => (await call(`/geo/reverse?lat=${lat}&lng=${lng}`)).data?.place;
+
+    const cases = [
+      ['Ntinda', 0.3494, 32.6117],
+      ['Bugolobi', 0.3182, 32.6135],
+      ['Muyenga', 0.2921, 32.6151],
+      ['Wandegeya', 0.3345, 32.5726],
+      ['Nateete', 0.3021, 32.5389],
+      ['Kabalagala', 0.3040, 32.5980],
+    ];
+    for (const [name, lat, lng] of cases) {
+      const place = await at(lat, lng);
+      check(`${name} resolves to a neighbourhood, not just "Kampala"`,
+        !!place?.village, place ? place.label : 'no place');
+      check(`${name} is within 2 km`, (place?.accuracyKm ?? 99) <= 2,
+        `${place?.accuracyKm} km`);
+      check(`${name} still reports its parent city`, place?.city === 'Kampala',
+        `city=${place?.city}`);
+    }
+
+    // Nateete is 11 km from Wakiso town and used to be filed under it.
+    const nateete = await at(0.3021, 32.5389);
+    check('Nateete is no longer misfiled under Wakiso', nateete?.city === 'Kampala',
+      `got ${nateete?.city}`);
+
+    // The neighbourhood layer must not damage anywhere else on earth.
+    const london = await at(51.5074, -0.1278);
+    check('London still resolves correctly', london?.city === 'London', london?.label);
+    const nairobi = await at(-1.2921, 36.8219);
+    check('Nairobi still resolves correctly', nairobi?.country === 'Kenya', nairobi?.label);
+    const entebbe = await at(0.0512, 32.4633);
+    check('Entebbe is not swallowed by Kampala', entebbe?.city === 'Entebbe', entebbe?.label);
+  }
+
   group('Product ratings');
   {
     const pid = state.sampleProduct?.id;
@@ -1379,13 +1518,22 @@ async function main() {
       check('seller can delete own product', del.status === 200);
     }
     // Remove every other row this run created so the catalog stays clean.
-    const leftovers = [state.draftId, state.dropId, ...(state.bulkIds ?? [])].filter(Boolean);
+    const leftovers = [
+      state.draftId, state.dropId, state.uploadedPhotoProductId, ...(state.bulkIds ?? []),
+    ].filter(Boolean);
     let removed = 0;
     for (const id of leftovers) {
       const r = await call(`/seller/products/${id}`, { method: 'DELETE', token: state.sellerToken });
       if (r.status === 200) removed++;
     }
     check('test artefacts cleaned up', removed === leftovers.length, `${removed}/${leftovers.length}`);
+
+    if (state.uploadedImageId) {
+      const delImg = await call(`/uploads/images/${state.uploadedImageId}`, {
+        method: 'DELETE', token: state.sellerToken,
+      });
+      check('uploaded test image removed', delImg.status === 200, `got ${delImg.status}`);
+    }
 
     const stillThere = await call('/products?pageSize=100');
     check(

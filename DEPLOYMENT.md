@@ -217,6 +217,36 @@ your development machine.
 6. Set API_BASE_URL + keystore secrets -> run the APK workflow
 ```
 
+## Product photos (image uploads)
+
+Sellers upload photos from the phone camera/gallery or the web file picker; no
+public image URL is needed any more (pasting a link still works).
+
+Storage is chosen automatically at runtime:
+
+| Firebase service account present | Where bytes go |
+|---|---|
+| yes | Firebase Storage |
+| no  | Postgres `uploaded_images.data` (`bytea`) |
+
+**Do not** switch this to local disk. Render and Cloud Run filesystems are
+ephemeral, so every listing photo would 404 after the next deploy.
+
+Limits enforced server-side (declared MIME types are never trusted — magic
+bytes are sniffed and real dimensions read from the header):
+
+- 3 MB hard limit, 900 KB soft warning (`oversized: true` in the response)
+- JPEG / PNG / WebP / GIF only, minimum edge 16 px, max 8 photos per product
+- Identical bytes from the same seller de-duplicate to one row
+
+Served from `GET /api/v1/uploads/images/:id` — public, immutable, ETag +
+304. The stored value is the API-relative path, so the same database row works
+on localhost, a preview host and production; the web client and the Android
+client each expand it to an absolute URL.
+
+If you later move to Firebase Storage, existing Postgres-backed URLs keep
+working; only new uploads go to the bucket.
+
 ## CI
 
 `ci/github-workflows/ci.yml` (activate it as described in `ci/README.md`) runs

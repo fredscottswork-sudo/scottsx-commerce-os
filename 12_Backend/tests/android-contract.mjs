@@ -122,6 +122,46 @@ for (const [label, path, tok] of [
 const sp=await call('/seller/profile',{token:st});
 ck('GET /seller/profile (referenced by V2Client)', sp.status===200, `got ${sp.status} — Kotlin calls this!`);
 
+console.log('\n[image upload — V2Client.uploadImage]');
+{
+  // The Kotlin client posts multipart field "image" to /uploads/images and
+  // reads back {url}. A 32x32 PNG, byte-identical to the web test fixture.
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAJklEQVR42u3OMQEAAAgDoJvc6BpjDyRg' +
+    'WjXQlxMAAAAAAAAAAAAA4L0FnUcBAY4qxTsAAAAASUVORK5CYII=', 'base64');
+
+  const form = new FormData();
+  form.append('image', new Blob([PNG], { type: 'image/png' }), 'product.png');
+  const res = await fetch(`${API}/uploads/images`, {
+    method: 'POST', headers: { Authorization: `Bearer ${st}` }, body: form,
+  });
+  const body = await res.json().catch(() => ({}));
+  ck('POST /uploads/images accepts multipart field "image"', res.status === 200, `got ${res.status}`);
+  ck('response carries the {url} the Kotlin client reads', typeof body.url === 'string' && body.url.length > 0);
+  ck('real pixel dimensions are returned', body.width === 32 && body.height === 32,
+     `${body.width}x${body.height}`);
+
+  // absoluteMediaUrl() in V2Client assumes this exact prefix shape.
+  ck('url is API-relative under /api/v1/uploads/images/<uuid>',
+     /^\/api\/v1\/uploads\/images\/[0-9a-f-]{36}$/i.test(body.url || ''), body.url);
+
+  // Coil fetches this with no Authorization header — it must be public.
+  const anon = await fetch(`${API.replace('/api/v1','')}${body.url}`);
+  ck('the uploaded photo is readable without a token (Coil)', anon.status === 200, `got ${anon.status}`);
+  ck('it is served as an image', (anon.headers.get('content-type') || '').startsWith('image/'),
+     anon.headers.get('content-type'));
+
+  // An unauthenticated upload must be refused.
+  const form2 = new FormData();
+  form2.append('image', new Blob([PNG], { type: 'image/png' }), 'product.png');
+  const noAuth = await fetch(`${API}/uploads/images`, { method: 'POST', body: form2 });
+  ck('upload requires a signed-in seller', noAuth.status === 401, `got ${noAuth.status}`);
+
+  await fetch(`${API}${(body.url || '').replace('/api/v1', '')}`, {
+    method: 'DELETE', headers: { Authorization: `Bearer ${st}` },
+  }).catch(() => {});
+}
+
 console.log('\n[nearby — NearbySeller model]');
 const nb=await call('/sellers/nearby?lat=0.3476&lng=32.5825&radiusKm=1000');
 ck('GET /sellers/nearby -> {sellers,count,liveCount}',

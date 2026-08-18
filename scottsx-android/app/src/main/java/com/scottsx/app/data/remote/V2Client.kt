@@ -35,6 +35,7 @@ import com.scottsx.app.data.domain.UserSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -100,6 +101,71 @@ object V2Client {
         body: JSONObject? = null,
         auth: Boolean = true,
     ): JSONObject = withContext(Dispatchers.IO) { raw(path, method, body, auth) }
+
+    // ── Image upload ──────────────────────────────────────────────────────────
+
+    /**
+     * Upload product photo bytes and return the URL to store on the listing.
+     *
+     * Sellers work from a phone: the photo comes from the camera or the gallery,
+     * so there is no public URL to paste. The backend stores the bytes (Firebase
+     * Storage when configured, Postgres otherwise) and hands back a URL that
+     * works for signed-out buyers too.
+     *
+     * The returned URL may be API-relative ("/api/v1/uploads/images/..."), so
+     * use [absoluteMediaUrl] before handing it to an image loader.
+     */
+    suspend fun uploadImage(
+        bytes: ByteArray,
+        fileName: String = "photo.jpg",
+        mimeType: String = "image/jpeg",
+    ): String? = withContext(Dispatchers.IO) {
+        var uploadedUrl: String? = null
+        try {
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    "image",
+                    fileName,
+                    bytes.toRequestBody(mimeType.toMediaType(), 0, bytes.size),
+                )
+                .build()
+
+            val builder = Request.Builder()
+                .url("$BASE_URL/uploads/images")
+                .post(body)
+            SessionCache.authToken()?.let { builder.header("Authorization", "Bearer $it") }
+
+            client.newCall(builder.build()).execute().use { response ->
+                val text = response.body?.string() ?: ""
+                if (!response.isSuccessful) {
+                    val message = try {
+                        JSONObject(text).optString("error").ifBlank { "HTTP ${response.code}" }
+                    } catch (_: Exception) {
+                        "HTTP ${response.code}"
+                    }
+                    throw IOException(message)
+                }
+                val parsed = JSONObject(text).optStringSafe("url")
+                if (parsed.isNotBlank()) uploadedUrl = parsed
+            }
+        } catch (_: Exception) {
+            uploadedUrl = null
+        }
+        uploadedUrl
+    }
+
+    /**
+     * Product images may be stored as API-relative paths so the same row works
+     * against localhost, a preview host and production. Coil needs an absolute
+     * URL, so prefix anything that is not already one.
+     */
+    fun absoluteMediaUrl(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        if (url.startsWith("http://") || url.startsWith("https://")) return url
+        if (url.startsWith("/api/v1/")) return BASE_URL.removeSuffix("/api/v1") + url
+        return url
+    }
 
     // ── Auth ──────────────────────────────────────────────────────────────────
 

@@ -20,6 +20,7 @@
  *   • Administrative rows ("Kampala District") never fill the village slot.
  */
 import { readFileSync, existsSync } from 'node:fs';
+import { findNeighbourhood } from './neighbourhoods.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -278,7 +279,21 @@ export function reverseGeocode(lat: number, lng: number): ReverseResult | null {
 
   const sameAsCity = cityName !== null && cityName === localName;
   let village: string | null = sameAsCity ? null : localName;
-  const city = cityName ?? localName;
+  let city = cityName ?? localName;
+
+  // The packed gazetteer drops every place under population 1,000, which
+  // removes essentially all urban neighbourhoods — inside Kampala it can only
+  // ever answer "Kampala", a 3-7 km error in the city where most users are.
+  // A hand-checked neighbourhood layer fills that gap and wins the village
+  // slot when the fix is inside one.
+  const hood = findNeighbourhood(lat, lng);
+  if (hood) {
+    village = hood.name === city ? null : hood.name;
+    // Trust the layer's parent city only when the gazetteer agreed we are in a
+    // built-up area; otherwise keep whatever the binary resolved.
+    if (hood.city) city = hood.city;
+    nearestKm = Math.min(nearestKm, hood.distanceKm);
+  }
 
   // Too far from anything to claim a locality: region/country only.
   const tooFar = nearestKm > MAX_SANE_KM;

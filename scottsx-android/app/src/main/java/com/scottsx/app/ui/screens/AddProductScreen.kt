@@ -16,7 +16,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +40,9 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.InputField
 import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val CATEGORIES = listOf("Electronics", "Fashion", "Sports", "Beauty", "Home & Living", "Groceries", "Automotive")
 
@@ -71,6 +78,38 @@ fun AddProductScreen(onBack: () -> Unit) {
     var published by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    var uploading by remember { mutableStateOf(false) }
+    var uploadError by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    // Photo picker: on Android 13+ this is the system picker and needs no
+    // storage permission at all; below that the platform provides the same
+    // contract backed by the document picker.
+    val pickPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                uploading = true
+                uploadError = ""
+                val bytes = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    }.getOrNull()
+                }
+                if (bytes == null || bytes.isEmpty()) {
+                    uploadError = "Could not read that photo"
+                } else if (bytes.size > 3 * 1024 * 1024) {
+                    uploadError = "That photo is larger than 3 MB — pick a smaller one"
+                } else {
+                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    val url = V2Client.uploadImage(bytes, "product.jpg", mime)
+                    if (url != null) imageUrl = url else uploadError = "Upload failed — check your connection"
+                }
+                uploading = false
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -194,7 +233,25 @@ fun AddProductScreen(onBack: () -> Unit) {
                 2 -> {
                     Text("Photos", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(10.dp))
-                    InputField(value = imageUrl, onValueChange = { imageUrl = it }, label = "Image URL", placeholder = "https://images.unsplash.com/photo-…")
+                    PrimaryButton(
+                        text = if (uploading) "Uploading…" else if (imageUrl.isBlank()) "Choose a photo" else "Change photo",
+                        onClick = {
+                            pickPhoto.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        enabled = !uploading,
+                    )
+                    if (uploading) {
+                        Spacer(Modifier.height(10.dp))
+                        CircularProgressIndicator(color = ScottsTechXColors.BluePrimary)
+                    }
+                    if (uploadError.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(uploadError, color = ScottsTechXColors.ErrorRed, fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    InputField(value = imageUrl, onValueChange = { imageUrl = it }, label = "…or paste an image link", placeholder = "https://images.unsplash.com/photo-…")
                     Spacer(Modifier.height(10.dp))
                     if (imageUrl.isNotBlank()) {
                         androidx.compose.foundation.layout.Box(
@@ -204,7 +261,7 @@ fun AddProductScreen(onBack: () -> Unit) {
                                 .clip(RoundedCornerShape(14.dp)),
                         ) {
                             coil.compose.AsyncImage(
-                                model = imageUrl,
+                                model = V2Client.absoluteMediaUrl(imageUrl),
                                 contentDescription = "Product preview",
                                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),

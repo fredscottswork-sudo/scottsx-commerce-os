@@ -10,6 +10,7 @@ import { useToast } from '../../store/ToastContext';
 import {
   Btn, Field, Input, TextArea, Select, PageHeader, Switch, Badge, Modal,
 } from '../../components/ui';
+import { ImageUploader, resolveImageUrl } from '../../components/ImageUploader';
 
 const CATEGORIES = [
   'Electronics', 'Fashion', 'Home', 'Beauty', 'Sports', 'Automotive',
@@ -25,6 +26,7 @@ interface Form {
   oldPriceMinor: number | null;
   stockQuantity: number;
   imageUrl: string;
+  mediaUrls: string[];
   location: string;
   isFlashDeal: boolean;
   discountPercent: number;
@@ -32,7 +34,7 @@ interface Form {
 
 const BLANK: Form = {
   title: '', description: '', category: 'Electronics', brand: '',
-  priceMinor: 0, oldPriceMinor: null, stockQuantity: 1, imageUrl: '',
+  priceMinor: 0, oldPriceMinor: null, stockQuantity: 1, imageUrl: '', mediaUrls: [],
   location: '', isFlashDeal: false, discountPercent: 0,
 };
 
@@ -58,7 +60,7 @@ export default function AddProduct() {
     if (form.title.trim().length < 3) e.title = 'Give the product a clear title (3+ characters)';
     if (forPublish) {
       if (!form.priceMinor || form.priceMinor <= 0) e.priceMinor = 'Set a price above zero';
-      if (!/^https?:\/\//i.test(form.imageUrl.trim())) e.imageUrl = 'A public http(s) image link is required to publish';
+      if (!form.imageUrl.trim()) e.imageUrl = 'Add at least one photo before publishing';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -133,15 +135,16 @@ export default function AddProduct() {
         {/* ── Form ────────────────────────────────────────────────── */}
         <div className="col-lg">
           <section className="card">
-            <h2 className="card-title mb-12"><ImagePlus size={17} /> Photo</h2>
-            <Field label="Image URL" error={errors.imageUrl} required
-              hint="Paste a public link to a clear photo. Listings without a real photo cannot be published.">
-              <Input value={form.imageUrl} invalid={!!errors.imageUrl}
-                onChange={(e) => set('imageUrl', e.target.value)} placeholder="https://…/product.jpg" />
-            </Field>
-            {form.imageUrl && (
-              <img src={form.imageUrl} alt="Preview" className="img-preview"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.25'; }} />
+            <h2 className="card-title mb-12"><ImagePlus size={17} /> Photos</h2>
+            <ImageUploader
+              images={form.mediaUrls}
+              max={8}
+              onChange={(next) =>
+                setForm((f) => ({ ...f, mediaUrls: next, imageUrl: next[0] ?? '' }))
+              }
+            />
+            {errors.imageUrl && (
+              <p className="tiny err-text mt-8" role="alert">{errors.imageUrl}</p>
             )}
           </section>
 
@@ -247,7 +250,7 @@ export default function AddProduct() {
               <div className="pcard" style={{ maxWidth: 220, pointerEvents: 'none' }}>
                 <div className="pcard-media">
                   {form.imageUrl
-                    ? <img className="pcard-img" src={form.imageUrl} alt="" />
+                    ? <img className="pcard-img" src={resolveImageUrl(form.imageUrl)} alt="" />
                     : <div className="skeleton" style={{ width: '100%', height: '100%' }} />}
                   {form.isFlashDeal && (
                     <div className="pcard-tags"><span className="badge badge-red">FLASH −{form.discountPercent}%</span></div>

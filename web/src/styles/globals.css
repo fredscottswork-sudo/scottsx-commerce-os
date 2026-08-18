@@ -145,6 +145,33 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 
+/* ── Mobile hardening ────────────────────────────────────────────────────────
+   Phones are the primary device here. These are safety nets so that a single
+   long word, a wide table or an oversized element can never make the whole
+   page scroll sideways — the most common way a responsive layout still feels
+   broken on a real handset. */
+html, body {
+  /* A stray wide child must not make the whole document pan horizontally. */
+  overflow-x: hidden;
+  /* Stop iOS Safari inflating text in landscape and breaking the layout. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+/* Long unbreakable strings (URLs, emails, order ids) wrap instead of stretching
+   their container past the viewport. */
+body {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+/* Media is never wider than its column. */
+img, svg, video, canvas { max-width: 100%; }
+/* Inputs inherit the app font: iOS zooms the page when a focused field is
+   under 16px, which visually "breaks" every form on an iPhone. */
+input, select, textarea, button { font-family: inherit; }
+@media (max-width: 620px) {
+  .input, .select, textarea.input, .searchbar input { font-size: 16px; }
+}
+
 body {
   margin: 0;
   font-family: var(--font-body);
@@ -1905,4 +1932,70 @@ tbody tr.row-click { cursor: pointer; }
 .google-signin[data-status='loading'] .google-fallback {
   border-style: solid;
   opacity: 0.75;
+}
+
+/* ── Image uploader ──────────────────────────────────────────────────────────
+   Sellers work from a phone, so the controls are touch-sized (44px minimum)
+   and the thumbnail grid reflows from 2 columns on a phone upwards. */
+.uploader-actions {
+  display: flex; flex-wrap: wrap; gap: 9px;
+}
+.uploader-actions .btn { min-height: 44px; }
+.uploader-hint { margin: 9px 0 0; }
+.uploader-link { gap: 8px; margin-top: 10px; }
+.uploader-error { display: flex; align-items: center; gap: 6px; margin: 9px 0 0; }
+
+.uploader-grid {
+  list-style: none; margin: 13px 0 0; padding: 0;
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+}
+.uploader-thumb {
+  position: relative; aspect-ratio: 1 / 1; border-radius: var(--radius-sm);
+  overflow: hidden; border: 1px solid var(--border); background: var(--surface-2);
+}
+.uploader-thumb.is-cover { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.uploader-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.uploader-cover-tag {
+  position: absolute; left: 6px; bottom: 6px;
+  background: var(--primary); color: #fff;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 2px 7px; border-radius: 999px;
+}
+.uploader-thumb-actions {
+  position: absolute; top: 5px; right: 5px; display: flex; gap: 5px;
+}
+.uploader-icon-btn {
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border-radius: 9px; border: none; cursor: pointer;
+  background: rgba(5, 7, 13, 0.72); color: #fff;
+  backdrop-filter: blur(4px);
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.uploader-icon-btn:hover { background: rgba(5, 7, 13, 0.9); transform: translateY(-1px); }
+.uploader-icon-btn.danger:hover { background: var(--danger, #e5484d); }
+.spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Touch devices: actions are always visible (there is no hover to reveal them). */
+@media (hover: none) {
+  .uploader-icon-btn { background: rgba(5, 7, 13, 0.8); }
+}
+
+/* ── Touch targets ───────────────────────────────────────────────────────────
+   Apple and Google both put the minimum comfortable tap target at ~44px. The
+   desktop sizing is deliberately tighter, so this only grows controls on
+   devices that actually use a finger, leaving the pointer design untouched. */
+@media (hover: none) and (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 38px; }
+  .btn-icon { width: 44px; height: 44px; }
+  .nav-link { min-height: 44px; }
+  .bottomnav-item { min-height: 44px; }
+  .input, .select { min-height: 44px; }
+  .chip { min-height: 36px; }
+  /* Momentum scrolling inside horizontal strips. */
+  .table-wrap, .mainnav-inner, .cat-strip, .chip-row {
+    -webkit-overflow-scrolling: touch;
+  }
 }

@@ -26,6 +26,7 @@ import registerStripeRoute from './modules/stripe/payments.route.js';
 import registerNylonPayRoute from './modules/payments/nylonpay.route.js';
 import registerAdminRoute from './modules/admin/admin.route.js';
 import registerUploadsRoute from './modules/uploads/photo.route.js';
+import registerImageUploadRoute from './modules/uploads/image.route.js';
 import registerSocialRoute from './modules/social/social.route.js';
 import registerSupportRoute from './modules/support/support.route.js';
 import registerGeoRoute from './modules/geo/geo.route.js';
@@ -109,6 +110,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerNylonPayRoute(app);
   registerAdminRoute(app);
   registerUploadsRoute(app);
+  await registerImageUploadRoute(app);
   registerSocialRoute(app);
   registerSupportRoute(app);
   registerGeoRoute(app);
