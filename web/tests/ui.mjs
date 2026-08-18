@@ -63,7 +63,7 @@ async function login(email, password) {
  * Boots the real bundle at `route`, optionally pre-seeding a session into
  * localStorage, and resolves once the app has rendered and settled.
  */
-async function mount(route, session = null, { settleMs = 1400 } = {}) {
+async function mount(route, session = null, { settleMs = 1400, google = 'block' } = {}) {
   const virtualConsole = new VirtualConsole();
   const consoleErrors = [];
   virtualConsole.on('jsdomError', (e) => {
@@ -117,6 +117,52 @@ async function mount(route, session = null, { settleMs = 1400 } = {}) {
     watchPosition: () => 1,
     clearWatch: () => {},
   };
+
+  // ── Google Identity Services ───────────────────────────────────────────
+  // 'block'  : script never loads  -> the "unavailable" path
+  // 'ready'  : GIS present, button renders, credential on demand
+  // 'offline': leave it hanging    -> the "loading" path
+  if (google === 'ready') {
+    window.__gisCredential = null;
+    window.google = {
+      accounts: {
+        id: {
+          initialize(cfg) {
+            window.__gisConfig = cfg;
+          },
+          renderButton(parent) {
+            const b = window.document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('data-testid', 'gis-button');
+            b.textContent = 'Continue with Google';
+            b.addEventListener('click', () => {
+              const cred = window.__gisCredential;
+              if (cred) window.__gisConfig?.callback({ credential: cred });
+            });
+            parent.appendChild(b);
+          },
+          prompt() {},
+          disableAutoSelect() {
+            window.__gisAutoSelectDisabled = true;
+          },
+        },
+      },
+    };
+  }
+  // The loader appends a <script> to head; jsdom won't fetch it, so drive the
+  // load/error event ourselves to hit the branch we want.
+  {
+    const realAppend = window.document.head.appendChild.bind(window.document.head);
+    window.document.head.appendChild = (node) => {
+      const out = realAppend(node);
+      if (node.tagName === 'SCRIPT' && String(node.src).includes('gsi/client')) {
+        if (google === 'ready') setTimeout(() => node.dispatchEvent(new window.Event('load')), 10);
+        else if (google === 'block') setTimeout(() => node.dispatchEvent(new window.Event('error')), 10);
+        // 'offline' -> never fires; the component's timeout decides.
+      }
+      return out;
+    };
+  }
 
   if (session) {
     window.localStorage.setItem('stx_token', session.token);
@@ -892,6 +938,53 @@ section('14. Route guards');
   const app = await mount('/cart');
   check('anonymous visitor is sent to login for the cart',
     app.text().includes('Sign in') || app.window.location.pathname === '/login');
+  app.close();
+}
+
+// ── 15. Google Sign-In ──────────────────────────────────────────────────────
+section('15. Google Sign-In');
+{
+  // (a) Google reachable: the button renders and a credential signs the user in.
+  const app = await mount('/login', null, { google: 'ready' });
+  check('the sign-in page offers Google', !!app.$('[data-testid="google-signin"]'));
+  check("Google's button is mounted", !!app.$('[data-testid="gis-button"]'),
+    app.$('[data-testid="google-signin"]')?.getAttribute('data-status') || 'no widget');
+  check('the button is initialised with our OAuth client id',
+    String(app.window.__gisConfig?.client_id || '').endsWith('.apps.googleusercontent.com'),
+    String(app.window.__gisConfig?.client_id));
+  check('the email and password form is still offered',
+    !!app.$('input[type="password"]'));
+
+  // A real Google credential, minted by the backend's own test issuer, is not
+  // available here — assert instead that a *rejected* credential surfaces an
+  // error to the user rather than a silent no-op or a crash.
+  app.window.__gisCredential = 'not.a.valid.google.token';
+  await app.click(app.$('[data-testid="gis-button"]'), 1200);
+  check('a credential Google did not sign is reported to the user',
+    !!app.$('[data-testid="google-error"]'),
+    app.$('[data-testid="google-signin"]')?.textContent?.slice(0, 90));
+  check('a failed Google sign-in leaves the visitor signed out',
+    !app.window.localStorage.getItem('stx_token'));
+  app.close();
+}
+{
+  // (b) Google blocked (offline, ad-blocker, firewall): degrade honestly.
+  const app = await mount('/login', null, { google: 'block' });
+  check('a blocked Google script shows an explanation',
+    !!app.$('[data-testid="google-unavailable"]'));
+  check('the explanation points at email sign-in',
+    /email/i.test(app.$('[data-testid="google-unavailable"]')?.textContent || ''));
+  check('email sign-in still works when Google is blocked',
+    !!app.$('input[type="password"]') && !!app.byText('button', 'Sign in'));
+  check('no unhandled error escapes when Google is blocked',
+    app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+{
+  // (c) Register page offers the same entry point.
+  const app = await mount('/register', null, { google: 'ready' });
+  check('the register page also offers Google', !!app.$('[data-testid="google-signin"]'));
+  check("Google's button renders on register", !!app.$('[data-testid="gis-button"]'));
   app.close();
 }
 

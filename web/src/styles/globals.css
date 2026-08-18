@@ -1835,3 +1835,48 @@ tbody tr.row-click { cursor: pointer; }
   .mainnav-cats span { display: none; }
   .mainnav-cats { padding: 0 9px; margin-right: 4px; }
 }
+
+/* ── GOOGLE SIGN-IN ──────────────────────────────────────────────────────── */
+.google-signin {
+  margin-top: 18px;
+}
+.google-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 14px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.google-divider::before,
+.google-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+/* Google renders its own iframe/button here; we only centre it. */
+.google-btn-host {
+  display: flex;
+  justify-content: center;
+  min-height: 0;
+  transition: min-height var(--dur) ease;
+}
+.google-btn-host:not(:empty) {
+  min-height: 44px;
+}
+.google-fallback {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.google-signin[data-status='loading'] .google-fallback {
+  border-style: solid;
+  opacity: 0.75;
+}

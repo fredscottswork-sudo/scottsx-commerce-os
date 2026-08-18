@@ -52,6 +52,9 @@ export const authService = {
   me: () => api<{ user: any }>('/auth/me'),
   updateMe: (body: { displayName?: string; phone?: string; profilePhotoUrl?: string | null; city?: string }) =>
     api<{ user: any }>('/auth/me', { method: 'PATCH', body }),
+  /** Exchange a Google id_token for a ScottsTechX session. */
+  google: (idToken: string) =>
+    api<{ token: string; user: any }>('/auth/google', { method: 'POST', auth: false, body: { idToken } }),
   upgradeToSeller: () => api<{ token: string; user: any }>('/auth/upgrade-to-seller', { method: 'POST' }),
   uploadPhoto: (file: File) => {
     const form = new FormData();
