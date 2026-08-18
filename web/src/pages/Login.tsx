@@ -11,7 +11,7 @@ import { useSeo } from '../hooks/useSeo';
 export default function Login() {
   useSeo({ title: 'Sign in', noIndex: true });
 
-  const { login } = useAuth();
+  const { login, loginWithFirebase } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -23,12 +23,36 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setBusy(true);
+    const addr = email.trim();
     try {
-      await login(email.trim(), password);
+      // Try Firebase first so accounts created there sign in with the same
+      // credentials — and so their verification state comes from Google.
+      try {
+        const { signInWithEmail } = await import('../lib/firebase');
+        const { idToken } = await signInWithEmail(addr, password);
+        await loginWithFirebase(idToken);
+        toast('Signed in', 'success');
+        navigate('/');
+        return;
+      } catch (fbErr) {
+        const code = (fbErr as { code?: string })?.code || '';
+        // "No such Firebase user" is expected for accounts that pre-date
+        // Firebase or were made through the fallback path — try those below.
+        const notInFirebase =
+          code === 'auth/user-not-found' ||
+          code === 'auth/invalid-credential' ||
+          code === 'auth/wrong-password' ||
+          code === 'auth/operation-not-allowed' ||
+          code === 'auth/configuration-not-found';
+        if (!notInFirebase) throw fbErr;
+      }
+
+      await login(addr, password);
       toast('Signed in', 'success');
       navigate('/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Sign-in failed');
+      const { friendlyAuthError } = await import('../lib/firebase');
+      setError(err instanceof ApiError ? err.message : friendlyAuthError(err));
     } finally {
       setBusy(false);
     }

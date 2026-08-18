@@ -14,7 +14,18 @@ import { verifyIdToken, sendVerificationEmailLink, firebaseEmailVerified } from 
 import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../../errors.js';
 import { publicUser } from './login.route.js';
 
-const signInSchema = z.object({ idToken: z.string().min(10) });
+const signInSchema = z.object({
+  idToken: z.string().min(10),
+  // Optional profile, supplied by the registration form. These are applied
+  // only when the row is first created — a later sign-in can never use them
+  // to overwrite an existing profile, and `role` is deliberately constrained
+  // so nobody can register straight into 'admin'.
+  displayName: z.string().trim().max(120).optional(),
+  phone: z.string().trim().max(40).optional(),
+  role: z.enum(['buyer', 'seller']).optional(),
+  storeName: z.string().trim().max(160).optional(),
+});
+type SignInBody = z.infer<typeof signInSchema>;
 
 /** Wrap Firebase verification failures in a clean 401 for the client. */
 function verificationError(err: unknown): never {
@@ -26,13 +37,19 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
   const pool = getPool();
 
   /** Upsert a user row from a verified Firebase token. */
-  async function upsertFromFirebase(decoded: Record<string, any>) {
+  async function upsertFromFirebase(decoded: Record<string, any>, profile: Partial<SignInBody> = {}) {
     const uid = String(decoded.uid);
     const email = String(decoded.email ?? '').toLowerCase();
     // `email` is UNIQUE, so an identity with no address would insert '' and
     // collide with the next one. Every provider we enable supplies an email.
     if (!email) throw new UnauthorizedError('That sign-in method did not provide an email address');
-    const name = String(decoded.name ?? decoded.email?.split('@')[0] ?? '');
+    // Only what Firebase actually told us. Deriving a name from the email
+    // prefix here would defeat the COALESCE(NULLIF(...)) guards below: the
+    // derived value is never empty, so it would overwrite the stored display
+    // name on every single sign-in. The prefix is used only as a last resort
+    // when creating a brand-new row.
+    const name = String(decoded.name ?? '');
+    const fallbackName = email.split('@')[0] || 'ScottsTechX user';
     const photo = decoded.picture ? String(decoded.picture) : null;
 
     const existing = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
@@ -80,12 +97,30 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
         user = rows[0];
       } else {
         const { rows } = await pool.query(
-          `INSERT INTO users (email, display_name, profile_photo_url, firebase_uid, email_verified, role)
-           VALUES ($1, $2, $3, $4, $5, 'buyer')
+          `INSERT INTO users (email, display_name, profile_photo_url, firebase_uid, email_verified, role, phone)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING *`,
-          [email, name, photo, uid, emailVerified]
+          [
+            email,
+            profile.displayName || name || fallbackName,
+            photo,
+            uid,
+            emailVerified,
+            profile.role === 'seller' ? 'seller' : 'buyer',
+            profile.phone || '',
+          ]
         );
         user = rows[0];
+
+        // A seller needs a storefront row to exist before their dashboard works.
+        if (rows[0]?.role === 'seller') {
+          await pool.query(
+            `INSERT INTO store_settings (user_id, store_name, city, address)
+             VALUES ($1, $2, '', '')
+             ON CONFLICT (user_id) DO NOTHING`,
+            [rows[0].id, profile.storeName || profile.displayName || 'My Store']
+          );
+        }
       }
     }
     return user;
@@ -99,9 +134,15 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
     } catch (err) {
       verificationError(err);
     }
-    const user = await upsertFromFirebase(decoded);
+    const user = await upsertFromFirebase(decoded, body);
     const token = await tokenForUser(user);
-    return reply.code(200).send({ token, user: publicUser(user) });
+    return reply.code(200).send({
+      token,
+      user: publicUser(user),
+      // Lets the client decide whether to show "check your inbox" without
+      // having to re-read the token itself.
+      emailVerified: user.email_verified === true,
+    });
   });
 
   app.post('/api/v1/auth/firebase/send-verification-email', async (request) => {

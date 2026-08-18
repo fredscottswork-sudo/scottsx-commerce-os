@@ -2033,6 +2033,65 @@ section('36. Google sign-in falls back when Firebase is unavailable');
   app.close();
 }
 
+// ── 37. Email/password sign-up goes through Firebase ────────────────────────
+section('37. Sign-up sends a real verification link');
+{
+  // Registration now creates the account in Firebase, which emails the
+  // verification link. The six-digit code remains only as a fallback for when
+  // Firebase Auth is unavailable, so sign-up can never become impossible.
+  const allJs = readdirSync(join(DIST, 'assets'))
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => readFileSync(join(DIST, 'assets', f), 'utf8'))
+    .join('\n');
+
+  check('registration creates the account in Firebase',
+    /createUserWithEmailAndPassword/.test(allJs));
+  check('a verification email is sent on sign-up',
+    /sendEmailVerification/.test(allJs));
+  check('an address already in Firebase is reported, not silently duplicated',
+    /already exists with that email/i.test(bundleJs));
+  check('the six-digit code survives as a fallback',
+    /verify\/confirm/.test(bundleJs));
+
+  // The confirmation screen must actually tell the user to go and check.
+  check('there is a "check your email" confirmation screen',
+    /Check your email/i.test(bundleJs));
+  check('it suggests the spam folder', /spam/i.test(bundleJs));
+  check('it offers to resend', /Resend the email/i.test(bundleJs));
+}
+
+// ── 38. The registration form still works end to end ────────────────────────
+section('38. Registration form renders and validates');
+{
+  const app = await mount('/register', null, { settleMs: 1600 });
+  check('the form asks for an email', !!app.$('input[type="email"]'));
+  check('the form asks for a password', !!app.$('input[type="password"]'));
+  check('a buyer/seller choice is offered', !!app.$('select'));
+  check('the confirmation screen is NOT shown before submitting',
+    !app.$('[data-testid="verify-sent"]'));
+
+  // Mismatched passwords must be caught in the browser, before any account
+  // exists anywhere.
+  const pw = app.$$('input[type="password"]');
+  if (pw.length >= 2) {
+    app.type(app.$('input[type="email"]'), `mismatch_${Date.now()}@scottstechx.test`);
+    app.type(pw[0], 'Test123!');
+    app.type(pw[1], 'Different123!');
+    const form = app.$('form');
+    if (form) {
+      form.dispatchEvent(new app.window.Event('submit', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    check('mismatched passwords are refused before any account is created',
+      /do not match/i.test(app.text()), app.text().slice(0, 120));
+    check('no session was created by the failed attempt',
+      !app.window.localStorage.getItem('stx_token'));
+  }
+  check('no runtime errors on the registration page', app.consoleErrors.length === 0,
+    app.consoleErrors[0]);
+  app.close();
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {

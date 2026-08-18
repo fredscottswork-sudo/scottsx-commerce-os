@@ -370,6 +370,12 @@ every token's signature against Google's published keys regardless.
 
 ### How verification works
 
+Both sign-up paths now go through Firebase:
+
+- **Continue with Google** — already verified by Google, nothing to do.
+- **Email + password** — the account is created in Firebase, which emails the
+  verification link, and the app shows a "Check your email" screen.
+
 1. A new account signs up; Firebase emails the verification link.
 2. `email_verified` lives **inside the signed ID token**, so the browser cannot
    fake it — the backend trusts Google's word, not the client's.

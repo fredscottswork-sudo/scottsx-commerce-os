@@ -312,6 +312,55 @@ console.log(bold('Address collisions fail cleanly, not with a 500'));
     clash.body?.error);
 }
 
+console.log(bold('Registration profile is applied at creation only'));
+{
+  // The registration form sends displayName/phone/role alongside the token.
+  const email = `fbprofile-${RUN}@example.com`;
+  const token = await mint({ email, sub: `uid-prof-${RUN}`, email_verified: false, provider: 'password' });
+
+  const r = await fetch(`${API}/api/v1/auth/firebase/sign-in`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      idToken: token, displayName: 'Kato Fred', phone: '+256700111222',
+      role: 'seller', storeName: 'Kato Electronics',
+    }),
+  });
+  const body = await r.json().catch(() => ({}));
+  check('a profile can be supplied at sign-up', r.status === 200, JSON.stringify(body).slice(0, 140));
+  check('the display name is kept', body.user?.displayName === 'Kato Fred', body.user?.displayName);
+  check('the requested role is applied', body.user?.role === 'seller', body.user?.role);
+  check('an unverified sign-up is still unverified', body.user?.emailVerified === false);
+  check('the response reports verification state', body.emailVerified === false);
+  if (body.user?.id) created.push(body.user.id);
+
+  // A later sign-in must NOT let a client overwrite the stored profile.
+  const hijack = await fetch(`${API}/api/v1/auth/firebase/sign-in`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      idToken: await mint({ email, sub: `uid-prof-${RUN}`, email_verified: false, provider: 'password' }),
+      displayName: 'Someone Else', role: 'buyer',
+    }),
+  });
+  const hb = await hijack.json().catch(() => ({}));
+  check('a later sign-in cannot rewrite the display name',
+    hb.user?.displayName === 'Kato Fred', hb.user?.displayName);
+  check('a later sign-in cannot demote or change the role',
+    hb.user?.role === 'seller', hb.user?.role);
+
+  // Nobody may register straight into admin.
+  const evil = await fetch(`${API}/api/v1/auth/firebase/sign-in`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      idToken: await mint({ email: `fbadmin-${RUN}@example.com`, sub: `uid-admin-${RUN}` }),
+      role: 'admin',
+    }),
+  });
+  check('registering as admin is refused', evil.status === 400, `got ${evil.status}`);
+}
+
 /* ── cleanup ──────────────────────────────────────────────────────── */
 
 console.log(bold('\nCleanup'));

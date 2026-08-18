@@ -75,9 +75,12 @@ export const authService = {
    * different issuer and audience, so the backend verifies it against a
    * different key set. The email_verified claim inside is attested by Google.
    */
-  firebase: (idToken: string) =>
-    api<{ token: string; user: any }>('/auth/firebase/sign-in', {
-      method: 'POST', auth: false, body: { idToken },
+  firebase: (
+    idToken: string,
+    profile?: { displayName?: string; phone?: string; role?: string; storeName?: string }
+  ) =>
+    api<{ token: string; user: any; emailVerified?: boolean }>('/auth/firebase/sign-in', {
+      method: 'POST', auth: false, body: { idToken, ...(profile ?? {}) },
     }),
   upgradeToSeller: () => api<{ token: string; user: any }>('/auth/upgrade-to-seller', { method: 'POST' }),
   uploadPhoto: (file: File) => {
