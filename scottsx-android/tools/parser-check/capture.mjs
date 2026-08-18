@@ -78,10 +78,23 @@ writeFileSync(`${outDir}/inbox.json`, JSON.stringify((await call('/conversations
 writeFileSync(`${outDir}/transcript.json`, JSON.stringify((await call(`/conversations/${cid}/messages`, { token: bt })).data));
 writeFileSync(`${outDir}/head.json`, JSON.stringify((await call(`/conversations/${cid}`, { token: bt })).data));
 
+// Nearby: no radiusKm, so this is the global search the app now performs.
+// Kampala is used as the origin because the seed stores are in Uganda.
+writeFileSync(
+  `${outDir}/nearby.json`,
+  JSON.stringify((await call('/sellers/nearby?lat=0.3476&lng=32.5825&sort=distance&limit=60')).data)
+);
+// A position far from every store, to prove the parser survives a foreign
+// place and an empty-ish result rather than assuming Uganda.
+writeFileSync(
+  `${outDir}/nearby-far.json`,
+  JSON.stringify((await call('/sellers/nearby?lat=51.5074&lng=-0.1278&sort=distance&limit=5')).data)
+);
+
 // Clean up the throwaway account.
 const admin = await call('/auth/login', {
   method: 'POST', body: { email: 'admin@scottstechx.ug', password: 'Admin123!' },
 });
 await call(`/admin/users/${buyer.data.user.id}`, { method: 'DELETE', token: admin.data.token });
 
-console.log('  captured inbox.json, transcript.json, head.json');
+console.log('  captured inbox.json, transcript.json, head.json, nearby.json, nearby-far.json');

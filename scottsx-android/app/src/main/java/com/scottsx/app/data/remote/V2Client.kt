@@ -19,6 +19,7 @@ import com.scottsx.app.data.domain.NearbySeller
 import com.scottsx.app.data.domain.NewProductPayload
 import com.scottsx.app.data.domain.Order
 import com.scottsx.app.data.domain.PaymentMethod
+import com.scottsx.app.data.domain.Place
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.QuickReplyItem
 import com.scottsx.app.data.domain.Refund
@@ -333,10 +334,11 @@ object V2Client {
         null
     }
 
+    /** Convenience wrapper. Null [radiusKm] searches the whole marketplace. */
     suspend fun fetchNearbySellers(
         lat: Double,
         lng: Double,
-        radiusKm: Int = 50,
+        radiusKm: Int? = null,
     ): List<NearbySeller> = fetchNearby(lat, lng, radiusKm).sellers
 
     /**
@@ -351,14 +353,22 @@ object V2Client {
     suspend fun fetchNearby(
         lat: Double,
         lng: Double,
-        radiusKm: Int = 50,
+        /**
+         * Kilometres to search within. **Null means no limit** — the whole
+         * marketplace, nearest first — which is the default because a buyer
+         * with no store inside 50 km should still see the closest ones rather
+         * than an empty screen.
+         */
+        radiusKm: Int? = null,
         category: String? = null,
         query: String? = null,
         verifiedOnly: Boolean = false,
         openOnly: Boolean = false,
         sort: String = "distance",
+        limit: Int = 60,
     ): NearbyResult = try {
-        val params = StringBuilder("?lat=$lat&lng=$lng&radiusKm=$radiusKm&sort=$sort")
+        val params = StringBuilder("?lat=$lat&lng=$lng&sort=$sort&limit=$limit")
+        radiusKm?.let { params.append("&radiusKm=").append(it) }
         category?.takeIf { it.isNotBlank() }?.let {
             params.append("&category=").append(java.net.URLEncoder.encode(it, "UTF-8"))
         }
@@ -373,7 +383,9 @@ object V2Client {
         NearbyResult(
             sellers = (0 until arr.length()).map { NearbySeller.fromJson(arr.getJSONObject(it)) },
             count = r.optInt("count", 0),
+            total = r.optInt("total", r.optInt("count", 0)),
             liveCount = r.optInt("liveCount", 0),
+            place = r.optJSONObject("place")?.let { Place.fromJson(it) },
         )
     } catch (e: Exception) {
         NearbyResult()

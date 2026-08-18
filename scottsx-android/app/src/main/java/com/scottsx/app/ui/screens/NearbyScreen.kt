@@ -25,13 +25,11 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.LocationProvider
 import com.scottsx.app.data.domain.NearbySeller
+import com.scottsx.app.data.domain.Place
 import com.scottsx.app.data.domain.ProductCategory
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
@@ -54,24 +53,26 @@ import com.scottsx.app.ui.components.LoadingRow
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
-/** Uganda city presets used by the location selector. */
-private data class City(val name: String, val lat: Double, val lng: Double)
-
-private val CITIES = listOf(
-    City("Kampala", 0.3476, 32.5825),
-    City("Entebbe", 0.0611, 32.4444),
-    City("Jinja", 0.4255, 33.2041),
-    City("Mbarara", -0.6072, 30.6545),
-    City("Gulu", 2.7724, 32.2881),
-    City("Mbale", 1.0747, 34.1761),
-)
+/**
+ * Where to search from before the buyer's own position is known.
+ *
+ * This is a *starting point*, not a filter: the query has no radius, so the
+ * nearest stores are returned wherever they are, and the list re-centres the
+ * moment a GPS fix arrives.
+ */
+private const val FALLBACK_LAT = 0.3476
+private const val FALLBACK_LNG = 32.5825
 
 private enum class SortMode(val label: String) { Nearest("Nearest"), TopRated("Top rated"), MostProducts("Most products") }
 
 /**
- * NearbyScreen — LocationStatusCard (gradient) with 6 Uganda cities as chips,
- * a FilterSortBar (category chips, sort pill, verified toggle, radius slider),
- * then a filtered + sorted seller list.
+ * NearbyScreen — LocationStatusCard (gradient) showing the buyer's real,
+ * reverse-geocoded position, a FilterSortBar (category chips, sort pill,
+ * verified toggle), then a distance-sorted seller list.
+ *
+ * There is deliberately no radius control and no city picker: the marketplace
+ * is worldwide, the backend returns the nearest stores globally, and the list
+ * re-sorts continuously as the buyer moves.
  */
 @Composable
 fun NearbyScreen(onBack: () -> Unit) {
@@ -79,22 +80,24 @@ fun NearbyScreen(onBack: () -> Unit) {
     var sellers by remember { mutableStateOf<List<NearbySeller>>(emptyList()) }
     var liveCount by remember { mutableStateOf(0) }
     var loading by remember { mutableStateOf(true) }
-    var selectedCity by remember { mutableStateOf(CITIES[0]) }
     var category by remember { mutableStateOf(ProductCategory.All) }
     var sortMode by remember { mutableStateOf(SortMode.Nearest) }
     var verifiedOnly by remember { mutableStateOf(false) }
-    var radiusKm by remember { mutableFloatStateOf(50f) }
+    /** Total matches server-side, which can exceed the page we render. */
+    var total by remember { mutableStateOf(0) }
+    /** The buyer's position, named by the backend gazetteer. */
+    var place by remember { mutableStateOf<Place?>(null) }
 
     // The buyer's own position. Null until a fix arrives (or permission is
-    // denied), in which case the selected city acts as the origin.
+    // denied), in which case FALLBACK_* is used as a provisional origin.
     var myLat by remember { mutableStateOf<Double?>(null) }
     var myLng by remember { mutableStateOf<Double?>(null) }
     var following by remember { mutableStateOf(LocationProvider.hasPermission(context)) }
 
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    val originLat = myLat ?: selectedCity.lat
-    val originLng = myLng ?: selectedCity.lng
+    val originLat = myLat ?: FALLBACK_LAT
+    val originLng = myLng ?: FALLBACK_LNG
 
     fun refresh() {
         loading = true
@@ -102,7 +105,7 @@ fun NearbyScreen(onBack: () -> Unit) {
             val result = V2Client.fetchNearby(
                 lat = originLat,
                 lng = originLng,
-                radiusKm = radiusKm.toInt(),
+                // No radiusKm: search the whole marketplace, nearest first.
                 category = if (category == ProductCategory.All) null else category.displayName,
                 verifiedOnly = verifiedOnly,
                 sort = when (sortMode) {
@@ -113,6 +116,8 @@ fun NearbyScreen(onBack: () -> Unit) {
             )
             sellers = result.sellers
             liveCount = result.liveCount
+            total = result.total
+            result.place?.let { place = it }
             loading = false
         }
     }
@@ -130,7 +135,7 @@ fun NearbyScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { refresh() }
-    LaunchedEffect(selectedCity, radiusKm.toInt(), category, verifiedOnly, sortMode) { refresh() }
+    LaunchedEffect(category, verifiedOnly, sortMode) { refresh() }
     LaunchedEffect(myLat, myLng) { if (myLat != null) refresh() }
 
     // Re-sort locally against the freshest fix so the order updates instantly
@@ -145,7 +150,6 @@ fun NearbyScreen(onBack: () -> Unit) {
                 seller
             }
         }
-        .filter { it.distanceKm <= radiusKm }
         .filter { if (verifiedOnly) it.verified else true }
         .sortedWith(
             when (sortMode) {
@@ -185,7 +189,9 @@ fun NearbyScreen(onBack: () -> Unit) {
                         Text("Nearby sellers", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         Text(
                             buildString {
-                                append("${filtered.size} sellers within ${radiusKm.toInt()} km")
+                                append("${filtered.size} store${if (filtered.size == 1) "" else "s"}")
+                                if (total > filtered.size) append(" of $total")
+                                append(" · nearest first")
                                 if (liveCount > 0) append(" · $liveCount live")
                             },
                             color = Color.White.copy(alpha = 0.85f),
@@ -221,37 +227,57 @@ fun NearbyScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = when {
+                        myLat != null && place != null ->
+                            "📍 ${place!!.label} — stores re-sort as you move"
                         myLat != null -> "📍 Following your location — stores re-sort as you move"
                         following -> "📍 Waiting for a GPS fix…"
-                        LocationProvider.hasPermission(context) -> "Showing from ${selectedCity.name}. Tap the crosshair to follow your location."
-                        else -> "Location permission is off — showing from ${selectedCity.name}."
+                        place != null ->
+                            "Showing from ${place!!.shortLabel.ifBlank { place!!.label }}. Tap the crosshair to follow your location."
+                        LocationProvider.hasPermission(context) ->
+                            "Tap the crosshair to follow your location."
+                        else -> "Location permission is off — showing the nearest stores we know of."
                     },
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 11.sp,
                 )
-                Spacer(Modifier.height(12.dp))
-                // 6 Uganda city chips
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(CITIES.size) { index ->
-                        val city = CITIES[index]
-                        val isSelected = city.name == selectedCity.name
-                        Surface(
-                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.18f),
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.clickable { selectedCity = city },
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Icon(Icons.Filled.LocationOn, contentDescription = null, tint = if (isSelected) ScottsTechXColors.BluePrimary else Color.White, modifier = Modifier.size(14.dp))
-                                Text(
-                                    city.name,
-                                    color = if (isSelected) ScottsTechXColors.BluePrimary else Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
+                // Village / City / Region / Country, when the gazetteer
+                // resolved them. Replaces the old fixed city picker: the
+                // position is detected, not chosen from a short list.
+                place?.let { p ->
+                    val parts: List<Pair<String, String>> = listOfNotNull(
+                        p.village?.takeIf { it.isNotBlank() }?.let { "Village" to it },
+                        p.city?.takeIf { it.isNotBlank() }?.let { "City" to it },
+                        p.region?.takeIf { it.isNotBlank() }?.let { "Region" to it },
+                        p.country?.takeIf { it.isNotBlank() }?.let { "Country" to it },
+                    )
+                    if (parts.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(parts.size) { index ->
+                                val (label, value) = parts[index]
+                                Surface(
+                                    color = Color.White.copy(alpha = 0.18f),
+                                    shape = RoundedCornerShape(16.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.LocationOn,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp),
+                                        )
+                                        Text(
+                                            "$label: $value",
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -337,25 +363,22 @@ fun NearbyScreen(onBack: () -> Unit) {
                         )
                     }
                 }
-                // Radius slider
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("${radiusKm.toInt()} km", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = ScottsTechXColors.BluePrimary)
-                    Slider(
-                        value = radiusKm,
-                        onValueChange = { radiusKm = it },
-                        valueRange = 1f..100f,
-                    )
-                }
+                Spacer(Modifier.weight(1f))
             }
         }
 
         if (loading) {
             LoadingRow()
         } else if (filtered.isEmpty()) {
-            EmptyState("📍", "No sellers found", "Try a bigger radius or another city.")
+            EmptyState(
+                "📍",
+                "No stores found",
+                if (verifiedOnly || category != ProductCategory.All) {
+                    "No stores match these filters. Try clearing them."
+                } else {
+                    "No stores have been listed yet."
+                },
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),

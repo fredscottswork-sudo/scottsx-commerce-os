@@ -31,6 +31,9 @@ parts = [
     '    if (isNull(key)) null else optLong(key)\n',
     # The timestamp formatter under test.
     slice_between(screens, 'internal fun chatTimeLabel', '/** Shared inbox UI'),
+    # Nearby models: NearbySeller (+positionLabel), Place, NearbyResult.
+    slice_between(models, 'data class NearbySeller(',
+                  '/** AI search / image-search / voice-search response. */'),
 ]
 
 harness = '''import org.json.JSONObject
@@ -97,6 +100,69 @@ fun main(args: Array<String>) {
         flag("productPriceMinor failed to parse (bigint returned as a string?)")
     }
     if (hc.otherParty.name == "null") flag("otherParty.name leaked \\"null\\"")
+
+    // ── Nearby: the app now queries with no radius, so these are the exact
+    // payloads NearbyScreen renders.
+    fun readNearby(name: String): NearbyResult {
+        val o = JSONObject(java.io.File("$dir/$name").readText())
+        val arr = o.optJSONArray("sellers") ?: org.json.JSONArray()
+        return NearbyResult(
+            sellers = (0 until arr.length()).map { NearbySeller.fromJson(arr.getJSONObject(it)) },
+            count = o.optInt("count", 0),
+            total = o.optInt("total", o.optInt("count", 0)),
+            liveCount = o.optInt("liveCount", 0),
+            place = o.optJSONObject("place")?.let { Place.fromJson(it) },
+        )
+    }
+
+    val near = readNearby("nearby.json")
+    println("\\nnearby from Kampala: count=${near.count} total=${near.total} live=${near.liveCount}")
+    if (near.sellers.isEmpty()) flag("no sellers parsed from the nearby capture")
+    if (near.total < near.sellers.size) flag("total (${near.total}) is below the page size")
+
+    val here = near.place
+    if (here == null) {
+        flag("place was not parsed — the app would show no location name")
+    } else {
+        println("place: label=\\"${here.label}\\" short=\\"${here.shortLabel}\\" " +
+                "city=${here.city} region=${here.region} country=${here.country} " +
+                "cc=${here.countryCode} acc=${here.accuracyKm}km")
+        if (here.label.isBlank()) flag("place.label is blank")
+        if (here.label == "null" || here.shortLabel == "null") flag("place leaked the string \\"null\\"")
+        if (here.country != "Uganda") flag("expected Uganda for Kampala, got ${here.country}")
+    }
+
+    println("\\nnearest stores:")
+    var lastKm = -1.0
+    for (s in near.sellers.take(6)) {
+        if (s.name == "null" || s.placeLabel == "null") flag("seller strings leaked \\"null\\"")
+        if (s.distanceKm < lastKm) flag("sellers are not sorted by distance (${s.distanceKm} after $lastKm)")
+        lastKm = s.distanceKm
+        println("  %-22s %7.1f km  %-28s %s".format(
+            s.name.take(22), s.distanceKm, s.placeLabel.take(28), s.positionLabel))
+    }
+
+    // Every seed store has sharing off, so each pin must read as last-known
+    // rather than pretending to be live.
+    val notLive = near.sellers.filter { !it.live }
+    if (notLive.any { it.positionLabel == "Live now" }) {
+        flag("a store that is not live is labelled \\"Live now\\"")
+    }
+
+    // A distant origin must still return the nearest stores globally, because
+    // the query no longer has a radius.
+    val far = readNearby("nearby-far.json")
+    println("\\nfrom London: count=${far.count} total=${far.total} place=\\"${far.place?.label}\\"")
+    if (far.sellers.isEmpty()) {
+        flag("a distant buyer saw NO stores — the radius filter is still being applied")
+    } else {
+        val nearest = far.sellers.first()
+        println("  nearest: ${nearest.name} at ${nearest.distanceKm} km")
+        if (nearest.distanceKm < 1000) flag("expected a very distant store, got ${nearest.distanceKm} km")
+    }
+    if (far.place?.country != "United Kingdom") {
+        flag("expected United Kingdom for London, got ${far.place?.country}")
+    }
 
     if (problems == 0) {
         println("\\nOK - every parser handled the real backend JSON correctly.")

@@ -137,6 +137,35 @@ ck('locationAgeMinutes is int|null (Kotlin optInt/isNull)',
 ck('a store with sharing off keeps a real pin (never 0,0)',
    nb.data.sellers.filter(x=>!x.locationSharing).every(x=>x.lat!==0||x.lng!==0),
    'a non-sharing store lost its position');
+ck('nearby seller carries placeLabel (Kotlin NearbySeller.placeLabel)',
+   'placeLabel' in ns, JSON.stringify(Object.keys(ns)));
+
+// NearbyScreen sends no radiusKm at all: the marketplace is worldwide and a
+// buyer with nothing inside an arbitrary radius must still see the closest
+// stores instead of an empty screen.
+const nbGlobal = await call('/sellers/nearby?lat=0.3476&lng=32.5825&sort=distance&limit=60');
+ck('omitting radiusKm searches globally (what the app now sends)',
+   nbGlobal.status === 200 && nbGlobal.data.sellers.length > 0, `got ${nbGlobal.status}`);
+ck('response carries total + place (Kotlin NearbyResult)',
+   typeof nbGlobal.data.total === 'number' && !!nbGlobal.data.place,
+   JSON.stringify(Object.keys(nbGlobal.data)));
+ck('place matches the Kotlin Place model',
+   ['village','city','region','country','countryCode','accuracyKm','label','shortLabel']
+     .every(k => k in nbGlobal.data.place), JSON.stringify(Object.keys(nbGlobal.data.place)));
+ck('center.radiusKm is null when no radius was asked for',
+   nbGlobal.data.center?.radiusKm === null, JSON.stringify(nbGlobal.data.center));
+ck('results are sorted nearest-first',
+   nbGlobal.data.sellers.every((x, i, a) => i === 0 || a[i - 1].distanceKm <= x.distanceKm));
+
+// The regression that removing the radius is meant to prevent.
+const nbFar = await call('/sellers/nearby?lat=51.5074&lng=-0.1278&sort=distance&limit=5');
+ck('a buyer far from every store still sees the nearest ones',
+   nbFar.status === 200 && nbFar.data.sellers.length > 0,
+   'a distant buyer got an empty list — a radius is still being applied');
+ck('distance to a far store is reported honestly (>1000 km)',
+   (nbFar.data.sellers[0]?.distanceKm ?? 0) > 1000, `${nbFar.data.sellers[0]?.distanceKm} km`);
+ck('a foreign position is named correctly',
+   nbFar.data.place?.country === 'United Kingdom', JSON.stringify(nbFar.data.place?.label));
 
 console.log('\n[AI search — AiSearchResult model]');
 const ai=await call('/ai/search',{method:'POST',body:{q:'phone'}});

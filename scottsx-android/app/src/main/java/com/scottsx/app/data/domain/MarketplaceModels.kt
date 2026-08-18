@@ -146,6 +146,8 @@ data class NearbySeller(
     val newThisWeek: Int = 0,
     val etaMinutes: Int = 0,
     val withinServiceRadius: Boolean = false,
+    /** Reverse-geocoded pin, e.g. "Kireka, Central Region". May be blank. */
+    val placeLabel: String = "",
 ) {
     /**
      * What to show under the store pin.
@@ -190,6 +192,39 @@ data class NearbySeller(
             newThisWeek = o.optInt("newThisWeek", 0),
             etaMinutes = o.optInt("etaMinutes", 0),
             withinServiceRadius = o.optBoolean("withinServiceRadius", false),
+            placeLabel = o.optStringSafe("placeLabel"),
+        )
+    }
+}
+
+/**
+ * A reverse-geocoded position, resolved by the backend's offline gazetteer.
+ *
+ * Every field except [accuracyKm] can be absent — the ocean has no city — so
+ * they are nullable and the UI should prefer [label] / [shortLabel].
+ */
+data class Place(
+    val village: String? = null,
+    val city: String? = null,
+    val region: String? = null,
+    val country: String? = null,
+    val countryCode: String? = null,
+    val accuracyKm: Double = 0.0,
+    /** "Kabalagala, Kampala, Central Region, Uganda" */
+    val label: String = "",
+    /** "Kabalagala, Central Region" */
+    val shortLabel: String = "",
+) {
+    companion object {
+        fun fromJson(o: JSONObject): Place = Place(
+            village = o.optStringOrNull("village"),
+            city = o.optStringOrNull("city"),
+            region = o.optStringOrNull("region"),
+            country = o.optStringOrNull("country"),
+            countryCode = o.optStringOrNull("countryCode"),
+            accuracyKm = o.optDouble("accuracyKm", 0.0),
+            label = o.optStringSafe("label"),
+            shortLabel = o.optStringSafe("shortLabel"),
         )
     }
 }
@@ -197,8 +232,13 @@ data class NearbySeller(
 /** GET /sellers/nearby — the list plus how many are broadcasting live. */
 data class NearbyResult(
     val sellers: List<NearbySeller> = emptyList(),
+    /** How many rows came back in this page. */
     val count: Int = 0,
+    /** How many stores match in total, ignoring the page limit. */
+    val total: Int = 0,
     val liveCount: Int = 0,
+    /** Where the buyer is, named. Null when the gazetteer can't place them. */
+    val place: Place? = null,
 )
 
 /** AI search / image-search / voice-search response. */
