@@ -1,5 +1,9 @@
 # Deploying ScottsTechX
 
+> **Want a click-by-click walkthrough instead?** See **[DEPLOY-STEPS.md](DEPLOY-STEPS.md)**
+> — the same deployment as numbered steps with exact form fields, verification
+> commands and a troubleshooting table. This file is the reference version.
+
 Three artifacts, three targets:
 
 | Piece | Goes to | Why |

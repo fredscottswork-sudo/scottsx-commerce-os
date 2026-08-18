@@ -1,0 +1,293 @@
+# Deploy ScottsTechX — step by step
+
+Follow these in order. The backend must exist before the web app and the APK,
+because both need its public URL baked in at build time.
+
+Budget roughly 45–60 minutes for a first run. Everything below has a free tier.
+
+Legend: 🖥️ = on your computer · 🌐 = in a browser
+
+---
+
+## Where the CI files are
+
+Two workflow files are committed in this repo at:
+
+```
+scottsx-commerce-os/
+└── ci/
+    ├── README.md
+    └── github-workflows/
+        ├── ci.yml                 <-- runs the tests on every push
+        └── android-release.yml    <-- builds the signed APK
+```
+
+They are **not** in `.github/workflows/` yet. GitHub refused that push:
+
+```
+! [remote rejected] refusing to allow a GitHub App to create or update
+  workflow `.github/workflows/ci.yml` without `workflows` permission
+```
+
+The token used to push this branch is not allowed to write workflow files —
+that is a GitHub security rule, not a repo problem. Moving them is Step 0 and
+takes about ten seconds from your own machine, where your normal credentials
+apply.
+
+---
+
+## Step 0 — Activate the CI files 🖥️
+
+```bash
+git clone https://github.com/fredscottswork-sudo/scottsx-commerce-os.git
+cd scottsx-commerce-os
+git checkout arena/01a01321-scottsx-commerce-os
+
+mkdir -p .github/workflows
+git mv ci/github-workflows/ci.yml             .github/workflows/ci.yml
+git mv ci/github-workflows/android-release.yml .github/workflows/android-release.yml
+
+git commit -m "Enable CI workflows"
+git push
+```
+
+Check it worked: open the repo on GitHub → **Actions** tab. You should see the
+**CI** workflow listed and a run starting.
+
+> If `git push` also fails here, your account may not have workflow rights on
+> the repo. The fallback is the browser: **Actions → New workflow → set up a
+> workflow yourself**, then paste the contents of each file and commit.
+
+---
+
+## Step 1 — Create the database 🌐
+
+The app ships an *embedded* Postgres for local development only. Production
+needs a real one. [Neon](https://neon.tech) has a genuinely free tier.
+
+1. Sign up at **neon.tech** → **Create project**.
+2. Name it `scottstechx`. Pick the region closest to your users
+   (for Uganda, `AWS eu-central-1` (Frankfurt) is usually the lowest latency).
+3. Copy the **connection string**. It looks like:
+   ```
+   postgresql://user:PASSWORD@ep-xxx-xxx.eu-central-1.aws.neon.tech/neondb?sslmode=require
+   ```
+4. Keep it somewhere safe for the next step.
+
+*(Supabase or Render's own Postgres work identically — you just need a
+`postgresql://…` URL.)*
+
+---
+
+## Step 2 — Generate a JWT secret 🖥️
+
+This signs every login token. It currently defaults to `dev-secret-change-me`
+in a public repo, so **anyone could forge an admin token** against a deployment
+that keeps the default.
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+Copy the output. Treat it like a password — never commit it.
+
+---
+
+## Step 3 — Deploy the backend to Render 🌐
+
+1. Go to [render.com](https://render.com) → sign in with GitHub.
+2. **New → Web Service** → connect this repository.
+3. Select the branch `arena/01a01321-scottsx-commerce-os`.
+4. Fill in:
+
+   | Field | Value |
+   |---|---|
+   | Name | `scottstechx-api` |
+   | Root Directory | `12_Backend` |
+   | Runtime | Node |
+   | Build Command | `npm ci && npm run build` |
+   | Start Command | `npm start` |
+   | Health Check Path | `/api/v1/geo/status` |
+
+5. Click **Advanced → Add Environment Variable** and add each of these:
+
+   ```
+   DATABASE_URL     = <the Neon URL from Step 1>
+   JWT_SECRET       = <the secret from Step 2>
+   NODE_ENV         = production
+   SEED_DATABASE    = false
+   ADMIN_EMAIL      = you@yourdomain.com
+   ADMIN_PASSWORD   = <a strong password you choose>
+   ```
+
+   Do **not** set `PORT` — Render provides it and the server already reads it.
+
+   > **`SEED_DATABASE`:** `false` gives you an empty, real marketplace.
+   > Set it to `true` if you want the 6 demo sellers and 24 demo products to
+   > browse. You can always seed later.
+   >
+   > **`ADMIN_PASSWORD`:** if you skip it, the code falls back to `Admin123!`,
+   > which is written in this public repo. Always set it.
+
+6. **Create Web Service** and wait for the build (~3–5 min).
+
+### Verify it actually worked 🖥️
+
+```bash
+curl https://scottstechx-api.onrender.com/api/v1/geo/status
+```
+
+Expected:
+
+```json
+{"ready":true,"source":"offline-gazetteer","coverage":"global"}
+```
+
+**`"ready":true` is the important part.** It proves the 5 MB offline geocoder
+shipped with the build. If it says `false`, the geo and Nearby features will
+return 503 even though the site looks fine — check that the build command
+included `npm run build` (which copies the asset).
+
+Two more quick checks:
+
+```bash
+# should list products (or an empty array if SEED_DATABASE=false)
+curl https://scottstechx-api.onrender.com/api/v1/products?pageSize=2
+
+# should return a token
+curl -X POST https://scottstechx-api.onrender.com/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@yourdomain.com","password":"<your ADMIN_PASSWORD>"}'
+```
+
+> **Free tier caveat:** the service sleeps after ~15 minutes idle and takes
+> ~30 seconds to wake. Fine for testing; upgrade before real users arrive.
+
+---
+
+## Step 4 — Deploy the web app to Cloudflare Pages 🌐
+
+1. [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** →
+   **Create** → **Pages** → **Connect to Git** → pick this repo.
+2. Set the branch to `arena/01a01321-scottsx-commerce-os`.
+3. Build settings:
+
+   | Field | Value |
+   |---|---|
+   | Framework preset | None |
+   | Root directory | `web` |
+   | Build command | `npm ci && npm run build` |
+   | Build output directory | `dist` |
+
+4. **Environment variables** → add:
+
+   ```
+   VITE_API_URL = https://scottstechx-api.onrender.com
+   ```
+
+   Note: **no** `/api/v1` on the end — the frontend appends it.
+
+   These are build-time values that get inlined into the JavaScript, so they
+   are public. Never put a secret here. To change one you must redeploy.
+
+5. **Save and Deploy** (~2 min). You get a URL like
+   `https://scottstechx.pages.dev`.
+
+### Verify 🌐
+
+Open the URL. Then — and this is the step people skip — navigate to a sub-page
+such as **Nearby** and press **F5** to hard-refresh. If it loads rather than
+404s, SPA routing is working (`web/public/_redirects` handles this, already
+in the repo).
+
+---
+
+## Step 5 — Build the Android APK 🌐
+
+### 5a. Create a signing key 🖥️
+
+Without this the APK is debug-signed: installable for testing, but the Play
+Store will reject it.
+
+```bash
+keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 \
+        -validity 10000 -alias scottsx
+```
+
+It asks for a password and your name/organisation. **Back this file up.** If
+you lose `release.jks` you can never publish an update to the same app — Google
+matches updates by signature.
+
+Turn it into text for GitHub:
+
+```bash
+base64 -w0 release.jks > keystore.txt     # Linux
+base64 -i release.jks | tr -d '\n' > keystore.txt   # macOS
+```
+
+### 5b. Add the secrets 🌐
+
+Repo → **Settings** → **Secrets and variables** → **Actions** →
+**New repository secret**, five times:
+
+| Name | Value |
+|---|---|
+| `API_BASE_URL` | `https://scottstechx-api.onrender.com/api/v1` (**must** end `/api/v1`) |
+| `ANDROID_KEYSTORE_BASE64` | the whole contents of `keystore.txt` |
+| `ANDROID_KEYSTORE_PASSWORD` | the keystore password |
+| `ANDROID_KEY_ALIAS` | `scottsx` |
+| `ANDROID_KEY_PASSWORD` | the key password (often the same) |
+
+### 5c. Run it 🌐
+
+**Actions** → **Android release APK** → **Run workflow** → **Run**.
+
+When it finishes, open the run and download **scottsx-release-apk** from the
+**Artifacts** section. Unzip and copy the `.apk` to your phone to install
+(you will need to allow "install from unknown sources").
+
+The workflow deliberately fails fast if `API_BASE_URL` is missing, is not
+`https://`, or does not end in `/api/v1` — an APK with a wrong URL looks
+fine and then fails on every screen, so it is better to fail the build.
+
+> **Expect the first Gradle build to fail with Kotlin type errors.** The
+> Android app has never been compiled — there is no Android SDK in the
+> environment it was written in. Its syntax and its JSON parsers are verified
+> against real API responses, but not every type. Read the error, fix, push
+> again. See `scottsx-android/tools/README.md`.
+
+---
+
+## Step 6 — Optional extras
+
+| To enable | Do this |
+|---|---|
+| **Google Sign-In** | In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → your OAuth client → **Authorised JavaScript origins** → add `https://scottstechx.pages.dev`. Then set `VITE_GOOGLE_CLIENT_ID` (Cloudflare) and `GOOGLE_CLIENT_ID` (Render). |
+| **Phone push notifications** | Firebase Console → Project settings → Service accounts → **Generate new private key**. Add the JSON to Render as a secret file at `12_Backend/secrets/firebase-admin-key.json`. Until then, in-app and web notifications still work and are stored. |
+| **Real AI (instead of the built-in engine)** | Add `LLM_API_KEY` on Render. Without it the catalogue-grounded local engine handles search and agents. |
+| **Card / mobile-money payments** | Add `NYLON_PAY_API_KEY` and `NYLON_PAY_API_SECRET`. Until then `POST /orders/checkout` returns 503 and cash-on-delivery is the only buy path — which works fully on both web and Android. |
+
+---
+
+## Quick reference
+
+```
+Neon            -> DATABASE_URL
+node -e ...     -> JWT_SECRET
+Render          -> https://scottstechx-api.onrender.com
+  verify:          curl .../api/v1/geo/status  ->  "ready":true
+Cloudflare      -> https://scottstechx.pages.dev   (VITE_API_URL = Render URL)
+  verify:          hard-refresh /nearby, must not 404
+GitHub Actions  -> APK artifact  (API_BASE_URL = Render URL + /api/v1)
+```
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `{"ready":false}` from `/geo/status` | The gazetteer asset did not reach `dist/`. Build command must be `npm ci && npm run build`. |
+| Website loads, but every request fails | `VITE_API_URL` wrong, or it has `/api/v1` on the end (it must not). Rebuild after changing it. |
+| Hard-refresh on a sub-page 404s | Missing SPA rewrite. `web/public/_redirects` is in the repo; confirm output directory is `dist`. |
+| First request after idle takes 30 s | Render free tier cold start. Expected. |
+| APK installs but nothing loads | Built with the emulator default URL. Set `API_BASE_URL` and rebuild. |
+| Login says invalid credentials | `SEED_DATABASE=false` means no demo users exist. Use `ADMIN_EMAIL` / `ADMIN_PASSWORD`. |

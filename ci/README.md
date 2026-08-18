@@ -34,4 +34,5 @@ GitHub UI via **Actions > New workflow > set up a workflow yourself**.
 | `android-release.yml` | manual, or a `v*` tag | Builds a signed release APK against your live HTTPS API and uploads it as an artifact. |
 
 Both are valid YAML and were parsed and checked before committing. See
-`DEPLOYMENT.md` for the secrets `android-release.yml` expects.
+`DEPLOYMENT.md` for the secrets `android-release.yml` expects, or
+`DEPLOY-STEPS.md` for the full click-by-click deployment walkthrough.
