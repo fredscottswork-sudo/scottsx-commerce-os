@@ -1791,10 +1791,21 @@ section('30. AI pages: chat is full height and the helper copy is inside it');
     app.close();
   }
 
-  // The full-height rule must actually grant more height than the default.
-  check('full-height chat claims at least 86dvh on a phone',
-    /\.ai-console-full \.ai-chat\{[^}]*height:max\(86dvh/.test(bundleCss),
-    'rule not found in the bundle');
+  // The card must be sized to the space that is actually visible. 86dvh (the
+  // previous rule) ended 165px below the fold and took the composer with it —
+  // "taller" is only useful if the card still ENDS on screen.
+  check('full-height chat is sized to the visible area, not a dvh share',
+    /\.ai-console-full \.ai-chat\{[^}]*height:calc\(100dvh - 291px\)/.test(bundleCss),
+    'expected height:calc(100dvh - 291px)');
+  check('full-height chat no longer uses an unbounded max() height',
+    !/\.ai-console-full \.ai-chat\{[^}]*height:max\(/.test(bundleCss));
+  // The rail is a one-line chip row: no clamp, no clipping, full-size label.
+  check('the agent picker is a horizontal chip row',
+    /\.ai-console-full \.ai-agents \.col\{[^}]*flex-direction:row/.test(bundleCss));
+  check('agent chips keep their label on one line so nothing is clipped',
+    /\.ai-console-full \.ai-agents \.agent-card\{[^}]*white-space:nowrap/.test(bundleCss));
+  check('agent labels are full body size, not shrunk',
+    /\.ai-console-full \.ai-agents \.agent-name\{[^}]*font-size:var\(--fs-base\)/.test(bundleCss));
 }
 
 // ── Cleanup ─────────────────────────────────────────────────────────────────

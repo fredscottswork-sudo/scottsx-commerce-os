@@ -1183,6 +1183,73 @@ tbody tr.row-click { cursor: pointer; }
      bar 44, content padding 16, agents rail 96 minus the header that is gone)
      plus the 76px bottom-nav reservation. Give the card everything that is
      left rather than a fixed share, and keep a floor so it is always usable. */
+  /* On the dedicated AI pages the agent picker is a 96px horizontal rail
+     sitting between the category bar and the chat. It is useful but it is not
+     the reason anyone opens this page, and together with the topbar and the
+     category bar it pushed the chat card down to 274px — which is why the
+     card already ran past the bottom of the screen and the composer was off
+     it. Collapse the rail to a compact scroller so the conversation starts
+     near the top of the screen. */
+  /* The agent picker becomes a single row of CHIPS.
+
+     The previous attempt kept the desktop card shape and squeezed it — 150px
+     wide, 7px padding, a 58px clamp and the tagline deleted — which is exactly
+     the cramped, clipped text that was reported. A card that must show two
+     lines cannot be made short; a chip that shows one line can. So change the
+     shape rather than shrink the type: one line, full-size label, no clamp,
+     nothing cut off, and the whole rail costs ~46px instead of 96px.
+
+     These pages exist for the conversation, so the picker is deliberately
+     secondary: it is a quiet strip above a chat that owns the rest of the
+     screen. */
+  .ai-console-full .ai-agents {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+  /* "Agents" heading and the engine status line are noise on a phone: the
+     selected chip already says which agent is active. */
+  .ai-console-full .ai-agents .row-between { display: none; }
+  .ai-console-full .ai-agents > p { display: none; }
+
+  .ai-console-full .ai-agents .col {
+    flex-direction: row;
+    gap: 7px;
+    overflow-x: auto;
+    max-height: none;
+    padding: 1px 1px 5px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ai-console-full .ai-agents .col::-webkit-scrollbar { display: none; }
+
+  .ai-console-full .ai-agents .agent-card {
+    width: auto;
+    min-width: 0;              /* chips size to their label, not a fixed box */
+    flex: 0 0 auto;
+    gap: 6px;
+    padding: 8px 13px;
+    border-radius: var(--radius-full);
+    white-space: nowrap;       /* one line, so nothing can be clipped */
+  }
+  .ai-console-full .ai-agents .agent-card:hover { transform: none; }
+  .ai-console-full .ai-agents .agent-emoji { font-size: 15px; }
+  /* Full body size — this is the label the user reads to choose an agent. */
+  .ai-console-full .ai-agents .agent-name {
+    font-size: var(--fs-base);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  /* The tagline needs two lines to be useful and there is no room for two
+     lines here. It is still shown on the agent's own card on desktop. */
+  .ai-console-full .ai-agents .agent-tag { display: none; }
+  /* The chat header repeats the active agent, which the rail directly above
+     already shows. Drop the duplicate line and tighten the padding: that is
+     ~26px handed straight to the conversation. */
+  .ai-console-full .ai-chat-head { padding: 9px 12px; }
+  .ai-console-full .ai-chat-head > div > p { display: none; }
+
   .ai-console-full .ai-chat {
     max-height: none;
     /* Chrome above the chat with the PageHeader gone: topbar 100 + category
@@ -1191,12 +1258,23 @@ tbody tr.row-click { cursor: pointer; }
        must be reserved once the rail is allowed to scroll away. Subtracting
        more than this made the card SMALLER than the previous 78dvh, which is
        the opposite of the goal. */
-    /* max() so this can only ever ADD height: whichever is larger of the
-       space actually left on the page and the 78dvh the card had before.
-       Subtracting a fixed amount alone made the card smaller on tall phones,
-       which is the opposite of what was asked for. */
-    height: max(86dvh, calc(100dvh - 236px));
-    min-height: 440px;
+    /* Size the card to the space that is actually VISIBLE, not to a share of
+       the viewport.
+
+       86dvh looked generous but was counter-productive: the card starts ~218px
+       down the page, so 86dvh (671px on a 360x780 phone) ended at 945px —
+       165px BELOW the screen. The composer went with it, and the visible
+       transcript was capped at whatever fitted above the bottom nav. Making
+       the number bigger simply pushed the composer further out of reach.
+
+       So: fill exactly the room between the top of the card and the bottom
+       nav. Everything in the card is then on screen, and the transcript gets
+       every pixel that is genuinely available.
+
+       215px of chrome above (topbar 100 + category bar 44 + padding 16 +
+       agent chip row 43 + gap 12) + 76px bottom nav = 291px. */
+    height: calc(100dvh - 291px);
+    min-height: 320px;
   }
   .ai-chat-head { flex: 0 0 auto; }
   .ai-chat-body {
@@ -1231,7 +1309,8 @@ tbody tr.row-click { cursor: pointer; }
      at the corrected 16px type that is genuinely cramped, and the page
      scrolls anyway. */
   .ai-chat { max-height: calc(100dvh - 260px); min-height: 300px; }
-  .ai-console-full .ai-chat { height: max(72dvh, calc(100dvh - 250px)); min-height: 320px; }
+  /* Short screens and landscape: same principle, smaller floor. */
+  .ai-console-full .ai-chat { height: calc(100dvh - 291px); min-height: 260px; }
   .ai-welcome { padding: 14px 10px; }
 }
 

@@ -218,6 +218,44 @@ if (WIDTH <= 620) {
   }
 }
 
+// 4c. The AI card must END on screen, not merely be "tall".
+// A previous fix set the card to 86dvh, which sounded generous but was
+// actively harmful: the card starts ~218px down the page, so 86dvh ended
+// 165px BELOW the fold and took the message composer with it. Growing the
+// number made that worse. What matters is where the card ENDS.
+if (WIDTH <= 620) {
+  const H = HEIGHT_PX;
+  const BOTTOM_NAV = 76;
+  const CARD_TOP = 215;   // topbar 100 + category bar 44 + padding 16 + agent chip row 43 + gap 12
+  const usableBottom = H - BOTTOM_NAV;
+
+  const fullRule = resolve('.ai-console-full .ai-chat', ['height', 'min-height', 'max-height']);
+  const hv = (fullRule['height']?.value || '').trim();
+
+  let cardPx = null;
+  const calcM = /^calc\(100dvh\s*-\s*([\d.]+)px\)$/.exec(hv);
+  const dvhM = /^([\d.]+)dvh$/.exec(hv);
+  const maxM = /^max\(/.test(hv);
+  if (calcM) cardPx = H - parseFloat(calcM[1]);
+  else if (dvhM) cardPx = (parseFloat(dvhM[1]) / 100) * H;
+
+  if (maxM) {
+    bad(`.ai-console-full .ai-chat height "${hv}" uses max(), which can exceed the `
+      + 'space available and push the composer off screen — size it to the visible area');
+  } else if (cardPx === null) {
+    bad(`.ai-console-full .ai-chat height "${hv || 'unset'}" is not viewport-relative`);
+  } else {
+    const endsAt = CARD_TOP + cardPx;
+    if (endsAt > usableBottom + 1) {
+      bad(`.ai-console-full .ai-chat ends at ${Math.round(endsAt)}px but the screen is `
+        + `usable only to ${usableBottom}px -> the composer is ${Math.round(endsAt - usableBottom)}px off screen`);
+    } else {
+      ok(`.ai-console-full .ai-chat ends at ${Math.round(endsAt)}px, inside the ${usableBottom}px `
+        + 'usable area — the whole card including the composer is on screen');
+    }
+  }
+}
+
 // 4b. Arithmetic: do the AUTH screens fit vertically?
 // The audit originally only asked whether the auth CARD was too WIDE. It was
 // not — the real fault was vertical. Login/Register render inside the public
