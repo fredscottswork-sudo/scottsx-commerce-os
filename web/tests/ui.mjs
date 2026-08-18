@@ -63,7 +63,7 @@ async function login(email, password) {
  * Boots the real bundle at `route`, optionally pre-seeding a session into
  * localStorage, and resolves once the app has rendered and settled.
  */
-async function mount(route, session = null, { settleMs = 1400, google = 'block' } = {}) {
+async function mount(route, session = null, { settleMs = 1400, google = 'block', geo = null } = {}) {
   const virtualConsole = new VirtualConsole();
   const consoleErrors = [];
   virtualConsole.on('jsdomError', (e) => {
@@ -112,11 +112,30 @@ async function mount(route, session = null, { settleMs = 1400, google = 'block' 
     window.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 16);
     window.cancelAnimationFrame = (id) => clearTimeout(id);
   }
-  window.navigator.geolocation = {
-    getCurrentPosition: (ok) => ok({ coords: { latitude: 0.3476, longitude: 32.5825 } }),
-    watchPosition: () => 1,
-    clearWatch: () => {},
-  };
+  // Geolocation. `geo` lets a test script a coarse first fix followed by a
+  // sharper one, which is what a real phone does while the GPS chip warms up.
+  {
+    const first = geo?.first ?? { latitude: 0.3476, longitude: 32.5825, accuracy: 30 };
+    const refined = geo?.refined ?? null;
+    const denied = geo?.denied ?? false;
+    let watchSeq = 0;
+    window.__geoWatches = 0;
+    window.navigator.geolocation = {
+      getCurrentPosition: (ok, err) => {
+        if (denied) {
+          err?.({ code: 1, PERMISSION_DENIED: 1, message: 'denied' });
+          return;
+        }
+        ok({ coords: first });
+      },
+      watchPosition: (ok) => {
+        window.__geoWatches += 1;
+        if (refined) setTimeout(() => ok({ coords: refined }), 30);
+        return ++watchSeq;
+      },
+      clearWatch: () => {},
+    };
+  }
 
   // ── Google Identity Services ───────────────────────────────────────────
   // 'block'  : script never loads  -> the "unavailable" path
@@ -1157,6 +1176,55 @@ section('18. Mobile readiness & photo upload');
     `${nav?.querySelectorAll('a').length || 0} links`);
   check('the bottom nav is labelled for screen readers',
     (nav?.getAttribute('aria-label') || '').length > 0);
+  app.close();
+}
+
+// ── 19. Real location ───────────────────────────────────────────────────────
+// The complaint was that Nearby named the wrong place. Two causes: a coarse
+// Wi-Fi fix accepted as final, and a stale cached fix. Both are covered here.
+section('19. Location is the buyer\'s real position');
+{
+  // A sharp fix should be reported as precise and named exactly.
+  const app = await mount('/nearby', null, {
+    geo: { first: { latitude: 0.3345, longitude: 32.5726, accuracy: 18 } },
+    settleMs: 2200,
+  });
+  const label = app.$('[data-testid="place-label"]')?.textContent || '';
+  check('a precise fix resolves to the real neighbourhood',
+    /Wandegeya/i.test(label), label);
+  const acc = app.$('[data-testid="gps-accuracy"]')?.textContent || '';
+  check('the precision of the fix is shown', /±\s*18\s*m/.test(acc), acc);
+  check('a precise fix is not labelled approximate', !/approximate/i.test(acc), acc);
+  check('no runtime errors on Nearby', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+{
+  // A 3 km Wi-Fi fix must be flagged AND must trigger a hunt for something
+  // better — this is the bug that put buyers in the wrong suburb.
+  const app = await mount('/nearby', null, {
+    geo: {
+      first:   { latitude: 0.3050, longitude: 32.5400, accuracy: 3000 },
+      refined: { latitude: 0.3345, longitude: 32.5726, accuracy: 12 },
+    },
+    settleMs: 2600,
+  });
+  const acc = app.$('[data-testid="gps-accuracy"]')?.textContent || '';
+  check('a coarse fix is corrected by the sharper one that follows',
+    /±\s*12\s*m/.test(acc), acc);
+  check('the corrected fix renames the place to the real one',
+    /Wandegeya/i.test(app.$('[data-testid="place-label"]')?.textContent || ''),
+    app.$('[data-testid="place-label"]')?.textContent);
+  check('a coarse first fix starts a refinement watch', (app.window.__geoWatches || 0) >= 1);
+  app.close();
+}
+{
+  // Denied permission must say so rather than inventing a location.
+  const app = await mount('/nearby', null, { geo: { denied: true }, settleMs: 1800 });
+  const text = app.text();
+  check('a denied permission is reported, not faked',
+    /could not detect your location|permission denied/i.test(text));
+  check('no city is invented when location is unavailable',
+    !/Kampala Central/i.test(app.$('[data-testid="place-label"]')?.textContent || ''));
   app.close();
 }
 

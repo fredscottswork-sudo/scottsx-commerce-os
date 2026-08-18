@@ -7,6 +7,11 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      apiBaseUrl:
+        description: 'API base URL to bake into the test APK (must end /api/v1). Blank uses the built-in default.'
+        required: false
+        type: string
 
 jobs:
   backend-and-web:
@@ -122,11 +127,29 @@ jobs:
       - name: Build debug APK
         working-directory: scottsx-android
         # The app talks to whatever API_BASE_URL is baked in at build time.
-        # Override with a real host for a shippable build (see the release job).
-        run: ./gradlew --no-daemon assembleDebug
+        # Supply one when dispatching this workflow to test against a live
+        # backend; otherwise the app-level default is used.
+        env:
+          INPUT_URL: ${{ inputs.apiBaseUrl }}
+          SECRET_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          chmod +x ./gradlew
+          URL="${INPUT_URL:-$SECRET_URL}"
+          if [ -n "$URL" ]; then
+            case "$URL" in
+              */api/v1) ;;
+              *) echo "::error::API base URL must end with /api/v1 (got: $URL)"; exit 1 ;;
+            esac
+            echo "Building the test APK against $URL"
+            ./gradlew --no-daemon assembleDebug -PapiBaseUrl="$URL"
+          else
+            echo "::notice::No API base URL supplied — using the built-in default (emulator loopback)."
+            ./gradlew --no-daemon assembleDebug
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: scottsx-debug-apk
+          name: scottsx-test-apk
           path: scottsx-android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 30

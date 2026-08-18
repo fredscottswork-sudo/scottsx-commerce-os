@@ -33,6 +33,15 @@ object LocationProvider {
     /** Minimum movement before a new fix is emitted (metres). */
     private const val MIN_DISTANCE_M = 25f
 
+    /** At or under this radius the fix is a real satellite lock, not a guess. */
+    private const val GOOD_ACCURACY_M = 100f
+
+    /** Beyond this the buyer has actually travelled, so trust the new fix. */
+    private const val SIGNIFICANT_MOVE_M = 150f
+
+    /** A cached fix older than this is not evidence of where the buyer is now. */
+    private const val MAX_FIX_AGE_MS = 30 * 60 * 1000L
+
     data class Fix(val lat: Double, val lng: Double, val accuracyM: Float = 0f)
 
     fun hasPermission(context: Context): Boolean =
@@ -64,8 +73,17 @@ object LocationProvider {
                         null
                     }
                 }
-                // Prefer the most recent fix.
-                .maxByOrNull { it.time }
+                // "Most recent" is the wrong test: a fresh cell-tower estimate
+                // can be accurate to kilometres while a slightly older GPS fix
+                // is accurate to metres, and picking the former names the wrong
+                // suburb. Drop anything too stale to be true, then score what
+                // is left on accuracy, letting age break ties.
+                .filter { System.currentTimeMillis() - it.time <= MAX_FIX_AGE_MS }
+                .minByOrNull { location ->
+                    val ageMin = (System.currentTimeMillis() - location.time) / 60_000.0
+                    val accuracy = if (location.hasAccuracy()) location.accuracy.toDouble() else 5_000.0
+                    accuracy + ageMin * 10.0
+                }
                 ?.let { Fix(it.latitude, it.longitude, it.accuracy) }
         } catch (e: SecurityException) {
             null
@@ -95,9 +113,25 @@ object LocationProvider {
 
         lastKnown(context)?.let { trySend(it) }
 
+        // Best accuracy seen so far, so a momentary fallback to the network
+        // provider cannot drag the buyer's pin kilometres off course while
+        // they are standing still.
+        var bestAccuracy = Float.MAX_VALUE
+        var lastLocation: Location? = null
+
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
-                trySend(Fix(location.latitude, location.longitude, location.accuracy))
+                val accuracy = if (location.hasAccuracy()) location.accuracy else Float.MAX_VALUE
+                val movedFar = lastLocation?.distanceTo(location)?.let { it > SIGNIFICANT_MOVE_M } ?: true
+
+                // Accept it if it is better, if it is good enough outright, or
+                // if the buyer has genuinely moved (in which case even a coarse
+                // fix carries real information).
+                if (accuracy <= bestAccuracy || accuracy <= GOOD_ACCURACY_M || movedFar) {
+                    bestAccuracy = minOf(bestAccuracy, accuracy)
+                    lastLocation = location
+                    trySend(Fix(location.latitude, location.longitude, location.accuracy))
+                }
             }
 
             // Required on older API levels; no-ops on modern Android.
