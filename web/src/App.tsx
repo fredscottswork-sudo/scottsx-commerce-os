@@ -9,6 +9,8 @@ import Home from './pages/Home';
 import ProductDetail from './pages/ProductDetail';
 import SellerStorefront from './pages/SellerStorefront';
 import Nearby from './pages/Nearby';
+import Search from './pages/Search';
+import Ai from './pages/Ai';
 import CmsPage from './pages/CmsPage';
 import NotFound from './pages/NotFound';
 
@@ -21,6 +23,7 @@ import Refunds from './pages/buyer/Refunds';
 import Support from './pages/buyer/Support';
 import SettingsPage from './pages/buyer/Settings';
 import AiChat from './pages/buyer/AiChat';
+import Cart from './pages/buyer/Cart';
 import Messages from './pages/Messages';
 import Thread from './pages/Thread';
 import Notifications from './pages/Notifications';
@@ -37,6 +40,8 @@ import StoreSettingsPage from './pages/seller/StoreSettings';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminProducts from './pages/admin/AdminProducts';
+import AdminQueue from './pages/admin/AdminQueue';
+import AdminSupport from './pages/admin/AdminSupport';
 
 function RequireRole({ role, children }: { role: 'buyer' | 'seller' | 'admin'; children: ReactNode }) {
   const { user } = useAuth();
@@ -82,6 +87,8 @@ export default function App() {
         <Route path="/product/:id" element={<ProductDetail />} />
         <Route path="/seller/:id" element={<SellerStorefront />} />
         <Route path="/nearby" element={<Nearby />} />
+        <Route path="/search" element={<Search />} />
+        <Route path="/ai" element={<Ai />} />
         <Route path="/cms/:slug" element={<CmsPage />} />
 
         {/* buyer */}
@@ -94,6 +101,7 @@ export default function App() {
         <Route path="/buyer/support" element={<RequireRole role="buyer"><Support /></RequireRole>} />
         <Route path="/buyer/settings" element={<RequireRole role="buyer"><SettingsPage /></RequireRole>} />
         <Route path="/buyer/ai" element={<RequireRole role="buyer"><AiChat /></RequireRole>} />
+        <Route path="/cart" element={<RequireRole role="buyer"><Cart /></RequireRole>} />
 
         {/* seller */}
         <Route path="/seller" element={<RequireRole role="seller"><SellerDashboard /></RequireRole>} />
@@ -114,6 +122,8 @@ export default function App() {
         <Route path="/admin" element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
         <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsers /></RequireRole>} />
         <Route path="/admin/products" element={<RequireRole role="admin"><AdminProducts /></RequireRole>} />
+        <Route path="/admin/queue" element={<RequireRole role="admin"><AdminQueue /></RequireRole>} />
+        <Route path="/admin/support" element={<RequireRole role="admin"><AdminSupport /></RequireRole>} />
 
         <Route path="*" element={<NotFound />} />
       </Routes>

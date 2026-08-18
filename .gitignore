@@ -4,6 +4,14 @@
 **/node_modules/
 **/dist/
 
+# Android SDK location — machine-specific, must never be committed
+scottsx-android/local.properties
+
+# Android release signing (keystore + passwords)
+*.jks
+*.keystore
+scottsx-android/keystore.properties
+
 # IDE
 .idea/
 *.iml
@@ -20,3 +28,4 @@
 # OS
 .DS_Store
 Thumbs.db
+**/tsconfig.tsbuildinfo

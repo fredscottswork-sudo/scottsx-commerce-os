@@ -1,99 +1,473 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { Send, Star } from 'lucide-react';
+/**
+ * Conversation thread.
+ *
+ * Supports everything the backend exposes: text, photos, price offers with
+ * accept/decline/withdraw, system events, read receipts, typing indicators,
+ * message retraction, pin/mute, and saved quick replies.
+ *
+ * Polling is deliberate rather than websockets: the API is stateless and the
+ * 2.5s cadence is cheap, and it keeps the mobile app and web identical.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  ArrowLeft, BellOff, BellRing, Check, CheckCheck, HandCoins, ImagePlus,
+  Inbox, Pin, PinOff, Send, ShieldCheck, Trash2, Zap,
+} from 'lucide-react';
 import { chatService } from '../api/services';
-import type { ChatMessage, Conversation } from '../api/types';
+import type { ChatMessage, Conversation, QuickReply } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
-import { Empty, Loading } from '../components/ui';
+import { Avatar, Badge, Btn, ConfirmModal, Empty, ErrorBox, Field, Input, Modal } from '../components/ui';
 
-const QUICK = ['Got it', 'On the way', 'Thanks!', 'Will check'];
+const money = (minor?: number | null) =>
+  minor == null ? '' : `UGX ${(minor / 100).toLocaleString('en-UG')}`;
+
+const DEFAULT_QUICK = ['Is this still available?', 'What is your best price?', 'Do you deliver?', 'Thanks!'];
+
+/** Group consecutive messages by calendar day for the date separators. */
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { day: 'numeric', month: 'long', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+}
+
+const clock = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 export default function Thread() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+
   const [conv, setConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [otherTyping, setOtherTyping] = useState(false);
   const [input, setInput] = useState('');
-  const [showQuick, setShowQuick] = useState(false);
+  const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState('');
 
-  async function load() {
-    const c = await chatService.conversations();
-    setConv(c.conversations.find((x) => x.id === id) ?? null);
-    const m = await chatService.messages(id!);
-    setMessages(m.messages);
-    setLoading(false);
-    chatService.markRead(id!).catch(() => undefined);
-  }
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [offerPrice, setOfferPrice] = useState('');
+  const [offerQty, setOfferQty] = useState('1');
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<ChatMessage | null>(null);
+  const [offerBusy, setOfferBusy] = useState<string | null>(null);
+
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const typingSentAt = useRef(0);
+  const lastCount = useRef(0);
+
+  const load = useCallback(async (opts: { quiet?: boolean } = {}) => {
+    if (!id) return;
+    try {
+      const [head, body] = await Promise.all([
+        chatService.thread(id),
+        chatService.messages(id),
+      ]);
+      setConv(head.conversation);
+      setMessages(body.messages);
+      setOtherTyping(body.otherTyping);
+      setError('');
+    } catch (e: any) {
+      if (!opts.quiet) setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setLoading(true);
+    load();
+    chatService.markRead(id!).catch(() => undefined);
+    chatService.quickReplies().then((r) => setQuickReplies(r.quickReplies)).catch(() => undefined);
+  }, [id, load]);
+
+  // Live polling + mark-as-read so the other side's receipts advance.
+  useEffect(() => {
+    const t = setInterval(() => {
+      load({ quiet: true });
+      chatService.markRead(id!).catch(() => undefined);
+    }, 2500);
+    return () => clearInterval(t);
+  }, [id, load]);
+
+  // Only autoscroll when the transcript actually grew.
+  useEffect(() => {
+    if (messages.length !== lastCount.current) {
+      lastCount.current = messages.length;
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
   }, [messages.length]);
+
+  // Typing heartbeat, throttled to one ping per 3s.
+  function onInputChange(value: string) {
+    setInput(value);
+    const now = Date.now();
+    if (value && now - typingSentAt.current > 3000) {
+      typingSentAt.current = now;
+      chatService.typing(id!, true).catch(() => undefined);
+    }
+  }
 
   async function send(e?: FormEvent) {
     e?.preventDefault();
     const text = input.trim();
-    if (!text) return;
+    if (!text || sending) return;
     setInput('');
+    setSending(true);
+    // Optimistic echo keeps the UI instant; the poll reconciles it.
+    const optimistic: ChatMessage = {
+      id: `tmp-${Date.now()}`,
+      senderId: user!.id,
+      text,
+      kind: 'text',
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((m) => [...m, optimistic]);
     try {
-      await chatService.send(id!, text);
-      load();
+      await chatService.send(id!, { text });
+      await load({ quiet: true });
+      window.dispatchEvent(new Event('stx:refresh-badges'));
     } catch (err: any) {
+      setMessages((m) => m.filter((x) => x.id !== optimistic.id));
+      setInput(text);
       toast(err.message, 'error');
+    } finally {
+      setSending(false);
     }
   }
 
-  if (loading) return <Loading />;
+  async function sendPhoto() {
+    const url = photoUrl.trim();
+    if (!/^https?:\/\//.test(url)) { toast('Enter a valid image URL', 'error'); return; }
+    try {
+      await chatService.send(id!, { kind: 'image', imageUrl: url, attachmentName: url.split('/').pop() });
+      setPhotoOpen(false);
+      setPhotoUrl('');
+      await load({ quiet: true });
+    } catch (e: any) { toast(e.message, 'error'); }
+  }
+
+  async function sendOffer() {
+    const amount = Number(offerPrice);
+    const qty = Number(offerQty) || 1;
+    if (!amount || amount <= 0) { toast('Enter an offer amount', 'error'); return; }
+    try {
+      await chatService.send(id!, {
+        kind: 'offer',
+        offerMinor: Math.round(amount * 100),
+        offerQuantity: qty,
+      });
+      setOfferOpen(false);
+      setOfferPrice('');
+      setOfferQty('1');
+      await load({ quiet: true });
+      toast('Offer sent', 'success');
+    } catch (e: any) { toast(e.message, 'error'); }
+  }
+
+  async function respond(m: ChatMessage, action: 'accept' | 'decline' | 'withdraw') {
+    setOfferBusy(m.id);
+    try {
+      await chatService.respondToOffer(id!, m.id, action);
+      await load({ quiet: true });
+      toast(action === 'accept' ? 'Offer accepted' : action === 'decline' ? 'Offer declined' : 'Offer withdrawn', 'success');
+    } catch (e: any) {
+      toast(e.message, 'error');
+    } finally {
+      setOfferBusy(null);
+    }
+  }
+
+  async function retract() {
+    if (!confirmDelete) return;
+    try {
+      await chatService.retract(id!, confirmDelete.id);
+      setConfirmDelete(null);
+      await load({ quiet: true });
+    } catch (e: any) { toast(e.message, 'error'); }
+  }
+
+  async function toggleState(patch: { pinned?: boolean; muted?: boolean }, label: string) {
+    try {
+      const r = await chatService.setState(id!, patch);
+      setConv((c) => (c ? { ...c, ...r.state } : c));
+      toast(label, 'success');
+    } catch (e: any) { toast(e.message, 'error'); }
+  }
+
+  const quickChips = useMemo(
+    () => (quickReplies.length ? quickReplies.map((q) => q.text) : DEFAULT_QUICK),
+    [quickReplies]
+  );
+
+  if (loading) {
+    return (
+      <div className="col">
+        <div className="skeleton" style={{ height: 58, borderRadius: 'var(--radius)' }} />
+        <div className="skeleton" style={{ height: 320, borderRadius: 'var(--radius)' }} />
+      </div>
+    );
+  }
+  if (error) return <ErrorBox message={error} onRetry={load} />;
+
+  const other = conv?.otherParty;
+  let lastDay = '';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--topbar-h) - 44px)' }}>
-      <div className="row-between mb-16">
-        <div className="row">
-          <Link to="/messages" className="muted">← Inbox</Link>
-          <strong>{conv?.otherParty.name ?? 'Conversation'}</strong>
+    <div className="thread-wrap">
+      {/* ---------------------------------------------------------- header */}
+      <header className="thread-head">
+        <button className="icon-btn" onClick={() => navigate('/messages')} aria-label="Back to inbox">
+          <ArrowLeft size={18} />
+        </button>
+        <Avatar name={other?.name} src={other?.photoUrl ?? undefined} />
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="row" style={{ gap: 6 }}>
+            <strong className="ellipsis">{other?.name ?? 'Conversation'}</strong>
+            {other?.verified && <ShieldCheck size={14} className="chat-verified" />}
+          </div>
+          <span className="thread-status">
+            {otherTyping ? (
+              <span className="typing-live">
+                typing<span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+              </span>
+            ) : (
+              <>{other?.role === 'seller' ? 'Seller' : 'Buyer'}{other?.location ? ` · ${other.location}` : ''}</>
+            )}
+          </span>
         </div>
-        {conv?.productTitle && <span className="badge badge-blue">🛒 {conv.productTitle}</span>}
-      </div>
+        <button
+          className="icon-btn"
+          title={conv?.muted ? 'Unmute notifications' : 'Mute notifications'}
+          aria-label={conv?.muted ? 'Unmute conversation' : 'Mute conversation'}
+          onClick={() => toggleState({ muted: !conv?.muted }, conv?.muted ? 'Notifications on' : 'Muted')}
+        >
+          {conv?.muted ? <BellOff size={17} /> : <BellRing size={17} />}
+        </button>
+        <button
+          className="icon-btn"
+          title={conv?.pinned ? 'Unpin' : 'Pin conversation'}
+          aria-label={conv?.pinned ? 'Unpin conversation' : 'Pin conversation'}
+          onClick={() => toggleState({ pinned: !conv?.pinned }, conv?.pinned ? 'Unpinned' : 'Pinned')}
+        >
+          {conv?.pinned ? <PinOff size={17} /> : <Pin size={17} />}
+        </button>
+      </header>
 
-      <div className="card grow" style={{ padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {messages.length === 0 ? <Empty emoji="👋" title="Say hello" subtitle="Start the conversation with the seller." /> :
+      {/* ---------------------------------------------- product context bar */}
+      {conv?.productTitle && (
+        <Link to={conv.productId ? `/product/${conv.productId}` : '#'} className="thread-product">
+          {conv.productImageUrl && <img src={conv.productImageUrl} alt="" loading="lazy" />}
+          <div className="grow" style={{ minWidth: 0 }}>
+            <span className="ellipsis">{conv.productTitle}</span>
+            {conv.productPriceMinor != null && <strong>{money(conv.productPriceMinor)}</strong>}
+          </div>
+          <Badge tone="primary">View</Badge>
+        </Link>
+      )}
+
+      {/* ------------------------------------------------------ transcript */}
+      <div className="thread-body">
+        {messages.length === 0 ? (
+          <Empty icon={<Inbox size={26} />} title="Say hello" subtitle="Ask about price, delivery or availability." />
+        ) : (
           messages.map((m) => {
             const mine = m.senderId === user?.id;
+            const day = dayLabel(m.createdAt);
+            const showDay = day !== lastDay;
+            lastDay = day;
+
+            // ---- system events -------------------------------------------
+            if (m.kind === 'system') {
+              return (
+                <div key={m.id}>
+                  {showDay && <div className="thread-day">{day}</div>}
+                  <div className="thread-system">{m.text}</div>
+                </div>
+              );
+            }
+
+            // ---- price offers --------------------------------------------
+            if (m.kind === 'offer') {
+              const pending = m.offerStatus === 'pending';
+              return (
+                <div key={m.id}>
+                  {showDay && <div className="thread-day">{day}</div>}
+                  <div className={`offer-card${mine ? ' mine' : ''}`}>
+                    <div className="row-between">
+                      <span className="row" style={{ gap: 6 }}>
+                        <HandCoins size={15} />
+                        <strong>{mine ? 'Your offer' : 'Offer received'}</strong>
+                      </span>
+                      <Badge tone={
+                        m.offerStatus === 'accepted' ? 'green'
+                          : m.offerStatus === 'pending' ? 'amber' : 'red'
+                      }>
+                        {m.offerStatus}
+                      </Badge>
+                    </div>
+                    <div className="offer-price">{money(m.offerMinor)}</div>
+                    {(m.offerQuantity ?? 1) > 1 && (
+                      <span className="muted">for {m.offerQuantity} units</span>
+                    )}
+                    {m.productTitle && <span className="muted ellipsis">on {m.productTitle}</span>}
+                    {pending && (
+                      <div className="row mt-8" style={{ gap: 8 }}>
+                        {mine ? (
+                          <Btn size="sm" loading={offerBusy === m.id} onClick={() => respond(m, 'withdraw')}>
+                            Withdraw
+                          </Btn>
+                        ) : (
+                          <>
+                            <Btn size="sm" variant="primary" loading={offerBusy === m.id} onClick={() => respond(m, 'accept')}>
+                              Accept
+                            </Btn>
+                            <Btn size="sm" loading={offerBusy === m.id} onClick={() => respond(m, 'decline')}>
+                              Decline
+                            </Btn>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <div className="bubble-meta">{clock(m.createdAt)}</div>
+                  </div>
+                </div>
+              );
+            }
+
+            // ---- text / image --------------------------------------------
+            const retracted = !!m.deletedAt;
             return (
-              <div key={m.id} className={mine ? 'bubble bubble-mine' : 'bubble bubble-other'} style={{ alignSelf: mine ? 'flex-end' : 'flex-start' }}>
-                {m.text}
-                <div style={{ fontSize: 10.5, opacity: 0.75, marginTop: 3, textAlign: 'right' }}>
-                  {mine ? '✓ Delivered' : new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <div key={m.id}>
+                {showDay && <div className="thread-day">{day}</div>}
+                <div className={`bubble-row ${mine ? 'user' : 'assistant'}`}>
+                  <div className={`bubble ${mine ? 'bubble-mine' : 'bubble-other'}${retracted ? ' bubble-retracted' : ''}`}>
+                    {retracted ? (
+                      <em>This message was deleted</em>
+                    ) : (
+                      <>
+                        {m.imageUrl && (
+                          <img src={m.imageUrl} alt={m.attachmentName ?? 'attachment'} className="bubble-img" loading="lazy" />
+                        )}
+                        {m.text && <span>{m.text}</span>}
+                      </>
+                    )}
+                    <div className="bubble-meta">
+                      <span>{clock(m.createdAt)}</span>
+                      {mine && !retracted && (
+                        m.readByOther ? <CheckCheck size={13} className="receipt-read" /> : <Check size={13} />
+                      )}
+                      {mine && !retracted && !String(m.id).startsWith('tmp-') && (
+                        <button
+                          className="bubble-del"
+                          title="Delete message"
+                          aria-label="Delete message"
+                          onClick={() => setConfirmDelete(m)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );
-          })}
+          })
+        )}
+
+        {otherTyping && messages.length > 0 && (
+          <div className="bubble-row assistant">
+            <div className="bubble bubble-other typing-bubble">
+              <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
-      {showQuick && (
-        <div className="row wrap mt-8">
-          {QUICK.map((q) => (
-            <button key={q} className="chip" onClick={() => { setInput(q); setShowQuick(false); }}>{q}</button>
+      {/* --------------------------------------------------- quick replies */}
+      {quickOpen && (
+        <div className="chip-row thread-quick">
+          {quickChips.map((q) => (
+            <button key={q} className="chip" onClick={() => { setInput(q); setQuickOpen(false); }}>
+              {q}
+            </button>
           ))}
         </div>
       )}
 
-      <form onSubmit={send} className="row mt-8">
-        <button type="button" className="btn" title="Quick replies" onClick={() => setShowQuick(!showQuick)}><Star size={16} /></button>
-        <input className="input grow" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message…" />
-        <button type="submit" className="btn btn-primary" disabled={!input.trim()} aria-label="Send">
+      {/* ---------------------------------------------------- composer bar */}
+      <form onSubmit={send} className="thread-composer">
+        <button
+          type="button"
+          className={`icon-btn${quickOpen ? ' active' : ''}`}
+          title="Quick replies"
+          aria-label="Quick replies"
+          onClick={() => setQuickOpen((v) => !v)}
+        >
+          <Zap size={17} />
+        </button>
+        <button type="button" className="icon-btn" title="Send a photo" aria-label="Send a photo" onClick={() => setPhotoOpen(true)}>
+          <ImagePlus size={17} />
+        </button>
+        {conv?.mySide === 'buyer' && conv?.productId && (
+          <button type="button" className="icon-btn" title="Make an offer" aria-label="Make an offer" onClick={() => setOfferOpen(true)}>
+            <HandCoins size={17} />
+          </button>
+        )}
+        <input
+          className="input grow"
+          value={input}
+          onChange={(e) => onInputChange(e.target.value)}
+          placeholder="Type a message…"
+          aria-label="Message"
+        />
+        <button type="submit" className="btn btn-primary" disabled={!input.trim() || sending} aria-label="Send">
           <Send size={16} />
         </button>
       </form>
+
+      {/* -------------------------------------------------------- dialogs */}
+      <Modal open={photoOpen} title="Send a photo" onClose={() => setPhotoOpen(false)}
+        footer={<><Btn onClick={() => setPhotoOpen(false)}>Cancel</Btn><Btn variant="primary" onClick={sendPhoto}>Send</Btn></>}>
+        <Field label="Image URL" hint="Paste a link to the photo you want to share.">
+          <Input value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} placeholder="https://…" />
+        </Field>
+      </Modal>
+
+      <Modal open={offerOpen} title="Make an offer" onClose={() => setOfferOpen(false)}
+        footer={<><Btn onClick={() => setOfferOpen(false)}>Cancel</Btn><Btn variant="primary" onClick={sendOffer}>Send offer</Btn></>}>
+        {conv?.productPriceMinor != null && (
+          <p className="muted mb-16">Listed at {money(conv.productPriceMinor)}. Offers are negotiable — the seller can accept or decline.</p>
+        )}
+        <Field label="Your price per unit (UGX)">
+          <Input type="number" min="1" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} placeholder="e.g. 450000" />
+        </Field>
+        <Field label="Quantity">
+          <Input type="number" min="1" value={offerQty} onChange={(e) => setOfferQty(e.target.value)} />
+        </Field>
+      </Modal>
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        title="Delete this message?"
+        message="It will be removed for everyone in this conversation. This cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={retract}
+      />
     </div>
   );
 }

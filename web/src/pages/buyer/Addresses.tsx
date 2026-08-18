@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { MapPin, Trash2, Plus } from 'lucide-react';
+import { Inbox, MapPin, Plus, Trash2 } from 'lucide-react';
 import { buyerService } from '../../api/services';
 import type { Address } from '../../api/types';
 import { useToast } from '../../store/ToastContext';
@@ -47,7 +47,7 @@ export default function Addresses() {
       <PageHeader title="Addresses" sub="Saved addresses for faster checkout — shared with the mobile app."
         actions={<Btn variant="primary" onClick={() => setOpen(true)}><Plus size={16} /> Add address</Btn>} />
       {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={load} /> :
-        items.length === 0 ? <Empty emoji="🏠" title="No addresses yet" subtitle="Add one for faster checkout." /> :
+        items.length === 0 ? <Empty icon={<Inbox size={28} />} title="No addresses yet" subtitle="Add one for faster checkout." /> :
         <div className="grid grid-2">
           {items.map((a) => (
             <Card key={a.id}>

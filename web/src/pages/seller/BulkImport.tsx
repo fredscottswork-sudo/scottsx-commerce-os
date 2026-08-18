@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Upload, FileSpreadsheet } from 'lucide-react';
 import { sellerService } from '../../api/services';
 import { useToast } from '../../store/ToastContext';
-import { Btn, Card, ErrorBox, PageHeader, Table } from '../../components/ui';
+import { Btn, Card, ErrorBox, PageHeader, Table, Switch, Badge } from '../../components/ui';
 
 interface Row { title: string; price: number; category: string; stock: number; imageUrl: string; ok?: boolean; error?: string }
 
@@ -37,6 +37,9 @@ export default function BulkImport() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // Imported rows normally go straight into the approval queue; sellers can
+  // stage them as drafts instead and submit selectively later.
+  const [asDraft, setAsDraft] = useState(false);
 
   function onFile(file: File | null) {
     if (!file) return;
@@ -73,7 +76,8 @@ export default function BulkImport() {
       try {
         await sellerService.createProduct({
           title: r.title, description: '', category: r.category || 'Other', brand: '', priceMinor: r.price,
-          oldPriceMinor: null, stockQuantity: r.stock || 1, imageUrl: r.imageUrl, location: '', isFlashDeal: false, discountPercent: 0,
+          oldPriceMinor: null, stockQuantity: r.stock || 1, imageUrl: r.imageUrl, location: '',
+          isFlashDeal: false, discountPercent: 0, asDraft,
         });
         okCount++;
         return { ...r, ok: true };
@@ -84,17 +88,36 @@ export default function BulkImport() {
     setRows(updated);
     setDone(true);
     setBusy(false);
-    toast(`Imported ${okCount}/${rows.length} products`, okCount === rows.length ? 'success' : 'warning');
+    toast(
+      asDraft
+        ? `${okCount}/${rows.length} saved as drafts`
+        : `${okCount}/${rows.length} sent for admin approval`,
+      okCount === rows.length ? 'success' : 'warning'
+    );
     if (okCount === rows.length) setTimeout(() => navigate('/seller/inventory'), 1500);
   }
 
   return (
     <>
-      <PageHeader title="Bulk import" sub="Upload a CSV of products — validated, previewed, then saved through the existing backend (same endpoint the mobile app uses)." />
+      <PageHeader
+        title="Bulk import"
+        sub="Upload a CSV, preview every row, then push them all through the normal approval flow."
+      />
 
       <Card className="mb-16">
         <h3 style={{ marginTop: 0 }} className="mb-8"><FileSpreadsheet size={18} style={{ verticalAlign: -3 }} /> CSV format</h3>
         <p className="muted" style={{ fontSize: 13 }}>Columns: <code>title, price, category, stock, imageUrl</code> — header row required.</p>
+        <p className="tiny muted-2 mb-12">
+          Rows without a real http(s) image or a price above zero will be rejected by the publishing gate —
+          import them as drafts and fix them in your inventory.
+        </p>
+        <div className="control-row" style={{ borderBottom: 'none', paddingTop: 0 }}>
+          <div>
+            <div className="semi tiny">Import as drafts</div>
+            <p className="tiny muted">Off: rows go straight to the admin approval queue.</p>
+          </div>
+          <Switch checked={asDraft} onChange={setAsDraft} label="" />
+        </div>
         <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
           <Upload size={16} /> Choose CSV / Excel file
           <input type="file" accept=".csv,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden
@@ -108,25 +131,27 @@ export default function BulkImport() {
         <>
           <div className="row-between mb-16">
             <strong>{rows.length} row(s) parsed — preview before importing</strong>
-            <Btn variant="primary" onClick={doImport} disabled={busy || done}>{busy ? 'Importing…' : `Import ${rows.length}`}</Btn>
+            <Btn variant="primary" onClick={doImport} loading={busy} disabled={done}>
+              {asDraft ? `Save ${rows.length} as drafts` : `Submit ${rows.length} for approval`}
+            </Btn>
           </div>
-          <Card style={{ padding: 0 }}>
-            <Table head={['Title', 'Category', 'Price (UGX)', 'Stock', 'Status']}>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  <td>{r.title || <span className="muted">—</span>}</td>
-                  <td>{r.category}</td>
-                  <td>{r.price || '—'}</td>
-                  <td>{r.stock}</td>
-                  <td>
-                    {r.ok === true ? <span className="badge badge-green">Imported</span>
-                      : r.ok === false ? <span className="badge badge-red">{r.error || 'Failed'}</span>
-                      : <span className="badge badge-gray">Pending</span>}
-                  </td>
-                </tr>
-              ))}
-            </Table>
-          </Card>
+          <Table<Row>
+            rows={rows}
+            keyOf={(_r, i) => String(i)}
+            columns={[
+              { key: 'title', header: 'Title', render: (r) => r.title || <span className="muted">—</span> },
+              { key: 'category', header: 'Category', hideSm: true, render: (r) => r.category },
+              { key: 'price', header: 'Price (UGX)', render: (r) => r.price ? r.price.toLocaleString() : '—' },
+              { key: 'stock', header: 'Stock', hideSm: true, render: (r) => r.stock },
+              {
+                key: 'status', header: 'Status',
+                render: (r) =>
+                  r.ok === true ? <Badge tone="green">{asDraft ? 'Draft saved' : 'Sent for review'}</Badge>
+                  : r.ok === false ? <Badge tone="red">{r.error || 'Failed'}</Badge>
+                  : <Badge>Ready</Badge>,
+              },
+            ]}
+          />
         </>
       )}
     </>

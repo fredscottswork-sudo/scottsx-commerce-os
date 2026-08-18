@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { authService } from '../api/services';
+import { forgetGoogleSession } from '../lib/google';
 import { tokenStore, userStore, onUnauthorized, type StoredUser } from '../api/client';
 
 interface AuthState {
   user: StoredUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<StoredUser>;
   register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string }) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -24,6 +26,7 @@ function toStoredUser(u: any): StoredUser {
     emailVerified: !!u.emailVerified,
     profilePhotoUrl: u.profilePhotoUrl ?? u.profile_photo_url ?? null,
     city: u.city ?? '',
+    createdAt: u.createdAt ?? u.created_at ?? undefined,
   };
 }
 
@@ -47,6 +50,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [setUser]);
 
+  const loginWithGoogle = useCallback(
+    async (idToken: string) => {
+      setLoading(true);
+      try {
+        const res = await authService.google(idToken);
+        tokenStore.set(res.token);
+        const stored = toStoredUser(res.user);
+        setUser(stored);
+        return stored;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setUser]
+  );
+
   const register = useCallback(
     async (body: { email: string; password: string; displayName: string; phone?: string; role?: string }) => {
       setLoading(true);
@@ -62,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    forgetGoogleSession();
     tokenStore.clear();
     userStore.set(null);
     setUserState(null);
@@ -77,8 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setUser]);
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout, refresh, setUser }),
-    [user, loading, login, register, logout, refresh, setUser]
+    () => ({ user, loading, login, loginWithGoogle, register, logout, refresh, setUser }),
+    [user, loading, login, loginWithGoogle, register, logout, refresh, setUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

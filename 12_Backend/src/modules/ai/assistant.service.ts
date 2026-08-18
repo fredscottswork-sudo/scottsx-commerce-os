@@ -1,14 +1,34 @@
 /**
  * ScottsTechX — AI assistant service.
  *
- * Talks to OpenRouter (default model meta-llama/llama-3.3-70b-instruct).
- * When LLM_API_KEY is empty the service degrades to a deterministic offline
- * fallback so the API surface stays testable.
+ * Two execution paths, one behaviour contract:
+ *
+ *   LLM path      — OpenRouter (or apifreellm) when a key is configured. The
+ *                   model receives LIVE CATALOG CONTEXT retrieved from Postgres,
+ *                   so answers are grounded in the real store.
+ *   Offline path  — no key configured. The same retrieval runs and a
+ *                   deterministic composer writes the answer from the real rows.
+ *
+ * Either way the caller gets `{ text, products, agent, provider }`, so the UI
+ * renders real product cards regardless of whether an LLM is available.
  */
+import type pg from 'pg';
 import { ServiceUnavailableError } from '../../errors.js';
+import {
+  AGENTS,
+  getAgent,
+  routeAgent,
+  agentSystemPrompt,
+  buildContext,
+  composeOfflineAnswer,
+  type AgentId,
+} from './agents.js';
+import { parseIntent, retrieveProducts, fmtUgx } from './catalog-context.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const APIFREELLM_URL = 'https://apifreellm.com/api/v1/chat';
+
+export { AGENTS };
 
 /** True when ANY AI provider has a key configured. */
 export function aiConfigured(): boolean {
@@ -19,56 +39,240 @@ function activeProvider(): string {
   return (process.env.AI_PROVIDER || 'openrouter').toLowerCase();
 }
 
-function systemPrompt(): string {
-  return (
-    'You are the ScottsTechX AI assistant for a Ugandan e-commerce marketplace. ' +
-    'Use the live catalog context provided in the user message to give store-specific ' +
-    'answers about products, sellers, prices and locations. Prices are in UGX. ' +
-    'Format answers with short paragraphs and bullet points. Be concise and friendly.'
-  );
-}
-
 export interface AskOptions {
+  db: pg.Pool;
   prompt: string;
   screen?: string;
+  agent?: string;
+  role?: 'buyer' | 'seller' | 'admin';
+  userId?: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
-/** Fold system + history + user prompt into one message (apifreellm style). */
-function foldMessages(prompt: string, history: AskOptions['history']): string {
-  const parts = [systemPrompt()];
-  for (const h of history ?? []) {
-    parts.push(`${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`);
-  }
-  parts.push(`User: ${prompt}`);
-  return parts.join('\n\n');
+export interface AskResult {
+  text: string;
+  provider: string;
+  model: string;
+  screen: string;
+  agent: { id: AgentId; name: string; tagline: string };
+  products: unknown[];
+  grounded: boolean;
 }
 
 /**
- * Ask the LLM. Returns { text, provider, model }.
- * Throws ServiceUnavailableError when no key is configured or the upstream fails.
+ * The single entry point every AI surface calls (buyer chat, seller copilot,
+ * AI search bar, support AI mode).
  */
-export async function askAi({ prompt, screen, history = [] }: AskOptions) {
+export async function ask(opts: AskOptions): Promise<AskResult> {
+  const { db, prompt, screen = 'generic', role = 'buyer', history = [] } = opts;
+
+  const agent = getAgent(opts.agent ?? routeAgent(prompt, role));
+  const ctx = await buildContext(db, agent, prompt);
+
+  const meta = {
+    screen,
+    agent: { id: agent.id, name: agent.name, tagline: agent.tagline },
+    products: ctx.products,
+    grounded: true,
+  };
+
   if (!aiConfigured()) {
-    throw new ServiceUnavailableError(
-      'AI is not configured — set LLM_API_KEY (OpenRouter) or APIFREELLM_API_KEY in 12_Backend/.env'
-    );
+    return {
+      text: composeOfflineAnswer(agent, prompt, ctx),
+      provider: 'scottstechx-local',
+      model: 'catalog-grounded',
+      ...meta,
+    };
   }
-  if (activeProvider() === 'apifreellm') {
-    return askApiFreeLlm({ prompt, screen, history });
+
+  const system = agentSystemPrompt(agent, role);
+  const grounded = `LIVE CATALOG CONTEXT (retrieved from the database just now):\n${ctx.contextText}\n\nUSER QUESTION: ${prompt}`;
+
+  try {
+    const llm =
+      activeProvider() === 'apifreellm'
+        ? await askApiFreeLlm(system, grounded, history)
+        : await askOpenRouter(system, grounded, history);
+    return { text: llm.text, provider: llm.provider, model: llm.model, ...meta };
+  } catch (err) {
+    // A provider outage must never take the assistant down — fall back to the
+    // grounded local composer and label it honestly.
+    return {
+      text: composeOfflineAnswer(agent, prompt, ctx),
+      provider: 'scottstechx-local (llm unavailable)',
+      model: 'catalog-grounded',
+      ...meta,
+    };
   }
-  return askOpenRouter({ prompt, screen, history });
 }
 
-async function askOpenRouter({ prompt, screen, history = [] }: AskOptions) {
+async function askOpenRouter(
+  system: string,
+  userContent: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+) {
   const key = process.env.LLM_API_KEY;
   if (!key) throw new ServiceUnavailableError('LLM_API_KEY (OpenRouter) is not set');
   const model = process.env.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct';
+
   const messages = [
-    { role: 'system', content: systemPrompt() },
-    ...history.map((h) => ({ role: h.role, content: h.content })),
-    { role: 'user', content: prompt },
+    { role: 'system', content: system },
+    ...history.slice(-8).map((h) => ({ role: h.role, content: h.content })),
+    { role: 'user', content: userContent },
   ];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+  try {
+    const res = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://scottstechx.app',
+        'X-Title': 'ScottsTechX',
+      },
+      body: JSON.stringify({ model, messages, max_tokens: 800, temperature: 0.4 }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ServiceUnavailableError(`OpenRouter error ${res.status}: ${text.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = String(data?.choices?.[0]?.message?.content ?? '').trim();
+    if (!text) throw new ServiceUnavailableError('OpenRouter returned an empty response');
+    return { text, provider: 'openrouter', model };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function askApiFreeLlm(
+  system: string,
+  userContent: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>
+) {
+  const key = process.env.APIFREELLM_API_KEY;
+  if (!key) throw new ServiceUnavailableError('APIFREELLM_API_KEY is not set');
+
+  const folded = [system, ...history.slice(-6).map((h) => `${h.role}: ${h.content}`), userContent].join(
+    '\n\n'
+  );
+
+  const res = await fetch(APIFREELLM_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ message: folded }),
+  });
+  const data: any = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const code = Number(data.code ?? res.status);
+    const msg = String(data.error ?? res.statusText ?? 'unknown error');
+    if (code === 403 && /datacenter|cloud IP/i.test(msg)) {
+      throw new ServiceUnavailableError(
+        'apifreellm free tier is not available from datacenter/cloud IPs — use AI_PROVIDER=openrouter with an LLM_API_KEY.'
+      );
+    }
+    throw new ServiceUnavailableError(`apifreellm error ${res.status}: ${msg.slice(0, 200)}`);
+  }
+
+  const text = String(
+    data.message ?? data.data?.message ?? data.choices?.[0]?.message?.content ?? data.text ?? ''
+  ).trim();
+  if (!text) throw new ServiceUnavailableError('apifreellm returned an empty response');
+  return { text, provider: 'apifreellm', model: String(data.model ?? 'apifreellm') };
+}
+
+// ── AI search (the search bar's brain) ──────────────────────────────────────
+
+/**
+ * Natural-language search: "cheap phone under 500k in Kampala" becomes real
+ * filters plus a one-line explanation of what was understood.
+ */
+export async function aiSearch(db: pg.Pool, query: string, limit = 24) {
+  const cats = await db.query(
+    `SELECT DISTINCT category FROM products WHERE status = 'approved'`
+  );
+  const categories = cats.rows.map((r) => r.category as string);
+  const intent = parseIntent(query, categories);
+  const products = await retrieveProducts(db, intent, limit);
+
+  const bits: string[] = [];
+  if (intent.category) bits.push(`category **${intent.category}**`);
+  if (intent.keywords.length) bits.push(`matching **${intent.keywords.join(', ')}**`);
+  if (intent.maxPriceMinor) bits.push(`under **${fmtUgx(intent.maxPriceMinor)}**`);
+  if (intent.minPriceMinor) bits.push(`over **${fmtUgx(intent.minPriceMinor)}**`);
+  if (intent.city) bits.push(`in **${intent.city}**`);
+  if (intent.wantsDeals) bits.push('on **flash deal**');
+  if (intent.wantsCheapest) bits.push('sorted by **lowest price**');
+  else if (intent.wantsBest) bits.push('sorted by **best rated**');
+
+  const explanation = bits.length
+    ? `Showing ${products.length} result${products.length === 1 ? '' : 's'} ${bits.join(', ')}.`
+    : `Showing ${products.length} result${products.length === 1 ? '' : 's'} for "${query}".`;
+
+  return {
+    query,
+    explanation,
+    intent,
+    products,
+    filters: {
+      category: intent.category ?? null,
+      maxPriceMinor: intent.maxPriceMinor ?? null,
+      minPriceMinor: intent.minPriceMinor ?? null,
+      city: intent.city ?? null,
+      flashOnly: intent.wantsDeals,
+      sort: intent.wantsCheapest ? 'price_asc' : intent.wantsBest ? 'rating' : 'relevance',
+    },
+  };
+}
+
+// ── Image search ────────────────────────────────────────────────────────────
+
+/**
+ * Image search. The uploaded photo's labels/filename/hint are turned into a
+ * catalog query. With a vision-capable LLM key configured the image is
+ * described first; otherwise we fall back to the caller-supplied hint.
+ */
+export async function imageSearch(
+  db: pg.Pool,
+  opts: { imageUrl?: string; hint?: string; labels?: string[] },
+  limit = 24
+) {
+  let terms = [opts.hint ?? '', ...(opts.labels ?? [])].filter(Boolean).join(' ');
+
+  if (!terms && opts.imageUrl) {
+    const described = await describeImage(opts.imageUrl).catch(() => '');
+    terms = described;
+  }
+  if (!terms && opts.imageUrl) {
+    // Last resort: mine the filename/URL for keywords.
+    terms = decodeURIComponent(opts.imageUrl)
+      .split(/[/?#]/)
+      .pop()!
+      .replace(/[-_.]/g, ' ')
+      .replace(/\.(jpg|jpeg|png|webp|gif)$/i, '');
+  }
+
+  const result = await aiSearch(db, terms || 'popular', limit);
+  return {
+    ...result,
+    detected: terms,
+    explanation: terms
+      ? `Image looks like **${terms}** — ${result.products.length} similar item${
+          result.products.length === 1 ? '' : 's'
+        } found.`
+      : 'Could not read the image — showing popular products instead.',
+  };
+}
+
+/** Ask a vision model what the photo shows (only when a key is configured). */
+async function describeImage(imageUrl: string): Promise<string> {
+  const key = process.env.LLM_API_KEY;
+  if (!key) return '';
+  const model = process.env.AI_VISION_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct';
 
   const res = await fetch(OPENROUTER_URL, {
     method: 'POST',
@@ -78,86 +282,85 @@ async function askOpenRouter({ prompt, screen, history = [] }: AskOptions) {
       'HTTP-Referer': 'https://scottstechx.app',
       'X-Title': 'ScottsTechX',
     },
-    body: JSON.stringify({ model, messages, max_tokens: 700 }),
+    body: JSON.stringify({
+      model,
+      max_tokens: 40,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Name this product in 2-5 words for an e-commerce search (brand + item type only, no sentence).',
+            },
+            { type: 'image_url', image_url: { url: imageUrl } },
+          ],
+        },
+      ],
+    }),
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new ServiceUnavailableError(`OpenRouter error ${res.status}: ${text.slice(0, 200)}`);
-  }
+  if (!res.ok) return '';
   const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content ?? '';
-  return { text: String(text), provider: 'openrouter', model, screen: screen ?? 'generic' };
+  return String(data?.choices?.[0]?.message?.content ?? '').trim().slice(0, 80);
 }
 
-async function askApiFreeLlm({ prompt, screen, history = [] }: AskOptions) {
-  const key = process.env.APIFREELLM_API_KEY;
-  if (!key) throw new ServiceUnavailableError('APIFREELLM_API_KEY is not set');
+// ── Seller listing generation ───────────────────────────────────────────────
 
-  const res = await fetch(APIFREELLM_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({ message: foldMessages(prompt, history) }),
-  });
-  const data = await res.json().catch(() => ({} as Record<string, unknown>));
+/**
+ * Generate a listing from a photo/hint, priced against real comparable rows.
+ * Uses the LLM when available and always returns a usable result.
+ */
+export async function generateProduct(
+  db: pg.Pool,
+  opts: { imageUrl?: string; hint?: string }
+) {
+  const hint = (opts.hint ?? '').trim();
+  let detected = hint;
+  if (!detected && opts.imageUrl) detected = await describeImage(opts.imageUrl).catch(() => '');
 
-  if (!res.ok) {
-    const code = Number(data.code ?? res.status);
-    const msg = String(data.error ?? res.statusText ?? 'unknown error');
-    if (code === 403 && /datacenter|cloud IP/i.test(msg)) {
-      throw new ServiceUnavailableError(
-        'apifreellm free tier is not available from datacenter/cloud IPs — run the backend from a residential connection, upgrade to premium, or set AI_PROVIDER=openrouter with an LLM_API_KEY.'
+  const heuristic = heuristicGenerateProduct(opts.imageUrl ?? '', detected || hint);
+
+  // Price against real comparable listings.
+  const cats = await db.query(`SELECT DISTINCT category FROM products WHERE status = 'approved'`);
+  const intent = parseIntent(detected || heuristic.title, cats.rows.map((r) => r.category));
+  const comparables = await retrieveProducts(db, intent, 10);
+  const prices = comparables.map((p) => p.priceMinor).sort((a, b) => a - b);
+  const suggestedPriceMinor = prices.length ? prices[Math.floor(prices.length / 2)] : 0;
+
+  if (aiConfigured()) {
+    try {
+      const context = comparables.length
+        ? comparables.map((p) => `- ${p.title}: ${fmtUgx(p.priceMinor)} (${p.category})`).join('\n')
+        : 'No comparable listings.';
+      const llm = await askOpenRouter(
+        'You write e-commerce listings for a Ugandan marketplace. Reply ONLY with compact JSON: ' +
+          '{"title": string (max 70 chars), "description": string (2-3 sentences), "category": string, "brand": string, "suggestedPriceMinor": number (UGX)}. No markdown, no commentary.',
+        `Product hint: ${detected || hint || 'unknown product'}\n\nComparable live listings:\n${context}\n\nAvailable categories: ${cats.rows
+          .map((r) => r.category)
+          .join(', ')}`,
+        []
       );
+      const json = JSON.parse(llm.text.replace(/^```(?:json)?|```$/g, '').trim());
+      return {
+        title: String(json.title || heuristic.title).slice(0, 70),
+        description: String(json.description || heuristic.description),
+        category: String(json.category || heuristic.category),
+        brand: String(json.brand ?? ''),
+        suggestedPriceMinor: Number(json.suggestedPriceMinor) || suggestedPriceMinor,
+        comparables: comparables.slice(0, 5),
+        provider: llm.provider,
+      };
+    } catch {
+      /* fall through to heuristic */
     }
-    throw new ServiceUnavailableError(`apifreellm error ${res.status}: ${msg.slice(0, 200)}`);
   }
 
-  const text =
-    (data as any).message ??
-    (data as any).data?.message ??
-    (data as any).choices?.[0]?.message?.content ??
-    (data as any).text ??
-    '';
-  if (!text) throw new ServiceUnavailableError('apifreellm returned an empty response');
   return {
-    text: String(text),
-    provider: 'apifreellm',
-    model: String((data as any).model ?? 'apifreellm'),
-    screen: screen ?? 'generic',
-  };
-}
-
-/** Deterministic fallback used when no LLM key is configured. */
-export function offlineFallback(prompt: string, screen: string) {
-  const p = prompt.toLowerCase();
-  if (p.includes('near') || p.includes('nearby')) {
-    return {
-      text:
-        'You can browse sellers near you from the Nearby tab — pick a city chip (Kampala, Entebbe, Jinja, Mbarara, Gulu or Mbale), set a radius, and the list shows verified sellers closest to you first.',
-      provider: 'offline-fallback',
-      model: 'none',
-      screen,
-    };
-  }
-  if (p.includes('cheapest') || p.includes('price') || p.includes('lowest')) {
-    return {
-      text:
-        'Open the Home tab and sort products by price to find the best deal. Flash deals (with discount % badges) are the cheapest picks right now — they are refreshed from the live catalog.',
-      provider: 'offline-fallback',
-      model: 'none',
-      screen,
-    };
-  }
-  return {
-    text:
-      'I’m running in offline-fallback mode because no LLM_API_KEY is configured in 12_Backend/.env. ' +
-      'Set your OpenRouter key to get live, catalog-aware answers. For now, try asking about nearby sellers or flash deals.',
-    provider: 'offline-fallback',
-    model: 'none',
-    screen,
+    ...heuristic,
+    brand: '',
+    suggestedPriceMinor,
+    comparables: comparables.slice(0, 5),
+    provider: 'scottstechx-local',
   };
 }
 
@@ -185,9 +388,10 @@ export function heuristicGenerateProduct(imageUrl: string, hint: string) {
   let match = KEYWORD_MAP.find((m) => m.keys.some((k) => haystack.includes(k)));
   if (!match) match = { keys: [], title: 'New Arrival — Quality Product', category: 'Fashion' };
   return {
-    title: match.title,
+    title: hint ? `${hint.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 60)}` : match.title,
     description:
-      'Carefully sourced and inspected before listing. Fast delivery within Kampala and across Uganda, with Cash-on-Delivery available. Message the seller for more photos or a bulk discount.',
+      'Carefully sourced and inspected before listing. Fast delivery within Kampala and across Uganda, ' +
+      'with Cash-on-Delivery available. Message the seller for more photos or a bulk discount.',
     category: match.category,
     suggestedPriceMinor: 0,
   };

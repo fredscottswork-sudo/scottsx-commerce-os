@@ -4,6 +4,7 @@ import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { Btn, Field, Input } from '../components/ui';
 import { ApiError } from '../api/client';
+import GoogleButton from '../components/GoogleButton';
 
 export default function Login() {
   const { login } = useAuth();
@@ -55,6 +56,7 @@ export default function Login() {
               {busy ? 'Signing in…' : 'Sign in'}
             </Btn>
           </form>
+          <GoogleButton />
           <p className="muted mt-16" style={{ textAlign: 'center' }}>
             New here? <Link to="/register">Create an account</Link>
           </p>

@@ -40,6 +40,7 @@ const updateMeSchema = z.object({
   displayName: z.string().optional(),
   phone: z.string().optional(),
   profilePhotoUrl: z.string().url().optional().nullable(),
+  city: z.string().max(120).optional(),
 });
 
 const locationSchema = z.object({
@@ -119,10 +120,11 @@ export default async function registerAuthRoute(app: FastifyInstance) {
        SET display_name = COALESCE($2, display_name),
            phone = COALESCE($3, phone),
            profile_photo_url = COALESCE($4, profile_photo_url),
+           city = COALESCE($5, city),
            updated_at = now()
        WHERE id = $1
        RETURNING *`,
-      [me.id, body.displayName ?? null, body.phone ?? null, body.profilePhotoUrl ?? null]
+      [me.id, body.displayName ?? null, body.phone ?? null, body.profilePhotoUrl ?? null, body.city ?? null]
     );
     return { user: publicUser(rows[0]) };
   });

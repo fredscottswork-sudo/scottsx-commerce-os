@@ -10,7 +10,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { ZodError } from 'zod';
-import { UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServiceUnavailableError } from './errors.js';
+import { UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServiceUnavailableError, ValidationError } from './errors.js';
 
 import registerAuthRoute from './modules/auth/login.route.js';
 import registerFirebaseAuthRoute from './modules/auth/firebase-auth.route.js';
@@ -26,6 +26,9 @@ import registerStripeRoute from './modules/stripe/payments.route.js';
 import registerNylonPayRoute from './modules/payments/nylonpay.route.js';
 import registerAdminRoute from './modules/admin/admin.route.js';
 import registerUploadsRoute from './modules/uploads/photo.route.js';
+import registerSocialRoute from './modules/social/social.route.js';
+import registerSupportRoute from './modules/support/support.route.js';
+import registerGeoRoute from './modules/geo/geo.route.js';
 import { installRawBodyParser } from './modules/payments/raw-body.js';
 
 /** True when running inside Firebase Cloud Functions / Cloud Run (v2). */
@@ -52,6 +55,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (err instanceof ZodError) {
       return reply.code(400).send({ error: 'Validation error', issues: err.issues });
     }
+    if (err instanceof ValidationError) return reply.code(400).send({ error: err.message });
     if (err instanceof UnauthorizedError) return reply.code(401).send({ error: err.message });
     if (err instanceof ForbiddenError) return reply.code(403).send({ error: err.message });
     if (err instanceof NotFoundError) return reply.code(404).send({ error: err.message });
@@ -78,6 +82,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerNylonPayRoute(app);
   registerAdminRoute(app);
   registerUploadsRoute(app);
+  registerSocialRoute(app);
+  registerSupportRoute(app);
+  registerGeoRoute(app);
 
   return app;
 }

@@ -15,6 +15,7 @@ import com.scottsx.app.ui.screens.AddressesScreen
 import com.scottsx.app.ui.screens.AiPersonalizationScreen
 import com.scottsx.app.ui.screens.BecomeSellerScreen
 import com.scottsx.app.ui.screens.BuyerHomeScreen
+import com.scottsx.app.ui.screens.CartScreen
 import com.scottsx.app.ui.screens.CmsScreen
 import com.scottsx.app.ui.screens.LoginScreen
 import com.scottsx.app.ui.screens.MessageThreadScreen
@@ -66,6 +67,7 @@ object Routes {
     const val SELLER_STORE_SETTING_DETAIL = "seller/store-settings/{section}"
     const val BUYER_PROFILE_SETTINGS = "settings/buyer-profile"
     const val ADD_PRODUCT = "seller/add-product"
+    const val CART = "cart"
     const val ORDERS = "orders"
     const val SAVED_PRODUCTS = "saved-products"
     const val REFUNDS = "refunds"
@@ -130,6 +132,7 @@ fun AppNavigation() {
                     val conv = com.scottsx.app.data.remote.V2Client.openConversation(sellerId, id)
                     if (conv != null) navController.navigate(Routes.thread(conv))
                 },
+                onViewCart = { navController.navigate(Routes.CART) },
             )
         }
         composable(Routes.MESSAGES) {
@@ -197,6 +200,20 @@ fun AppNavigation() {
         }
         composable(Routes.BUYER_PROFILE_SETTINGS) { ProfileSettingsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.ADD_PRODUCT) { AddProductScreen(onBack = { navController.popBackStack() }) }
+        composable(Routes.CART) {
+            CartScreen(
+                onBack = { navController.popBackStack() },
+                onProductClick = { id -> navController.navigate(Routes.product(id)) },
+                onBrowse = {
+                    navController.navigate(Routes.BUYER_HOME) { popUpTo(0) { inclusive = true } }
+                },
+                onOrderPlaced = {
+                    // Land on Orders, and don't leave the emptied cart behind
+                    // for the back button.
+                    navController.navigate(Routes.ORDERS) { popUpTo(Routes.CART) { inclusive = true } }
+                },
+            )
+        }
         composable(Routes.ORDERS) { OrdersScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.SAVED_PRODUCTS) { SavedProductsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.REFUNDS) { RefundsScreen(onBack = { navController.popBackStack() }) }

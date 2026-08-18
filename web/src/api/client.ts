@@ -50,6 +50,7 @@ export interface StoredUser {
   emailVerified: boolean;
   profilePhotoUrl: string | null;
   city: string;
+  createdAt?: string;
 }
 
 /** Global handler so any 401 can redirect (wired in App.tsx). */

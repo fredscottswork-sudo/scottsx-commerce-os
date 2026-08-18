@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { initializeApp, cert, type App } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getMessaging as adminMessaging, type Messaging as FirebaseMessaging } from 'firebase-admin/messaging';
 import { BACKEND_ROOT } from '../db.js';
 import { ServiceUnavailableError } from '../errors.js';
 
@@ -54,6 +55,24 @@ export function firebaseAuth() {
       missingKeyLogged = true;
     }
     throw err;
+  }
+}
+
+/**
+ * Firebase Cloud Messaging sender, or null when Firebase isn't configured.
+ * Returning null (instead of throwing) lets push be strictly best-effort:
+ * notifications are always persisted in Postgres regardless.
+ */
+export function getMessaging(): FirebaseMessaging | null {
+  if (!firebaseReady()) return null;
+  try {
+    return adminMessaging(getFirebaseApp());
+  } catch (err) {
+    if (!missingKeyLogged) {
+      console.warn('[firebase] messaging unavailable:', (err as Error).message);
+      missingKeyLogged = true;
+    }
+    return null;
   }
 }
 
