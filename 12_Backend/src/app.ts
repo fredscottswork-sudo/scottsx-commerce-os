@@ -30,6 +30,7 @@ import registerImageUploadRoute from './modules/uploads/image.route.js';
 import registerSocialRoute from './modules/social/social.route.js';
 import registerSupportRoute from './modules/support/support.route.js';
 import registerGeoRoute from './modules/geo/geo.route.js';
+import registerSitemapRoute from './modules/seo/sitemap.route.js';
 import { installRawBodyParser } from './modules/payments/raw-body.js';
 
 /** True when running inside Firebase Cloud Functions / Cloud Run (v2). */
@@ -114,6 +115,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerSocialRoute(app);
   registerSupportRoute(app);
   registerGeoRoute(app);
+  registerSitemapRoute(app);
 
   return app;
 }

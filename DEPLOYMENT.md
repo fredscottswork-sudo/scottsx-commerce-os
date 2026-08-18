@@ -108,7 +108,14 @@ one Postgres, no Docker needed).
    SEED_DATABASE=false      # true only if you want the demo catalogue
    ADMIN_EMAIL=you@yourdomain.com
    ADMIN_PASSWORD=<a strong password>
+   PUBLIC_WEB_URL=https://<your-web-host>   # no trailing slash
    ```
+
+   `PUBLIC_WEB_URL` is the address of the **web app**, not this API. It is what
+   `/sitemap.xml` uses to build absolute URLs. Leave it unset and the sitemap
+   returns 503 rather than publishing links to a guessed domain; `robots.txt`
+   still works, it just omits the `Sitemap:` line. Set it to your custom domain
+   once you have one, since that is the origin Google should index.
 
    `PORT` is injected by Render and already respected by `src/server.ts`.
 
@@ -216,6 +223,34 @@ your development machine.
 5. Add the web origin to Google Cloud Console (if using Google Sign-In)
 6. Set API_BASE_URL + keystore secrets -> run the APK workflow
 ```
+
+## Search engines
+
+The API serves both crawler files at the server root:
+
+| URL | Purpose |
+|---|---|
+| `/robots.txt` | Crawl policy. Blocks dashboards, cart, inbox and the infinite `/search?` filter space; allows the public catalogue. |
+| `/sitemap.xml` | Every publicly reachable URL, generated live from the database. |
+
+The sitemap is generated per request rather than baked into the web build,
+because the URLs worth indexing are product and storefront pages and those
+change whenever an admin approves a listing. A file written at build time would
+list products still awaiting review and keep advertising ones later suspended.
+
+It contains only what a signed-out visitor can actually open: the public
+routes, **approved** products, storefronts for sellers with at least one live
+product, and the CMS pages. Listing a page that 404s wastes crawl budget and is
+reported as an error in Search Console.
+
+Both files live on the API origin. If you want them on the web domain instead
+(usually what you want, since that is the origin you verify), proxy them —
+e.g. on Cloudflare Pages or Netlify add a rewrite from `/sitemap.xml` and
+`/robots.txt` to the API host. Otherwise submit the API URL directly in Search
+Console.
+
+See `SEARCH-CONSOLE.md` for ownership verification, including the Vercel
+deployment-protection setting that currently blocks it.
 
 ## Product photos (image uploads)
 

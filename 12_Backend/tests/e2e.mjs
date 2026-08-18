@@ -933,6 +933,66 @@ async function main() {
     check('Entebbe is not swallowed by Kampala', entebbe?.city === 'Entebbe', entebbe?.label);
   }
 
+  group('Sitemap and robots.txt');
+  {
+    // These live at the server root, not under /api/v1, because that is where
+    // crawlers look for them.
+    const robots = await fetch(`${BASE}/robots.txt`);
+    const robotsText = await robots.text();
+    check('robots.txt is served', robots.status === 200, `got ${robots.status}`);
+    check('robots.txt is plain text',
+      (robots.headers.get('content-type') || '').startsWith('text/plain'),
+      robots.headers.get('content-type'));
+    check('crawlers are kept out of the dashboards', /Disallow: \/admin/.test(robotsText));
+    check('crawlers are kept out of private buyer pages', /Disallow: \/buyer/.test(robotsText));
+    check('the cart and inbox are not crawlable',
+      /Disallow: \/cart/.test(robotsText) && /Disallow: \/messages/.test(robotsText));
+    check('the public catalogue is still allowed', /Allow: \//.test(robotsText));
+
+    const sitemap = await fetch(`${BASE}/sitemap.xml`);
+    const body = await sitemap.text();
+
+    if (!process.env.PUBLIC_WEB_URL) {
+      // Absolute URLs are mandatory in a sitemap, so with no canonical host
+      // configured the only correct behaviour is to refuse — publishing links
+      // to a guessed domain is worse than publishing nothing.
+      check('without PUBLIC_WEB_URL the sitemap refuses rather than guessing a domain',
+        sitemap.status === 503, `got ${sitemap.status}`);
+      check('the refusal explains which variable to set',
+        /PUBLIC_WEB_URL/.test(body), body.slice(0, 120));
+    } else {
+      const origin = process.env.PUBLIC_WEB_URL.replace(/\/+$/, '');
+      check('the sitemap is served', sitemap.status === 200, `got ${sitemap.status}`);
+      check('it is XML', (sitemap.headers.get('content-type') || '').includes('xml'),
+        sitemap.headers.get('content-type'));
+
+      const locs = [...body.matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1]);
+      check('it lists URLs', locs.length > 0, `${locs.length} urls`);
+      check('every URL is absolute and on the canonical origin',
+        locs.every((u) => u.startsWith(`${origin}/`)),
+        locs.find((u) => !u.startsWith(`${origin}/`)));
+      check('no doubled slashes from a trailing-slash origin',
+        !locs.some((u) => u.replace(/^https?:\/\//, '').includes('//')));
+      check('there are no duplicate URLs', new Set(locs).size === locs.length);
+      check('the home page is included', locs.includes(`${origin}/`));
+
+      // The important guarantee: a sitemap must not advertise pages that 404.
+      const listed = locs.filter((u) => u.includes('/product/'));
+      check('approved products are listed', listed.length > 0, `${listed.length}`);
+      const pendingId = state.pendingProductId || state.productId;
+      if (pendingId) {
+        const pending = await call(`/products/${pendingId}`);
+        if (pending.status === 404) {
+          check('a product the public cannot open is not in the sitemap',
+            !locs.some((u) => u.endsWith(`/product/${pendingId}`)));
+        }
+      }
+      check('private dashboards are never listed',
+        !locs.some((u) => /\/(admin|buyer|cart|messages|notifications)(\/|$)/.test(u)),
+        locs.find((u) => /\/(admin|buyer|cart|messages)(\/|$)/.test(u)));
+    }
+  }
+
   group('Product ratings');
   {
     const pid = state.sampleProduct?.id;

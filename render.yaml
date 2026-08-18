@@ -62,6 +62,20 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
+      # Canonical public address of the WEB app (not this API). /sitemap.xml
+      # needs it to emit absolute <loc> URLs and returns 503 without it, rather
+      # than advertising links to a guessed domain.
+      #
+      # This is prompted for on first sync instead of being wired with
+      # fromService: Render's fromService only exposes host/port/hostport for
+      # web services — there is no 'url' property — and a sitemap has to state
+      # the canonical origin anyway, which is your custom domain rather than
+      # the onrender.com hostname.
+      #
+      # Format: https://yourdomain.com   (https, no trailing slash, no path)
+      - key: PUBLIC_WEB_URL
+        sync: false
+
       # Render prompts for these on the first sync. If you leave ADMIN_PASSWORD
       # empty the code falls back to "Admin123!", which is published in this
       # repo — so set a real one.
