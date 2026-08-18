@@ -64,6 +64,33 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate(`/search?q=${encodeURIComponent(query.trim())}`);
   };
 
+  // ── Auth chrome (login / register) ────────────────────────────────────────
+  // Sign-in and sign-up are focused, single-purpose screens. They were being
+  // wrapped in the full marketplace shell: a product search bar, the category
+  // nav, four footer links and a five-item bottom nav — 474px of furniture on
+  // a 360x780 phone, 55% of the page, none of it usable while signing in. The
+  // form itself did not start until 302px down.
+  //
+  // Give these two routes a minimal shell instead: just the brand (a link
+  // home) and the theme toggle, so the form is the first thing on screen.
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register';
+  if (!user && isAuthRoute) {
+    return (
+      <div className="auth-shell">
+        <header className="auth-topbar">
+          <Link to="/" className="brand">
+            <BrandMark /> <span className="brand-name">ScottsTechX</span>
+          </Link>
+          <span className="grow" />
+          <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
+            {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </header>
+        <main className="auth-main">{children}</main>
+      </div>
+    );
+  }
+
   // ── Public chrome (logged out) ────────────────────────────────────────────
   if (!user) {
     return (

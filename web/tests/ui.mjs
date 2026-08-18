@@ -1740,10 +1740,18 @@ section('29. Auth screens fit vertically on a phone');
     check(`${route} renders the email field`, !!emailInput);
     check(`${route} renders the password field`, !!pwInput);
 
-    // The decorative marketing paragraph must not sit above the form on a
-    // phone — it was the single largest block pushing the fields down.
-    check(`${route} hides the brand marketing paragraph on phones`,
-      /@media[^{]*max-width:\s*620px[\s\S]*?\.auth-brand\s*>\s*p\{[^}]*display:\s*none/.test(bundleCss));
+    // The marketing paragraph may show again now that the auth shell freed
+    // ~200px, but it must be clamped so it can never grow into the form.
+    check(`${route} clamps the brand paragraph to two lines`,
+      /\.auth-brand>p\{[^}]*-webkit-line-clamp:2/.test(bundleCss));
+
+    // The marketplace furniture must NOT be on a sign-in screen.
+    check(`${route} renders no product search bar`, !app.$('.public-search'));
+    check(`${route} renders no category nav`, !app.$('.mainnav'));
+    check(`${route} renders no marketplace footer`, !app.$('.public-footer'));
+    check(`${route} renders no bottom nav`, !app.$('.bottomnav'));
+    check(`${route} uses the dedicated auth shell`, !!app.$('.auth-shell'));
+    check(`${route} keeps a brand link home`, !!app.$('.auth-topbar .brand'));
 
     // The wrap must not demand a full viewport inside the shell.
     check(`${route} auth wrap releases min-height:100dvh on phones`,

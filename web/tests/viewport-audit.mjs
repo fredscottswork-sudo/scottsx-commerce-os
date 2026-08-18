@@ -265,9 +265,13 @@ if (WIDTH <= 620) {
 // stacked above the form pushed the email field below the fold.
 if (WIDTH <= 620) {
   const HEIGHT = 780;
-  const PUBLIC_CHROME = 160;   // two-row topbar (100) + category bar (44) + padding (16)
-  const BOTTOM_NAV = 76;
-  const availAuth = HEIGHT - PUBLIC_CHROME - BOTTOM_NAV;
+  // Login/register now render in their own minimal shell: a 45px header with
+  // just the brand and the theme toggle. No search bar, no category nav, no
+  // footer, no bottom nav — that furniture cost 474px and pushed the form
+  // 302px down the page.
+  const AUTH_CHROME = 45;
+  const BOTTOM_NAV = 0;        // the auth shell has no bottom nav
+  const availAuth = HEIGHT - AUTH_CHROME - BOTTOM_NAV;
 
   const wrapMin = authWrap['min-height']?.value || '';
   if (/100dvh|100vh/.test(wrapMin)) {

@@ -1550,9 +1550,30 @@ tbody tr.row-click { cursor: pointer; }
 .table tbody tr.row-click { cursor: pointer; }
 .table tbody tr.row-click:hover { background: var(--primary-soft); }
 
+/* Auth shell -----------------------------------------------------------------
+   Login and register get their own minimal chrome: brand + theme toggle only.
+   Previously they rendered inside the full marketplace shell (search bar,
+   category nav, footer links, bottom nav) which consumed 474px on a phone —
+   55% of the page — and pushed the form 302px down. None of that furniture is
+   usable while signing in. */
+.auth-shell { display: flex; flex-direction: column; min-height: 100dvh; background: var(--bg); }
+.auth-topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 22px; flex: 0 0 auto;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+.auth-main { flex: 1 1 auto; display: flex; min-height: 0; }
+.auth-main > * { flex: 1 1 auto; }
+@media (max-width: 620px) {
+  .auth-topbar { padding: 10px 14px; }
+}
+
 /* Auth screens (Login / Register) ------------------------------------------- */
 .auth-wrap {
-  min-height: 100dvh;
+  /* Fills .auth-main, which is already the remaining height of the shell, so
+     it must not demand a fresh 100dvh on top of the header. */
+  min-height: 0;
   display: grid;
   grid-template-columns: 1.05fr 1fr;
   background: var(--bg);
@@ -1638,9 +1659,18 @@ tbody tr.row-click { cursor: pointer; }
     align-items: center;
   }
   .auth-brand p, .auth-brand h1, .auth-tagline { max-width: 100%; }
-  /* The four-line marketing paragraph is the single biggest block above the
-     form and says nothing the user needs while signing in. */
-  .auth-brand > p { display: none; }
+  /* The marketing paragraph was hidden when these screens still carried the
+     full marketplace chrome and every pixel above the form was contested.
+     With the dedicated auth shell there is ~200px of headroom, so it can come
+     back — clamped to two lines so it can never grow into the form again. */
+  .auth-brand > p {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: var(--fs-sm);
+    line-height: 1.45;
+  }
   .auth-tagline { font-size: var(--fs-lg); line-height: 1.3; }
   .auth-form { padding: 20px 16px 26px; }
   .auth-card {
