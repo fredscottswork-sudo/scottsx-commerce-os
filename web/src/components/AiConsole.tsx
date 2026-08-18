@@ -187,39 +187,50 @@ export function AiConsole({
             </div>
           ) : (
             turns.map((t, i) => (
-              <div key={i} className={`bubble-row ${t.role}`}>
-                {t.role === 'assistant' && (
-                  <span className="ai-avatar" style={{ width: 28, height: 28 }}><Sparkles size={13} /></span>
-                )}
-                <div className={`bubble ${t.role === 'user' ? 'bubble-user' : 'bubble-ai'}`}>
-                  {t.pending ? (
-                    <span className="typing"><i /><i /><i /></span>
-                  ) : (
-                    <>
-                      <RichText text={t.content} />
-                      {t.role === 'assistant' && t.grounded === false && (
-                        <p className="tiny muted-2 mt-8">
-                          <AlertCircle size={11} style={{ verticalAlign: -1 }} /> Answered without live catalogue data.
-                        </p>
-                      )}
-                      {!!t.products?.length && (
-                        <div className="mt-12">
-                          <p className="tiny semi muted mb-8">
-                            <Zap size={12} style={{ verticalAlign: -2 }} /> {t.products.length} matching product{t.products.length > 1 ? 's' : ''}
-                          </p>
-                          <ProductGrid
-                            products={t.products.slice(0, 6)}
-                            onAddToCart={audience === 'buyer' ? (p) => void add(p) : undefined}
-                            onToggleFavorite={audience === 'buyer'
-                              ? (p) => void toggleFavoriteSeller(p.seller.id, p.seller.name)
-                              : undefined}
-                            favoriteSellerIds={favoriteSellerIds}
-                          />
-                        </div>
-                      )}
-                    </>
+              // A turn is the bubble PLUS, for the assistant, any products it
+              // found. The products used to live inside the bubble, which is
+              // capped at 88% of the row and indented past the avatar — on a
+              // 360px phone that left ~202px, so a two-column grid rendered
+              // 95px-wide cards: images the size of a thumbnail and truncated
+              // titles. Product results are the answer on a shopping
+              // assistant, so they now sit OUTSIDE the bubble and take the
+              // full width of the conversation.
+              <div key={i} className="ai-turn">
+                <div className={`bubble-row ${t.role}`}>
+                  {t.role === 'assistant' && (
+                    <span className="ai-avatar" style={{ width: 28, height: 28 }}><Sparkles size={13} /></span>
                   )}
+                  <div className={`bubble ${t.role === 'user' ? 'bubble-user' : 'bubble-ai'}`}>
+                    {t.pending ? (
+                      <span className="typing"><i /><i /><i /></span>
+                    ) : (
+                      <>
+                        <RichText text={t.content} />
+                        {t.role === 'assistant' && t.grounded === false && (
+                          <p className="tiny muted-2 mt-8">
+                            <AlertCircle size={11} style={{ verticalAlign: -1 }} /> Answered without live catalogue data.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
+
+                {!t.pending && !!t.products?.length && (
+                  <div className="ai-results">
+                    <p className="tiny semi muted ai-results-head">
+                      <Zap size={12} style={{ verticalAlign: -2 }} /> {t.products.length} matching product{t.products.length > 1 ? 's' : ''}
+                    </p>
+                    <ProductGrid
+                      products={t.products.slice(0, 6)}
+                      onAddToCart={audience === 'buyer' ? (p) => void add(p) : undefined}
+                      onToggleFavorite={audience === 'buyer'
+                        ? (p) => void toggleFavoriteSeller(p.seller.id, p.seller.name)
+                        : undefined}
+                      favoriteSellerIds={favoriteSellerIds}
+                    />
+                  </div>
+                )}
               </div>
             ))
           )}

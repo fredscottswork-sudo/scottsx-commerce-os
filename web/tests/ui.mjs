@@ -1806,6 +1806,50 @@ section('30. AI pages: chat is full height and the helper copy is inside it');
     /\.ai-console-full \.ai-agents \.agent-card\{[^}]*white-space:nowrap/.test(bundleCss));
   check('agent labels are full body size, not shrunk',
     /\.ai-console-full \.ai-agents \.agent-name\{[^}]*font-size:var\(--fs-base\)/.test(bundleCss));
+
+  // Product results must NOT be trapped inside the chat bubble. The bubble is
+  // capped at 88% of the row and indented past the avatar, which left ~202px
+  // on a 360px phone and rendered 95px-wide product cards.
+  check('product results render outside the chat bubble',
+    /\.ai-results\{[^}]*width:100%/.test(bundleCss));
+  check('a turn stacks the bubble and its results',
+    /\.ai-turn\{[^}]*flex-direction:column/.test(bundleCss));
+  check('the AI console spans the full screen width on a phone',
+    /\.ai-console-full\{[^}]*margin-inline:-13px/.test(bundleCss));
+}
+
+// ── 31. AI product results get the full chat width ─────────────────────────
+// A shopping assistant's answer IS the product list, so it must not be
+// squeezed into a chat bubble. Ask a real question and inspect where the grid
+// lands in the DOM.
+section('31. AI product results are full width, not inside the bubble');
+{
+  const app = await mount('/ai', null, { settleMs: 2200 });
+  const ta = app.$('.ai-chat-input textarea');
+  check('the AI composer is present', !!ta);
+  if (ta) {
+    app.type(ta, 'phone');
+    const form = app.$('form.ai-chat-input');
+    if (form) form.dispatchEvent(new app.window.Event('submit', { bubbles: true, cancelable: true }));
+    // Give the backend time to answer and render.
+    await new Promise((r) => setTimeout(r, 3200));
+
+    const results = app.$('.ai-results');
+    if (results) {
+      check('product results are NOT inside a chat bubble',
+        !results.closest('.bubble'),
+        'found .ai-results nested inside .bubble');
+      check('product results sit inside the transcript',
+        !!results.closest('.ai-chat-body'));
+      const grid = results.querySelector('.pgrid');
+      check('the results panel contains a product grid', !!grid);
+    } else {
+      // The engine may answer without products; that is not a layout failure.
+      check('assistant answered (no product grid in this reply)',
+        app.$$('.bubble-ai').length > 0);
+    }
+  }
+  app.close();
 }
 
 // ── Cleanup ─────────────────────────────────────────────────────────────────

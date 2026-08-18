@@ -1091,6 +1091,21 @@ tbody tr.row-click { cursor: pointer; }
 .bubble-row.assistant .bubble { max-width: 88%; }
 .bubble-row .ai-avatar { flex-shrink: 0; margin-top: 3px; }
 
+/* A turn = the bubble, plus any products the assistant found. */
+.ai-turn { display: flex; flex-direction: column; gap: 10px; }
+
+/* Product results are the ANSWER on a shopping assistant, so they get the full
+   width of the conversation rather than the 88%-of-a-row the bubble allows.
+   Inside the bubble a 360px phone left ~202px, which rendered 95px cards. */
+.ai-results {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 11px;
+}
+.ai-results-head { margin: 0 0 9px; }
+
 .ai-chat-input {
   display: flex; gap: 9px; align-items: flex-end; padding: 12px 14px;
   border-top: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0;
@@ -1247,10 +1262,25 @@ tbody tr.row-click { cursor: pointer; }
   /* The chat header repeats the active agent, which the rail directly above
      already shows. Drop the duplicate line and tighten the padding: that is
      ~26px handed straight to the conversation. */
-  .ai-console-full .ai-chat-head { padding: 9px 12px; }
+  .ai-console-full .ai-chat-head { padding: 9px 13px; }
+  .ai-console-full .ai-chat-body { padding: 14px 11px; }
+  /* The results panel is already framed; it does not need the bubble indent. */
+  .ai-console-full .ai-results { padding: 10px; }
   .ai-console-full .ai-chat-head > div > p { display: none; }
 
+  /* Let the console span the full width of the screen on the AI pages. The
+     .content wrapper adds 13px of side padding, which on a 360px phone is
+     26px the conversation and its product grid could be using. Cancel it for
+     this layout only and put the padding back on the parts that need it. */
+  .ai-console-full {
+    margin-inline: -13px;
+    width: calc(100% + 26px);
+  }
+  .ai-console-full .ai-agents .col { padding-inline: 13px; }
+
   .ai-console-full .ai-chat {
+    border-radius: 0;
+    border-inline: 0;
     max-height: none;
     /* Chrome above the chat with the PageHeader gone: topbar 100 + category
        bar 44 + content padding 16 + agents rail 96 = 256, plus the 76px
