@@ -36,14 +36,25 @@ import {
 } from './products.service.js';
 import { notify } from '../notifications/notify.service.js';
 
+/**
+ * Postgres `integer` (and the `price_minor::int` casts every read uses) top out
+ * at 2,147,483,647. Without this ceiling the INSERT commits and the *read back*
+ * throws, so the seller sees a 500 while the product silently exists. Reject it
+ * up front instead — 2.1bn UGX is far beyond any real listing.
+ */
+const INT4_MAX = 2147483647;
+
+const money = () => z.number().int().nonnegative().max(INT4_MAX);
+const count = () => z.number().int().nonnegative().max(INT4_MAX);
+
 const newProductSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional().default(''),
   category: z.string().optional().default('Other'),
   brand: z.string().optional().default(''),
-  priceMinor: z.number().int().nonnegative(),
-  oldPriceMinor: z.number().int().nonnegative().optional().nullable(),
-  stockQuantity: z.number().int().nonnegative().optional().default(1),
+  priceMinor: money(),
+  oldPriceMinor: money().optional().nullable(),
+  stockQuantity: count().optional().default(1),
   imageUrl: z.string().optional().default(''),
   mediaUrls: z.array(z.string()).optional().default([]),
   location: z.string().optional().default(''),
@@ -70,9 +81,9 @@ const updateProductSchema = z.object({
   description: z.string().optional(),
   category: z.string().optional(),
   brand: z.string().optional(),
-  priceMinor: z.number().int().nonnegative().optional(),
-  oldPriceMinor: z.number().int().nonnegative().nullable().optional(),
-  stockQuantity: z.number().int().nonnegative().optional(),
+  priceMinor: money().optional(),
+  oldPriceMinor: money().nullable().optional(),
+  stockQuantity: count().optional(),
   imageUrl: z.string().optional(),
   mediaUrls: z.array(z.string()).optional(),
   location: z.string().optional(),

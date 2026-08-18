@@ -725,6 +725,75 @@ async function main() {
   }
 
   // ── Ratings ───────────────────────────────────────────────────────────────
+  // ── Input boundaries ──────────────────────────────────────────────────────
+  // A rejected write must be rejected BEFORE anything is committed. The
+  // int4-overflow bug below committed the INSERT and then threw on the
+  // read-back cast, so the seller got a 500 while the product silently existed.
+  group('Input boundaries & overflow');
+  {
+    const INT4_MAX = 2147483647;
+    const listing = (extra) => ({
+      title: `E2E Boundary ${uniq}`,
+      description: 'Created by the automated end-to-end suite.',
+      category: 'Electronics',
+      priceMinor: 50000,
+      stockQuantity: 5,
+      imageUrl: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800',
+      ...extra,
+    });
+    const post = (body) => call('/seller/products', { method: 'POST', token: state.sellerToken, body });
+
+    const before = await call('/seller/products', { token: state.sellerToken });
+    const beforeCount = (before.data?.products ?? []).length;
+
+    const atMax = await post(listing({ priceMinor: INT4_MAX, title: `E2E Boundary max ${uniq}` }));
+    check('a price at the int4 ceiling is accepted', atMax.status === 200, `got ${atMax.status}`);
+    if (atMax.data?.product?.id) {
+      // It must also read back — the old bug threw here, not on write.
+      const readBack = await call(`/products/${atMax.data.product.id}`, { token: state.sellerToken });
+      check('a max-price product reads back without overflowing', readBack.status === 200, `got ${readBack.status}`);
+      await call(`/seller/products/${atMax.data.product.id}`, { method: 'DELETE', token: state.sellerToken });
+    }
+
+    for (const [label, body] of [
+      ['price above int4', { priceMinor: INT4_MAX + 1 }],
+      ['price at MAX_SAFE_INTEGER', { priceMinor: Number.MAX_SAFE_INTEGER }],
+      ['stock above int4', { stockQuantity: INT4_MAX + 1 }],
+    ]) {
+      const r = await post(listing(body));
+      check(`${label} is rejected with 400, not 500`, r.status === 400, `got ${r.status} ${JSON.stringify(r.data).slice(0, 80)}`);
+    }
+
+    const after = await call('/seller/products', { token: state.sellerToken });
+    check(
+      'rejected listings leave no orphan rows behind',
+      (after.data?.products ?? []).length === beforeCount,
+      `before=${beforeCount} after=${(after.data?.products ?? []).length}`
+    );
+
+    // Values a compiler would accept but the business must not.
+    for (const [label, body, want] of [
+      ['a zero price', { priceMinor: 0 }, 400],
+      ['a negative price', { priceMinor: -1 }, 400],
+      ['a negative stock', { stockQuantity: -1 }, 400],
+      ['a blank title', { title: '' }, 400],
+      ['a whitespace-only title', { title: '   ' }, 400],
+      ['a discount above 100%', { discountPercent: 101 }, 400],
+    ]) {
+      const r = await post(listing(body));
+      check(`${label} is rejected`, r.status === want, `got ${r.status}`);
+    }
+
+    // Errors must not leak the database's own wording to the client.
+    const overflow = await post(listing({ priceMinor: Number.MAX_SAFE_INTEGER }));
+    const msg = JSON.stringify(overflow.data ?? {});
+    check(
+      'an overflow error does not leak raw Postgres text',
+      !/out of range for type|integer out of range/i.test(msg),
+      msg.slice(0, 100)
+    );
+  }
+
   group('Product ratings');
   {
     const pid = state.sampleProduct?.id;

@@ -24,7 +24,7 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 
 | # | Gate | Checks | Status |
 |---|------|--------|--------|
-| 1 | Backend end-to-end | 253 | passing |
+| 1 | Backend end-to-end | 266 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 3 | Android ⇆ backend contract | 91 | passing |
 | 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 217 | passing |
@@ -34,7 +34,7 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 8 | Kotlin syntax (56 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**596 checks.** Every suite cleans up after itself; the database returns to 7
+**609 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -113,6 +113,7 @@ These were all found by running things, not by reading code:
 | Launch theme was `Material.Light` under a dark UI | White flash before the first frame; invisible status-bar icons |
 | Launcher icon was a 1.77 MB nodpi PNG, no adaptive icon | Oversized in the APK; no themed/adaptive icon on API 26+ |
 | Web shipped a placeholder "S" tile and an inline-SVG favicon | Web and app did not share a brand |
+| A price above int4 committed the INSERT, then 500'd on the read-back cast | Seller saw "integer out of range" while the product **silently existed** — and the raw Postgres message leaked to the client |
 
 ---
 
