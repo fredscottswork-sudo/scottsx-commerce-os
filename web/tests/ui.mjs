@@ -363,7 +363,14 @@ section('4. Nearby stores');
   check('offers live GPS tracking', /Follow my location/i.test(t));
   // The marketplace is global: no radius control, no hard-coded city list.
   check('no radius control is shown', !/Radius/i.test(t) && app.$$('input[type="range"]').length === 0);
-  check('no hard-coded city presets', !/Jinja/i.test(t) && !/Mbarara/i.test(t));
+  // No city-picker chips. (Real store locations may legitimately name a city —
+  // Jinja stores now appear at all because the radius cap is gone — so assert
+  // on the removed control, not on the word.)
+  check('no city-preset picker chips',
+    app.$$('.chip').filter((c) => /^(Kampala|Entebbe|Jinja|Mbarara|Gulu|Mbale)$/i.test((c.textContent || '').trim())).length === 0,
+    app.$$('.chip').map((c) => (c.textContent || '').trim()).join(','));
+  check('stores outside the old 50 km radius are now listed',
+    /Jinja/i.test(t), 'a Jinja store should be reachable from Kampala');
   check('names the detected location', /Your location/i.test(t));
   check('shows the resolved place from the geocoder',
     !!app.$('[data-testid="place-label"]'),
