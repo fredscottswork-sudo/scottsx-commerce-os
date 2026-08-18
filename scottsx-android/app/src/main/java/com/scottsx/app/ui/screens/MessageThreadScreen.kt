@@ -345,16 +345,3 @@ private fun TypingBubble() {
     }
 }
 
-
-@Composable
-private fun QuickChip(text: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-    ) {
-        Text(text, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
