@@ -11,6 +11,7 @@ import { useTheme } from '../store/ThemeContext';
 import { useCart } from '../store/CartContext';
 import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
+import { BrandMark } from './BrandLogo';
 
 interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }
 
@@ -68,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <div className="public-shell">
         <header className="public-topbar">
-          <Link to="/" className="brand"><span className="brand-logo">S</span> ScottsTechX</Link>
+          <Link to="/" className="brand"><BrandMark /> ScottsTechX</Link>
           <form className="searchbar public-search" onSubmit={submitSearch}>
             <Search size={17} className="muted-2" />
             <input
@@ -152,7 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sidebar = (
     <>
       <div className="sidebar-head">
-        <Link to={roleHome} className="brand"><span className="brand-logo">S</span> ScottsTechX</Link>
+        <Link to={roleHome} className="brand"><BrandMark /> ScottsTechX</Link>
         <button className="btn btn-ghost btn-icon drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close menu">
           <X size={18} />
         </button>

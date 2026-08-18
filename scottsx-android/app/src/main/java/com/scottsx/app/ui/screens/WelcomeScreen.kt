@@ -1,5 +1,6 @@
 package com.scottsx.app.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -22,12 +22,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.scottsx.app.R
 import com.scottsx.app.SessionCache
 import com.scottsx.app.navigation.Routes
 import com.scottsx.app.ui.theme.ScottsTechXColors
@@ -63,15 +65,15 @@ fun WelcomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Box(
+            // The official brand mark — the same artwork the web app serves at
+            // /brand/scottstechx-mark.png and the launcher uses as its icon.
+            Image(
+                painter = painterResource(id = R.drawable.logo),
+                contentDescription = "ScottsTechX",
                 modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("🛍️", fontSize = 44.sp)
-            }
+                    .size(112.dp)
+                    .clip(RoundedCornerShape(26.dp)),
+            )
             Spacer(Modifier.height(20.dp))
             Text(
                 "ScottsTechX",

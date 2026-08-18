@@ -988,6 +988,57 @@ section('15. Google Sign-In');
   app.close();
 }
 
+// ── 16. Brand identity ──────────────────────────────────────────────────────
+// The web must carry the same logo the Android app uses as its launcher icon.
+section('16. Brand identity (logo parity with the app)');
+{
+  const app = await mount('/');
+  const mark = app.$('.brand .brand-logo');
+  check('the public topbar renders the real logo image',
+    !!mark && mark.tagName === 'IMG', mark ? mark.tagName : 'missing');
+  check('the topbar logo points at the shared brand asset',
+    !!mark && mark.getAttribute('src') === '/brand/scottstechx-mark.png',
+    mark?.getAttribute('src') || 'no src');
+  check('the logo is decorative next to the visible wordmark',
+    !!mark && mark.getAttribute('aria-hidden') === 'true');
+  check('no placeholder "S" tile is left in the topbar',
+    !!mark && mark.textContent.trim() === '');
+  app.close();
+}
+{
+  const app = await mount('/login');
+  const lockup = app.$('.brand-lockup');
+  check('the sign-in page shows the full brand lockup',
+    !!lockup && lockup.getAttribute('src') === '/brand/scottstechx-logo-transparent.png',
+    lockup?.getAttribute('src') || 'missing');
+  check('the lockup carries an accessible name',
+    !!lockup && (lockup.getAttribute('alt') || '').includes('ScottsTechX'));
+  check('the shopping-bag emoji placeholder is gone', !app.text().includes('\u{1F6CD}'));
+  app.close();
+}
+{
+  const app = await mount('/', { token: buyer.token, user: buyer.user });
+  const mark = app.$('.brand .brand-logo');
+  check('the signed-in shell uses the same logo asset',
+    !!mark && mark.getAttribute('src') === '/brand/scottstechx-mark.png',
+    mark?.getAttribute('src') || 'missing');
+  app.close();
+}
+// The referenced assets must actually ship in the production build.
+for (const asset of [
+  'brand/scottstechx-mark.png',
+  'brand/scottstechx-logo-transparent.png',
+  'brand/favicon-32.png',
+  'brand/favicon-192.png',
+  'brand/favicon-512.png',
+  'manifest.webmanifest',
+]) {
+  check(`${asset} ships in the build`, existsSync(join(DIST, asset)));
+}
+check('the favicon is the real mark, not an inline placeholder',
+  indexHtml.includes('/brand/favicon-32.png') && !indexHtml.includes('data:image/svg+xml'));
+check('the build links a web app manifest', indexHtml.includes('manifest.webmanifest'));
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {
