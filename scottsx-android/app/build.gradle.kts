@@ -74,6 +74,8 @@ dependencies {
     // Firebase Auth (google-services.json in app/)
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
     implementation("com.google.firebase:firebase-auth-ktx")
+    // Push notifications: the backend already fans out to device tokens.
+    implementation("com.google.firebase:firebase-messaging-ktx")
     implementation("com.google.android.gms:play-services-base:18.4.0")
 
     // Coil image loading (2.x, global ImageLoader in ScottsTechXApp)

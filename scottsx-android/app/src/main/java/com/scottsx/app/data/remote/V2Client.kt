@@ -760,6 +760,29 @@ object V2Client {
         false
     }
 
+    // ── Push device tokens ────────────────────────────────────────────────────
+
+    /**
+     * Register this device's FCM token so the backend can push to it.
+     * Called after sign-in and whenever FCM rotates the token.
+     */
+    suspend fun registerDevice(token: String, platform: String = "android"): Boolean = try {
+        call(
+            "/me/devices",
+            "POST",
+            JSONObject().put("token", token).put("platform", platform),
+        ).optBoolean("ok", true)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Drop this device's token — called on sign-out. */
+    suspend fun unregisterDevice(token: String): Boolean = try {
+        call("/me/devices", "DELETE", JSONObject().put("token", token)).optBoolean("ok", true)
+    } catch (e: Exception) {
+        false
+    }
+
     // ── Saved quick replies ───────────────────────────────────────────────────
 
     suspend fun fetchQuickReplies(): List<QuickReplyItem> = try {

@@ -25,9 +25,20 @@ object SessionCache {
     private val _user = MutableStateFlow<CurrentUser?>(null)
     val user: StateFlow<CurrentUser?> = _user
 
+    /**
+     * Invoked whenever a session begins or ends.
+     *
+     * Set once by the Application class so push-token registration happens on
+     * EVERY sign-in path (password, Firebase, Google, seller upgrade) without
+     * each screen having to remember to call it.
+     */
+    @Volatile
+    var onSessionChanged: ((signedIn: Boolean) -> Unit)? = null
+
     fun save(token: String, user: CurrentUser) {
         this.token = token
         _user.value = user
+        onSessionChanged?.invoke(true)
     }
 
     fun updateUser(user: CurrentUser) {
@@ -35,6 +46,7 @@ object SessionCache {
     }
 
     fun clear() {
+        onSessionChanged?.invoke(false)
         token = null
         _user.value = null
     }

@@ -6,6 +6,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.scottsx.app.data.push.ScottsMessagingService
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -16,6 +17,7 @@ private val maxMemory: Long get() = Runtime.getRuntime().maxMemory()
  * ScottsTechX — Application entry point.
  *
  * - Initialises Firebase (via google-services.json)
+ * - Creates the notification channels and registers the FCM token on sign-in
  * - Registers ONE global Coil ImageLoader. Screens MUST use
  *   Coil.imageLoader(context) — never a fresh ImageLoader.Builder(ctx).
  */
@@ -24,6 +26,14 @@ class ScottsTechXApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         UserPrefs.init(this)
+        ScottsMessagingService.ensureChannels(this)
+
+        // Register this device's push token on every sign-in path (password,
+        // Firebase, Google, seller upgrade) from one place, so no screen can
+        // forget to do it.
+        SessionCache.onSessionChanged = { signedIn ->
+            if (signedIn) ScottsMessagingService.registerCurrentToken(this)
+        }
     }
 
     override fun newImageLoader(): ImageLoader {
