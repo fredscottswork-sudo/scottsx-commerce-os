@@ -1,0 +1,279 @@
+/**
+ * MainNav — the site-wide horizontal navigation bar.
+ *
+ * Rendered directly under the topbar in BOTH the public (logged-out) and the
+ * authenticated shell, so every destination in the marketplace is one click
+ * away regardless of who is looking. Three parts:
+ *
+ *   • a category mega-menu driven by the LIVE facet counts from the backend
+ *     (so it can never drift from the catalogue),
+ *   • primary destinations (Market / Deals / Nearby / AI / role dashboards),
+ *   • a mobile bottom bar mirroring the Android app's bottom nav.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import {
+  Bell, ChevronDown, Grid3x3, Heart, Home, LayoutDashboard, MapPin, MessageCircle,
+  Package, Search, ShieldCheck, ShoppingBag, ShoppingCart, Sparkles, Store, Tag,
+  Shirt, Dumbbell, Sparkle, Sofa, Apple, Car, Smartphone, User,
+} from 'lucide-react';
+import { productService } from '../api/services';
+import type { Facets } from '../api/types';
+
+/** Facets change rarely; fetch once per page load and share across mounts. */
+let facetCache: Facets | null = null;
+let facetPromise: Promise<Facets> | null = null;
+function loadFacets(): Promise<Facets> {
+  if (facetCache) return Promise.resolve(facetCache);
+  if (!facetPromise) {
+    facetPromise = productService.facets()
+      .then((f) => { facetCache = f; return f; })
+      .catch((e) => { facetPromise = null; throw e; });
+  }
+  return facetPromise;
+}
+
+const CATEGORY_ICONS: Record<string, ReactNode> = {
+  Electronics: <Smartphone size={16} />,
+  Fashion: <Shirt size={16} />,
+  Sports: <Dumbbell size={16} />,
+  Beauty: <Sparkle size={16} />,
+  'Home & Living': <Sofa size={16} />,
+  Groceries: <Apple size={16} />,
+  Automotive: <Car size={16} />,
+};
+function categoryIcon(name: string): ReactNode {
+  return CATEGORY_ICONS[name] ?? <Package size={16} />;
+}
+
+export interface MainNavCounts {
+  cart: number;
+  messages: number;
+  notifications: number;
+}
+
+interface Props {
+  role: 'buyer' | 'seller' | 'admin' | null;
+  counts: MainNavCounts;
+}
+
+/* ── Desktop / tablet horizontal bar ─────────────────────────────────────── */
+export function MainNav({ role, counts }: Props) {
+  const [facets, setFacets] = useState<Facets | null>(facetCache);
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => { loadFacets().then(setFacets).catch(() => undefined); }, []);
+  useEffect(() => { setOpen(false); }, [location.pathname, location.search]);
+
+  // Dismiss the mega-menu on outside click / Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const categories = facets?.categories ?? [];
+  const brands = useMemo(() => (facets?.brands ?? []).slice(0, 8), [facets]);
+  const totalItems = useMemo(
+    () => categories.reduce((s, c) => s + (c.count || 0), 0),
+    [categories]
+  );
+
+  const links: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
+    { to: '/', label: 'Market', icon: <Store size={15} />, end: true },
+    { to: '/search?flashOnly=1&sort=discount', label: 'Deals', icon: <Tag size={15} /> },
+    { to: '/nearby', label: 'Nearby', icon: <MapPin size={15} /> },
+    { to: role === 'buyer' ? '/buyer/ai' : role === 'seller' ? '/seller/ai' : '/ai', label: 'AI', icon: <Sparkles size={15} /> },
+  ];
+
+  if (role === 'buyer') {
+    links.push(
+      { to: '/buyer', label: 'Dashboard', icon: <LayoutDashboard size={15} />, end: true },
+      { to: '/buyer/orders', label: 'Orders', icon: <ShoppingBag size={15} /> },
+      { to: '/buyer/saved', label: 'Saved', icon: <Heart size={15} /> },
+    );
+  } else if (role === 'seller') {
+    links.push(
+      { to: '/seller', label: 'Dashboard', icon: <LayoutDashboard size={15} />, end: true },
+      { to: '/seller/inventory', label: 'Inventory', icon: <Package size={15} /> },
+      { to: '/seller/orders', label: 'Orders', icon: <ShoppingBag size={15} /> },
+    );
+  } else if (role === 'admin') {
+    links.push(
+      { to: '/admin', label: 'Overview', icon: <LayoutDashboard size={15} />, end: true },
+      { to: '/admin/queue', label: 'Approvals', icon: <ShieldCheck size={15} /> },
+      { to: '/admin/users', label: 'Users', icon: <User size={15} /> },
+    );
+  }
+
+  return (
+    <div className="mainnav" data-testid="mainnav">
+      <div className="mainnav-inner">
+        <div className="mainnav-cats-wrap" ref={wrapRef}>
+          <button
+            type="button"
+            className={`mainnav-cats ${open ? 'open' : ''}`}
+            aria-expanded={open}
+            aria-haspopup="true"
+            aria-controls="mainnav-mega"
+            onClick={() => setOpen((v) => !v)}
+          >
+            <Grid3x3 size={16} />
+            <span>All categories</span>
+            <ChevronDown size={15} className="mainnav-caret" />
+          </button>
+
+          {open && (
+            <div className="mainnav-mega" id="mainnav-mega" role="menu">
+              <div className="mainnav-mega-grid">
+                {categories.length === 0 && <span className="muted tiny">Loading categories…</span>}
+                {categories.map((c) => (
+                  <Link
+                    key={c.name}
+                    role="menuitem"
+                    className="mega-item"
+                    to={`/search?category=${encodeURIComponent(c.name)}`}
+                  >
+                    <span className="mega-ico">{categoryIcon(c.name)}</span>
+                    <span className="grow ellipsis">{c.name}</span>
+                    <span className="mega-count">{c.count}</span>
+                  </Link>
+                ))}
+              </div>
+
+              {brands.length > 0 && (
+                <div className="mainnav-mega-side">
+                  <div className="mega-heading">Top brands</div>
+                  <div className="row wrap" style={{ gap: 6 }}>
+                    {brands.map((b) => (
+                      <Link
+                        key={b.name}
+                        className="chip"
+                        to={`/search?brand=${encodeURIComponent(b.name)}`}
+                        role="menuitem"
+                      >
+                        {b.name}
+                      </Link>
+                    ))}
+                  </div>
+                  <Link to="/search" className="mega-all" role="menuitem">
+                    Browse all {totalItems} products →
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <nav className="mainnav-links" aria-label="Primary">
+          {links.map((l) => (
+            <NavLink
+              key={l.to}
+              to={l.to}
+              end={l.end}
+              className={({ isActive }) => `mainnav-link ${isActive ? 'active' : ''}`}
+            >
+              {l.icon}
+              <span>{l.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <span className="grow" />
+
+        <nav className="mainnav-right" aria-label="Quick actions">
+          {role && (
+            <NavLink to="/messages" className={({ isActive }) => `mainnav-link ${isActive ? 'active' : ''}`}>
+              <MessageCircle size={15} />
+              <span>Messages</span>
+              {counts.messages > 0 && <span className="badge badge-red">{counts.messages > 99 ? '99+' : counts.messages}</span>}
+            </NavLink>
+          )}
+          {role === 'buyer' && (
+            <NavLink to="/cart" className={({ isActive }) => `mainnav-link ${isActive ? 'active' : ''}`}>
+              <ShoppingCart size={15} />
+              <span>Cart</span>
+              {counts.cart > 0 && <span className="badge badge-blue">{counts.cart > 99 ? '99+' : counts.cart}</span>}
+            </NavLink>
+          )}
+          {role === 'seller' && (
+            <Link to="/seller/add-product" className="mainnav-link mainnav-cta">
+              <Package size={15} /> <span>Add product</span>
+            </Link>
+          )}
+          {!role && (
+            <Link to="/register" className="mainnav-link mainnav-cta">
+              <Store size={15} /> <span>Sell on ScottsTechX</span>
+            </Link>
+          )}
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+/* ── Mobile bottom bar (mirrors the Android bottom nav) ──────────────────── */
+export function BottomNav({ role, counts }: Props) {
+  const items = useMemo(() => {
+    const home = role === 'admin' ? '/admin' : role === 'seller' ? '/seller' : role === 'buyer' ? '/buyer' : '/';
+    const base = [
+      { to: home, label: 'Home', icon: <Home size={19} />, end: true, badge: 0 },
+      { to: '/search', label: 'Search', icon: <Search size={19} />, badge: 0 },
+    ];
+    if (role === 'seller') {
+      base.push(
+        { to: '/seller/inventory', label: 'Inventory', icon: <Package size={19} />, badge: 0 },
+        { to: '/messages', label: 'Chats', icon: <MessageCircle size={19} />, badge: counts.messages },
+        { to: '/notifications', label: 'Alerts', icon: <Bell size={19} />, badge: counts.notifications },
+      );
+    } else if (role === 'admin') {
+      base.push(
+        { to: '/admin/queue', label: 'Queue', icon: <ShieldCheck size={19} />, badge: 0 },
+        { to: '/messages', label: 'Chats', icon: <MessageCircle size={19} />, badge: counts.messages },
+        { to: '/notifications', label: 'Alerts', icon: <Bell size={19} />, badge: counts.notifications },
+      );
+    } else if (role === 'buyer') {
+      base.push(
+        { to: '/nearby', label: 'Nearby', icon: <MapPin size={19} />, badge: 0 },
+        { to: '/cart', label: 'Cart', icon: <ShoppingCart size={19} />, badge: counts.cart },
+        { to: '/messages', label: 'Chats', icon: <MessageCircle size={19} />, badge: counts.messages },
+      );
+    } else {
+      base.push(
+        { to: '/nearby', label: 'Nearby', icon: <MapPin size={19} />, badge: 0 },
+        { to: '/ai', label: 'AI', icon: <Sparkles size={19} />, badge: 0 },
+        { to: '/login', label: 'Account', icon: <User size={19} />, badge: 0 },
+      );
+    }
+    return base;
+  }, [role, counts.cart, counts.messages, counts.notifications]);
+
+  return (
+    <nav className="bottomnav" aria-label="Mobile navigation" data-testid="bottomnav">
+      {items.map((i) => (
+        <NavLink
+          key={i.to}
+          to={i.to}
+          end={i.end}
+          className={({ isActive }) => `bottomnav-item ${isActive ? 'active' : ''}`}
+        >
+          <span className="bottomnav-ico">
+            {i.icon}
+            {i.badge > 0 && <span className="icon-badge">{i.badge > 9 ? '9+' : i.badge}</span>}
+          </span>
+          <span className="bottomnav-label">{i.label}</span>
+        </NavLink>
+      ))}
+    </nav>
+  );
+}

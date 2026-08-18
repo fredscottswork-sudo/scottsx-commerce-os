@@ -172,6 +172,23 @@ export interface NearbySeller {
   freeAboveUgx: number;
   codEnabled: boolean;
   withinServiceRadius: boolean;
+  /** Human place for the pin: "Kireka, Central Region". */
+  placeLabel: string;
+}
+
+/** Offline reverse-geocoding result: where a coordinate actually is. */
+export interface Place {
+  village: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  countryCode: string | null;
+  accuracyKm: number;
+  /** "Kabalagala, Kampala, Central Region, Uganda" */
+  label: string;
+  /** "Kabalagala, Central Region" */
+  shortLabel: string;
+  source: 'offline-gazetteer';
 }
 
 export interface ChatParty {

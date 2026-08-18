@@ -212,6 +212,104 @@ section('1. Public marketplace (logged out)');
   app.close();
 }
 
+// ── 1b. Site navigation bar ─────────────────────────────────────────────────
+section('1b. Main navigation bar');
+{
+  const facetsRes = await apiFetch('/products/facets');
+  const liveCats = facetsRes.body.categories || [];
+  const liveBrands = facetsRes.body.brands || [];
+
+  // Logged out: the bar exists and offers the public destinations.
+  const app = await mount('/');
+  const nav = app.$('[data-testid="mainnav"]');
+  check('nav bar renders for logged-out visitors', !!nav);
+  const navText = nav ? nav.textContent : '';
+  for (const label of ['Market', 'Deals', 'Nearby', 'AI']) {
+    check(`nav offers "${label}"`, navText.includes(label));
+  }
+  check('nav shows the seller CTA when logged out', navText.includes('Sell on ScottsTechX'));
+
+  // The mega-menu is closed until asked for, then lists REAL categories.
+  check('category menu is collapsed initially', !app.$('#mainnav-mega'));
+  const catsBtn = app.$('.mainnav-cats');
+  check('all-categories trigger exists', !!catsBtn);
+  if (catsBtn) {
+    await app.click(catsBtn, 400);
+    check('clicking opens the category mega-menu', !!app.$('#mainnav-mega'));
+    check('trigger reports expanded state', catsBtn.getAttribute('aria-expanded') === 'true');
+    const items = app.$$('.mega-item');
+    check('mega-menu lists every live category', items.length === liveCats.length,
+      `${items.length} rendered vs ${liveCats.length} from /products/facets`);
+    if (liveCats.length) {
+      const first = liveCats[0];
+      const row = items.find((e) => (e.textContent || '').includes(first.name));
+      check(`category "${first.name}" is listed`, !!row);
+      check('category shows its live product count',
+        !!row && (row.textContent || '').includes(String(first.count)),
+        row ? row.textContent : '');
+      check('category links into a filtered search',
+        !!row && row.getAttribute('href') === `/search?category=${encodeURIComponent(first.name)}`,
+        row ? String(row.getAttribute('href')) : '');
+    }
+    if (liveBrands.length) {
+      const brandLink = app.$$('.mainnav-mega-side a.chip')
+        .find((e) => (e.textContent || '').trim() === liveBrands[0].name);
+      check(`top brand "${liveBrands[0].name}" is linked`, !!brandLink);
+      check('brand link filters search by brand',
+        !!brandLink && brandLink.getAttribute('href') === `/search?brand=${encodeURIComponent(liveBrands[0].name)}`);
+    }
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise((r) => setTimeout(r, 250));
+    check('Escape closes the mega-menu', !app.$('#mainnav-mega'));
+  }
+
+  // Navigating through the bar actually changes the route.
+  const nearbyLink = app.$$('.mainnav-link').find((e) => (e.textContent || '').includes('Nearby'));
+  if (nearbyLink) {
+    await app.click(nearbyLink, 1100);
+    check('clicking "Nearby" navigates to /nearby', app.window.location.pathname === '/nearby',
+      app.window.location.pathname);
+  } else {
+    check('clicking "Nearby" navigates to /nearby', false, 'link not found');
+  }
+  check('mobile bottom bar is present in the DOM', !!app.$('[data-testid="bottomnav"]'));
+  check('no runtime errors from the nav bar', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+{
+  const app = await mount('/buyer', buyer);
+  const nav = app.$('[data-testid="mainnav"]');
+  const t = nav ? nav.textContent : '';
+  check('buyer nav shows the dashboard link', t.includes('Dashboard'));
+  check('buyer nav shows Orders and Saved', t.includes('Orders') && t.includes('Saved'));
+  check('buyer nav shows Cart', t.includes('Cart'));
+  check('buyer nav shows Messages', t.includes('Messages'));
+  check('buyer nav hides the seller CTA', !t.includes('Sell on ScottsTechX'));
+  check('buyer bottom bar links to the cart',
+    app.$$('[data-testid="bottomnav"] a').some((a) => a.getAttribute('href') === '/cart'));
+  const active = app.$$('.mainnav-link.active').map((e) => e.textContent || '');
+  check('active state marks the current page', active.some((x) => x.includes('Dashboard')),
+    active.join(' | '));
+  app.close();
+}
+{
+  const app = await mount('/seller', seller);
+  const t = (app.$('[data-testid="mainnav"]') || { textContent: '' }).textContent;
+  check('seller nav shows Inventory', t.includes('Inventory'));
+  check('seller nav shows the add-product CTA', t.includes('Add product'));
+  check('seller nav has no cart', !t.includes('Cart'));
+  app.close();
+}
+{
+  const app = await mount('/admin', admin);
+  const t = (app.$('[data-testid="mainnav"]') || { textContent: '' }).textContent;
+  check('admin nav shows Approvals', t.includes('Approvals'));
+  check('admin nav shows Users', t.includes('Users'));
+  check('admin bottom bar links to the moderation queue',
+    app.$$('[data-testid="bottomnav"] a').some((a) => a.getAttribute('href') === '/admin/queue'));
+  app.close();
+}
+
 // ── 2. Search: filters, facets, results ─────────────────────────────────────
 section('2. Search page');
 {
@@ -262,10 +360,47 @@ section('4. Nearby stores');
   check('distances are shown in km', /\d+(\.\d+)?\s*km/.test(t));
   check('explains the last-known-position rule',
     /last known position/i.test(t) || /Fixed address/i.test(t) || /Last seen/i.test(t));
-  check('offers live GPS tracking', /Use my location/i.test(t));
-  check('city presets are rendered', t.includes('Kampala') && t.includes('Jinja'));
+  check('offers live GPS tracking', /Follow my location/i.test(t));
+  // The marketplace is global: no radius control, no hard-coded city list.
+  check('no radius control is shown', !/Radius/i.test(t) && app.$$('input[type="range"]').length === 0);
+  check('no hard-coded city presets', !/Jinja/i.test(t) && !/Mbarara/i.test(t));
+  check('names the detected location', /Your location/i.test(t));
+  check('shows the resolved place from the geocoder',
+    !!app.$('[data-testid="place-label"]'),
+    app.$('[data-testid="place-label"]') ? '' : 'place label missing');
+  check('breaks the place into city / region / country',
+    /City:/.test(t) && /Region:/.test(t) && /Country:/.test(t));
   check('no runtime errors on nearby', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
+}
+{
+  // The offline geocoder must answer for coordinates anywhere on earth, and
+  // the store list must not be clipped to some radius around Kampala.
+  const cases = [
+    ['Kampala', 0.3476, 32.5825, 'Uganda'],
+    ['London', 51.5074, -0.1278, 'United Kingdom'],
+    ['Tokyo', 35.6595, 139.7005, 'Japan'],
+    ['Sao Paulo', -23.5505, -46.6333, 'Brazil'],
+  ];
+  for (const [name, lat, lng, country] of cases) {
+    const r = await apiFetch(`/geo/reverse?lat=${lat}&lng=${lng}`);
+    check(`geocoder names ${name}`, r.status === 200 && r.body.place?.country === country,
+      `got ${r.body.place?.label}`);
+    check(`${name} resolves a region`, !!r.body.place?.region, `label ${r.body.place?.label}`);
+  }
+  const far = await apiFetch('/sellers/nearby?lat=51.5074&lng=-0.1278');
+  check('a buyer far from every store still gets results (global, no radius)',
+    far.status === 200 && far.body.sellers.length > 0, `${far.body.sellers?.length} stores`);
+  check('the far buyer\'s own place is reported',
+    far.body.place?.country === 'United Kingdom', far.body.place?.label);
+  check('stores carry a human place label',
+    far.body.sellers.every((s) => typeof s.placeLabel === 'string'));
+  const clipped = await apiFetch('/sellers/nearby?lat=0.3476&lng=32.5825&radiusKm=10');
+  const unclipped = await apiFetch('/sellers/nearby?lat=0.3476&lng=32.5825');
+  check('an explicit radius still filters', clipped.body.total < unclipped.body.total,
+    `${clipped.body.total} vs ${unclipped.body.total}`);
+  check('results are sorted nearest first',
+    unclipped.body.sellers.every((s, i, a) => i === 0 || a[i - 1].distanceKm <= s.distanceKm));
 }
 
 // ── 5. Buyer dashboard ──────────────────────────────────────────────────────

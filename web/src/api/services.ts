@@ -18,6 +18,7 @@ import type {
   Order,
   Paged,
   PaymentMethod,
+  Place,
   Product,
   Refund,
   SellerDashboardStats,
@@ -107,13 +108,18 @@ export const productService = {
       method: 'POST',
       body: { stars, comment },
     }),
+  /**
+   * Global by default — omit radiusKm and the API returns every store on earth
+   * sorted by distance, so a buyer anywhere sees their nearest sellers.
+   */
   nearby: (params: {
-    lat: number; lng: number; radiusKm?: number; category?: string; q?: string;
+    lat: number; lng: number; radiusKm?: number; limit?: number; category?: string; q?: string;
     verifiedOnly?: boolean; openOnly?: boolean; sort?: 'distance' | 'rating' | 'products' | 'newest';
   }) =>
     api<{
-      sellers: NearbySeller[]; count: number; liveCount: number;
-      center: { lat: number; lng: number; radiusKm: number }; generatedAt: string;
+      sellers: NearbySeller[]; count: number; total: number; liveCount: number;
+      place: Place | null;
+      center: { lat: number; lng: number; radiusKm: number | null }; generatedAt: string;
     }>(`/sellers/nearby${qs(params as Record<string, unknown>)}`, { auth: false }),
   sellerPublic: (id: string) => api<{ seller: any; products: Product[] }>(`/sellers/${id}`, { auth: false }),
 };
@@ -430,4 +436,23 @@ export const adminService = {
       body: { body, close },
     }),
   deleteProduct: (id: string) => api<{ ok: boolean }>(`/admin/products/${id}`, { method: 'DELETE' }),
+};
+
+// ── Location (offline reverse geocoding, global) ────────────────────────────
+export const geoService = {
+  /** Name any coordinate: village / city / region / country. No auth needed. */
+  reverse: (lat: number, lng: number) =>
+    api<{ place: Place; query: { lat: number; lng: number } }>(
+      `/geo/reverse?lat=${lat}&lng=${lng}`, { auth: false }
+    ),
+  status: () => api<{ ready: boolean; source: string; coverage: string }>('/geo/status', { auth: false }),
+  /** Persist my position and get the resolved place back in one round trip. */
+  saveMyLocation: (lat: number, lng: number, accuracyM?: number) =>
+    api<{ ok: boolean; place: Place | null; position: { lat: number; lng: number; accuracyM: number | null } }>(
+      '/me/location', { method: 'POST', body: { lat, lng, accuracyM } }
+    ),
+  myLocation: () =>
+    api<{ position: { lat: number; lng: number } | null; place: Place | null; updatedAt?: string }>(
+      '/me/location'
+    ),
 };

@@ -1,29 +1,33 @@
+/**
+ * Nearby stores — global, self-locating.
+ *
+ * The marketplace is worldwide, so this screen has no radius control and no
+ * hard-coded city list. It detects where you are, names the spot
+ * (village / city / region / country) and lists every store sorted by distance,
+ * re-sorting continuously as you move.
+ *
+ * Position semantics the buyer can trust:
+ *   • a seller sharing location   → the pin follows their live GPS fix,
+ *   • a seller not sharing        → the pin stays at their last known position.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  MapPin, BadgeCheck, Navigation, Radio, Clock, Store, Truck, Star,
-  LocateFixed, LocateOff, Package, Search as SearchIcon,
+  MapPin, BadgeCheck, Navigation, Radio, Clock, Truck, Star,
+  LocateFixed, LocateOff, Package, Globe2, AlertCircle,
 } from 'lucide-react';
-import { productService } from '../api/services';
-import type { NearbySeller } from '../api/types';
+import { productService, geoService } from '../api/services';
+import type { NearbySeller, Place } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useToast } from '../store/ToastContext';
+import { useAuth } from '../store/AuthContext';
 import {
   Btn, Empty, ErrorBox, PageHeader, Select, SkeletonRows, Switch, Badge, SearchInput,
 } from '../components/ui';
 
-const CITIES = [
-  { name: 'Kampala', lat: 0.3476, lng: 32.5825 },
-  { name: 'Entebbe', lat: 0.0611, lng: 32.4444 },
-  { name: 'Jinja', lat: 0.4255, lng: 33.2041 },
-  { name: 'Mbarara', lat: -0.6072, lng: 30.6545 },
-  { name: 'Gulu', lat: 2.7724, lng: 32.2881 },
-  { name: 'Mbale', lat: 1.0747, lng: 34.1761 },
-];
-
 type Sort = 'distance' | 'rating' | 'products' | 'newest';
 
-/** Metres moved before we bother re-querying the server. */
+/** Metres the buyer must move before we re-query the server. */
 const REFETCH_METRES = 250;
 
 function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -38,17 +42,21 @@ function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: n
 
 export default function Nearby() {
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  const [center, setCenter] = useState({ lat: CITIES[0].lat, lng: CITIES[0].lng });
-  const [cityName, setCityName] = useState(CITIES[0].name);
+  const [center, setCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [place, setPlace] = useState<Place | null>(null);
   const [usingGps, setUsingGps] = useState(false);
-  const [radius, setRadius] = useState(50);
+  const [locating, setLocating] = useState(true);
+  const [geoDenied, setGeoDenied] = useState(false);
+
   const [sort, setSort] = useState<Sort>('distance');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [openOnly, setOpenOnly] = useState(false);
   const [q, setQ] = useState('');
 
   const [sellers, setSellers] = useState<NearbySeller[]>([]);
+  const [total, setTotal] = useState(0);
   const [liveCount, setLiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -56,23 +64,25 @@ export default function Nearby() {
   const [moved, setMoved] = useState(false);
 
   const watchId = useRef<number | null>(null);
-  const lastFetchCenter = useRef(center);
+  const lastFetchCenter = useRef<{ lat: number; lng: number } | null>(null);
+  const savedOnce = useRef(false);
 
-  // ── Fetch (server does the distance maths + last-known-position fallback) ─
+  // ── Fetch: no radius — the API returns every store, nearest first ────────
   const fetchSellers = useCallback(async (at: { lat: number; lng: number }) => {
     setError('');
     try {
       const r = await productService.nearby({
         lat: at.lat,
         lng: at.lng,
-        radiusKm: radius,
         q: q.trim() || undefined,
         verifiedOnly: verifiedOnly || undefined,
         openOnly: openOnly || undefined,
         sort,
       });
       setSellers(r.sellers);
+      setTotal(r.total ?? r.count);
       setLiveCount(r.liveCount);
+      if (r.place) setPlace(r.place);
       setUpdatedAt(new Date());
       lastFetchCenter.current = at;
       setMoved(false);
@@ -81,51 +91,118 @@ export default function Nearby() {
     } finally {
       setLoading(false);
     }
-  }, [radius, q, verifiedOnly, openOnly, sort]);
+  }, [q, verifiedOnly, openOnly, sort]);
 
+  /** Apply a new position: name it, remember it, and refresh the list. */
+  const applyPosition = useCallback((next: { lat: number; lng: number }, accuracyM?: number) => {
+    setCenter(next);
+    setLocating(false);
+    // Persist for signed-in users so the account knows where they are.
+    if (user && !savedOnce.current) {
+      savedOnce.current = true;
+      geoService.saveMyLocation(next.lat, next.lng, accuracyM)
+        .then((r) => { if (r.place) setPlace(r.place); })
+        .catch(() => undefined);
+    } else {
+      geoService.reverse(next.lat, next.lng)
+        .then((r) => setPlace(r.place))
+        .catch(() => undefined);
+    }
+  }, [user]);
+
+  // ── Detect the buyer's position automatically on arrival ─────────────────
   useEffect(() => {
+    let cancelled = false;
+
+    async function fallbackToSavedLocation(reason: string) {
+      if (cancelled) return;
+      // A signed-in user has a stored last-known position — use it so the page
+      // is never empty just because the browser refused a fresh fix.
+      if (user) {
+        try {
+          const r = await geoService.myLocation();
+          if (!cancelled && r.position) {
+            setCenter(r.position);
+            if (r.place) setPlace(r.place);
+            setLocating(false);
+            return;
+          }
+        } catch { /* fall through */ }
+      }
+      if (cancelled) return;
+      setLocating(false);
+      setGeoDenied(true);
+      setLoading(false);
+      setError(reason);
+    }
+
+    if (!navigator.geolocation) {
+      void fallbackToSavedLocation('This browser cannot detect your location.');
+      return () => { cancelled = true; };
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy);
+      },
+      (err) => {
+        void fallbackToSavedLocation(
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied. Allow location access to see stores near you.'
+            : 'Could not detect your location. Check that location services are on.'
+        );
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+
+    return () => { cancelled = true; };
+  }, [user, applyPosition]);
+
+  // Refresh whenever the position or a filter changes.
+  useEffect(() => {
+    if (!center) return;
     setLoading(true);
     const t = setTimeout(() => void fetchSellers(center), 220);
     return () => clearTimeout(t);
   }, [center, fetchSellers]);
 
-  // ── Continuous tracking: as the buyer moves, stores re-sort by distance ──
+  // ── Continuous tracking: stores re-sort as the buyer moves ───────────────
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       toast('This browser cannot share your location', 'error');
       return;
     }
     setUsingGps(true);
+    setGeoDenied(false);
     watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
         const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setCityName('My location');
-        // Re-sort locally on every fix (instant), re-query only when the
-        // buyer has actually moved a meaningful distance (cheap).
+        // Re-sort locally on every fix (instant); re-query only after real movement.
         setSellers((prev) =>
           prev
-            .map((s) => ({ ...s, distanceKm: Number((metresBetween(next, s) / 1000).toFixed(1)) }))
+            .map((s) => ({ ...s, distanceKm: Number((metresBetween(next, s) / 1000).toFixed(2)) }))
             .sort((a, b) => (sort === 'distance' ? a.distanceKm - b.distanceKm : 0))
         );
-        if (metresBetween(lastFetchCenter.current, next) > REFETCH_METRES) {
+        const from = lastFetchCenter.current;
+        if (!from || metresBetween(from, next) > REFETCH_METRES) {
           setMoved(true);
-          setCenter(next);
-        } else {
-          setCenter((c) => (c.lat === next.lat && c.lng === next.lng ? c : next));
+          savedOnce.current = false; // a real move is worth persisting again
+          applyPosition(next, pos.coords.accuracy);
         }
       },
       (err) => {
         setUsingGps(false);
         toast(
           err.code === err.PERMISSION_DENIED
-            ? 'Location permission denied — pick a city instead'
+            ? 'Location permission denied'
             : 'Could not get your location',
           'warning'
         );
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
     );
-  }, [sort, toast]);
+  }, [sort, toast, applyPosition]);
 
   const stopTracking = useCallback(() => {
     if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
@@ -133,10 +210,28 @@ export default function Nearby() {
     setUsingGps(false);
   }, []);
 
-  useEffect(() => () => { if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current); }, []);
+  useEffect(() => () => {
+    if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
+  }, []);
+
+  /** Ask the browser again after a denial (or first visit without a fix). */
+  const retryLocate = useCallback(() => {
+    setLocating(true);
+    setGeoDenied(false);
+    setError('');
+    navigator.geolocation?.getCurrentPosition(
+      (pos) => applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy),
+      () => {
+        setLocating(false);
+        setGeoDenied(true);
+        setError('Location permission is still blocked. Enable it in your browser settings.');
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  }, [applyPosition]);
 
   const stats = useMemo(() => ({
-    total: sellers.length,
+    shown: sellers.length,
     open: sellers.filter((s) => s.isOpen).length,
     delivering: sellers.filter((s) => s.withinServiceRadius).length,
   }), [sellers]);
@@ -150,40 +245,57 @@ export default function Nearby() {
           usingGps ? (
             <Btn variant="danger" icon={<LocateOff size={15} />} onClick={stopTracking}>Stop tracking</Btn>
           ) : (
-            <Btn variant="primary" icon={<LocateFixed size={15} />} onClick={startTracking}>Use my location</Btn>
+            <Btn variant="primary" icon={<LocateFixed size={15} />} onClick={startTracking}>Follow my location</Btn>
           )
         }
       />
 
-      {/* ── Controls ────────────────────────────────────────────────── */}
-      <div className="card mb-16">
-        <div className="row wrap mb-12" style={{ gap: 7 }}>
-          {CITIES.map((c) => (
-            <button
-              key={c.name}
-              className={`chip ${cityName === c.name && !usingGps ? 'active' : ''}`}
-              onClick={() => { stopTracking(); setCityName(c.name); setCenter({ lat: c.lat, lng: c.lng }); }}
-            >
-              <MapPin size={13} /> {c.name}
-            </button>
-          ))}
-          {usingGps && (
-            <span className="chip active">
-              <span className="pulse-dot" style={{ marginRight: 5 }} /> Live GPS
-            </span>
+      {/* ── Where you are ───────────────────────────────────────────── */}
+      <div className="card card-pad mb-16 place-banner">
+        <span className="place-ico"><MapPin size={18} /></span>
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="tiny muted-2 semi">Your location</div>
+          {locating ? (
+            <strong className="place-name">Detecting your location…</strong>
+          ) : place ? (
+            <>
+              <strong className="place-name" data-testid="place-label">{place.label}</strong>
+              <div className="tiny muted mt-4 place-parts">
+                {place.village && <span><span className="muted-2">Village:</span> {place.village}</span>}
+                {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
+                {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
+                {place.country && <span><span className="muted-2">Country:</span> {place.country}</span>}
+              </div>
+            </>
+          ) : (
+            <strong className="place-name">Location unavailable</strong>
           )}
         </div>
+        <div className="row" style={{ gap: 8 }}>
+          {usingGps && <Badge tone="green" live>Live GPS</Badge>}
+          {!usingGps && !locating && (
+            <Btn variant="ghost" icon={<LocateFixed size={14} />} onClick={retryLocate}>Update</Btn>
+          )}
+        </div>
+      </div>
 
+      {geoDenied && (
+        <div className="card card-pad mb-16 row" style={{ gap: 10, borderColor: 'var(--warning)' }}>
+          <AlertCircle size={18} className="t-warning" />
+          <div className="grow">
+            <strong>We could not detect your location</strong>
+            <div className="tiny muted">Allow location access, then try again — no city list needed, it works anywhere in the world.</div>
+          </div>
+          <Btn variant="primary" onClick={retryLocate}>Try again</Btn>
+        </div>
+      )}
+
+      {/* ── Filters (no radius: the whole world is in range) ─────────── */}
+      <div className="card mb-16">
         <div className="row wrap" style={{ gap: 14 }}>
           <div style={{ flex: '1 1 220px', minWidth: 200 }}>
             <SearchInput value={q} onChange={setQ} placeholder="Filter stores or products…" />
           </div>
-
-          <label className="row tiny semi" style={{ flex: '1 1 240px', minWidth: 210, gap: 9 }}>
-            <span style={{ whiteSpace: 'nowrap' }}>Radius <strong>{radius} km</strong></span>
-            <input type="range" min={1} max={200} value={radius} className="range grow"
-              onChange={(e) => setRadius(Number(e.target.value))} aria-label="Search radius" />
-          </label>
 
           <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
             <option value="distance">Nearest first</option>
@@ -199,7 +311,10 @@ export default function Nearby() {
 
       {/* ── Live status strip ───────────────────────────────────────── */}
       <div className="row wrap mb-16" style={{ gap: 9 }}>
-        <Badge tone="primary">{stats.total} store{stats.total === 1 ? '' : 's'}</Badge>
+        <Badge tone="primary">
+          <Globe2 size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+          {stats.shown} of {total} store{total === 1 ? '' : 's'}
+        </Badge>
         {liveCount > 0 && <Badge tone="green" live>{liveCount} sharing live location</Badge>}
         <Badge tone="cyan">{stats.open} open now</Badge>
         <Badge tone="violet">{stats.delivering} deliver to you</Badge>
@@ -215,14 +330,14 @@ export default function Nearby() {
       {loading ? (
         <SkeletonRows rows={5} height={116} />
       ) : error ? (
-        <ErrorBox message={error} onRetry={() => void fetchSellers(center)} />
+        <ErrorBox message={error} onRetry={center ? () => void fetchSellers(center) : retryLocate} />
       ) : sellers.length === 0 ? (
         <Empty
           icon={<MapPin size={28} />}
-          title="No stores in range"
-          subtitle="Widen the radius, clear the filters, or pick another city."
-          action={<Btn variant="primary" onClick={() => { setRadius(200); setVerifiedOnly(false); setOpenOnly(false); setQ(''); }}>
-            Widen search
+          title="No stores match"
+          subtitle="Clear the filters to see every store, sorted by distance from you."
+          action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }}>
+            Clear filters
           </Btn>}
         />
       ) : (
@@ -249,10 +364,10 @@ export default function Nearby() {
                   </div>
 
                   <div className="tiny muted mt-4 ellipsis">
-                    <MapPin size={11} style={{ verticalAlign: -1 }} /> {s.address || s.city || 'Uganda'}
+                    <MapPin size={11} style={{ verticalAlign: -1 }} /> {s.placeLabel || s.address || s.city || '—'}
                   </div>
 
-                  {/* The live/last-known distinction the buyer must be able to trust. */}
+                  {/* The live / last-known distinction the buyer must be able to trust. */}
                   <div className="row wrap mt-8" style={{ gap: 6 }}>
                     {s.live ? (
                       <Badge tone="green" live>

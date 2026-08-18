@@ -10,6 +10,7 @@ import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../store/ThemeContext';
 import { useCart } from '../store/CartContext';
 import { buyerService, chatService } from '../api/services';
+import { MainNav, BottomNav } from './MainNav';
 
 interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }
 
@@ -89,6 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link to="/login" className="btn btn-sm">Sign in</Link>
           <Link to="/register" className="btn btn-primary btn-sm">Get started</Link>
         </header>
+        <MainNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
         <main className="public-content">{children}</main>
         <footer className="public-footer">
           <div className="row wrap" style={{ gap: 18, justifyContent: 'center' }}>
@@ -99,6 +101,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <p className="tiny muted-2 center mt-8">© {new Date().getFullYear()} ScottsTechX · Kampala, Uganda</p>
         </footer>
+        <BottomNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
       </div>
     );
   }
@@ -144,6 +147,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ];
 
   const roleHome = user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : '/buyer';
+  const navCounts = { cart: cart.itemCount, messages: unreadMsgs, notifications: unreadNotifs };
 
   const sidebar = (
     <>
@@ -245,7 +249,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </header>
 
+        <MainNav role={user.role} counts={navCounts} />
+
         <main className="content page" key={location.pathname}>{children}</main>
+        <BottomNav role={user.role} counts={navCounts} />
       </div>
     </div>
   );
