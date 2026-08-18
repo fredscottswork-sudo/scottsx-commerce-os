@@ -1,7 +1,7 @@
 /**
  * ScottsTechX — public seller endpoints + dashboard stats.
  *
- *   GET /api/v1/sellers/nearby?lat=&lng=&radiusKm=
+ *   GET /api/v1/sellers/nearby?lat=&lng=[&radiusKm=][&limit=]  (global by default)
  *   GET /api/v1/sellers/:id
  *   GET /api/v1/seller/profile            (auth, seller)
  *   GET /api/v1/seller/dashboard/stats    (auth, seller)
@@ -11,11 +11,19 @@ import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { requireAuth, requireSeller } from '../../auth.js';
 import { NotFoundError } from '../../errors.js';
+import { reverseGeocode } from '../../geo/gazetteer.js';
 
 const nearbySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
-  radiusKm: z.coerce.number().min(0).max(1000).optional().default(50),
+  /**
+   * Optional. The marketplace is global: with no radius the API returns every
+   * store on earth sorted by distance, so a buyer anywhere sees their nearest
+   * sellers instead of an empty list outside some arbitrary circle.
+   */
+  radiusKm: z.coerce.number().min(0).max(20000).optional(),
+  /** Cap the result set (distance-sorted) rather than capping the distance. */
+  limit: z.coerce.number().min(1).max(500).optional().default(60),
   category: z.string().optional(),
   q: z.string().optional(),
   verifiedOnly: z.coerce.boolean().optional().default(false),
@@ -50,9 +58,8 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
    * ordering recompute continuously as the buyer moves.
    */
   app.get('/api/v1/sellers/nearby', async (request) => {
-    const { lat, lng, radiusKm, category, q, verifiedOnly, openOnly, sort } = nearbySchema.parse(
-      request.query
-    );
+    const { lat, lng, radiusKm, limit, category, q, verifiedOnly, openOnly, sort } =
+      nearbySchema.parse(request.query);
 
     const values: any[] = [];
     const filters: string[] = [`u.role = 'seller'`];
@@ -129,9 +136,12 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
           /** Rough walking/boda ETA, useful on the card. */
           etaMinutes: Math.max(1, Math.round((distanceKm / 25) * 60)),
           withinServiceRadius: distanceKm <= (r.service_radius_km ?? 20),
+          /** Human place for the store's pin: "Kireka, Kampala, Central Region". */
+          placeLabel: reverseGeocode(sLat, sLng)?.shortLabel ?? (r.city ?? ''),
         };
       })
-      .filter((s) => s.distanceKm <= radiusKm);
+      // Global by default: only filter when the caller asked for a radius.
+      .filter((s) => radiusKm === undefined || s.distanceKm <= radiusKm);
 
     switch (sort) {
       case 'rating':
@@ -147,11 +157,17 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
         sellers.sort((a, b) => a.distanceKm - b.distanceKm);
     }
 
+    const total = sellers.length;
+    const page = sellers.slice(0, limit);
+
     return {
-      sellers,
-      count: sellers.length,
-      liveCount: sellers.filter((s) => s.live).length,
-      center: { lat, lng, radiusKm },
+      sellers: page,
+      count: page.length,
+      total,
+      liveCount: page.filter((s) => s.live).length,
+      /** Where the buyer is, named — "Kabalagala, Kampala, Central Region, Uganda". */
+      place: reverseGeocode(lat, lng),
+      center: { lat, lng, radiusKm: radiusKm ?? null },
       generatedAt: new Date().toISOString(),
     };
   });
