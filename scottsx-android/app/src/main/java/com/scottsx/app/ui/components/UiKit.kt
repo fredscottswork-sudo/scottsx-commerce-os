@@ -206,7 +206,11 @@ fun GradientHeader(
                 Brush.horizontalGradient(colors),
                 RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
             )
-            // Gradient bleeds to the top edge; the title clears the status bar.
+            // Deliberate order: background() FIRST, then the insets. A
+            // padding modifier only shrinks what comes after it, so painting
+            // first lets the gradient fill the status-bar strip while the
+            // title below is inset. Swapping these two lines would leave a
+            // bare band above the gradient. Do not "tidy" this.
             .statusBarSpacer()
             .padding(horizontal = 16.dp, vertical = 18.dp),
     ) {
@@ -216,12 +220,18 @@ fun GradientHeader(
                     Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                     contentDescription = "Back",
                     tint = Color.White,
+                    // Modifier order is evaluation order, innermost last.
+                    // The old chain ended .padding(6.dp).size(36.dp), so the
+                    // GLYPH was 36dp and the padding grew the disc to 48dp —
+                    // an oversized circle with an oversized arrow in it. Now
+                    // the disc is a fixed 40dp touch target and the padding
+                    // insets the glyph to 24dp inside it.
                     modifier = Modifier
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .clickable(onClick = onBack)
-                        .padding(6.dp)
-                        .size(36.dp),
+                        .padding(8.dp),
                 )
                 Spacer(Modifier.height(6.dp))
             }

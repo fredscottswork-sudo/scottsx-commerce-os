@@ -227,6 +227,24 @@ console.log('\n\x1b[1m4. Seller dashboard stat tiles\x1b[0m');
 }
 
 // ── 5. Brand lockup is not distorted ────────────────────────────────────────
+{
+  // The seller bottom bar is on every seller screen; if it ignores the nav bar
+  // its labels sit under the gesture pill.
+  const sb = read('app/src/main/java/com/scottsx/app/ui/components/SellerBottomBar.kt');
+  ok_if('the seller bottom bar lifts its tabs above the navigation bar',
+    /\.navBarSpacer\(\)/.test(sb));
+  ok_if('the seller bottom bar surface still paints to the bottom edge',
+    sb.indexOf('.navBarSpacer()') > sb.indexOf('Surface('));
+
+  // Modifier order: .padding(n).size(m) sizes the CONTENT and inflates the
+  // drawn box. On a circular icon button that means an oversized disc.
+  const uk = read('app/src/main/java/com/scottsx/app/ui/components/UiKit.kt');
+  ok_if('no icon button pads before sizing (inflates the circle)',
+    !/\.padding\(\d+\.dp\)\s*\n\s*\.size\(\d+\.dp\)/.test(uk));
+  ok_if('the gradient header back button has a fixed touch target',
+    /\.size\(40\.dp\)\s*\n\s*\.clip\(CircleShape\)/.test(uk));
+}
+
 console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
 {
   const w = files.find((x) => rel(x).endsWith('screens/WelcomeScreen.kt'));

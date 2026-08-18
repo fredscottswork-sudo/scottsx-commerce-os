@@ -46,7 +46,14 @@ fun bottomInset(): Dp =
  * Pads a coloured header so its *content* clears the status bar while the
  * background keeps bleeding to the top edge — the look every modern store app
  * uses. Apply to the inner Column, not to the Box that paints the gradient.
+ *
+ * Must be @Composable: `WindowInsets.safeDrawing` is a @Composable getter
+ * (`@get:Composable`), so a plain extension function that reads it does not
+ * compile — "@Composable invocations can only happen from the context of a
+ * @Composable function". Calling this inside a modifier chain in a composable
+ * body is fine, because that body IS a composable context.
  */
+@Composable
 fun Modifier.statusBarSpacer(): Modifier =
     this.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
 
@@ -54,6 +61,7 @@ fun Modifier.statusBarSpacer(): Modifier =
  * Keeps a bottom bar above the gesture pill. The bar's own surface still
  * paints all the way down; only its rows are lifted.
  */
+@Composable
 fun Modifier.navBarSpacer(): Modifier =
     this.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
 

@@ -47,6 +47,9 @@ hr "7/9  Android resources (icons, colours, themes)"
 hr "7b/9 Android layout (edge-to-edge insets, overflow, brand artwork)"
 (cd "$ROOT/scottsx-android" && node ./tools/layout-check.mjs) || FAILED=1
 
+hr "7c/9 Compose API contract (@Composable context, imports, call sites)"
+(cd "$ROOT/scottsx-android" && node ./tools/compose-contract-check.mjs) || FAILED=1
+
 KOTLINC="${KOTLINC:-$(command -v kotlinc || true)}"
 if [ -n "$KOTLINC" ] && [ -n "${JAVA_HOME:-}" ]; then
   hr "8/9  Kotlin syntax"
