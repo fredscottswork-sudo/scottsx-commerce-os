@@ -1753,6 +1753,50 @@ section('29. Auth screens fit vertically on a phone');
   }
 }
 
+// ── 30. AI pages give the chat the whole screen ─────────────────────────────
+// The AI routes used to render a PageHeader whose title and subtitle sat ABOVE
+// the chat, costing ~90px of vertical space on a phone and shrinking the
+// conversation. That copy now lives inside the chat header and welcome panel.
+section('30. AI pages: chat is full height and the helper copy is inside it');
+{
+  const aiRoutes = [
+    ['/ai', null, 'AI shopper'],
+    ['/buyer/ai', { token: buyer.token, user: buyer.user ?? buyer }, 'AI shopper'],
+    ['/seller/ai', { token: seller.token, user: seller.user ?? seller }, 'AI copilot'],
+  ];
+  for (const [route, session, heading] of aiRoutes) {
+    const app = await mount(route, session, { settleMs: 2200 });
+
+    // No PageHeader above the console.
+    const pageHead = app.$('.page-head');
+    check(`${route} renders no page header above the chat`, !pageHead);
+
+    // The console opts into the full-height layout.
+    const consoleEl = app.$('.ai-console');
+    check(`${route} console is present`, !!consoleEl);
+    check(`${route} console uses the full-height variant`,
+      !!consoleEl && consoleEl.classList.contains('ai-console-full'));
+
+    // The heading that used to sit above the chat is now inside its header.
+    const chatHead = app.$('.ai-chat-head');
+    check(`${route} chat header carries the page title "${heading}"`,
+      !!chatHead && chatHead.textContent.includes(heading),
+      chatHead ? chatHead.textContent.slice(0, 70) : 'no .ai-chat-head');
+
+    // The explanatory copy is inside the transcript's welcome panel.
+    const welcome = app.$('.ai-welcome');
+    check(`${route} welcome copy sits inside the chat body`,
+      !!welcome && !!welcome.closest('.ai-chat-body'));
+
+    app.close();
+  }
+
+  // The full-height rule must actually grant more height than the default.
+  check('full-height chat claims at least 86dvh on a phone',
+    /\.ai-console-full \.ai-chat\{[^}]*height:max\(86dvh/.test(bundleCss),
+    'rule not found in the bundle');
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {

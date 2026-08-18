@@ -21,12 +21,20 @@ interface Turn {
  * agent roster differs (filtered server-side by audience).
  */
 export function AiConsole({
-  audience, screen, title, subtitle,
+  audience, screen, title, subtitle, fullHeight = false,
 }: {
   audience: 'buyer' | 'seller';
   screen: string;
   title: string;
   subtitle: string;
+  /**
+   * Let the console own the full height of the content area. Used by the
+   * dedicated AI pages, which no longer render a PageHeader above the chat:
+   * that heading cost ~90px of vertical space on a phone and pushed the
+   * conversation into a small box. The same wording now appears in the chat
+   * header and the welcome panel instead.
+   */
+  fullHeight?: boolean;
 }) {
   const { toast } = useToast();
   const { add, favoriteSellerIds, toggleFavoriteSeller } = useCart();
@@ -107,7 +115,7 @@ export function AiConsole({
   }, [agentId, agents, busy, screen, toast, turns]);
 
   return (
-    <div className="ai-console">
+    <div className={`ai-console${fullHeight ? ' ai-console-full' : ''}`}>
       {/* ── Agent picker ────────────────────────────────────────────── */}
       <aside className="card ai-agents">
         <div className="row-between mb-12">
@@ -147,8 +155,13 @@ export function AiConsole({
       <div className="card ai-chat card-flush">
         <div className="ai-chat-head">
           <div style={{ minWidth: 0 }}>
-            <h2 className="card-title">{activeAgent?.icon} {activeAgent?.name || title}</h2>
-            <p className="tiny muted ellipsis">{activeAgent?.tagline || subtitle}</p>
+            {/* The page heading lives here now that the AI pages render no
+                PageHeader. The active agent becomes the secondary line, so
+                nothing that used to be shown above the chat is lost. */}
+            <h2 className="card-title ellipsis">{title}</h2>
+            <p className="tiny muted ellipsis">
+              {activeAgent ? `${activeAgent.icon ?? '🤖'} ${activeAgent.name}` : subtitle}
+            </p>
           </div>
           {turns.length > 0 && (
             <Btn size="sm" variant="ghost" icon={<RotateCcw size={14} />} onClick={() => setTurns([])}>

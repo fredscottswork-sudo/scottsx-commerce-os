@@ -1049,6 +1049,13 @@ tbody tr.row-click { cursor: pointer; }
 
 /* ═══ AI CONSOLE ══════════════════════════════════════════════════════════ */
 .ai-console { display: grid; grid-template-columns: 248px 1fr; gap: 18px; align-items: start; }
+
+/* Full-height AI pages -------------------------------------------------------
+   The dedicated AI routes render no PageHeader, so the console owns the whole
+   content area. Removing that heading also removed the ~90px it cost above the
+   chat, which is the space the conversation gets back. */
+.ai-console-full { align-items: stretch; }
+.ai-console-full .ai-chat { height: auto; min-height: 0; max-height: none; }
 .ai-agents { position: sticky; top: calc(var(--topbar-h) + 18px); }
 
 .agent-card {
@@ -1171,6 +1178,26 @@ tbody tr.row-click { cursor: pointer; }
        transcript — not the page — absorbs the overflow. */
     max-height: 78dvh;
   }
+  /* With no PageHeader above it the chat can claim the rest of the screen.
+     Chrome above the console on a phone is now ~236px (topbar 100, category
+     bar 44, content padding 16, agents rail 96 minus the header that is gone)
+     plus the 76px bottom-nav reservation. Give the card everything that is
+     left rather than a fixed share, and keep a floor so it is always usable. */
+  .ai-console-full .ai-chat {
+    max-height: none;
+    /* Chrome above the chat with the PageHeader gone: topbar 100 + category
+       bar 44 + content padding 16 + agents rail 96 = 256, plus the 76px
+       bottom-nav reservation and a little breathing room => ~236px is what
+       must be reserved once the rail is allowed to scroll away. Subtracting
+       more than this made the card SMALLER than the previous 78dvh, which is
+       the opposite of the goal. */
+    /* max() so this can only ever ADD height: whichever is larger of the
+       space actually left on the page and the 78dvh the card had before.
+       Subtracting a fixed amount alone made the card smaller on tall phones,
+       which is the opposite of what was asked for. */
+    height: max(86dvh, calc(100dvh - 236px));
+    min-height: 440px;
+  }
   .ai-chat-head { flex: 0 0 auto; }
   .ai-chat-body {
     flex: 1 1 auto;
@@ -1204,6 +1231,7 @@ tbody tr.row-click { cursor: pointer; }
      at the corrected 16px type that is genuinely cramped, and the page
      scrolls anyway. */
   .ai-chat { max-height: calc(100dvh - 260px); min-height: 300px; }
+  .ai-console-full .ai-chat { height: max(72dvh, calc(100dvh - 250px)); min-height: 320px; }
   .ai-welcome { padding: 14px 10px; }
 }
 
