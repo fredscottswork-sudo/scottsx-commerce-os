@@ -163,8 +163,28 @@ body {
   overflow-wrap: break-word;
   word-break: break-word;
 }
-/* Media is never wider than its column. */
-img, svg, video, canvas { max-width: 100%; }
+/* Media is never wider than its column.
+
+   Icons are deliberately excluded. Lucide renders <svg> with width/height
+   attributes, and an <svg> placed directly in a flex row is a flex item with
+   the default flex-shrink: 1 — so when the row runs out of space the browser
+   squashes the icon into an oval rather than wrapping the text beside it.
+   Constraining it with max-width made that worse on narrow screens. Icons are
+   fixed-size UI furniture, so they opt out of the media rule and refuse to
+   shrink; only genuine media (photos, video, canvas) is clamped. */
+img, video, canvas { max-width: 100%; }
+svg:not(.lucide):not(.icon) { max-width: 100%; }
+
+/* Every Lucide icon is rendered with the .lucide class (see mergeClasses in
+   lucide-react), so this covers all 35 components that draw one without
+   touching them individually. `flex: 0 0 auto` keeps the icon at exactly the
+   size the component asked for, in both flex and grid contexts. */
+.lucide,
+svg.icon {
+  flex: 0 0 auto;
+  /* An icon inside a shrinking container must keep its intrinsic box. */
+  overflow: visible;
+}
 /* Inputs inherit the app font: iOS zooms the page when a focused field is
    under 16px, which visually "breaks" every form on an iPhone. */
 input, select, textarea, button { font-family: inherit; }

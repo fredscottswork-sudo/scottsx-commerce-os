@@ -1151,7 +1151,10 @@ section('18. Mobile readiness & photo upload');
   // Guards that keep a stray wide element from panning the whole page.
   check('horizontal overflow is guarded', /overflow-x:\s*hidden/.test(bundleCss));
   check('long words wrap instead of stretching the page', /overflow-wrap:\s*break-word/.test(bundleCss));
-  check('media never exceeds its column', /img,\s*svg,\s*video,\s*canvas\s*\{[^}]*max-width:\s*100%/.test(bundleCss));
+  // Photos/video are clamped; icons are deliberately exempt (see section 20 —
+  // clamping them squashed icons in flex rows on phones).
+  check('media never exceeds its column', /img,\s*video,\s*canvas\s*\{[^}]*max-width:\s*100%/.test(bundleCss));
+  check('non-icon svg is still clamped', /svg:not\(\.lucide\):not\(\.icon\)\s*\{[^}]*max-width:\s*100%/.test(bundleCss));
   check('iOS text inflation is disabled', /text-size-adjust:\s*100%/.test(bundleCss));
   check('form fields are 16px on phones so iOS does not zoom',
     /@media \(max-width: 620px\)[^{]*\{[^@]*font-size:\s*16px/.test(bundleCss));
@@ -1225,6 +1228,60 @@ section('19. Location is the buyer\'s real position');
     /could not detect your location|permission denied/i.test(text));
   check('no city is invented when location is unavailable',
     !/Kampala Central/i.test(app.$('[data-testid="place-label"]')?.textContent || ''));
+  app.close();
+}
+
+// ── 20. Icons on mobile ─────────────────────────────────────────────────────
+// Reported: icons rendered badly on phones. Cause was a mobile-hardening rule
+// I added earlier — `svg { max-width: 100% }` — combined with the fact that an
+// <svg> in a flex row is a flex item that shrinks by default, so icons were
+// squashed into ovals next to long text.
+section('20. Icons render correctly on mobile');
+{
+  const app = await mount('/', { token: buyer.token, user: buyer.user });
+
+  // The whole fix keys off Lucide's own class. If lucide-react ever stops
+  // emitting it, the CSS silently stops working — so assert it directly.
+  const icons = app.$$('svg.lucide');
+  check('lucide icons carry the .lucide class the CSS targets', icons.length > 0,
+    `${icons.length} found`);
+  check('icons declare explicit pixel dimensions',
+    icons.length > 0 && icons.every((i) => i.getAttribute('width') && i.getAttribute('height')));
+
+  // Icons must be square: a squashed icon is exactly a width/height mismatch.
+  const skewed = icons.filter((i) => i.getAttribute('width') !== i.getAttribute('height'));
+  check('every icon is authored square', skewed.length === 0,
+    skewed.slice(0, 3).map((i) => `${i.getAttribute('width')}x${i.getAttribute('height')}`).join(', '));
+  app.close();
+}
+{
+  // Now the CSS contract itself, against the shipped bundle.
+  const noShrink = /\.lucide[^{]*\{[^}]*flex:\s*0 0 auto/.test(bundleCss);
+  check('icons are excluded from flex shrinking', noShrink);
+  check('icons are exempt from the media max-width rule',
+    /svg:not\(\.lucide\)/.test(bundleCss));
+  check('real media is still clamped to its column',
+    /img,\s*video,\s*canvas\s*\{[^}]*max-width:\s*100%/.test(bundleCss));
+  // Regression guard: the old blanket rule is what caused the bug.
+  check('the blanket svg max-width rule is gone',
+    !/(^|[;}])\s*img,\s*svg,\s*video,\s*canvas\s*\{/.test(bundleCss));
+}
+{
+  // The pattern that actually broke: icon + long text inside a flex row.
+  const app = await mount('/nearby', null, {
+    geo: { first: { latitude: 0.3345, longitude: 32.5726, accuracy: 18 } },
+    settleMs: 2200,
+  });
+  // `.row` is `display:flex`, so a bare <svg> child is a shrinkable flex item —
+  // this is the exact structure that produced oval icons.
+  const rowIcons = app.$$('.row > svg.lucide');
+  check('the page really does put bare icons inside flex rows', rowIcons.length > 0,
+    `${rowIcons.length} found — if 0, this test no longer covers the bug`);
+  check('those icons are square in the markup',
+    rowIcons.every((i) => i.getAttribute('width') === i.getAttribute('height')));
+  check('the location banner icon is present', !!app.$('.place-ico svg.lucide'));
+  check('no runtime errors with icons on a phone-sized page',
+    app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
 
