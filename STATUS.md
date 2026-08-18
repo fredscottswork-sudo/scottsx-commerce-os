@@ -16,19 +16,23 @@ Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / 
 
 ```bash
 ./verify.sh          # all seven gates
+
+# Gates 6-7 need a Kotlin toolchain. It lives in /tmp, so if that has been
+# cleared, restore it in one step (~15s, no root, no Android SDK):
+scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 ```
 
 | # | Gate | Checks | Status |
 |---|------|--------|--------|
 | 1 | Backend end-to-end | 253 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
-| 3 | Android ⇆ backend contract | 55 | passing |
+| 3 | Android ⇆ backend contract | 64 | passing |
 | 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 201 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Kotlin syntax (55 files) | — | clean |
 | 7 | Kotlin parsers vs real API JSON | — | passing |
 
-**532 checks.** Every suite cleans up after itself; the database returns to 7
+**541 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -56,6 +60,11 @@ replies, inbox filters with whole-inbox counts, and search.
 **Nearby** — stores re-sort by distance as the buyer moves. A seller who has not
 enabled location sharing keeps their last known pin and is labelled
 "Last known position" rather than being dropped or shown as live.
+
+Web and Android both search the **whole marketplace** — no radius control and no
+city picker. The buyer's position is reverse-geocoded offline (no egress) and
+shown as Village / City / Region / Country, so a buyer with no store inside an
+arbitrary radius still sees the nearest ones instead of an empty screen.
 
 **Notifications** — favourite a seller, and approval of their new listing fans a
 notification out to followers. Web notification centre works today; Android FCM

@@ -62,6 +62,24 @@ chmod +x /tmp/package/bin/*
 tools/kotlin-syntax-check.sh /tmp/package/bin/kotlinc
 ```
 
+The parser check additionally needs an `org.json` implementation. There is no
+standalone wheel for it, but PySpark ships one:
+
+```bash
+pip download pyspark -d /tmp/psdl --no-deps
+mkdir -p /tmp/ps && cd /tmp/ps
+tar xzf /tmp/psdl/pyspark-*.tar.gz pyspark-*/deps/jars/json-1.8.jar
+export ORG_JSON_JAR="$(ls /tmp/ps/pyspark-*/deps/jars/json-1.8.jar)"
+
+tools/parser-check/run.sh "$KOTLINC" "$ORG_JSON_JAR"
+```
+
+Or restore the whole toolchain in one step:
+
+```bash
+tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
+```
+
 ## The real build
 
 On any machine with Android Studio / the SDK:
