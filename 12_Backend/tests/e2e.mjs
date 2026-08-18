@@ -478,6 +478,42 @@ async function main() {
     const byRating = await call(`/sellers/nearby?lat=${kampala.lat}&lng=${kampala.lng}&radiusKm=500&sort=rating`);
     const rs = (byRating.data?.sellers ?? []).map((s) => s.rating);
     check('sort=rating descending', rs.every((v, i) => i === 0 || rs[i - 1] >= v));
+
+    // -- the buyer moves: stores must continuously re-sort by distance -------
+    const fromKampala = await call(`/sellers/nearby?lat=0.3476&lng=32.5825&radiusKm=1000`);
+    const fromGulu = await call(`/sellers/nearby?lat=2.7746&lng=32.2990&radiusKm=1000`);
+    const kOrder = (fromKampala.data?.sellers ?? []).map((s) => s.id);
+    const gOrder = (fromGulu.data?.sellers ?? []).map((s) => s.id);
+
+    check(
+      'distances ascend from the buyer position (Kampala)',
+      (fromKampala.data?.sellers ?? []).every((s, i, a) => i === 0 || a[i - 1].distanceKm <= s.distanceKm)
+    );
+    check(
+      'distances ascend from the buyer position (Gulu)',
+      (fromGulu.data?.sellers ?? []).every((s, i, a) => i === 0 || a[i - 1].distanceKm <= s.distanceKm)
+    );
+    check(
+      'moving the buyer re-orders the store list',
+      JSON.stringify(kOrder) !== JSON.stringify(gOrder),
+      'identical ordering from two cities 400km apart'
+    );
+    const sameStore = (fromGulu.data?.sellers ?? []).find((s) => s.id === kOrder[0]);
+    check(
+      'the same store reports a different distance as the buyer moves',
+      sameStore && Math.abs(sameStore.distanceKm - fromKampala.data.sellers[0].distanceKm) > 1,
+      `${fromKampala.data?.sellers?.[0]?.distanceKm} vs ${sameStore?.distanceKm}`
+    );
+    check(
+      'every store carries an ETA for the Nearby screen',
+      (fromKampala.data?.sellers ?? []).every((s) => typeof s.etaMinutes === 'number')
+    );
+    check(
+      'locationAgeMinutes is a number or null (Kotlin optInt/isNull)',
+      (fromKampala.data?.sellers ?? []).every(
+        (s) => s.locationAgeMinutes === null || typeof s.locationAgeMinutes === 'number'
+      )
+    );
   }
 
   // ── AI ────────────────────────────────────────────────────────────────────
@@ -534,6 +570,41 @@ async function main() {
 
     const cityQ = await call('/ai/search', { method: 'POST', body: { q: 'laptops in Kampala' } });
     check('AI search extracts a city', cityQ.data?.filters?.city === 'Kampala', String(cityQ.data?.filters?.city));
+
+    // -- relevance ranking --------------------------------------------------
+    // Two defects lived here:
+    //   1. keywords shorter than 3 chars were dropped, so "tv" produced an
+    //      empty filter and the query returned the ENTIRE catalogue.
+    //   2. results were ordered by rating only, so a highly-rated pair of
+    //      "Headphones" outranked the iPhone for the query "phone" (a plain
+    //      %phone% LIKE also matches "head-phone-s").
+    const tvQ = await call('/ai/search', { method: 'POST', body: { q: 'tv' } });
+    const tvTitles = (tvQ.data?.products ?? []).map((p) => p.title);
+    check('short query "tv" is not discarded', tvTitles.length > 0 && tvTitles.length < 10,
+      `${tvTitles.length} results`);
+    check('"tv" actually returns a TV', /\bTV\b/i.test(tvTitles[0] ?? ''), tvTitles[0]);
+
+    const phoneQ = await call('/ai/search', { method: 'POST', body: { q: 'phone' } });
+    const phoneTitles = (phoneQ.data?.products ?? []).map((p) => p.title);
+    check(
+      '"phone" ranks a real phone above headphones',
+      /iPhone|Galaxy/i.test(phoneTitles[0] ?? ''),
+      phoneTitles.slice(0, 3).join(' | ')
+    );
+
+    const chargeQ = await call('/ai/search', { method: 'POST', body: { q: 'something to charge my phone' } });
+    check(
+      'synonym intent finds the power bank',
+      /power bank/i.test((chargeQ.data?.products ?? [])[0]?.title ?? ''),
+      (chargeQ.data?.products ?? []).slice(0, 2).map((p) => p.title).join(' | ')
+    );
+
+    const exactQ = await call('/ai/search', { method: 'POST', body: { q: 'headphones' } });
+    check(
+      '"headphones" still matches headphones',
+      /headphone/i.test((exactQ.data?.products ?? [])[0]?.title ?? ''),
+      (exactQ.data?.products ?? [])[0]?.title
+    );
 
     const voice = await call('/ai/voice-search', {
       method: 'POST',

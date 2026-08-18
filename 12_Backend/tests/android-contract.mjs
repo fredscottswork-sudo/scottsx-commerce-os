@@ -122,6 +122,35 @@ for (const [label, path, tok] of [
 const sp=await call('/seller/profile',{token:st});
 ck('GET /seller/profile (referenced by V2Client)', sp.status===200, `got ${sp.status} — Kotlin calls this!`);
 
+console.log('\n[nearby — NearbySeller model]');
+const nb=await call('/sellers/nearby?lat=0.3476&lng=32.5825&radiusKm=1000');
+ck('GET /sellers/nearby -> {sellers,count,liveCount}',
+   Array.isArray(nb.data.sellers) && typeof nb.data.count==='number' && typeof nb.data.liveCount==='number');
+const ns=nb.data.sellers[0];
+ck('nearby seller JSON matches the Kotlin NearbySeller model',
+   ['id','name','storeName','description','city','address','verified','rating','logoUrl','lat','lng',
+    'live','locationSharing','locationAgeMinutes','isOpen','deliveryFeeUgx','freeAboveUgx','codEnabled',
+    'serviceRadiusKm','productCount','newThisWeek','distanceKm','etaMinutes','withinServiceRadius'
+   ].every(k=>k in ns), JSON.stringify(Object.keys(ns)));
+ck('locationAgeMinutes is int|null (Kotlin optInt/isNull)',
+   nb.data.sellers.every(x=>x.locationAgeMinutes===null||typeof x.locationAgeMinutes==='number'));
+ck('a store with sharing off keeps a real pin (never 0,0)',
+   nb.data.sellers.filter(x=>!x.locationSharing).every(x=>x.lat!==0||x.lng!==0),
+   'a non-sharing store lost its position');
+
+console.log('\n[AI search — AiSearchResult model]');
+const ai=await call('/ai/search',{method:'POST',body:{q:'phone'}});
+ck('POST /ai/search uses key "q" and returns products',
+   ai.status===200 && Array.isArray(ai.data.products) && ai.data.products.length>0, `status ${ai.status}`);
+ck('AiSearchResult fields present', ['query','explanation','products'].every(k=>k in ai.data));
+ck('AI search products carry a numeric priceMinor',
+   ai.data.products.every(x=>typeof x.priceMinor==='number'));
+const aiv=await call('/ai/voice-search',{method:'POST',body:{transcript:'show me cheap tvs'}});
+ck('POST /ai/voice-search', aiv.status===200 && Array.isArray(aiv.data.products), `status ${aiv.status}`);
+const aii=await call('/ai/image-search',{method:'POST',body:{imageUrl:'https://example.com/shoe.jpg'}});
+ck('POST /ai/image-search returns detected + products',
+   aii.status===200 && Array.isArray(aii.data.products) && 'detected' in aii.data, `status ${aii.status}`);
+
 const admin=await call('/auth/login',{method:'POST',body:{email:'admin@scottstechx.ug',password:'Admin123!'}});
 await call(`/admin/users/${buyer.data.user.id}`,{method:'DELETE',token:admin.data.token});
 console.log(`\nResult: ${p} passed, ${f} failed`); process.exit(f?1:0);

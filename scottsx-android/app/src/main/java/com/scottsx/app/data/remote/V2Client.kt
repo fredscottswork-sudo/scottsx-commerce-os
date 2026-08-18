@@ -13,6 +13,8 @@ import com.scottsx.app.data.domain.CurrentUserPayload
 import com.scottsx.app.data.domain.Faq
 import com.scottsx.app.data.domain.Inbox
 import com.scottsx.app.data.domain.InboxCounts
+import com.scottsx.app.data.domain.AiSearchResult
+import com.scottsx.app.data.domain.NearbyResult
 import com.scottsx.app.data.domain.NearbySeller
 import com.scottsx.app.data.domain.NewProductPayload
 import com.scottsx.app.data.domain.Order
@@ -335,13 +337,83 @@ object V2Client {
         lat: Double,
         lng: Double,
         radiusKm: Int = 50,
-    ): List<NearbySeller> = try {
-        val r = call("/sellers/nearby?lat=$lat&lng=$lng&radiusKm=$radiusKm", auth = false)
+    ): List<NearbySeller> = fetchNearby(lat, lng, radiusKm).sellers
+
+    /**
+     * Nearby stores, re-sorted by distance from the buyer's current position.
+     *
+     * Sellers who have not enabled location sharing keep their last known pin
+     * (the API coalesces last_lat/last_lng), so a store never vanishes from the
+     * map — it is simply reported as not live.
+     *
+     * @param sort distance | rating | products | newest
+     */
+    suspend fun fetchNearby(
+        lat: Double,
+        lng: Double,
+        radiusKm: Int = 50,
+        category: String? = null,
+        query: String? = null,
+        verifiedOnly: Boolean = false,
+        openOnly: Boolean = false,
+        sort: String = "distance",
+    ): NearbyResult = try {
+        val params = StringBuilder("?lat=$lat&lng=$lng&radiusKm=$radiusKm&sort=$sort")
+        category?.takeIf { it.isNotBlank() }?.let {
+            params.append("&category=").append(java.net.URLEncoder.encode(it, "UTF-8"))
+        }
+        query?.takeIf { it.isNotBlank() }?.let {
+            params.append("&q=").append(java.net.URLEncoder.encode(it, "UTF-8"))
+        }
+        if (verifiedOnly) params.append("&verifiedOnly=true")
+        if (openOnly) params.append("&openOnly=true")
+
+        val r = call("/sellers/nearby$params", auth = false)
         val arr = r.optJSONArray("sellers") ?: JSONArray()
-        (0 until arr.length()).map { NearbySeller.fromJson(arr.getJSONObject(it)) }
+        NearbyResult(
+            sellers = (0 until arr.length()).map { NearbySeller.fromJson(arr.getJSONObject(it)) },
+            count = r.optInt("count", 0),
+            liveCount = r.optInt("liveCount", 0),
+        )
     } catch (e: Exception) {
-        emptyList()
+        NearbyResult()
     }
+
+    // ── AI search (text / image / voice) ──────────────────────────────────────
+
+    /** Natural-language search: "cheap phone under 500k in Kampala". */
+    suspend fun aiSearch(query: String, limit: Int = 24): AiSearchResult = try {
+        AiSearchResult.fromJson(
+            call("/ai/search", "POST", JSONObject().put("q", query).put("limit", limit), auth = false),
+        )
+    } catch (e: Exception) {
+        AiSearchResult()
+    }
+
+    /** Image search. Pass a URL and/or on-device ML Kit labels. */
+    suspend fun aiImageSearch(
+        imageUrl: String? = null,
+        hint: String? = null,
+        labels: List<String> = emptyList(),
+    ): AiSearchResult = try {
+        val body = JSONObject()
+        imageUrl?.let { body.put("imageUrl", it) }
+        hint?.let { body.put("hint", it) }
+        if (labels.isNotEmpty()) body.put("labels", JSONArray(labels))
+        AiSearchResult.fromJson(call("/ai/image-search", "POST", body, auth = false))
+    } catch (e: Exception) {
+        AiSearchResult()
+    }
+
+    /** Voice search — the device does speech-to-text, we send the transcript. */
+    suspend fun aiVoiceSearch(transcript: String): AiSearchResult = try {
+        AiSearchResult.fromJson(
+            call("/ai/voice-search", "POST", JSONObject().put("transcript", transcript), auth = false),
+        )
+    } catch (e: Exception) {
+        AiSearchResult()
+    }
+
 
     // ── User settings (the BIG surface) ───────────────────────────────────────
 

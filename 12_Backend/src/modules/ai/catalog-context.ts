@@ -55,6 +55,14 @@ const STOP_WORDS = new Set([
   'a','an','the','is','are','am','do','does','did','i','you','me','my','we','us','it','of','for','to','in','on','at','and','or','but','with','without','what','which','who','whom','how','can','could','would','should','will','shall','have','has','had','want','need','looking','look','find','show','get','buy','purchase','please','some','any','best','good','cheap','cheapest','near','nearby','me','there','here','from','under','below','above','over','than','then','that','this','these','those','be','been','being','was','were','about','tell','give','list','something','anything','thing','things','product','products','item','items','store','stores','seller','sellers','shop','shops','ugx','shillings','shilling','money','price','prices','cost','costs',
 ]);
 
+/** Escape user input before embedding it in a Postgres regex. */
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Two-letter product nouns that must survive the length filter. */
+const SHORT_PRODUCT_WORDS = new Set(['tv', 'pc', 'ac', 'hd', '4k', 'ps4', 'ps5', 'usb', 'cpu', 'gpu', 'ram', 'ssd', 'fan']);
+
 const UG_CITIES = ['kampala', 'entebbe', 'jinja', 'mbarara', 'gulu', 'mbale', 'masaka', 'arua', 'lira', 'fort portal'];
 
 /**
@@ -116,10 +124,18 @@ export function parseIntent(prompt: string, knownCategories: string[] = []): Int
   const category = knownCategories.find((c) => lower.includes(c.toLowerCase()));
   const city = UG_CITIES.find((c) => lower.includes(c));
 
+  // Short words are usually noise ("to", "of") but a handful are real product
+  // nouns. Dropping them made "tv" match nothing, which fell through to an
+  // unfiltered query and returned the entire catalogue.
   const keywords = lower
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w) && !/^\d+$/.test(w))
+    .filter(
+      (w) =>
+        (w.length > 2 || SHORT_PRODUCT_WORDS.has(w)) &&
+        !STOP_WORDS.has(w) &&
+        !/^\d+$/.test(w)
+    )
     .slice(0, 8);
 
   return {
@@ -185,10 +201,43 @@ export async function retrieveProducts(
   }
   if (intent.wantsDeals) where.push('p.is_flash_deal = true');
 
-  let order = 'p.rating DESC, p.rating_count DESC';
-  if (intent.wantsCheapest) order = 'p.price_minor ASC';
+  // Relevance score: a title hit is worth far more than a description hit, so
+  // "phone" ranks the iPhone above a highly-rated pair of headphones whose
+  // description happens to mention phones. Without this the ORDER BY was pure
+  // rating and keyword matches were effectively ignored.
+  let relevance = '0';
+  if (intent.keywords.length) {
+    const scores: string[] = [];
+    for (const kw of intent.keywords) {
+      const expansions = expandTerm(kw);
+      expansions.forEach((variant, idx) => {
+        // Whole-word match. A plain %phone% LIKE also matches "Headphones",
+        // which outranked the actual iPhone. \m and \M are Postgres word
+        // boundaries, so "phone" no longer fires inside "headphones".
+        values.push(`\\m${escapeRegex(variant)}\\M`);
+        const wordIdx = values.length;
+        // Substring match still counts, but for much less.
+        values.push(`%${variant}%`);
+        const likeIdx = values.length;
+        const weight = idx === 0 ? 3 : 1; // literal term beats a synonym
+
+        scores.push(
+          `(CASE WHEN p.title ~* $${wordIdx} THEN ${30 * weight} ELSE 0 END)`,
+          `(CASE WHEN p.brand ~* $${wordIdx} THEN ${12 * weight} ELSE 0 END)`,
+          `(CASE WHEN p.category ~* $${wordIdx} THEN ${8 * weight} ELSE 0 END)`,
+          `(CASE WHEN p.description ~* $${wordIdx} THEN ${3 * weight} ELSE 0 END)`,
+          `(CASE WHEN p.title ILIKE $${likeIdx} THEN ${2 * weight} ELSE 0 END)`,
+          `(CASE WHEN p.description ILIKE $${likeIdx} THEN ${1 * weight} ELSE 0 END)`
+        );
+      });
+    }
+    relevance = scores.join(' + ');
+  }
+
+  let order = `relevance DESC, p.rating DESC, p.rating_count DESC`;
+  if (intent.wantsCheapest) order = 'p.price_minor ASC, relevance DESC';
   else if (intent.wantsDeals) order = 'p.discount_percent DESC, p.price_minor ASC';
-  else if (intent.wantsBest) order = 'p.rating DESC, p.rating_count DESC';
+  else if (intent.wantsBest) order = 'p.rating DESC, p.rating_count DESC, relevance DESC';
 
   values.push(limit);
 
@@ -199,7 +248,8 @@ export async function retrieveProducts(
             COALESCE((SELECT url FROM product_media pm WHERE pm.product_id = p.id ORDER BY sort_order LIMIT 1), p.image_url) AS "imageUrl",
             p.is_flash_deal AS "isFlashDeal", p.discount_percent AS "discountPercent",
             u.id AS "sellerId", COALESCE(s.store_name, u.display_name) AS "sellerName",
-            COALESCE(s.city, p.location) AS city, COALESCE(s.verified, false) AS verified
+            COALESCE(s.city, p.location) AS city, COALESCE(s.verified, false) AS verified,
+            (${relevance})::int AS relevance
      FROM products p
      JOIN users u ON u.id = p.seller_id
      LEFT JOIN store_settings s ON s.user_id = p.seller_id

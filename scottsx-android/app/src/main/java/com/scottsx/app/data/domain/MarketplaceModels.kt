@@ -110,15 +110,44 @@ data class NearbySeller(
     val serviceRadiusKm: Int = 20,
     val productCount: Int = 0,
     val distanceKm: Double = 0.0,
+    /** True when the seller shares location AND the fix is under 30 min old. */
+    val live: Boolean = false,
+    val locationSharing: Boolean = false,
+    /** Minutes since the last position fix; null when never shared. */
+    val locationAgeMinutes: Int? = null,
+    val isOpen: Boolean = true,
+    val deliveryFeeUgx: Long = 0,
+    val freeAboveUgx: Long = 0,
+    val codEnabled: Boolean = true,
+    val newThisWeek: Int = 0,
+    val etaMinutes: Int = 0,
+    val withinServiceRadius: Boolean = false,
 ) {
+    /**
+     * What to show under the store pin.
+     *
+     * A seller who has not enabled location keeps their last known position —
+     * the pin must not disappear or jump to the buyer. This label makes the
+     * distinction visible instead of implying a stale pin is live.
+     */
+    val positionLabel: String
+        get() = when {
+            live -> "Live now"
+            locationAgeMinutes != null && locationAgeMinutes < 60 -> "$locationAgeMinutes min ago"
+            locationAgeMinutes != null && locationAgeMinutes < 1440 ->
+                "${locationAgeMinutes / 60}h ago"
+            locationAgeMinutes != null -> "${locationAgeMinutes / 1440}d ago"
+            else -> "Last known position"
+        }
+
     companion object {
         fun fromJson(o: JSONObject): NearbySeller = NearbySeller(
             id = o.optString("id"),
-            name = o.optString("name", o.optString("storeName")),
-            storeName = o.optString("storeName"),
-            description = o.optString("description"),
-            city = o.optString("city"),
-            address = o.optString("address"),
+            name = o.optStringSafe("name").ifBlank { o.optStringSafe("storeName") },
+            storeName = o.optStringSafe("storeName"),
+            description = o.optStringSafe("description"),
+            city = o.optStringSafe("city"),
+            address = o.optStringSafe("address"),
             verified = o.optBoolean("verified"),
             rating = o.optDouble("rating", 0.0),
             logoUrl = o.optStringOrNull("logoUrl"),
@@ -127,7 +156,46 @@ data class NearbySeller(
             serviceRadiusKm = o.optInt("serviceRadiusKm", 20),
             productCount = o.optInt("productCount", 0),
             distanceKm = o.optDouble("distanceKm", 0.0),
+            live = o.optBoolean("live", false),
+            locationSharing = o.optBoolean("locationSharing", false),
+            locationAgeMinutes = if (o.isNull("locationAgeMinutes")) null else o.optInt("locationAgeMinutes"),
+            isOpen = o.optBoolean("isOpen", true),
+            deliveryFeeUgx = o.optLong("deliveryFeeUgx", 0),
+            freeAboveUgx = o.optLong("freeAboveUgx", 0),
+            codEnabled = o.optBoolean("codEnabled", true),
+            newThisWeek = o.optInt("newThisWeek", 0),
+            etaMinutes = o.optInt("etaMinutes", 0),
+            withinServiceRadius = o.optBoolean("withinServiceRadius", false),
         )
+    }
+}
+
+/** GET /sellers/nearby — the list plus how many are broadcasting live. */
+data class NearbyResult(
+    val sellers: List<NearbySeller> = emptyList(),
+    val count: Int = 0,
+    val liveCount: Int = 0,
+)
+
+/** AI search / image-search / voice-search response. */
+data class AiSearchResult(
+    val query: String = "",
+    val explanation: String = "",
+    val products: List<Product> = emptyList(),
+    val detected: String? = null,
+) {
+    companion object {
+        fun fromJson(o: JSONObject): AiSearchResult {
+            val arr = o.optJSONArray("products")
+            return AiSearchResult(
+                query = o.optStringSafe("query"),
+                explanation = o.optStringSafe("explanation"),
+                products = if (arr == null) emptyList() else {
+                    (0 until arr.length()).map { Product.fromJson(arr.getJSONObject(it)) }
+                },
+                detected = o.optStringOrNull("detected"),
+            )
+        }
     }
 }
 
