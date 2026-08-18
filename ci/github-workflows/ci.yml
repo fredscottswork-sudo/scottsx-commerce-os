@@ -112,6 +112,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Android wiring check
+        working-directory: scottsx-android
+        # Fails fast on the mistakes Gradle would only catch minutes later:
+        # a call to a V2Client method that does not exist, an undefined route,
+        # or a screen nobody can navigate to.
+        run: ./tools/wiring-check.sh
+
       - name: Build debug APK
         working-directory: scottsx-android
         # The app talks to whatever API_BASE_URL is baked in at build time.

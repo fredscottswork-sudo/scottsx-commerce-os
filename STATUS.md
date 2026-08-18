@@ -29,8 +29,9 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 3 | Android ⇆ backend contract | 91 | passing |
 | 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 201 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
-| 6 | Kotlin syntax (55 files) | — | clean |
-| 7 | Kotlin parsers vs real API JSON | — | passing |
+| 6 | Android wiring (routes, client calls, reachability) | — | clean |
+| 7 | Kotlin syntax (56 files) | — | clean |
+| 8 | Kotlin parsers vs real API JSON | — | passing |
 
 **568 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
@@ -114,12 +115,35 @@ These were all found by running things, not by reading code:
 
 **The Android app has not been compiled.** There is no JDK-plus-Android-SDK
 here and `maven.google.com` is unreachable, so `./gradlew assembleDebug` cannot
-run. To compensate, the real Kotlin compiler frontend runs over all 56 files
-(catching syntax errors, duplicate declarations, `val` reassignment and
-import shadowing) and the real model parsers are executed against real captured
-API responses using a real `org.json`. **Expect to fix some type errors on
-first Gradle build** — see `scottsx-android/tools/README.md` for the two blind
-spots (non-exhaustive `when`, type mismatches) and why they are suppressed.
+run. **CI now does this for you** — the `android` job in the CI workflow runs
+`assembleDebug` on every push, so the first real compile happens automatically
+once the workflow is activated (see `ci/README.md`).
+
+Static cross-checks that reduce (but do not remove) the risk of that first
+build failing — all currently clean:
+
+| Check | Result |
+|---|---|
+| App-declared symbols that fail to resolve | 0 of 107 |
+| `V2Client` methods called but never defined | 0 |
+| `Routes.*` referenced vs defined | 30 / 30, no dead routes |
+| Screens not reachable from `AppNavigation` | 0 of 30 |
+
+Every remaining unresolved reference is an Android/Compose/`org.json` symbol
+that only the SDK can supply, which is expected here.
+
+Toolchain versions are internally consistent: Compose compiler `1.5.14` pairs
+exactly with Kotlin `1.9.24` per Google's compatibility map, and Gradle `8.7`
+satisfies AGP `8.5.2`. Note `compileSdk = 35` officially wants AGP `8.6+`;
+`8.5.2` generally builds it but may warn. If CI complains, bump AGP to `8.6.0`
+in `scottsx-android/build.gradle.kts` — Gradle 8.7 already meets its minimum.
+
+Locally, the real Kotlin compiler frontend runs over all 56 files (catching
+syntax errors, duplicate declarations, `val` reassignment and import shadowing)
+and the real model parsers are executed against real captured API responses
+using a real `org.json`. **Still expect to fix some type errors on the first
+Gradle build** — see `scottsx-android/tools/README.md` for the two blind spots
+(non-exhaustive `when`, type mismatches) and why they are suppressed.
 
 **Android UI screens beyond messaging/nearby/add-product** still use the older
 layouts. They compile and call valid endpoints, but have not been reworked.
