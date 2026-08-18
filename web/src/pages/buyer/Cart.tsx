@@ -10,11 +10,11 @@ import { useCart } from '../../store/CartContext';
 import { useToast } from '../../store/ToastContext';
 import { useAuth } from '../../store/AuthContext';
 import {
-  Btn, Empty, Field, Input, Select, TextArea, Modal, PageHeader, ConfirmModal, SkeletonRows,
+  Btn, Empty, ErrorBox, Field, Input, Select, TextArea, Modal, PageHeader, ConfirmModal, SkeletonRows,
 } from '../../components/ui';
 
 export default function Cart() {
-  const { cart, loading, setQty, remove, clear, refresh } = useCart();
+  const { cart, loading, loadError, setQty, remove, clear, refresh } = useCart();
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -80,6 +80,18 @@ export default function Cart() {
       <>
         <PageHeader title="Your cart" />
         <SkeletonRows rows={4} height={82} />
+      </>
+    );
+  }
+
+  // A failed load must never masquerade as an empty cart: the items are still
+  // on the server, and telling the buyer otherwise invites them to re-add
+  // everything (or abandon the purchase).
+  if (loadError && cart.items.length === 0 && !placed) {
+    return (
+      <>
+        <PageHeader title="Your cart" />
+        <ErrorBox message={`${loadError} — your items are safe, this device just could not reach the server.`} onRetry={() => { void refresh(); }} />
       </>
     );
   }

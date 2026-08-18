@@ -27,14 +27,14 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 1 | Backend end-to-end | 314 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 3 | Android ⇆ backend contract | 98 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 316 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 343 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
 | 8 | Kotlin syntax (56 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**763 checks.** Every suite cleans up after itself; the database returns to 7
+**790 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -114,6 +114,7 @@ These were all found by running things, not by reading code:
 | Launcher icon was a 1.77 MB nodpi PNG, no adaptive icon | Oversized in the APK; no themed/adaptive icon on API 26+ |
 | Web shipped a placeholder "S" tile and an inline-SVG favicon | Web and app did not share a brand |
 | A price above int4 committed the INSERT, then 500'd on the read-back cast | Seller saw "integer out of range" while the product **silently existed** — and the raw Postgres message leaked to the client |
+| An unreachable backend made the cart render "Your cart is empty" | `Promise.allSettled` swallowed the failure, so a buyer whose basket was safe on the server was told it had been emptied — the worst possible moment to lose trust |
 
 ---
 

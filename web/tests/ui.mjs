@@ -63,7 +63,7 @@ async function login(email, password) {
  * Boots the real bundle at `route`, optionally pre-seeding a session into
  * localStorage, and resolves once the app has rendered and settled.
  */
-async function mount(route, session = null, { settleMs = 1400, google = 'block', geo = null } = {}) {
+async function mount(route, session = null, { settleMs = 1400, google = 'block', geo = null, offline = false } = {}) {
   const virtualConsole = new VirtualConsole();
   const consoleErrors = [];
   virtualConsole.on('jsdomError', (e) => {
@@ -90,7 +90,11 @@ async function mount(route, session = null, { settleMs = 1400, google = 'block',
   const { window } = dom;
 
   // Real network: proxy the app's relative /api/v1 calls to the live backend.
+  // `offline: true` simulates an unreachable backend — a Render free instance
+  // asleep, a dropped connection, a phone in a lift — which is exactly how
+  // fetch() fails in a browser: a rejected promise, not an HTTP status.
   window.fetch = (input, init) => {
+    if (offline) return Promise.reject(new TypeError('Failed to fetch'));
     const url = typeof input === 'string' ? input : input.url;
     const absolute = url.startsWith('http') ? url : `${API_BASE}${url}`;
     return fetch(absolute, init);
@@ -1451,6 +1455,72 @@ section('23. Per-page titles and link previews');
   check('a page with no image carries no stale og:image',
     !b.$('meta[property="og:image"]'));
   b.close();
+}
+
+// ── 24. Degrading when the backend is unreachable ───────────────────────────
+// Render's free tier sleeps an idle instance, so the first visitor after a
+// quiet spell genuinely does hit a dead API. Every page must say so rather
+// than render a confident, wrong empty state.
+section('24. Unreachable backend degrades honestly');
+{
+  // The cart is the dangerous one: "empty" and "could not load" look identical
+  // to a buyer, but one of them means "we threw your basket away".
+  const p1 = seedProducts.body.products[0];
+  await apiFetch('/me/cart', {
+    method: 'POST', headers: buyerAuth,
+    body: JSON.stringify({ productId: p1.id, quantity: 1 }),
+  });
+  const serverCart = await apiFetch('/me/cart', { headers: buyerAuth });
+  check('precondition: the buyer really has an item in the cart on the server',
+    (serverCart.body.itemCount ?? 0) > 0, `itemCount ${serverCart.body.itemCount}`);
+
+  const off = await mount('/cart', buyer, { offline: true, settleMs: 1600 });
+  const t = off.text();
+  check('offline cart does NOT claim the cart is empty', !/your cart is empty/i.test(t), t.slice(0, 120));
+  check('offline cart reports a problem instead', /something went wrong/i.test(t));
+  check('offline cart reassures the buyer their items are safe', /items are safe/i.test(t));
+  check('offline cart offers a retry', !!off.byText('button', 'Try again'));
+  check('offline cart does not offer checkout',
+    !off.byText('button', 'Place order') && !off.byText('button', 'Confirm order'));
+  off.close();
+
+  // Same page, backend alive, cart still holding the item -> the real UI.
+  const on = await mount('/cart', buyer, { settleMs: 1800 });
+  const ton = on.text();
+  check('online cart with items shows the item, not an error',
+    !/something went wrong/i.test(ton) && ton.length > 200, ton.slice(0, 120));
+  on.close();
+
+  // Empty-but-reachable must still say "empty" — the fix must not swap one
+  // wrong message for another.
+  await apiFetch('/me/cart', { method: 'DELETE', headers: buyerAuth });
+  const emptied = await mount('/cart', buyer, { settleMs: 1600 });
+  const te = emptied.text();
+  check('a genuinely empty cart still says it is empty', /your cart is empty/i.test(te), te.slice(0, 140));
+  check('a genuinely empty cart shows no error box', !/something went wrong/i.test(te));
+  emptied.close();
+
+  // A spread of other routes: none may render a bare white screen, and each
+  // should surface the failure somewhere on the page.
+  const offlineRoutes = [
+    ['/', null],
+    ['/cms/about', null],
+    ['/buyer/orders', buyer],
+    ['/buyer/saved', buyer],
+    ['/notifications', buyer],
+    ['/admin', admin],
+  ];
+  for (const [route, sess] of offlineRoutes) {
+    const app = await mount(route, sess, { offline: true, settleMs: 1500 });
+    const body = app.text();
+    check(`offline ${route} still renders a page (no white screen)`, body.trim().length > 40,
+      `only ${body.trim().length} chars`);
+    check(`offline ${route} surfaces the failure`,
+      /something went wrong|network error|try again|unavailable|could not/i.test(body),
+      body.slice(0, 110));
+    check(`offline ${route} throws no uncaught error`, app.consoleErrors.length === 0, app.consoleErrors[0]);
+    app.close();
+  }
 }
 
 // ── Cleanup ─────────────────────────────────────────────────────────────────
