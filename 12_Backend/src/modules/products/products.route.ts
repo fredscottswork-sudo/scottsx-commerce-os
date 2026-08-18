@@ -53,7 +53,32 @@ const newProductSchema = z.object({
   asDraft: z.boolean().optional().default(false),
 });
 
-const updateProductSchema = newProductSchema.partial().omit({ asDraft: true });
+/**
+ * PATCH must only carry the fields the caller actually sent.
+ *
+ * `newProductSchema.partial()` is NOT safe here: `.partial()` makes a key
+ * optional but a `.default()` still fires when the key is absent, so
+ * `PATCH {stockQuantity: 8}` would silently also write description '',
+ * category 'Other', brand '', isFlashDeal false and discountPercent 0 —
+ * wiping the listing's content and (because the category/description
+ * "changed") knocking an approved product back into the review queue.
+ * Declaring the update shape explicitly, with no defaults, keeps a partial
+ * update partial.
+ */
+const updateProductSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  brand: z.string().optional(),
+  priceMinor: z.number().int().nonnegative().optional(),
+  oldPriceMinor: z.number().int().nonnegative().nullable().optional(),
+  stockQuantity: z.number().int().nonnegative().optional(),
+  imageUrl: z.string().optional(),
+  mediaUrls: z.array(z.string()).optional(),
+  location: z.string().optional(),
+  isFlashDeal: z.boolean().optional(),
+  discountPercent: z.number().int().min(0).max(100).optional(),
+});
 
 const listQuerySchema = z.object({
   q: z.string().optional(),

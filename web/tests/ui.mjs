@@ -180,6 +180,9 @@ if (seedProducts.status !== 200 || !seedProducts.body.products?.length) {
 }
 const sampleProduct = seedProducts.body.products[0];
 
+/** Products whose stock the run consumes; restored in Cleanup. */
+const stockToRestore = [];
+
 const admin = await login('admin@scottstechx.ug', 'Admin123!');
 const seller = await login('techhub@scottstechx.ug', 'Seller123!');
 
@@ -431,8 +434,12 @@ section('5. Buyer dashboard');
 section('6. Cart and checkout');
 {
   // Seed two lines via the API, then verify the UI reflects them.
+  // Checkout decrements real stock, so remember it and put it back in Cleanup —
+  // otherwise repeated runs drain a product to 0 and the section breaks.
   const p1 = seedProducts.body.products[0];
   const p2 = seedProducts.body.products[1];
+  stockToRestore.push({ id: p1.id, quantity: p1.stockQuantity, sellerId: p1.seller.id });
+  stockToRestore.push({ id: p2.id, quantity: p2.stockQuantity, sellerId: p2.seller.id });
   await apiFetch('/me/cart', { method: 'POST', headers: buyerAuth, body: JSON.stringify({ productId: p1.id, quantity: 2 }) });
   await apiFetch('/me/cart', { method: 'POST', headers: buyerAuth, body: JSON.stringify({ productId: p2.id, quantity: 1 }) });
 
@@ -897,6 +904,32 @@ section('Cleanup');
     check('test product removed', del.status === 200 || del.status === 204 || del.status === 404,
       `status ${del.status}`);
   }
+  // Put back the stock that checkout consumed, so the suite is repeatable.
+  // Only the owning seller may edit a product, so sign in as each one. Resolve
+  // seller id -> email from the live user list rather than hard-coding ids.
+  const sellerDir = await apiFetch('/admin/users?role=seller&pageSize=100', { headers: adminAuth });
+  const sellerLogins = Object.fromEntries((sellerDir.body.users || []).map((u) => [u.id, u.email]));
+  const sellerTokens = {};
+  for (const { id, quantity, sellerId } of stockToRestore) {
+    const email = sellerLogins[sellerId];
+    if (!email) continue;
+    if (!sellerTokens[email]) {
+      try { sellerTokens[email] = (await login(email, 'Seller123!')).token; }
+      catch { continue; }
+    }
+    await apiFetch(`/seller/products/${id}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${sellerTokens[email]}` },
+      body: JSON.stringify({ stockQuantity: quantity }),
+    });
+  }
+  if (stockToRestore.length) {
+    const [{ id, quantity }] = stockToRestore;
+    const after = await apiFetch(`/products/${id}`);
+    check('stock consumed by checkout was restored', after.body.product?.stockQuantity === quantity,
+      `${after.body.product?.stockQuantity} vs ${quantity}`);
+  }
+
   const leftovers = await apiFetch('/products/search?q=UI%20Test');
   check('no UI-test products left in the catalogue',
     (leftovers.body.products || []).filter((p) => p.title.startsWith('UI Test')).length === 0);

@@ -306,6 +306,30 @@ async function main() {
     });
     check('price-only edit stays approved', priceEdit.data?.product?.status === 'approved', priceEdit.data?.product?.status);
 
+    // A partial update must not resurrect schema defaults. Zod's .partial()
+    // keeps a .default() alive, so PATCH {stockQuantity} used to silently blank
+    // description/category/brand and knock the listing back into review.
+    const beforePartial = await call(`/products/${state.newProductId}`);
+    const bp = beforePartial.data?.product;
+    const stockEdit = await call(`/seller/products/${state.newProductId}`, {
+      method: 'PATCH',
+      token: state.sellerToken,
+      body: { stockQuantity: 7 },
+    });
+    const sp = stockEdit.data?.product;
+    check('stock-only edit stays approved', sp?.status === 'approved', sp?.status);
+    check('stock-only edit applied the new stock', sp?.stockQuantity === 7, `${sp?.stockQuantity}`);
+    check('stock-only edit preserves the description', sp?.description === bp?.description,
+      `${JSON.stringify(sp?.description)} vs ${JSON.stringify(bp?.description)}`);
+    check('stock-only edit preserves the category', sp?.category === bp?.category,
+      `${sp?.category} vs ${bp?.category}`);
+    check('stock-only edit preserves the brand', sp?.brand === bp?.brand,
+      `${JSON.stringify(sp?.brand)} vs ${JSON.stringify(bp?.brand)}`);
+    check('stock-only edit preserves the flash-deal flag', sp?.isFlashDeal === bp?.isFlashDeal,
+      `${sp?.isFlashDeal} vs ${bp?.isFlashDeal}`);
+    check('stock-only edit preserves the discount', sp?.discountPercent === bp?.discountPercent,
+      `${sp?.discountPercent} vs ${bp?.discountPercent}`);
+
     const history = await call(`/admin/products/${state.newProductId}/history`, { token: state.adminToken });
     check('moderation history recorded', (history.data?.history ?? []).length >= 3, `${history.data?.history?.length} entries`);
 
