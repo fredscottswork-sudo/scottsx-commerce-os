@@ -740,6 +740,38 @@ tbody tr:hover { background: var(--surface-hover); }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr.row-click { cursor: pointer; }
 .row-thumb { width: 42px; height: 42px; border-radius: 9px; object-fit: cover; background: var(--surface-3); flex-shrink: 0; }
+/* ─────────────────────────────────────────────────────────────────────────────
+   MOBILE TYPE SCALE
+
+   The single reason the app read as "tiny and cramped" on a phone. The scale
+   above is desktop-sized and was applied unchanged to phones: body copy at
+   14px, secondary text at 12.5px, captions at 11.5px. Both iOS and Android
+   default to 16px body text, so every screen was rendering roughly 12-20%
+   smaller than the platform norm — on every page at once, which is why fixing
+   the AI page and the auth pages individually never solved it.
+
+   Raising the tokens fixes all 65 usages in one place. Sizes are chosen to
+   land on the platform norm for body copy (16px) and to keep the smallest
+   label legible (13px is the practical floor on a handset).
+
+   The display sizes are deliberately NOT raised as much: they are already
+   large, and inflating them would push content down the page.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 620px) {
+  :root {
+    --fs-xs: 13px;      /* was 11.5 — captions, badges, meta lines */
+    --fs-sm: 14px;      /* was 12.5 — secondary copy, table cells  */
+    --fs-base: 16px;    /* was 14   — body copy, inputs            */
+    --fs-md: 17px;      /* was 15   — card titles, section leads   */
+    --fs-lg: 19px;      /* was 17   — sub-headings                 */
+    --fs-xl: 22px;      /* was 20   — page titles on mobile        */
+    --fs-2xl: 26px;     /* unchanged                               */
+    --fs-3xl: 30px;     /* was 34 — trim the giant display size    */
+  }
+  /* 16px inputs also stop iOS Safari zooming the page on focus. */
+  input, select, textarea { font-size: var(--fs-base); }
+}
+
 @media (max-width: 620px) { .hide-sm { display: none !important; } }
 /* Counterpart to .hide-sm: visible only on phones. Used for the topbar logout,
    which on desktop lives in the sidebar footer instead. */
@@ -1137,7 +1169,7 @@ tbody tr.row-click { cursor: pointer; }
        above-the-fold budget when the screen is genuinely short. The composer
        stays reachable either way because the card is bounded and the
        transcript — not the page — absorbs the overflow. */
-    max-height: 70dvh;
+    max-height: 78dvh;
   }
   .ai-chat-head { flex: 0 0 auto; }
   .ai-chat-body {
@@ -1167,8 +1199,12 @@ tbody tr.row-click { cursor: pointer; }
    so fall back to the strict above-the-fold budget. 414px is the measured
    chrome above the card on the AI page. */
 @media (max-width: 620px) and (max-height: 720px) {
-  .ai-chat { max-height: calc(100dvh - 414px); }
-  .ai-welcome { padding: 12px 10px; }
+  /* Short phones and landscape. Keep the card bounded so the composer stays
+     reachable, but do not fall back to the old 366px above-the-fold budget:
+     at the corrected 16px type that is genuinely cramped, and the page
+     scrolls anyway. */
+  .ai-chat { max-height: calc(100dvh - 260px); min-height: 300px; }
+  .ai-welcome { padding: 14px 10px; }
 }
 
 

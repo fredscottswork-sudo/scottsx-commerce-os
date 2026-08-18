@@ -166,7 +166,15 @@ else ok(`.auth-card max-width ${cardMax}px fits available ${avail}px`);
 // page scrolls vertically (only overflow-x is hidden), so shrinking body copy
 // to win vertical space is never necessary. Guard the floor.
 if (WIDTH <= 620) {
-  const FS = { '--fs-xs': 11.5, '--fs-sm': 12.5, '--fs-base': 14, '--fs-md': 15, '--fs-lg': 17, '--fs-xl': 20, '--fs-2xl': 26, '--fs-3xl': 34 };
+  // Resolve the type tokens THROUGH the cascade for this width, so a mobile
+  // override of :root is picked up. Hardcoding the desktop scale here would
+  // have hidden the very bug this section exists to catch.
+  const rootVars = resolve(':root', ['--fs-xs', '--fs-sm', '--fs-base', '--fs-md', '--fs-lg', '--fs-xl', '--fs-2xl', '--fs-3xl']);
+  const FS = {};
+  for (const [k, v] of Object.entries(rootVars)) {
+    const n = /^([\d.]+)px$/.exec((v.value || '').trim());
+    if (n) FS[k] = parseFloat(n[1]);
+  }
   const toPx = (v) => {
     if (!v) return null;
     const m = /var\((--fs-[a-z0-9]+)\)/.exec(v);
@@ -176,6 +184,25 @@ if (WIDTH <= 620) {
   };
   // Body copy the user actually reads. 13px is the floor; below that a phone
   // screen feels squeezed even though it technically fits.
+  // Platform norm. iOS and Android both default to 16px body text; rendering
+  // materially below that is what "everything is tiny" means on a handset.
+  // This is the check that would have caught the real problem six rounds ago.
+  const base = FS['--fs-base'];
+  if (base === undefined) {
+    bad('could not resolve --fs-base for this width');
+  } else if (base < 15) {
+    bad(`--fs-base is ${base}px on a phone — below the 15px platform norm, so `
+      + 'every screen renders smaller than the OS default and reads as cramped');
+  } else {
+    ok(`--fs-base is ${base}px on a phone — at the platform norm`);
+  }
+  const xs = FS['--fs-xs'];
+  if (xs !== undefined && xs < 12) {
+    bad(`--fs-xs is ${xs}px — captions and badges are below the legibility floor`);
+  } else if (xs !== undefined) {
+    ok(`--fs-xs is ${xs}px — small text stays legible`);
+  }
+
   const MIN_BODY = 13;
   const bodyCopy = [
     ['.page-sub', pageSub],
@@ -230,6 +257,7 @@ if (WIDTH <= 620) {
   const HEIGHT = 780;                 // reference phone
   const availCard = HEIGHT - CHROME;
   const head = 48, composer = 63;
+  const AI_HEAD_PX = head, AI_COMPOSER_PX = composer;
   const bodyMin = px(aiBody['min-height']?.value) ?? 0;
   const cardMin = head + bodyMin + composer;
   if (cardMin > availCard) bad(`.ai-chat minimum height ${cardMin}px > ${availCard}px available`);
@@ -260,12 +288,17 @@ if (WIDTH <= 620) {
   const cardSub = resolveCalc(cardMax);
   const vhShare = /^([\d.]+)(dvh|vh)$/.exec(cardMax.trim());
   if (cardSub !== null) {
-    if (cardSub < CHROME) {
-      bad(`.ai-chat subtracts only ${cardSub}px but the chrome above it is ${CHROME}px `
-        + `-> card overflows by ~${CHROME - cardSub}px`);
+    // The card must be BOUNDED (so the composer is always reachable) and must
+    // leave a usable transcript. It does NOT have to fit above the fold: the
+    // document scrolls vertically, and demanding that is exactly what forced
+    // the cramped 366px card in the first place.
+    const cardPx = HEIGHT - cardSub;
+    const minUsable = AI_HEAD_PX + 120 + AI_COMPOSER_PX;   // head + a few lines + composer
+    if (cardPx < minUsable) {
+      bad(`.ai-chat resolves to ${cardPx}px on a ${HEIGHT}px screen — below the `
+        + `${minUsable}px needed for the header, a readable transcript and the composer`);
     } else {
-      ok(`.ai-chat max-height subtracts ${cardSub}px >= ${CHROME}px of chrome `
-        + `-> card fits in ${HEIGHT - cardSub}px`);
+      ok(`.ai-chat max-height = ${cardPx}px on a ${HEIGHT}px screen — bounded and usable`);
     }
   } else if (vhShare) {
     const share = parseFloat(vhShare[1]);
