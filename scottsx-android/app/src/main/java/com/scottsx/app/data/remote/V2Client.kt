@@ -8,6 +8,7 @@ import com.scottsx.app.data.domain.AuthResult
 import com.scottsx.app.data.domain.ChatMessage
 import com.scottsx.app.data.domain.Cart
 import com.scottsx.app.data.domain.CartCheckoutResult
+import com.scottsx.app.BuildConfig
 import com.scottsx.app.data.domain.CheckoutResult
 import com.scottsx.app.data.domain.CmsPage
 import com.scottsx.app.data.domain.Conversation
@@ -50,9 +51,11 @@ import java.util.concurrent.TimeUnit
  */
 object V2Client {
 
-    // Local dev. The emulator maps 10.0.2.2 -> the host machine;
-    // for a physical phone replace with your PC's LAN IP (e.g. http://192.168.1.10:3001).
-    private const val BASE_URL = "http://127.0.0.1:3001/api/v1"
+    // Set at build time from app/build.gradle.kts. Defaults to the emulator
+    // loopback (10.0.2.2 -> the host machine); override per build with
+    //   ./gradlew assembleRelease -PapiBaseUrl=https://api.example.com/api/v1
+    // For a physical phone on your LAN, pass your PC's IP the same way.
+    private val BASE_URL = BuildConfig.API_BASE_URL
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)

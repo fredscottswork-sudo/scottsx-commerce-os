@@ -10,7 +10,7 @@
  *
  *   node tests/android-contract.mjs
  */
-const API='http://127.0.0.1:3001/api/v1';
+const API=`${process.env.API_BASE || 'http://127.0.0.1:3001'}/api/v1`;
 let p=0,f=0; const ck=(n,c,x='')=>{c?(p++,console.log('  ✓',n)):(f++,console.log('  ✗',n,x));};
 async function call(path,{method='GET',token,body}={}){const h={'content-type':'application/json'};if(token)h.authorization=`Bearer ${token}`;const r=await fetch(API+path,{method,headers:h,body:body?JSON.stringify(body):undefined});let d=null;try{d=await r.json()}catch{};return{status:r.status,data:d};}
 const s=Date.now();
