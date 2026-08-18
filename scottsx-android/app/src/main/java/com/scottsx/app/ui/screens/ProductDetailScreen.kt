@@ -46,11 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.AnnotatedString
 import coil.compose.AsyncImage
-import com.scottsx.app.data.domain.CheckoutResult
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.PrimaryButton
@@ -65,16 +61,15 @@ fun ProductDetailScreen(
     productId: String,
     onBack: () -> Unit,
     onMessageSeller: suspend (String) -> Unit,
+    onViewCart: () -> Unit = {},
 ) {
     var product by remember { mutableStateOf<Product?>(null) }
     var wished by remember { mutableStateOf(false) }
     var messaging by remember { mutableStateOf(false) }
     var buying by remember { mutableStateOf(false) }
-    var checkoutResult by remember { mutableStateOf<CheckoutResult?>(null) }
     var checkoutError by remember { mutableStateOf<String?>(null) }
+    var addedToCart by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val clipboard = LocalClipboardManager.current
-    val uriHandler = LocalUriHandler.current
 
     LaunchedEffect(productId) {
         product = V2Client.fetchProductById(productId)
@@ -217,7 +212,9 @@ fun ProductDetailScreen(
             Text(p.description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        // Bottom action bar: Buy now (Nylon Pay) + Message seller
+        // Bottom action bar: Add to cart (cash on delivery) + Message seller.
+        // The Nylon Pay "Buy now" route used to live here, but it 503s until
+        // those credentials are configured — this path works today.
         Surface(shadowElevation = 10.dp) {
             Row(
                 modifier = Modifier
@@ -225,20 +222,24 @@ fun ProductDetailScreen(
                     .padding(14.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                val soldOut = p.stockQuantity <= 0
                 PrimaryButton(
-                    text = if (buying) "Creating payment…" else "Buy now",
+                    text = when {
+                        soldOut -> "Out of stock"
+                        buying -> "Adding…"
+                        else -> "Add to cart"
+                    },
                     loading = buying,
-                    enabled = !buying && !messaging,
+                    enabled = !buying && !messaging && !soldOut,
                     onClick = {
                         buying = true
                         checkoutError = null
                         scope.launch {
-                            val result = V2Client.checkout(p.id, quantity = 1)
-                            if (result != null && result.paymentLink.isNotBlank()) {
-                                checkoutResult = result
-                            } else {
-                                checkoutError = "Could not create the payment link — check that the server and Nylon Pay are configured."
-                            }
+                            V2Client.addToCart(p.id, quantity = 1)
+                                .onSuccess { addedToCart = true }
+                                .onFailure {
+                                    checkoutError = it.message ?: "Could not add this to your cart."
+                                }
                             buying = false
                         }
                     },
@@ -266,59 +267,27 @@ fun ProductDetailScreen(
         }
     }
 
-    // Payment dialog (Nylon Pay): hosted link (live) or MoMo push (sandbox/live)
-    val result = checkoutResult
-    if (result != null) {
-        val isCollect = result.paymentMode == "collect" || result.paymentLink.isBlank()
+    if (addedToCart) {
         AlertDialog(
-            onDismissRequest = { checkoutResult = null },
-            title = { Text(if (isCollect) "Payment initiated 📲" else "Payment ready 🎉") },
-            text = {
-                Column {
-                    if (isCollect) {
-                        Text("A Mobile Money payment request for ${formatUgx(p.priceMinor)} was sent to your phone (MTN MoMo / Airtel Money). Enter your PIN to approve it.")
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Status: ${result.status} · Ref: ${result.paymentReference.take(8)}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        Text("Your secure Nylon Pay payment link for ${p.title} has been created.")
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            result.paymentLink,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = ScottsTechXColors.BluePrimary,
-                        )
-                        if (result.invoiceNumber.isNotBlank()) {
-                            Text("Invoice #${result.invoiceNumber}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        TextButton(onClick = { clipboard.setText(AnnotatedString(result.paymentLink)) }) {
-                            Text("Copy link", color = ScottsTechXColors.BluePrimary)
-                        }
-                    }
-                }
-            },
+            onDismissRequest = { addedToCart = false },
+            title = { Text("Added to cart") },
+            text = { Text("Keep browsing, or review your cart and place the order.") },
             confirmButton = {
-                if (isCollect) {
-                    TextButton(onClick = { checkoutResult = null }) { Text("OK") }
-                } else {
-                    TextButton(onClick = { uriHandler.openUri(result.paymentLink) }) { Text("Open payment page") }
-                }
+                TextButton(onClick = {
+                    addedToCart = false
+                    onViewCart()
+                }) { Text("View cart") }
             },
             dismissButton = {
-                if (!isCollect) {
-                    TextButton(onClick = { checkoutResult = null }) { Text("Close") }
-                }
+                TextButton(onClick = { addedToCart = false }) { Text("Keep shopping") }
             },
         )
     }
+
     checkoutError?.let { err ->
         AlertDialog(
             onDismissRequest = { checkoutError = null },
-            title = { Text("Payment unavailable") },
+            title = { Text("Could not add to cart") },
             text = { Text(err) },
             confirmButton = { TextButton(onClick = { checkoutError = null }) { Text("OK") } },
         )

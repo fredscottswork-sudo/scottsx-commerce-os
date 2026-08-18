@@ -34,9 +34,13 @@ parts = [
     # Nearby models: NearbySeller (+positionLabel), Place, NearbyResult.
     slice_between(models, 'data class NearbySeller(',
                   '/** AI search / image-search / voice-search response. */'),
+    # Cart models: CartItem (+isUnavailable), Cart, PlacedOrder, CartCheckoutResult.
+    slice_between(models, 'data class CartItem(',
+                  '// ── small JSON helpers'),
 ]
 
-harness = '''import org.json.JSONObject
+harness = '''import org.json.JSONArray
+import org.json.JSONObject
 
 ''' + '\n'.join(parts) + '''
 
@@ -163,6 +167,61 @@ fun main(args: Array<String>) {
     if (far.place?.country != "United Kingdom") {
         flag("expected United Kingdom for London, got ${far.place?.country}")
     }
+
+    // ── Cart: the flow the app uses to actually buy something.
+    val cart = Cart.fromJson(JSONObject(java.io.File("$dir/cart.json").readText()))
+    println("\\ncart: ${cart.items.size} line(s), itemCount=${cart.itemCount} " +
+            "subtotal=${cart.subtotalMinor} ${cart.currency}")
+    if (cart.items.isEmpty()) flag("no cart lines parsed")
+    if (cart.itemCount != 3) flag("expected 3 units in the cart, got ${cart.itemCount}")
+
+    var computed = 0L
+    for (line in cart.items) {
+        println("  %-38s x%d  %9d  stock=%d  %s".format(
+            line.title.take(38), line.quantity, line.lineTotalMinor,
+            line.stockQuantity, line.sellerName.take(18)))
+        if (line.title == "null" || line.sellerName == "null") flag("cart strings leaked \\"null\\"")
+        if (line.title.isBlank()) flag("a cart line has no title")
+        if (line.priceMinor <= 0L) flag("a cart line has no price (bigint parsed as a string?)")
+        if (line.lineTotalMinor != line.priceMinor * line.quantity) {
+            flag("lineTotalMinor != price x quantity for ${line.title}")
+        }
+        if (line.isUnavailable) flag("a freshly added approved line reads as unavailable")
+        computed += line.lineTotalMinor
+    }
+    if (computed != cart.subtotalMinor) {
+        flag("subtotal ${cart.subtotalMinor} does not match the lines ($computed)")
+    }
+
+    // A suspended line must read as unavailable, or the UI would happily let
+    // the buyer try to check out something moderation has pulled.
+    val pulled = Cart.fromJson(JSONObject(java.io.File("$dir/cart-suspended.json").readText()))
+    val pulledLine = pulled.items.firstOrNull { it.status != "approved" }
+    if (pulledLine == null) {
+        flag("the capture has no suspended cart line — the unavailable path is untested")
+    } else {
+        println("\\nsuspended line: ${pulledLine.title.take(34)} status=${pulledLine.status} " +
+                "unavailable=${pulledLine.isUnavailable}")
+        if (!pulledLine.isUnavailable) flag("a suspended product does NOT read as unavailable")
+    }
+
+    val done = CartCheckoutResult.fromJson(
+        JSONObject(java.io.File("$dir/cart-checkout.json").readText()))
+    println("\\ncheckout: ${done.orderCount} order(s), total=${done.totalMinor} mode=${done.paymentMode}")
+    for (o in done.orders) {
+        println("  order ${o.id.take(8)} ${o.title.take(32)} x${o.quantity} = ${o.amountMinor} (${o.status})")
+        if (o.id.isBlank()) flag("an order came back without an id")
+        if (o.amountMinor <= 0L) flag("an order has no amount")
+    }
+    if (done.orders.isEmpty()) flag("checkout returned no orders")
+    // Two sellers in the cart must become two orders.
+    if (done.orderCount != 2) flag("expected 2 orders (one per seller), got ${done.orderCount}")
+    if (done.paymentMode != "cod") flag("expected cash on delivery, got ${done.paymentMode}")
+
+    val emptied = Cart.fromJson(JSONObject(java.io.File("$dir/cart-empty.json").readText()))
+    if (!emptied.isEmpty) flag("the cart was not emptied by checkout")
+    if (emptied.itemCount != 0) flag("itemCount should be 0 after checkout, got ${emptied.itemCount}")
+    println("cart after checkout: empty=${emptied.isEmpty}")
 
     if (problems == 0) {
         println("\\nOK - every parser handled the real backend JSON correctly.")

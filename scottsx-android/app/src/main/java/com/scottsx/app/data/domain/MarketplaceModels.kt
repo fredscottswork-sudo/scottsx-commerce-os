@@ -835,6 +835,124 @@ data class CheckoutResult(
     }
 }
 
+// ── Cart (GET/POST /me/cart) ────────────────────────────────────────────────
+
+/**
+ * One line in the buyer's cart.
+ *
+ * [stockQuantity] is the seller's *current* stock, not what the buyer picked —
+ * it is what lets the UI stop someone increasing a line past what exists
+ * instead of failing at checkout with a 409.
+ */
+data class CartItem(
+    val productId: String,
+    val title: String = "",
+    val quantity: Int = 1,
+    val priceMinor: Long = 0,
+    val lineTotalMinor: Long = 0,
+    val stockQuantity: Int = 0,
+    val imageUrl: String = "",
+    /** approved | pending | rejected | suspended. */
+    val status: String = "approved",
+    val sellerId: String = "",
+    val sellerName: String = "",
+) {
+    /** A line the buyer cannot actually check out — moderation pulled it. */
+    val isUnavailable: Boolean get() = status != "approved" || stockQuantity <= 0
+
+    companion object {
+        fun fromJson(o: JSONObject): CartItem = CartItem(
+            productId = o.optString("productId"),
+            title = o.optStringSafe("title"),
+            quantity = o.optInt("quantity", 1),
+            priceMinor = o.optLong("priceMinor", 0),
+            lineTotalMinor = o.optLong("lineTotalMinor", 0),
+            stockQuantity = o.optInt("stockQuantity", 0),
+            imageUrl = o.optStringSafe("imageUrl"),
+            status = o.optStringSafe("status", "approved"),
+            sellerId = o.optStringSafe("sellerId"),
+            sellerName = o.optStringSafe("sellerName"),
+        )
+    }
+}
+
+/** The whole cart. Every mutation returns this, so the client never drifts. */
+data class Cart(
+    val items: List<CartItem> = emptyList(),
+    val subtotalMinor: Long = 0,
+    val itemCount: Int = 0,
+    val currency: String = "UGX",
+) {
+    val isEmpty: Boolean get() = items.isEmpty()
+
+    companion object {
+        fun fromJson(o: JSONObject): Cart {
+            val arr = o.optJSONArray("items") ?: JSONArray()
+            return Cart(
+                items = (0 until arr.length()).map { CartItem.fromJson(arr.getJSONObject(it)) },
+                subtotalMinor = o.optLong("subtotalMinor", 0),
+                itemCount = o.optInt("itemCount", 0),
+                currency = o.optStringSafe("currency", "UGX"),
+            )
+        }
+    }
+}
+
+/** One order created by cart checkout — the API makes one per cart line. */
+data class PlacedOrder(
+    val id: String,
+    val productId: String = "",
+    val sellerId: String = "",
+    val title: String = "",
+    val amountMinor: Long = 0,
+    val quantity: Int = 1,
+    val status: String = "pending",
+    val createdAt: String = "",
+) {
+    companion object {
+        fun fromJson(o: JSONObject): PlacedOrder = PlacedOrder(
+            id = o.optString("id"),
+            productId = o.optStringSafe("productId"),
+            sellerId = o.optStringSafe("sellerId"),
+            title = o.optStringSafe("title"),
+            amountMinor = o.optLong("amount", 0),
+            quantity = o.optInt("quantity", 1),
+            status = o.optStringSafe("status", "pending"),
+            createdAt = o.optStringSafe("createdAt"),
+        )
+    }
+}
+
+/**
+ * POST /me/cart/checkout — cash on delivery.
+ *
+ * Distinct from [CheckoutResult], which models the Nylon Pay hosted-payment
+ * flow and returns 503 until those credentials are configured. This is the
+ * path that works today and matches the web checkout.
+ */
+data class CartCheckoutResult(
+    val orders: List<PlacedOrder> = emptyList(),
+    val orderCount: Int = 0,
+    val totalMinor: Long = 0,
+    val currency: String = "UGX",
+    val paymentMode: String = "cod",
+    val message: String = "",
+) {
+    companion object {
+        fun fromJson(o: JSONObject): CartCheckoutResult {
+            val arr = o.optJSONArray("orders") ?: JSONArray()
+            return CartCheckoutResult(
+                orders = (0 until arr.length()).map { PlacedOrder.fromJson(arr.getJSONObject(it)) },
+                orderCount = o.optInt("orderCount", arr.length()),
+                totalMinor = o.optLong("totalMinor", 0),
+                currency = o.optStringSafe("currency", "UGX"),
+                paymentMode = o.optStringSafe("paymentMode", "cod"),
+                message = o.optStringSafe("message"),
+            )
+        }
+    }
+}
+
 // ── small JSON helpers ──────────────────────────────────────────────────────
 
 internal fun JSONObject.optStringOrNull(key: String): String? =

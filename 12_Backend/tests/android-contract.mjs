@@ -180,6 +180,129 @@ const aii=await call('/ai/image-search',{method:'POST',body:{imageUrl:'https://e
 ck('POST /ai/image-search returns detected + products',
    aii.status===200 && Array.isArray(aii.data.products) && 'detected' in aii.data, `status ${aii.status}`);
 
+console.log('\n[cart — Cart / CartItem / CartCheckoutResult models]');
+// The Kotlin cart screen leans on exact semantics for every one of these.
+const cat = (await call('/products?pageSize=30')).data.products;
+const pa = cat[0];
+const pb = cat.find(x => x.seller.id !== pa.seller.id) || cat[1];
+
+const empty0 = await call('/me/cart', { token: bt });
+ck('GET /me/cart on a new account is empty, not 404',
+   empty0.status === 200 && empty0.data.items.length === 0, `status ${empty0.status}`);
+ck('an empty cart still carries the fields the model reads',
+   ['items','subtotalMinor','itemCount','currency'].every(k => k in empty0.data),
+   JSON.stringify(Object.keys(empty0.data)));
+
+const add1 = await call('/me/cart', { method:'POST', token: bt, body:{ productId: pa.id, quantity: 1 } });
+ck('POST /me/cart returns the whole recomputed cart, not just the line',
+   add1.status === 200 && Array.isArray(add1.data.items) && 'subtotalMinor' in add1.data,
+   `status ${add1.status} keys ${JSON.stringify(Object.keys(add1.data))}`);
+ck('a cart line carries every field CartItem parses',
+   ['productId','quantity','title','priceMinor','stockQuantity','imageUrl','status',
+    'sellerId','sellerName','lineTotalMinor'].every(k => k in add1.data.items[0]),
+   JSON.stringify(Object.keys(add1.data.items[0])));
+
+// The screen's "+" button relies on POST *adding* to the existing quantity.
+const add2 = await call('/me/cart', { method:'POST', token: bt, body:{ productId: pa.id, quantity: 2 } });
+ck('POST /me/cart adds to the existing quantity rather than replacing it',
+   add2.data.items[0].quantity === 3, `quantity became ${add2.data.items[0]?.quantity}`);
+ck('itemCount counts units, not lines', add2.data.itemCount === 3, `itemCount ${add2.data.itemCount}`);
+
+// ...while PATCH sets it absolutely. Mixing these up would silently multiply orders.
+const patched = await call(`/me/cart/${pa.id}`, { method:'PATCH', token: bt, body:{ quantity: 2 } });
+ck('PATCH /me/cart/:productId sets the quantity absolutely',
+   patched.data.items[0].quantity === 2, `quantity became ${patched.data.items[0]?.quantity}`);
+ck('lineTotalMinor is recomputed server-side',
+   patched.data.items[0].lineTotalMinor === patched.data.items[0].priceMinor * 2);
+ck('subtotalMinor matches the sum of the lines',
+   patched.data.subtotalMinor === patched.data.items.reduce((t,x)=>t+x.lineTotalMinor,0));
+
+const over = await call('/me/cart', { method:'POST', token: bt, body:{ productId: pa.id, quantity: 9999 } });
+ck('the cart refuses to exceed available stock (409)', over.status === 409, `status ${over.status}`);
+ck('the stock refusal explains itself', /left in stock/i.test(over.data.error||''),
+   JSON.stringify(over.data));
+
+const ghost = await call(`/me/cart/${pb.id}`, { method:'PATCH', token: bt, body:{ quantity: 1 } });
+ck('PATCH on an item that is not in the cart is 404', ghost.status === 404, `status ${ghost.status}`);
+
+await call('/me/cart', { method:'POST', token: bt, body:{ productId: pb.id, quantity: 1 } });
+const del = await call(`/me/cart/${pb.id}`, { method:'DELETE', token: bt });
+ck('DELETE /me/cart/:productId removes just that line and returns the cart',
+   del.status === 200 && del.data.items.length === 1 && del.data.items[0].productId === pa.id,
+   `${del.data.items?.length} line(s) left`);
+
+const zeroed = await call(`/me/cart/${pa.id}`, { method:'PATCH', token: bt, body:{ quantity: 0 } });
+ck('PATCH to quantity 0 deletes the line', zeroed.data.items.length === 0, JSON.stringify(zeroed.data.items));
+
+const noAuth = await call('/me/cart');
+ck('the cart is private (401 without a token)', noAuth.status === 401, `status ${noAuth.status}`);
+
+const emptyCheckout = await call('/me/cart/checkout', { method:'POST', token: bt, body:{ phone:'0770000000' } });
+ck('checking out an empty cart is refused with 409', emptyCheckout.status === 409, `status ${emptyCheckout.status}`);
+ck('the empty-cart refusal explains itself', /empty/i.test(emptyCheckout.data.error||''),
+   JSON.stringify(emptyCheckout.data));
+
+// Cash on delivery must work with no payment provider configured, because
+// POST /orders/checkout (Nylon Pay) is a hard 503 in this deployment.
+const nylon = await call('/orders/checkout', { method:'POST', token: bt, body:{ productId: pa.id, quantity: 1 } });
+ck('the Nylon Pay route is still unavailable, so COD is the only buy path',
+   nylon.status === 503, `status ${nylon.status} — if this changed, revisit ProductDetailScreen`);
+
+// Stock can fall between adding to the cart and checking out. The cart must
+// refuse rather than sell a unit that no longer exists.
+{
+  const dir = await call('/admin/users?role=seller&pageSize=100', {
+    token: (await call('/auth/login',{method:'POST',body:{email:'admin@scottstechx.ug',password:'Admin123!'}})).data.token,
+  });
+  const email = (dir.data.users||[]).find(u => u.id === pa.seller.id)?.email;
+  const sl = await call('/auth/login', { method:'POST', body:{ email, password:'Seller123!' } });
+  const stok = sl.data?.token;
+  const before = (await call(`/products/${pa.id}`)).data.product.stockQuantity;
+
+  await call('/me/cart', { method:'POST', token: bt, body:{ productId: pa.id, quantity: before } });
+  await call(`/seller/products/${pa.id}`, { method:'PATCH', token: stok, body:{ stockQuantity: 1 } });
+  const race = await call('/me/cart/checkout', { method:'POST', token: bt, body:{ phone:'0770000000' } });
+  ck('checkout refuses when stock dropped after the item was added (409)',
+     race.status === 409, `status ${race.status} — this would oversell`);
+  ck('the oversell refusal names the product', /left of/i.test(race.data.error||''),
+     JSON.stringify(race.data));
+  const after = (await call(`/products/${pa.id}`)).data.product.stockQuantity;
+  ck('a refused checkout does not decrement stock', after === 1, `stock is ${after}`);
+  ck('a refused checkout leaves the cart intact so the buyer can fix it',
+     (await call('/me/cart',{token:bt})).data.items.length === 1);
+
+  await call(`/seller/products/${pa.id}`, { method:'PATCH', token: stok, body:{ stockQuantity: before } });
+  await call('/me/cart', { method:'DELETE', token: bt });
+}
+
+await call('/me/cart', { method:'POST', token: bt, body:{ productId: pa.id, quantity: 1 } });
+const done = await call('/me/cart/checkout', { method:'POST', token: bt, body:{ phone:'0770000000' } });
+ck('POST /me/cart/checkout succeeds with no payment provider (201)',
+   done.status === 201, `status ${done.status}`);
+ck('checkout returns every field CartCheckoutResult parses',
+   ['orders','orderCount','totalMinor','currency','paymentMode','message'].every(k => k in done.data),
+   JSON.stringify(Object.keys(done.data)));
+ck('an order line uses the key "amount" (Kotlin maps it to amountMinor)',
+   'amount' in (done.data.orders[0]||{}), JSON.stringify(Object.keys(done.data.orders[0]||{})));
+ck('checkout is cash on delivery', done.data.paymentMode === 'cod', done.data.paymentMode);
+ck('the cart is empty after checking out',
+   (await call('/me/cart', { token: bt })).data.itemCount === 0);
+
 const admin=await call('/auth/login',{method:'POST',body:{email:'admin@scottstechx.ug',password:'Admin123!'}});
+// That checkout really sold a unit — give it back so the suite stays repeatable.
+{
+  const dir = await call('/admin/users?role=seller&pageSize=100', { token: admin.data.token });
+  const email = (dir.data.users||[]).find(u => u.id === pa.seller.id)?.email;
+  if (email) {
+    const sl = await call('/auth/login', { method:'POST', body:{ email, password:'Seller123!' } });
+    const now = (await call(`/products/${pa.id}`)).data?.product?.stockQuantity;
+    if (sl.data?.token && typeof now === 'number') {
+      await call(`/seller/products/${pa.id}`, {
+        method:'PATCH', token: sl.data.token, body:{ stockQuantity: now + 1 },
+      });
+    }
+  }
+}
+
 await call(`/admin/users/${buyer.data.user.id}`,{method:'DELETE',token:admin.data.token});
 console.log(`\nResult: ${p} passed, ${f} failed`); process.exit(f?1:0);

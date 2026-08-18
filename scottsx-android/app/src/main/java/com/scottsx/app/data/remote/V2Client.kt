@@ -6,6 +6,8 @@ import com.scottsx.app.data.domain.AiReply
 import com.scottsx.app.data.domain.AppNotification
 import com.scottsx.app.data.domain.AuthResult
 import com.scottsx.app.data.domain.ChatMessage
+import com.scottsx.app.data.domain.Cart
+import com.scottsx.app.data.domain.CartCheckoutResult
 import com.scottsx.app.data.domain.CheckoutResult
 import com.scottsx.app.data.domain.CmsPage
 import com.scottsx.app.data.domain.Conversation
@@ -486,7 +488,62 @@ object V2Client {
         null
     }
 
-    /** Create an order + hosted Nylon Pay payment link. Returns null on failure. */
+    // ── Cart (cash on delivery) ───────────────────────────────────────────────
+    //
+    // These return Result<T> rather than null because the failure *message*
+    // matters here: "Only 3 left in stock" is the difference between a buyer
+    // fixing their order and a buyer giving up on a silent no-op.
+
+    suspend fun fetchCart(): Result<Cart> = runCatching {
+        Cart.fromJson(call("/me/cart"))
+    }
+
+    /** Adds to the existing quantity server-side (upsert), not replace. */
+    suspend fun addToCart(productId: String, quantity: Int = 1): Result<Cart> = runCatching {
+        Cart.fromJson(
+            call("/me/cart", "POST", JSONObject().put("productId", productId).put("quantity", quantity)),
+        )
+    }
+
+    /** Sets an absolute quantity. Zero or less removes the line. */
+    suspend fun setCartQuantity(productId: String, quantity: Int): Result<Cart> = runCatching {
+        Cart.fromJson(
+            call("/me/cart/$productId", "PATCH", JSONObject().put("quantity", quantity)),
+        )
+    }
+
+    suspend fun removeFromCart(productId: String): Result<Cart> = runCatching {
+        Cart.fromJson(call("/me/cart/$productId", "DELETE"))
+    }
+
+    suspend fun clearCart(): Result<Cart> = runCatching {
+        Cart.fromJson(call("/me/cart", "DELETE"))
+    }
+
+    /**
+     * Cash-on-delivery checkout: one order per cart line, cart emptied, stock
+     * decremented. Use this rather than [checkout], which needs Nylon Pay
+     * credentials and returns 503 until they are configured.
+     */
+    suspend fun checkoutCart(
+        addressId: String? = null,
+        phone: String = "",
+        note: String = "",
+    ): Result<CartCheckoutResult> = runCatching {
+        val body = JSONObject()
+        addressId?.takeIf { it.isNotBlank() }?.let { body.put("addressId", it) }
+        if (phone.isNotBlank()) body.put("phone", phone)
+        if (note.isNotBlank()) body.put("note", note)
+        CartCheckoutResult.fromJson(call("/me/cart/checkout", "POST", body))
+    }
+
+    /**
+     * Create an order + hosted Nylon Pay payment link. Returns null on failure.
+     *
+     * Currently unused by the UI: POST /orders/checkout answers 503 until Nylon
+     * Pay credentials are configured on the backend, so the buy path is the
+     * cash-on-delivery cart ([checkoutCart]). Kept for when payments go live.
+     */
     suspend fun checkout(productId: String, quantity: Int = 1, buyerPhone: String = ""): CheckoutResult? = try {
         val body = JSONObject()
             .put("productId", productId)

@@ -26,13 +26,13 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 |---|------|--------|--------|
 | 1 | Backend end-to-end | 253 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
-| 3 | Android ⇆ backend contract | 64 | passing |
+| 3 | Android ⇆ backend contract | 91 | passing |
 | 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 201 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Kotlin syntax (55 files) | — | clean |
 | 7 | Kotlin parsers vs real API JSON | — | passing |
 
-**541 checks.** Every suite cleans up after itself; the database returns to 7
+**568 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -46,6 +46,16 @@ without reaching Google. Nothing about it is mocked except the key source.
 
 **Commerce** — catalogue, search with facets, cart, COD checkout (one order per
 product line), orders, ratings, refunds, addresses, payment methods.
+
+Both platforms now buy the same way. Android previously had **no cart**: its
+only purchase path was "Buy now" → `POST /orders/checkout`, which is a hard
+**503** until Nylon Pay credentials exist, so buying on the phone always failed.
+Product detail now says **Add to cart**, and a new cart screen does quantity
+edits, per-line stock caps, removal and cash-on-delivery checkout against the
+same endpoints the web cart uses. The cart refuses to oversell — both when
+adding and again at checkout, where stock may have dropped in between — and a
+listing suspended by moderation after it was added is shown as unavailable
+rather than being silently sold.
 
 **Moderation** — sellers cannot self-publish. New listings enter `pending`;
 public reads are approved-only. Content edits revert `approved → pending`,
@@ -96,6 +106,7 @@ These were all found by running things, not by reading code:
 | AddProduct claimed "✅ Published!" | Untrue — the API returns `pending` |
 | Profile save called `updateMe` twice, dropping photo and city | Avatar/location edits silently discarded |
 | Raw-body parser 500'd on empty JSON bodies | Every bodyless POST/DELETE failed |
+| Android had no cart; "Buy now" called a 503 payment route | **Buying anything on the phone was impossible** |
 
 ---
 
@@ -103,7 +114,7 @@ These were all found by running things, not by reading code:
 
 **The Android app has not been compiled.** There is no JDK-plus-Android-SDK
 here and `maven.google.com` is unreachable, so `./gradlew assembleDebug` cannot
-run. To compensate, the real Kotlin compiler frontend runs over all 55 files
+run. To compensate, the real Kotlin compiler frontend runs over all 56 files
 (catching syntax errors, duplicate declarations, `val` reassignment and
 import shadowing) and the real model parsers are executed against real captured
 API responses using a real `org.json`. **Expect to fix some type errors on

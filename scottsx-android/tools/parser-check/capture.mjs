@@ -91,10 +91,71 @@ writeFileSync(
   JSON.stringify((await call('/sellers/nearby?lat=51.5074&lng=-0.1278&sort=distance&limit=5')).data)
 );
 
+// Cart: add two different sellers' products so checkout has to split into
+// one order per seller — the case a single-line capture would never catch.
+const catalogue = (await call('/products?pageSize=30')).data.products;
+const first = catalogue[0];
+const second = catalogue.find((p) => p.seller.id !== first.seller.id) || catalogue[1];
+await call('/me/cart', { method: 'POST', token: bt, body: { productId: first.id, quantity: 2 } });
+await call('/me/cart', { method: 'POST', token: bt, body: { productId: second.id, quantity: 1 } });
+writeFileSync(`${outDir}/cart.json`, JSON.stringify((await call('/me/cart', { token: bt })).data));
+
+// A line that moderation pulls *after* it was added — the exact state the
+// cart UI must refuse to check out. Captured before the real checkout so the
+// suspension cannot interfere with it.
+const third = catalogue.find((p) => p.id !== first.id && p.id !== second.id);
+const adminEarly = await call('/auth/login', {
+  method: 'POST', body: { email: 'admin@scottstechx.ug', password: 'Admin123!' },
+});
+await call('/me/cart', { method: 'POST', token: bt, body: { productId: third.id, quantity: 1 } });
+await call(`/admin/products/${third.id}/suspend`, {
+  method: 'POST', token: adminEarly.data.token, body: { reason: 'parser-check' },
+});
+writeFileSync(`${outDir}/cart-suspended.json`, JSON.stringify((await call('/me/cart', { token: bt })).data));
+// Put it back exactly as it was and drop it from the cart before checkout.
+await call(`/admin/products/${third.id}/approve`, { method: 'POST', token: adminEarly.data.token });
+await call(`/me/cart/${third.id}`, { method: 'DELETE', token: bt });
+
+// Check out for real, then record what the buyer is shown.
+const placed = await call('/me/cart/checkout', { method: 'POST', token: bt, body: { phone: '0770000000' } });
+writeFileSync(`${outDir}/cart-checkout.json`, JSON.stringify(placed.data));
+writeFileSync(`${outDir}/cart-empty.json`, JSON.stringify((await call('/me/cart', { token: bt })).data));
+
+// Put the stock back: this capture places real orders against seeded products.
+const restore = [
+  { id: first.id, qty: 2, sellerId: first.seller.id },
+  { id: second.id, qty: 1, sellerId: second.seller.id },
+];
+
 // Clean up the throwaway account.
 const admin = await call('/auth/login', {
   method: 'POST', body: { email: 'admin@scottstechx.ug', password: 'Admin123!' },
 });
-await call(`/admin/users/${buyer.data.user.id}`, { method: 'DELETE', token: admin.data.token });
+const adminToken = admin.data.token;
 
-console.log('  captured inbox.json, transcript.json, head.json, nearby.json, nearby-far.json');
+// Only the owning seller may edit a product, so resolve each seller's login
+// from the live user list and restore the stock the checkout consumed.
+const sellerDir = await call('/admin/users?role=seller&pageSize=100', { token: adminToken });
+const sellerEmail = Object.fromEntries((sellerDir.data.users || []).map((u) => [u.id, u.email]));
+const tokens = {};
+for (const line of restore) {
+  const email = sellerEmail[line.sellerId];
+  if (!email) continue;
+  if (!tokens[email]) {
+    const s = await call('/auth/login', { method: 'POST', body: { email, password: 'Seller123!' } });
+    tokens[email] = s.data?.token;
+  }
+  const token = tokens[email];
+  if (!token) continue;
+  const current = await call(`/products/${line.id}`);
+  const stock = current.data?.product?.stockQuantity;
+  if (typeof stock === 'number') {
+    await call(`/seller/products/${line.id}`, {
+      method: 'PATCH', token, body: { stockQuantity: stock + line.qty },
+    });
+  }
+}
+
+await call(`/admin/users/${buyer.data.user.id}`, { method: 'DELETE', token: adminToken });
+
+console.log('  captured inbox, transcript, head, nearby, nearby-far, cart, cart-checkout');
