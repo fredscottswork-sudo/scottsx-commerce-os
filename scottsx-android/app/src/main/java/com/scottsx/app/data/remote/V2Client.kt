@@ -11,16 +11,20 @@ import com.scottsx.app.data.domain.CmsPage
 import com.scottsx.app.data.domain.Conversation
 import com.scottsx.app.data.domain.CurrentUserPayload
 import com.scottsx.app.data.domain.Faq
+import com.scottsx.app.data.domain.Inbox
+import com.scottsx.app.data.domain.InboxCounts
 import com.scottsx.app.data.domain.NearbySeller
 import com.scottsx.app.data.domain.NewProductPayload
 import com.scottsx.app.data.domain.Order
 import com.scottsx.app.data.domain.PaymentMethod
 import com.scottsx.app.data.domain.Product
+import com.scottsx.app.data.domain.QuickReplyItem
 import com.scottsx.app.data.domain.Refund
 import com.scottsx.app.data.domain.SellerDashboardStats
 import com.scottsx.app.data.domain.SellerProfile
 import com.scottsx.app.data.domain.StoreSettings
 import com.scottsx.app.data.domain.SupportTicket
+import com.scottsx.app.data.domain.Transcript
 import com.scottsx.app.data.domain.UserSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -187,10 +191,17 @@ object V2Client {
         null
     }
 
-    suspend fun updateMe(displayName: String? = null, phone: String? = null): Boolean = try {
+    suspend fun updateMe(
+        displayName: String? = null,
+        phone: String? = null,
+        city: String? = null,
+        profilePhotoUrl: String? = null,
+    ): Boolean = try {
         val body = JSONObject()
         displayName?.let { body.put("displayName", it) }
         phone?.let { body.put("phone", it) }
+        city?.let { body.put("city", it) }
+        profilePhotoUrl?.let { body.put("profilePhotoUrl", it) }
         call("/auth/me", "PATCH", body).has("user")
     } catch (e: Exception) {
         false
@@ -526,11 +537,37 @@ object V2Client {
 
     // ── Chat ──────────────────────────────────────────────────────────────────
 
-    suspend fun fetchConversations(): List<Conversation> = try {
-        val arr = call("/conversations").optJSONArray("conversations") ?: JSONArray()
-        (0 until arr.length()).map { Conversation.fromJson(arr.getJSONObject(it)) }
+    suspend fun fetchConversations(): List<Conversation> = fetchInbox().conversations
+
+    /**
+     * Inbox with filter counts.
+     *
+     * @param filter one of all | unread | pinned | archived | offers
+     * @param query  free-text match on counterparty, product or last message
+     */
+    suspend fun fetchInbox(filter: String = "all", query: String = ""): Inbox = try {
+        val params = buildList {
+            if (filter.isNotBlank() && filter != "all") add("filter=$filter")
+            if (query.isNotBlank()) add("q=${java.net.URLEncoder.encode(query, "UTF-8")}")
+        }
+        val suffix = if (params.isEmpty()) "" else "?" + params.joinToString("&")
+        val r = call("/conversations$suffix")
+        val arr = r.optJSONArray("conversations") ?: JSONArray()
+        Inbox(
+            conversations = (0 until arr.length()).map { Conversation.fromJson(arr.getJSONObject(it)) },
+            counts = InboxCounts.fromJson(r.optJSONObject("counts") ?: JSONObject()),
+            totalUnread = r.optInt("totalUnread", 0),
+        )
     } catch (e: Exception) {
-        emptyList()
+        Inbox()
+    }
+
+    /** Thread header: counterparty, product context, pin/mute flags, typing. */
+    suspend fun fetchConversation(conversationId: String): Conversation? = try {
+        val o = call("/conversations/$conversationId").optJSONObject("conversation")
+        if (o == null) null else Conversation.fromJson(o)
+    } catch (e: Exception) {
+        null
     }
 
     suspend fun openConversation(sellerId: String, productId: String? = null): String? = try {
@@ -541,11 +578,19 @@ object V2Client {
         null
     }
 
-    suspend fun fetchMessages(conversationId: String): List<ChatMessage> = try {
-        val arr = call("/conversations/$conversationId/messages").optJSONArray("messages") ?: JSONArray()
-        (0 until arr.length()).map { ChatMessage.fromJson(arr.getJSONObject(it)) }
+    suspend fun fetchMessages(conversationId: String): List<ChatMessage> =
+        fetchTranscript(conversationId).messages
+
+    /** Transcript plus the other party's live typing flag. */
+    suspend fun fetchTranscript(conversationId: String): Transcript = try {
+        val r = call("/conversations/$conversationId/messages")
+        val arr = r.optJSONArray("messages") ?: JSONArray()
+        Transcript(
+            messages = (0 until arr.length()).map { ChatMessage.fromJson(arr.getJSONObject(it)) },
+            otherTyping = r.optBoolean("otherTyping", false),
+        )
     } catch (e: Exception) {
-        emptyList()
+        Transcript()
     }
 
     suspend fun sendMessage(conversationId: String, text: String): ChatMessage? = try {
@@ -553,6 +598,117 @@ object V2Client {
         ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
     } catch (e: Exception) {
         null
+    }
+
+    /** Share a photo in the thread. */
+    suspend fun sendImageMessage(
+        conversationId: String,
+        imageUrl: String,
+        attachmentName: String? = null,
+    ): ChatMessage? = try {
+        val body = JSONObject()
+            .put("kind", "image")
+            .put("imageUrl", imageUrl)
+        attachmentName?.let { body.put("attachmentName", it) }
+        val r = call("/conversations/$conversationId/messages", "POST", body)
+        ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Make a price offer. The thread's product is used when [productId] is null.
+     * Only the recipient can accept/decline it.
+     */
+    suspend fun sendOffer(
+        conversationId: String,
+        offerMinor: Long,
+        quantity: Int = 1,
+        productId: String? = null,
+        note: String? = null,
+    ): ChatMessage? = try {
+        val body = JSONObject()
+            .put("kind", "offer")
+            .put("offerMinor", offerMinor)
+            .put("offerQuantity", quantity)
+        productId?.let { body.put("productId", it) }
+        note?.takeIf { it.isNotBlank() }?.let { body.put("text", it) }
+        val r = call("/conversations/$conversationId/messages", "POST", body)
+        ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
+    } catch (e: Exception) {
+        null
+    }
+
+    /** @param action accept | decline | withdraw */
+    suspend fun respondToOffer(
+        conversationId: String,
+        messageId: String,
+        action: String,
+    ): Boolean = try {
+        call(
+            "/conversations/$conversationId/offers/$messageId",
+            "POST",
+            JSONObject().put("action", action),
+        ).optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Retract one of your own messages (soft delete — the row is kept). */
+    suspend fun deleteMessage(conversationId: String, messageId: String): Boolean = try {
+        call("/conversations/$conversationId/messages/$messageId", "DELETE").optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Typing heartbeat; the server expires it after ~6 seconds. */
+    suspend fun setTyping(conversationId: String, typing: Boolean): Boolean = try {
+        call(
+            "/conversations/$conversationId/typing",
+            "POST",
+            JSONObject().put("typing", typing),
+        ).optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Pin / archive / mute a thread for the current user. */
+    suspend fun setConversationState(
+        conversationId: String,
+        pinned: Boolean? = null,
+        archived: Boolean? = null,
+        muted: Boolean? = null,
+    ): Boolean = try {
+        val body = JSONObject()
+        pinned?.let { body.put("pinned", it) }
+        archived?.let { body.put("archived", it) }
+        muted?.let { body.put("muted", it) }
+        call("/conversations/$conversationId/state", "PATCH", body).has("state")
+    } catch (e: Exception) {
+        false
+    }
+
+    // ── Saved quick replies ───────────────────────────────────────────────────
+
+    suspend fun fetchQuickReplies(): List<QuickReplyItem> = try {
+        val arr = call("/me/quick-replies").optJSONArray("quickReplies") ?: JSONArray()
+        (0 until arr.length()).map { QuickReplyItem.fromJson(arr.getJSONObject(it)) }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    suspend fun addQuickReply(text: String): QuickReplyItem? = try {
+        val r = call("/me/quick-replies", "POST", JSONObject().put("text", text))
+        val o = r.optJSONObject("quickReply")
+        if (o == null) null else QuickReplyItem.fromJson(o)
+    } catch (e: Exception) {
+        null
+    }
+
+    suspend fun deleteQuickReply(id: String): Boolean = try {
+        call("/me/quick-replies/$id", "DELETE").optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
     }
 
     suspend fun markConversationRead(conversationId: String): Boolean = try {

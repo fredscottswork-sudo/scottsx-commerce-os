@@ -137,10 +137,19 @@ data class OtherParty(
     val id: String,
     val name: String,
     val role: String = "buyer",
+    val photoUrl: String? = null,
+    val verified: Boolean = false,
+    val location: String? = null,
 ) {
     companion object {
-        fun fromJson(o: JSONObject): OtherParty =
-            OtherParty(o.optString("id"), o.optString("name"), o.optString("role", "buyer"))
+        fun fromJson(o: JSONObject): OtherParty = OtherParty(
+            id = o.optString("id"),
+            name = o.optString("name"),
+            role = o.optString("role", "buyer"),
+            photoUrl = o.optStringOrNull("photoUrl"),
+            verified = o.optBoolean("verified", false),
+            location = o.optStringOrNull("location"),
+        )
     }
 }
 
@@ -150,8 +159,19 @@ data class Conversation(
     val lastMessage: String = "",
     val lastTime: String = "",
     val unread: Int = 0,
+    val productId: String? = null,
     val productTitle: String? = null,
+    val productImageUrl: String? = null,
+    val productPriceMinor: Long? = null,
     val mySide: String = "buyer",
+    val pinned: Boolean = false,
+    val archived: Boolean = false,
+    val muted: Boolean = false,
+    val pendingOffers: Int = 0,
+    val messageCount: Int = 0,
+    val lastSenderId: String? = null,
+    /** Only populated by GET /conversations/:id. */
+    val otherTyping: Boolean = false,
 ) {
     companion object {
         fun fromJson(o: JSONObject): Conversation = Conversation(
@@ -160,21 +180,74 @@ data class Conversation(
             lastMessage = o.optString("lastMessage"),
             lastTime = o.optString("lastTime"),
             unread = o.optInt("unread", 0),
+            productId = o.optStringOrNull("productId"),
             productTitle = o.optStringOrNull("productTitle"),
+            productImageUrl = o.optStringOrNull("productImageUrl"),
+            productPriceMinor = if (o.isNull("productPriceMinor")) null else o.optLong("productPriceMinor"),
             mySide = o.optString("mySide", "buyer"),
+            pinned = o.optBoolean("pinned", false),
+            archived = o.optBoolean("archived", false),
+            muted = o.optBoolean("muted", false),
+            pendingOffers = o.optInt("pendingOffers", 0),
+            messageCount = o.optInt("messageCount", 0),
+            lastSenderId = o.optStringOrNull("lastSenderId"),
+            otherTyping = o.optBoolean("otherTyping", false),
         )
     }
 }
+
+/** Inbox filter counts returned alongside GET /conversations. */
+data class InboxCounts(
+    val all: Int = 0,
+    val unread: Int = 0,
+    val pinned: Int = 0,
+    val archived: Int = 0,
+    val offers: Int = 0,
+) {
+    companion object {
+        fun fromJson(o: JSONObject): InboxCounts = InboxCounts(
+            all = o.optInt("all", 0),
+            unread = o.optInt("unread", 0),
+            pinned = o.optInt("pinned", 0),
+            archived = o.optInt("archived", 0),
+            offers = o.optInt("offers", 0),
+        )
+    }
+}
+
+/** GET /conversations response: the list plus whole-inbox counters. */
+data class Inbox(
+    val conversations: List<Conversation> = emptyList(),
+    val counts: InboxCounts = InboxCounts(),
+    val totalUnread: Int = 0,
+)
 
 data class ChatMessage(
     val id: String,
     val senderId: String,
     val text: String = "",
     val imageUrl: String? = null,
+    val attachmentName: String? = null,
+    /** text | image | offer | system */
+    val kind: String = "text",
+    val productId: String? = null,
+    val productTitle: String? = null,
+    val offerMinor: Long? = null,
+    /** pending | accepted | declined | countered | withdrawn */
+    val offerStatus: String? = null,
+    val offerQuantity: Int = 1,
+    val replyToId: String? = null,
+    val deletedAt: String? = null,
+    val readByOther: Boolean = false,
     val createdAt: String = "",
 ) {
     val timeLabel: String
         get() = createdAt.takeIf { it.isNotBlank() }?.substringAfter("T")?.substring(0, 5) ?: ""
+
+    val isOffer: Boolean get() = kind == "offer"
+    val isSystem: Boolean get() = kind == "system"
+    val isRetracted: Boolean get() = deletedAt != null
+    val offerPending: Boolean get() = offerStatus == "pending"
 
     companion object {
         fun fromJson(o: JSONObject): ChatMessage = ChatMessage(
@@ -182,7 +255,38 @@ data class ChatMessage(
             senderId = o.optString("senderId"),
             text = o.optString("text"),
             imageUrl = o.optStringOrNull("imageUrl"),
+            attachmentName = o.optStringOrNull("attachmentName"),
+            kind = o.optString("kind", "text").ifBlank { "text" },
+            productId = o.optStringOrNull("productId"),
+            productTitle = o.optStringOrNull("productTitle"),
+            offerMinor = if (o.isNull("offerMinor")) null else o.optLong("offerMinor"),
+            offerStatus = o.optStringOrNull("offerStatus"),
+            offerQuantity = o.optInt("offerQuantity", 1),
+            replyToId = o.optStringOrNull("replyToId"),
+            deletedAt = o.optStringOrNull("deletedAt"),
+            readByOther = o.optBoolean("readByOther", false),
             createdAt = o.optString("createdAt"),
+        )
+    }
+}
+
+/** GET /conversations/:id/messages */
+data class Transcript(
+    val messages: List<ChatMessage> = emptyList(),
+    val otherTyping: Boolean = false,
+)
+
+/** A saved canned response (GET /me/quick-replies). */
+data class QuickReplyItem(
+    val id: String,
+    val text: String,
+    val sortOrder: Int = 0,
+) {
+    companion object {
+        fun fromJson(o: JSONObject): QuickReplyItem = QuickReplyItem(
+            id = o.optString("id"),
+            text = o.optString("text"),
+            sortOrder = o.optInt("sortOrder", 0),
         )
     }
 }
