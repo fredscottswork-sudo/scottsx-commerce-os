@@ -28,6 +28,9 @@ hr "1/9  Backend end-to-end"
 hr "2/9  Google Sign-In (local IdP, no egress)"
 (cd "$ROOT/12_Backend" && node tests/google-auth.mjs) || FAILED=1
 
+hr "2b/9  Firebase Authentication (local JWKS, no egress)"
+(cd "$ROOT/12_Backend" && node tests/firebase-auth.mjs) || FAILED=1
+
 hr "3/9  Android ⇆ backend contract"
 (cd "$ROOT/12_Backend" && node tests/android-contract.mjs) || FAILED=1
 

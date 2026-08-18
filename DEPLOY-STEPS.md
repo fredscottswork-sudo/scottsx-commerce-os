@@ -312,11 +312,81 @@ fine and then fails on every screen, so it is better to fail the build.
 
 | To enable | Do this |
 |---|---|
-| **Google Sign-In** | Two things, and both are required. (1) In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → your OAuth client → **Authorised JavaScript origins** → add `https://scottstechx.pages.dev`. Without it Google refuses to render the button at all. (2) Make sure the site can reach the API — see the troubleshooting row about the button doing nothing. Optionally set `VITE_GOOGLE_CLIENT_ID` (Cloudflare) and `GOOGLE_CLIENT_ID` (Render) to use a different OAuth client. |
+| **Google Sign-In + verification emails (Firebase — recommended, free)** | See "Firebase setup" below. This is the easiest path: Firebase sends the verification emails for you, so **no SMTP is needed at all**. |
+| **Google Sign-In (direct, without Firebase)** | Fallback path, used automatically if Firebase Auth is not enabled. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → your OAuth client → **Authorised JavaScript origins** → add `https://scottstechx.pages.dev`. Optionally set `VITE_GOOGLE_CLIENT_ID` (Cloudflare) and `GOOGLE_CLIENT_ID` (Render). |
 | **Phone push notifications** | Firebase Console → Project settings → Service accounts → **Generate new private key**. Add the JSON to Render as a secret file at `12_Backend/secrets/firebase-admin-key.json`. Until then, in-app and web notifications still work and are stored. |
-| **Verification emails** | Add `SMTP_HOST`, `SMTP_PORT` (465), `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` on Render. Until then sign-up still requires a code, but with no mail server the code is returned to the browser and shown on screen instead of emailed — fine for testing, **not** for real users. |
+| **Verification emails without Firebase (SMTP)** | Only needed if you are *not* using Firebase. Add `SMTP_HOST`, `SMTP_PORT` (465), `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` on Render. Until one of the two is configured, the six-digit code is shown on screen instead of emailed — fine for testing, **not** for real users. |
 | **Real AI (instead of the built-in engine)** | Add `LLM_API_KEY` on Render. Without it the catalogue-grounded local engine handles search and agents. |
 | **Card / mobile-money payments** | Add `NYLON_PAY_API_KEY` and `NYLON_PAY_API_SECRET`. Until then `POST /orders/checkout` returns 503 and cash-on-delivery is the only buy path — which works fully on both web and Android. |
+
+---
+
+## Firebase setup (Google sign-in + verification email, free)
+
+This is the recommended path. Firebase sends the verification emails itself, so
+there are no SMTP credentials to obtain, store or rotate. On the free **Spark**
+plan you get **1,000 verification emails/day** and Google sign-in is free up to
+50,000 monthly active users — comfortably more than this project needs.
+
+Everything below is console clicking; no code changes and no secrets to paste.
+
+### 1. Enable the sign-in methods
+
+[Firebase Console](https://console.firebase.google.com/) → your project
+(`scottstechx-52bab`) → **Authentication** → **Get started**, then under
+**Sign-in method** enable:
+
+- **Google** — pick a support email and save.
+- **Email/Password** — enable the first toggle. (Leave "Email link" off; its
+  free quota is only 5/day, which is useless in practice.)
+
+### 2. Authorise your website
+
+**Authentication → Settings → Authorised domains → Add domain** →
+`scottstechx.pages.dev` (plus any custom domain).
+
+This is the step people forget. Miss it and the popup dies with
+`auth/unauthorized-domain` — the app detects that specific failure and tells
+you to come back here, but it is easier to just do it now.
+
+### 3. That's it
+
+No environment variables are required: the project's public config is compiled
+into the build. To point at a **different** Firebase project, set these in
+Cloudflare Pages and redeploy:
+
+```
+VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_FIREBASE_PROJECT_ID,
+VITE_FIREBASE_STORAGE_BUCKET, VITE_FIREBASE_SENDER_ID, VITE_FIREBASE_APP_ID
+```
+
+and `FIREBASE_PROJECT_ID` on Render, so the backend validates tokens for the
+same project. These are public identifiers, not secrets — the backend verifies
+every token's signature against Google's published keys regardless.
+
+> **No service account needed.** Token verification uses Google's public JWKS.
+> A service account (`12_Backend/secrets/firebase-admin-key.json`) is required
+> only for **push notifications**.
+
+### How verification works
+
+1. A new account signs up; Firebase emails the verification link.
+2. `email_verified` lives **inside the signed ID token**, so the browser cannot
+   fake it — the backend trusts Google's word, not the client's.
+3. Until it is true, the account exists but is limited: the banner keeps
+   prompting and **the user cannot open a store**.
+4. The link opens in the mail app, not the website, so the banner has an
+   **"I've verified"** button that re-checks and forces a token refresh.
+
+### Checking it worked
+
+Register a throwaway account on the live site:
+
+- **Working** — a Firebase email arrives; after clicking the link and pressing
+  "I've verified", the banner disappears.
+- **Not working** — the banner shows `No mail server configured — your code
+  is 123456`. That means neither Firebase nor SMTP is active, so the app fell
+  back to its own six-digit code. Re-check steps 1 and 2.
 
 ---
 

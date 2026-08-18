@@ -9,7 +9,7 @@
  *
  * Env: API_BASE (default http://127.0.0.1:3001), WEB_DIST (default ./dist)
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
@@ -1937,6 +1937,10 @@ section('33. The verification banner appears only when it should');
     check('the banner offers a way to enter the code',
       !!app.$('[data-testid="verify-open"]'));
     check('the banner offers a resend', !!app.$('[data-testid="verify-resend"]'));
+    // Firebase's link opens in the mail client, not this tab, so the user
+    // needs a way to say "I've done it" and have the app re-check.
+    check('the banner offers an "I have verified" re-check',
+      !!app.$('[data-testid="verify-recheck"]'));
   }
   check('no runtime errors with the banner mounted', app.consoleErrors.length === 0,
     app.consoleErrors[0]);
@@ -1968,6 +1972,65 @@ section('34. Deployed builds always know where the API is');
     /did not return data/i.test(bundleJs));
   check('a missing session token is reported instead of dereferenced',
     /did not return a session/i.test(bundleJs));
+}
+
+// ── 35. Firebase sign-in and verification ───────────────────────────────────
+section('35. Firebase Authentication is wired in');
+{
+  // Firebase now owns Google sign-in AND the verification email, so no SMTP
+  // credentials are needed. The SDK is loaded lazily, so it must NOT be
+  // inlined into the main bundle.
+  check('the Firebase project is configured in the build',
+    bundleJs.includes('scottstechx-52bab'), 'project id missing from bundle');
+  check('the Firebase auth domain is present',
+    bundleJs.includes('firebaseapp.com'));
+  check('the SDK is code-split, not inlined',
+    bundleJs.length < 900_000, `${(bundleJs.length / 1024).toFixed(0)}kB main bundle`);
+
+  const chunks = readdirSync(join(DIST, 'assets')).filter((f) => /esm/.test(f));
+  check('Firebase ships as separate lazy chunks', chunks.length > 0, chunks.join(' '));
+
+  // The unauthorised-domain mistake is the single most common Firebase
+  // deployment failure, so the app must explain the actual fix.
+  check('an unauthorised domain is explained, not just "failed"',
+    /Authorised domains/i.test(bundleJs));
+  check('the fix names the Firebase console',
+    /Firebase Console/i.test(bundleJs));
+
+  // Verification must be driven by Firebase's own claim. These live in the
+  // lazily-loaded Firebase chunk rather than the entry bundle, which is the
+  // point of code-splitting — so search everything the build emitted.
+  const allJs = readdirSync(join(DIST, 'assets'))
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => readFileSync(join(DIST, 'assets', f), 'utf8'))
+    .join('\n');
+  check('the app can re-check verification state',
+    /refreshVerificationState|getIdToken/.test(allJs));
+  check('the app can resend a verification email',
+    /sendEmailVerification/.test(allJs));
+  check('a password reset can be requested',
+    /sendPasswordResetEmail/.test(allJs));
+}
+
+// ── 36. The Google button degrades instead of dying ─────────────────────────
+section('36. Google sign-in falls back when Firebase is unavailable');
+{
+  // jsdom has no working Firebase SDK, which is exactly the "Firebase did not
+  // load" case. The button must fall back to Google Identity Services rather
+  // than render nothing — a dead button is the bug we already shipped once.
+  const app = await mount('/login', null, { google: 'ready', settleMs: 1800 });
+  const widget = app.$('[data-testid="google-signin"]');
+  check('the Google widget is present', !!widget);
+  check('it fell back to Google Identity Services',
+    widget?.getAttribute('data-mode') === 'gis',
+    `mode=${widget?.getAttribute('data-mode')}`);
+  check('a usable Google button is rendered by the fallback',
+    !!app.$('[data-testid="gis-button"]'));
+  check('email and password sign-in is still available',
+    !!app.$('input[type="password"]'));
+  check('no runtime errors while falling back', app.consoleErrors.length === 0,
+    app.consoleErrors[0]);
+  app.close();
 }
 
 // ── Cleanup ─────────────────────────────────────────────────────────────────

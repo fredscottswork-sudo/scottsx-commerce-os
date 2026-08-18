@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { tokenForUser, requireAuth, authedUser } from '../../auth.js';
 import { verifyIdToken, sendVerificationEmailLink, firebaseEmailVerified } from '../../firebase/admin.js';
-import { ForbiddenError, NotFoundError, UnauthorizedError } from '../../errors.js';
+import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../../errors.js';
 import { publicUser } from './login.route.js';
 
 const signInSchema = z.object({ idToken: z.string().min(10) });
@@ -28,7 +28,10 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
   /** Upsert a user row from a verified Firebase token. */
   async function upsertFromFirebase(decoded: Record<string, any>) {
     const uid = String(decoded.uid);
-    const email = String(decoded.email ?? '');
+    const email = String(decoded.email ?? '').toLowerCase();
+    // `email` is UNIQUE, so an identity with no address would insert '' and
+    // collide with the next one. Every provider we enable supplies an email.
+    if (!email) throw new UnauthorizedError('That sign-in method did not provide an email address');
     const name = String(decoded.name ?? decoded.email?.split('@')[0] ?? '');
     const photo = decoded.picture ? String(decoded.picture) : null;
 
@@ -38,12 +41,24 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
     const emailVerified = decoded.email_verified === true;
 
     if (user) {
+      if (user.email !== email) {
+        // The address on this Firebase identity changed. Overwriting blindly
+        // hits the UNIQUE(email) index and surfaces as a raw 500 "duplicate
+        // key" — refuse cleanly when the address now belongs to someone else.
+        const taken = await pool.query('SELECT 1 FROM users WHERE email = $1 AND id <> $2', [email, user.id]);
+        if (taken.rowCount) {
+          throw new ConflictError('That email address already belongs to another ScottsTechX account');
+        }
+      }
       const { rows } = await pool.query(
         `UPDATE users
          SET email = COALESCE(NULLIF($2,''), email),
              display_name = COALESCE(NULLIF($3,''), display_name),
              profile_photo_url = COALESCE($4, profile_photo_url),
-             email_verified = $5,
+             -- Verification only ever moves forward. Assigning the claim
+             -- directly would let a stale token un-verify someone who already
+             -- confirmed their address through our own code flow.
+             email_verified = users.email_verified OR $5,
              updated_at = now()
          WHERE id = $1
          RETURNING *`,
@@ -56,7 +71,8 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
         const { rows } = await pool.query(
           `UPDATE users
            SET firebase_uid = $2, display_name = COALESCE(NULLIF($3,''), display_name),
-               profile_photo_url = COALESCE($4, profile_photo_url), email_verified = $5,
+               profile_photo_url = COALESCE($4, profile_photo_url),
+               email_verified = users.email_verified OR $5,
                updated_at = now()
            WHERE id = $1 RETURNING *`,
           [byEmail.rows[0].id, uid, name, photo, emailVerified]

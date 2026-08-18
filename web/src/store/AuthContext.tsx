@@ -9,6 +9,7 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<StoredUser>;
+  loginWithFirebase: (idToken: string) => Promise<StoredUser>;
   register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string })
     => Promise<{ required: boolean; sent: boolean; devCode?: string } | undefined>;
   logout: () => void;
@@ -52,6 +53,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, [setUser]);
+
+  /**
+   * Exchange a Firebase ID token for our own session.
+   *
+   * Used by every Firebase-backed path: Google popup, email sign-in, and the
+   * re-check after a user clicks the verification link.
+   */
+  const loginWithFirebase = useCallback(
+    async (idToken: string) => {
+      setLoading(true);
+      try {
+        const res = await authService.firebase(idToken);
+        if (!res?.token) throw new Error('The server did not return a session. Please try again.');
+        tokenStore.set(res.token);
+        const stored = toStoredUser(res.user);
+        setUser(stored);
+        return stored;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setUser]
+  );
 
   const loginWithGoogle = useCallback(
     async (idToken: string) => {
@@ -106,8 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setUser]);
 
   const value = useMemo(
-    () => ({ user, loading, login, loginWithGoogle, register, logout, refresh, setUser }),
-    [user, loading, login, loginWithGoogle, register, logout, refresh, setUser]
+    () => ({ user, loading, login, loginWithGoogle, loginWithFirebase, register, logout, refresh, setUser }),
+    [user, loading, login, loginWithGoogle, loginWithFirebase, register, logout, refresh, setUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

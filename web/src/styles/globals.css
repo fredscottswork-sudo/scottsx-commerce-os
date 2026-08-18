@@ -2396,6 +2396,23 @@ tbody tr.row-click { cursor: pointer; }
   background: var(--border);
 }
 /* Google renders its own iframe/button here; we only centre it. */
+/* Our own Google button (Firebase path). Google's brand guidance: white or
+   dark surface, their four-colour mark, clear "Continue with Google" label. */
+.google-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  transition: background .18s ease, border-color .18s ease, transform .12s ease;
+}
+.google-btn:hover:not(:disabled) {
+  background: var(--surface-3, var(--surface));
+  border-color: var(--brand-blue, #2b7cff);
+}
+.google-btn:active:not(:disabled) { transform: translateY(1px); }
+.google-btn:disabled { opacity: .6; cursor: not-allowed; }
+.google-btn svg { flex: none; }
+
 .google-btn-host {
   display: flex;
   justify-content: center;

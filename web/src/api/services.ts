@@ -68,6 +68,17 @@ export const authService = {
   /** Exchange a Google id_token for a ScottsTechX session. */
   google: (idToken: string) =>
     api<{ token: string; user: any }>('/auth/google', { method: 'POST', auth: false, body: { idToken } }),
+  /**
+   * Exchange a *Firebase* ID token for a ScottsTechX session.
+   *
+   * Distinct from `google` above: Firebase issues its own token with a
+   * different issuer and audience, so the backend verifies it against a
+   * different key set. The email_verified claim inside is attested by Google.
+   */
+  firebase: (idToken: string) =>
+    api<{ token: string; user: any }>('/auth/firebase/sign-in', {
+      method: 'POST', auth: false, body: { idToken },
+    }),
   upgradeToSeller: () => api<{ token: string; user: any }>('/auth/upgrade-to-seller', { method: 'POST' }),
   uploadPhoto: (file: File) => {
     const form = new FormData();

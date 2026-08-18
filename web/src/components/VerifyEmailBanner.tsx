@@ -43,12 +43,13 @@ function clearDevCode() {
 }
 
 export default function VerifyEmailBanner() {
-  const { user, setUser } = useAuth();
+  const { user, setUser, loginWithFirebase } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState('');
   const [devCode, setDevCode] = useState('');
 
@@ -78,10 +79,53 @@ export default function VerifyEmailBanner() {
     }
   }, [code, setUser, toast, user]);
 
+  /**
+   * Ask Firebase whether the address has been verified since we last looked.
+   *
+   * Firebase's verification link opens in the mail client, not in this tab, so
+   * nothing tells the app it happened. This is the "I've clicked the link"
+   * button. A forced token refresh is essential: without it the cached ID
+   * token keeps its stale email_verified:false claim.
+   */
+  const recheck = useCallback(async () => {
+    setChecking(true);
+    setError('');
+    try {
+      const { refreshVerificationState } = await import('../lib/firebase');
+      const { verified, idToken } = await refreshVerificationState();
+      if (!idToken) {
+        setError('Please sign in again to refresh your verification status.');
+        return;
+      }
+      if (!verified) {
+        setError('Not verified yet — open the link in the email, then try again.');
+        return;
+      }
+      // Hand the refreshed token to the backend so our own record catches up.
+      const stored = await loginWithFirebase(idToken);
+      setUser({ ...stored, emailVerified: true });
+      toast('Email verified — thank you!', 'success');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not check your verification status.');
+    } finally {
+      setChecking(false);
+    }
+  }, [loginWithFirebase, setUser, toast]);
+
   const resend = useCallback(async () => {
     setResending(true);
     setError('');
     try {
+      // Prefer Firebase: it sends the mail itself, so no SMTP is required.
+      try {
+        const { resendVerificationEmail } = await import('../lib/firebase');
+        if (await resendVerificationEmail()) {
+          toast('Verification email sent — check your inbox.', 'success');
+          return;
+        }
+      } catch {
+        /* not a Firebase session; fall through to our own code mailer */
+      }
       const res = await authService.requestVerification();
       if (res.alreadyVerified) {
         setUser({ ...user!, emailVerified: true });
@@ -123,6 +167,9 @@ export default function VerifyEmailBanner() {
           </Btn>
           <Btn onClick={resend} disabled={resending} data-testid="verify-resend">
             {resending ? 'Sending…' : 'Resend'}
+          </Btn>
+          <Btn onClick={recheck} disabled={checking} data-testid="verify-recheck">
+            {checking ? 'Checking…' : "I've verified"}
           </Btn>
         </div>
       ) : (
