@@ -1285,6 +1285,97 @@ section('20. Icons render correctly on mobile');
   app.close();
 }
 
+// ── 21. Dashboards on phones ────────────────────────────────────────────────
+// Reported: dashboards did not fit on mobile. Two measured causes — KPI cards
+// stacked one per row (4 cards = 508px = 79% of a 360x780 screen), and data
+// tables keeping their desktop width (seller inventory ~605px vs ~334px
+// usable) so every row had to be read by scrolling sideways.
+section('21. Dashboards fit on a phone');
+{
+  // KPI grids go two-up, not one-up. .grid-2 holds wide panels and still
+  // collapses fully.
+  const kpiTwoUp = /@media \(max-width: 620px\)[\s\S]*?\.grid-4,\s*\.grid-3,\s*\.grid-5\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*1fr\)/.test(bundleCss);
+  check('KPI grids stay two-up on phones instead of stacking', kpiTwoUp);
+  check('wide two-column panels still collapse to one',
+    /@media \(max-width: 620px\)[\s\S]*?\.grid-2\s*\{[^}]*grid-template-columns:\s*1fr/.test(bundleCss));
+
+  // A 162px-wide card cannot hold a 26px currency figure beside a 40px icon.
+  check('stat cards re-proportion for the narrower two-up card',
+    /@media \(max-width: 620px\)[\s\S]*?\.stat-value\s*\{[^}]*font-size:\s*15px/.test(bundleCss));
+  check('the stat icon moves above the number rather than beside it',
+    /@media \(max-width: 620px\)[\s\S]*?\.stat-card \.row-between\s*\{[^}]*column-reverse/.test(bundleCss));
+  check('long KPI labels are clamped so cards keep equal height',
+    /@media \(max-width: 620px\)[\s\S]*?\.stat-label\s*\{[^}]*line-clamp:\s*2/.test(bundleCss));
+
+  // Tables stop being tables.
+  check('table rows become stacked cards on phones',
+    /@media \(max-width: 620px\)[\s\S]*?\.table,\s*\.table tbody,\s*\.table tr,\s*\.table td\s*\{[^}]*display:\s*block/.test(bundleCss));
+  check('the now-meaningless header row is hidden from sight',
+    /@media \(max-width: 620px\)[\s\S]*?\.table thead\s*\{[^}]*position:\s*absolute/.test(bundleCss));
+  check('each stacked cell prints its column heading',
+    /@media \(max-width: 620px\)[\s\S]*?\.table tbody td::?before\s*\{[^}]*content:\s*attr\(data-label\)/.test(bundleCss));
+  check('stacked tables no longer scroll sideways',
+    /@media \(max-width: 620px\)[\s\S]*?\.table-wrap\s*\{[^}]*overflow-x:\s*visible/.test(bundleCss));
+}
+{
+  // The CSS above is inert unless the markup actually carries data-label.
+  const app = await mount('/seller/inventory', { token: seller.token, user: seller.user }, { settleMs: 2000 });
+  const cells = app.$$('.table tbody td');
+  check('the inventory table renders rows', cells.length > 0, `${cells.length} cells`);
+  const labelled = cells.filter((c) => c.getAttribute('data-label'));
+  check('data cells carry the heading the stacked layout prints',
+    labelled.length > 0, `${labelled.length}/${cells.length} labelled`);
+  // The actions column has an empty header and must NOT print a stray label.
+  const blankLabels = cells.filter((c) => c.getAttribute('data-label') === '');
+  check('the actions column has no empty label', blankLabels.length === 0,
+    `${blankLabels.length} cells carry an empty data-label`);
+  check('no runtime errors on the seller inventory', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+{
+  const app = await mount('/admin', { token: admin.token, user: admin.user }, { settleMs: 2200 });
+  const cells = app.$$('.table tbody td');
+  check('the admin dashboard table also carries headings',
+    cells.length === 0 || cells.some((c) => c.getAttribute('data-label')),
+    `${cells.length} cells`);
+  check('no runtime errors on the admin dashboard', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+
+// ── 22. Google Search Console verification ──────────────────────────────────
+// Google fetches this file anonymously from the site root. Two ways it breaks
+// silently: the file is not copied into the build output, or the SPA catch-all
+// rewrite swallows the path and returns index.html instead of the token.
+section('22. Search Console verification file');
+{
+  const NAME = 'google4cc19033657ba3e3.html';
+  const EXPECTED = 'google-site-verification: google4cc19033657ba3e3.html';
+
+  const built = join(DIST, NAME);
+  check('the verification file is published to the site root', existsSync(built), built);
+
+  if (existsSync(built)) {
+    const body = readFileSync(built, 'utf8');
+    // Google matches the token exactly; a stray edit or a wrapping template
+    // fails verification.
+    check('it contains exactly the token Google expects', body.trim() === EXPECTED,
+      JSON.stringify(body.slice(0, 90)));
+    check('it was not turned into a full HTML page', !/<html|<head|<script/i.test(body));
+    check('the filename matches the token inside it',
+      body.includes(NAME), NAME);
+  }
+
+  // The SPA rewrite must not shadow it. Static files win on Cloudflare Pages
+  // and Netlify, but only because the file really exists in the output — this
+  // asserts the rule is still a catch-all and not something broader.
+  const redirects = join(DIST, '_redirects');
+  if (existsSync(redirects)) {
+    const rule = readFileSync(redirects, 'utf8').trim();
+    check('the SPA rewrite is a catch-all served after static files',
+      /^\/\*\s+\/index\.html\s+200$/.test(rule), rule);
+  }
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {

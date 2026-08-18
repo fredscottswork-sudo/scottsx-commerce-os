@@ -490,7 +490,19 @@ export function Table<T>({
               style={{ animation: 'fadeInUp 300ms var(--ease-out) both', animationDelay: `${Math.min(i, 12) * 22}ms` }}
             >
               {columns.map((c) => (
-                <td key={c.key} className={c.hideSm ? 'hide-sm' : ''}>{c.render(r, i)}</td>
+                // data-label carries the column heading so the stacked mobile
+                // layout can print it beside the value; without it a stacked
+                // row is a meaningless list of bare values.
+                <td
+                  key={c.key}
+                  className={c.hideSm ? 'hide-sm' : ''}
+                  // Only a non-empty string heading becomes a label. The
+                  // actions column has an empty header, and data-label="" would
+                  // render an empty label box beside its buttons.
+                  data-label={typeof c.header === 'string' && c.header.trim() ? c.header : undefined}
+                >
+                  {c.render(r, i)}
+                </td>
               ))}
             </tr>
           ))}

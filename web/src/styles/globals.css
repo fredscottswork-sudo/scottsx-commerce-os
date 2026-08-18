@@ -1151,7 +1151,14 @@ tbody tr.row-click { cursor: pointer; }
   .content { padding: 18px; }
 }
 @media (max-width: 620px) {
-  .grid-4, .grid-3, .grid-2, .grid-5 { grid-template-columns: 1fr; }
+  /* Dashboards: keep KPI cards two-up rather than stacking them.
+     Four stacked stat cards are ~508px tall — 79% of a 360x780 phone's usable
+     height — so the numbers alone fill the screen and the actual content is
+     pushed below the fold. Two-up is 246px and reads like a dashboard. */
+  .grid-4, .grid-3, .grid-5 { grid-template-columns: repeat(2, 1fr); gap: 11px; }
+  /* .grid-2 holds wide content panels (charts, forms, lists), not KPIs, so it
+     does collapse to a single column. */
+  .grid-2 { grid-template-columns: 1fr; }
   .pgrid { grid-template-columns: repeat(2, 1fr); gap: 11px; }
   .content { padding: 13px; }
   .topbar { padding: 0 13px; gap: 7px; }
@@ -2018,4 +2025,75 @@ tbody tr.row-click { cursor: pointer; }
   .table-wrap, .mainnav-inner, .cat-strip, .chip-row {
     -webkit-overflow-scrolling: touch;
   }
+}
+
+/* ── Dashboards on phones ────────────────────────────────────────────────────
+   Two things made the dashboards awkward on a handset:
+
+   1. KPI cards stacked one per row, so four numbers filled 79% of a 360x780
+      screen and the real content started below the fold. They are now two-up
+      (see the .grid-4 rule above), which means each card is only ~162px wide,
+      so the card's internals have to be re-proportioned to match.
+
+   2. Data tables kept their desktop shape and scrolled sideways. Even after
+      hide-sm drops the optional columns, the seller inventory table is ~605px
+      wide against ~334px of usable width. Sideways-scrolling a table to read a
+      row is the single worst mobile pattern in the app, so on phones each row
+      becomes a small card with the column heading printed beside its value. */
+@media (max-width: 620px) {
+  /* — KPI cards — */
+  .stat-card { padding: 13px; }
+  /* Stack the icon above the text: side by side there is only ~78px left for
+     the number, and "UGX 12,450,000" needs far more than that. */
+  .stat-card .row-between {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .stat-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .stat-label {
+    font-size: 10px; letter-spacing: 0.04em;
+    /* Two lines maximum, so every card in a row keeps the same height. */
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  /* 15px keeps the widest realistic figure (UGX 12,450,000 ~ 130px) inside the
+     136px of usable card width. */
+  .stat-value { font-size: 15px; margin-top: 3px; letter-spacing: -0.02em; }
+  .stat-card .tiny { font-size: 10px; line-height: 1.3; }
+
+  /* — Tables become cards — */
+  .table-wrap { border: 0; background: transparent; overflow-x: visible; }
+  .table { font-size: var(--fs-base); }
+  /* The header row is meaningless once cells are stacked; each cell carries its
+     own label via data-label instead. */
+  .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .table, .table tbody, .table tr, .table td { display: block; width: auto; }
+  .table tbody tr {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px 12px;
+    margin-bottom: 10px;
+  }
+  .table tbody tr:last-child { margin-bottom: 0; }
+  .table tbody td {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+  }
+  .table tbody td:last-child { border-bottom: 0; }
+  .table tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-3);
+    text-align: left;
+  }
+  /* A cell with no heading (the actions column) gets the full width. */
+  .table tbody td:not([data-label]) { justify-content: flex-end; }
+  .table tbody td:not([data-label])::before { content: none; }
+  /* The hover tint reads as a stuck highlight once rows are cards. */
+  .table tbody tr:hover { background: var(--surface); }
 }
