@@ -741,6 +741,10 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr.row-click { cursor: pointer; }
 .row-thumb { width: 42px; height: 42px; border-radius: 9px; object-fit: cover; background: var(--surface-3); flex-shrink: 0; }
 @media (max-width: 620px) { .hide-sm { display: none !important; } }
+/* Counterpart to .hide-sm: visible only on phones. Used for the topbar logout,
+   which on desktop lives in the sidebar footer instead. */
+.show-sm { display: none !important; }
+@media (max-width: 620px) { .show-sm { display: inline-flex !important; } }
 
 /* ═══ SKELETONS / LOADERS ═════════════════════════════════════════════════ */
 .skeleton {
@@ -1117,17 +1121,33 @@ tbody tr.row-click { cursor: pointer; }
     display: flex;
     flex-direction: column;
     min-height: 0;          /* required or flex children refuse to shrink */
+    /* The ceiling belongs on the CARD, not on the transcript. 414px is the
+       chrome measured above the card, so `100dvh - 414px` is the budget for
+       the whole card. The previous attempt put that same value on
+       .ai-chat-body, but the head (48) and composer (63) are siblings of the
+       body, not inside it — so the card came out 48+366+63 = 477px against a
+       366px budget and the composer still sat 111px below the fold. With the
+       ceiling here, the head and composer are inside the budget by
+       construction and the transcript takes whatever remains. */
+    max-height: calc(100dvh - 414px);
   }
   .ai-chat-head { flex: 0 0 auto; }
   .ai-chat-body {
     flex: 1 1 auto;
-    min-height: 140px;
-    /* Hard ceiling so a long transcript can never outgrow the phone, computed
-       from the real chrome total (414px) rather than a guess. */
-    max-height: calc(100dvh - 414px);
+    /* Must be free to shrink: any min-height here re-inflates the card and
+       reintroduces the overflow. The card's max-height is the only bound. */
+    min-height: 0;
+    max-height: none;
     overflow-y: auto;
   }
   .ai-chat-input { flex: 0 0 auto; padding: 10px 11px; }
+  /* The welcome panel is the first thing in the transcript; at desktop sizing
+     it alone was taller than the space the whole card gets on a phone. */
+  .ai-welcome { padding: 14px 8px; }
+  .ai-welcome h3 { font-size: var(--fs-md); }
+  .ai-welcome p { font-size: var(--fs-sm); line-height: 1.4; }
+  .ai-chat-head { padding: 10px 12px; }
+  .ai-chat-head .card-title { font-size: var(--fs-base); }
   .ai-agents .agent-card { min-width: 168px; }
   /* The agents rail is a horizontal scroller on a phone; keep it short so it
      cannot eat the transcript's height. */
@@ -1290,7 +1310,14 @@ tbody tr.row-click { cursor: pointer; }
   .public-content { padding: 16px 13px 34px; }
   .topbar-search, .public-search { max-width: none; }
   .topbar-search input, .public-search input { font-size: var(--fs-sm); }
-  .page-title { font-size: var(--fs-xl); }
+  /* Page headings and the AI console's intro copy were sized for a desktop
+     column. On a 360px screen "Ask anything about the store. No account
+     needed." plus the console subtitle wrapped to five or six lines and
+     crowded out the chat itself. Tighten the type and the spacing so the
+     words above the AI take a couple of lines, not half the screen. */
+  .page-title { font-size: var(--fs-xl); line-height: 1.2; }
+  .page-sub { font-size: var(--fs-sm); line-height: 1.4; }
+  .page-head { gap: 10px; margin-bottom: 14px; }
   .hero { padding: 22px; }
   .toast-stack { left: 13px; right: 13px; bottom: 13px; }
   .toast { max-width: none; }

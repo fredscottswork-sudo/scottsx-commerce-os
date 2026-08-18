@@ -198,6 +198,30 @@ const SELF_SUFFICIENT_POP = 25_000;
 const MAX_SANE_KM = 150;
 
 /**
+ * How close the nearest settlement must be before we are willing to say "you
+ * are IN this village".
+ *
+ * The packed gazetteer only keeps places above population 1,000, so most rural
+ * villages are simply absent. Without a cap the nearest surviving row wins the
+ * village slot no matter how far away it is, and a user standing in an unnamed
+ * village 34 km from Butalangu was told they were in Butalangu. That is not a
+ * small rounding error — it is a different village, and it made the Nearby
+ * screen untrustworthy.
+ *
+ * Past this radius we stop naming a village and fall back to the city/district,
+ * which is still true, just less precise. Being vague is acceptable; being
+ * confidently wrong is not.
+ */
+const VILLAGE_MAX_KM = 6;
+
+/**
+ * Same idea one level up: a town only "owns" the fix if it is near enough.
+ * Beyond this we report the region only rather than pinning the user to a town
+ * they may be 30 km away from.
+ */
+const CITY_MAX_KM = 25;
+
+/**
  * Resolve a coordinate to village / city / region / country, entirely offline.
  * Returns null only when the gazetteer file is missing or the input is invalid.
  */
@@ -299,15 +323,36 @@ export function reverseGeocode(lat: number, lng: number): ReverseResult | null {
   const tooFar = nearestKm > MAX_SANE_KM;
   if (tooFar) village = null;
 
-  const parts = (tooFar ? [region, country] : [village, city, region, country])
+  // Distance honesty. `nearestKm` is the distance to whatever row won the
+  // village slot; if that is far away we must not present it as the user's
+  // village. A neighbourhood hit from findNeighbourhood() is a hand-checked
+  // polygon and already carries its own (small) distance, so it is exempt.
+  const villageFromHood = Boolean(hood);
+  if (!villageFromHood && village !== null && nearestKm > VILLAGE_MAX_KM) {
+    village = null;
+  }
+
+  // If even the city is far, drop it too and let region/country answer.
+  let cityFar = false;
+  if (!tooFar && nearestKm > CITY_MAX_KM) {
+    const cityKm = cityIdx >= 0
+      ? haversineKm(lat, lng, g.lat[cityIdx], g.lon[cityIdx])
+      : nearestKm;
+    if (cityKm > CITY_MAX_KM) cityFar = true;
+  }
+
+  const effCity = tooFar || cityFar ? null : city;
+  const parts = (tooFar ? [region, country] : [village, effCity, region, country])
     .filter(Boolean) as string[];
-  const shortParts = (tooFar ? [country] : [village ?? city, region ?? country])
+  const shortParts = (tooFar
+    ? [country]
+    : [village ?? effCity ?? region, region ?? country])
     .filter(Boolean) as string[];
   const dedupe = (a: string[]) => a.filter((p, i) => i === 0 || p !== a[i - 1]);
 
   return {
     village,
-    city: tooFar ? null : city,
+    city: effCity,
     region,
     country,
     countryCode,

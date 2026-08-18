@@ -931,6 +931,40 @@ async function main() {
     check('Nairobi still resolves correctly', nairobi?.country === 'Kenya', nairobi?.label);
     const entebbe = await at(0.0512, 32.4633);
     check('Entebbe is not swallowed by Kampala', entebbe?.city === 'Entebbe', entebbe?.label);
+
+    // ── Rural honesty ──────────────────────────────────────────────────────
+    // Reported by a user standing in a village that the app named as a
+    // DIFFERENT village. Cause: the gazetteer omits places under population
+    // 1,000, so rural fixes matched the nearest surviving row no matter how
+    // far away it was — up to the old 150 km sanity cap. A name 34 km away is
+    // not "your village"; it is a wrong answer stated confidently.
+    // The rule now: only claim a village within VILLAGE_MAX_KM (6 km), only
+    // claim a city within CITY_MAX_KM (25 km), otherwise fall back to the
+    // region, which is vaguer but true.
+    const ruralCases = [
+      ['deep rural Nakaseke', 0.9800, 32.1200],
+      ['rural Luwero',        0.8490, 32.4990],
+      ['rural Mukono',        0.4400, 32.9500],
+    ];
+    for (const [name, lat, lng] of ruralCases) {
+      const place = await at(lat, lng);
+      check(`${name}: never names a village further than 6 km away`,
+        !place?.village || (place?.accuracyKm ?? 99) <= 6,
+        `village=${place?.village} at ${place?.accuracyKm} km`);
+      check(`${name}: never names a city further than 25 km away`,
+        !place?.city || (place?.accuracyKm ?? 99) <= 25,
+        `city=${place?.city} at ${place?.accuracyKm} km`);
+      check(`${name}: still identifies the country`, place?.country === 'Uganda',
+        place?.label);
+      check(`${name}: label is never empty`, !!place?.label && place.label.length > 3,
+        place?.label);
+    }
+
+    // Precision must NOT regress where the data really is good.
+    const mulago = await at(0.3476, 32.5825);
+    check('a precise urban fix still names the neighbourhood',
+      !!mulago?.village && (mulago?.accuracyKm ?? 99) <= 2,
+      `${mulago?.village} at ${mulago?.accuracyKm} km`);
   }
 
   group('Sitemap and robots.txt');

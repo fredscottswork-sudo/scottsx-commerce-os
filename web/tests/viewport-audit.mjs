@@ -159,31 +159,59 @@ if (WIDTH <= 620) {
   if (cardMin > availCard) bad(`.ai-chat minimum height ${cardMin}px > ${availCard}px available`);
   else ok(`.ai-chat minimum height ${cardMin}px fits ${availCard}px available`);
 
-  // The transcript ceiling must account for the chrome ABOVE the card. A
-  // formula that subtracts less than the real chrome total renders a card
-  // taller than the space available and pushes the composer off screen —
-  // exactly the bug that survived three rounds of fixes. Resolve
-  // var(--topbar-h) so `calc(100dvh - var(--topbar-h) - 340px)` is measured,
-  // not waved through.
-  const bm = aiBody['max-height']?.value || '';
+  // THE CEILING MUST BE ON THE CARD, NOT THE TRANSCRIPT.
+  // .ai-chat-head and .ai-chat-input are SIBLINGS of .ai-chat-body inside
+  // .ai-chat. A max-height on the body therefore bounds only the transcript;
+  // the head and composer are added on top of it. Bounding the body at the
+  // full card budget (100dvh - 414px) yields a card of head + budget +
+  // composer, which overflows by exactly head+composer. This verdict
+  // previously asserted the subtrahend on the BODY and so certified that
+  // bug as correct. Check the card, and require the body to be shrinkable.
   const TOPBAR_H = 62;
-  const resolved = bm.replace(/var\(--topbar-h\)/g, `${TOPBAR_H}px`);
-  const subs = [...resolved.matchAll(/-\s*([\d.]+)px/g)].map((m) => parseFloat(m[1]));
-  if (/100dvh|100vh/.test(resolved) && subs.length) {
-    const subtract = subs.reduce((a, b) => a + b, 0);
-    if (subtract < CHROME) {
-      bad(`.ai-chat-body subtracts only ${subtract}px but the chrome above it is ${CHROME}px `
-        + `-> card overflows by ~${CHROME - subtract}px`);
-    } else ok(`.ai-chat-body subtracts ${subtract}px, covering the ${CHROME}px of chrome`);
-  } else if (/vh|%/.test(bm)) {
-    ok(`.ai-chat-body max-height "${bm}" is viewport-relative`);
-  } else if (bm) {
-    bad(`.ai-chat-body max-height "${bm}" is a fixed value — it cannot adapt`);
+  const resolveCalc = (v) => {
+    const r = (v || '').replace(/var\(--topbar-h\)/g, `${TOPBAR_H}px`);
+    if (!/100dvh|100vh/.test(r)) return null;
+    const subs = [...r.matchAll(/-\s*([\d.]+)px/g)].map((x) => parseFloat(x[1]));
+    return subs.length ? subs.reduce((a, b) => a + b, 0) : null;
+  };
+
+  const cardMax = aiChat['max-height']?.value || '';
+  const cardSub = resolveCalc(cardMax);
+  if (cardSub === null) {
+    bad(`.ai-chat has no viewport-relative max-height (got "${cardMax || 'none'}") `
+      + '— nothing bounds the card to the screen');
+  } else if (cardSub < CHROME) {
+    bad(`.ai-chat subtracts only ${cardSub}px but the chrome above it is ${CHROME}px `
+      + `-> card overflows by ~${CHROME - cardSub}px`);
+  } else {
+    ok(`.ai-chat max-height subtracts ${cardSub}px >= ${CHROME}px of chrome `
+      + `-> card fits in ${HEIGHT - cardSub}px`);
   }
-  if (!/flex:\s*1/.test(aiBody.flex?.value ? `flex: ${aiBody.flex.value}` : '')) {
-    // flex:1 lets the transcript absorb leftover space instead of forcing height
-    bad('.ai-chat-body is not flexible — it cannot shrink to fit');
-  } else ok('.ai-chat-body flexes to the space available');
+
+  // The transcript must be able to shrink, or it re-inflates the card.
+  const bodyMinH = aiBody['min-height']?.value || '0';
+  const bodyMaxH = aiBody['max-height']?.value || '';
+  const bodyMinPx = px(bodyMinH) || 0;
+  const bodySub = resolveCalc(bodyMaxH);
+  if (bodySub !== null && bodySub >= CHROME) {
+    bad(`.ai-chat-body max-height "${bodyMaxH}" applies the whole-card budget to the `
+      + 'transcript alone — head + composer are siblings, so the card overflows by their height');
+  } else if (bodyMinPx > 0) {
+    const cardFloor = head + bodyMinPx + composer;
+    if (cardFloor > availCard) {
+      bad(`.ai-chat-body min-height ${bodyMinPx}px forces a ${cardFloor}px card `
+        + `but only ${availCard}px is available -> overflow ${cardFloor - availCard}px`);
+    } else {
+      ok(`.ai-chat-body min-height ${bodyMinPx}px keeps the card at ${cardFloor}px <= ${availCard}px`);
+    }
+  } else {
+    ok('.ai-chat-body is free to shrink (min-height 0), so the card ceiling governs');
+  }
+  // flex:1 lets the transcript absorb leftover space instead of forcing height
+  const bodyFlex = aiBody.flex?.value || '';
+  if (!/^1(\s|$)/.test(bodyFlex)) {
+    bad(`.ai-chat-body is not flexible (flex: "${bodyFlex || 'none'}") — it cannot shrink to fit`);
+  } else ok(`.ai-chat-body flexes to the space available (flex: ${bodyFlex})`);
 }
 
 console.log(fail ? `\n\x1b[31m\x1b[1m${fail} problem(s) at ${WIDTH}px\x1b[0m\n`

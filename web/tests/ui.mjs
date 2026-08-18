@@ -1594,8 +1594,15 @@ section('26. Login, sign-up and AI fit a small screen');
   // min-height:520px. The min-height won and pushed the composer off screen.
   check('the AI chat releases its desktop min-height on mobile',
     /@media[^{]*max-width:\s*960px[\s\S]*?\.ai-chat\s*\{[^}]*min-height:\s*0/.test(bundleCss));
-  check('the AI transcript is bounded by the real viewport (dvh)',
-    /\.ai-chat-body[^}]*max-height:\s*calc\(100dvh/.test(bundleCss));
+  // The ceiling must sit on the CARD, not the transcript. .ai-chat-head and
+  // .ai-chat-input are siblings of .ai-chat-body, so bounding the body at the
+  // full card budget still produced a card taller than the screen by the
+  // height of the head plus composer. This check previously asserted the
+  // broken arrangement and so certified the bug as fixed.
+  check('the AI card (not just the transcript) is bounded by the viewport',
+    /\.ai-chat\{[^}]*max-height:\s*calc\(100dvh/.test(bundleCss));
+  check('the AI transcript is free to shrink inside that bound',
+    /\.ai-chat-body\{[^}]*max-height:\s*none/.test(bundleCss));
 
   // (d) The logged-in header squeezed search to 129px on a 360px screen.
   // The bundle is minified, so match the rule itself rather than trying to
@@ -1625,6 +1632,96 @@ section('26. Login, sign-up and AI fit a small screen');
   check('the AI composer is present', !!ai.$('.ai-chat-input textarea'));
   check('the AI page logs no console errors', ai.consoleErrors.length === 0, ai.consoleErrors[0]);
   ai.close();
+}
+
+// ── 27. Every dashboard screen: renders, has data, and fits a phone ─────────
+// The user reported that dashboard screens did not fit a phone and that some
+// showed nothing useful. Spot-checking two pages is what let that slip, so
+// walk EVERY authenticated route for all three roles and assert three things
+// per screen: it mounted, it is not an error/empty shell, and it contains no
+// element forced wider than a 360px viewport.
+section('27. Dashboard screens render with data and fit a 360px phone');
+{
+  const sessionFor = (u) => ({ token: u.token, user: u.user ?? u });
+
+  const screens = [
+    ['buyer',  '/buyer',                buyer,  ['Dashboard', 'Orders', 'Saved', 'Welcome', 'Overview']],
+    ['buyer',  '/buyer/orders',         buyer,  ['Order', 'No orders', 'Orders']],
+    ['buyer',  '/buyer/saved',          buyer,  ['Saved', 'No saved', 'bookmark']],
+    ['buyer',  '/buyer/addresses',      buyer,  ['Address', 'address']],
+    ['buyer',  '/buyer/payments',       buyer,  ['Payment', 'payment']],
+    ['buyer',  '/buyer/refunds',        buyer,  ['Refund', 'refund']],
+    ['buyer',  '/buyer/support',        buyer,  ['Support', 'support']],
+    ['buyer',  '/buyer/settings',       buyer,  ['Settings', 'Profile', 'Account']],
+    ['buyer',  '/cart',                 buyer,  ['Cart', 'cart', 'empty']],
+    ['seller', '/seller',               seller, ['Dashboard', 'Revenue', 'Orders', 'Overview']],
+    ['seller', '/seller/inventory',     seller, ['Inventory', 'Stock', 'product']],
+    ['seller', '/seller/add-product',   seller, ['Add', 'Title', 'Price']],
+    ['seller', '/seller/orders',        seller, ['Order', 'order']],
+    ['seller', '/seller/analytics',     seller, ['Analytics', 'Revenue', 'Views']],
+    ['seller', '/seller/store-settings',seller, ['Store', 'Settings']],
+    ['admin',  '/admin',                admin,  ['Admin', 'Overview', 'Users', 'Products']],
+    ['admin',  '/admin/users',          admin,  ['User', 'user']],
+    ['admin',  '/admin/products',       admin,  ['Product', 'product']],
+    ['admin',  '/admin/queue',          admin,  ['Queue', 'Pending', 'approval', 'No products']],
+    ['admin',  '/admin/support',        admin,  ['Support', 'support']],
+    ['buyer',  '/messages',             buyer,  ['Message', 'message', 'conversation']],
+    ['buyer',  '/notifications',        buyer,  ['Notification', 'notification', 'alert']],
+  ];
+
+  for (const [role, route, who, expect] of screens) {
+    let app;
+    try {
+      app = await mount(route, sessionFor(who), { settleMs: 1700 });
+    } catch (e) {
+      check(`${role} ${route} mounts`, false, String(e && e.message).slice(0, 120));
+      continue;
+    }
+    const t = app.text();
+
+    // 1. It rendered something real, not a blank shell or a crash screen.
+    const alive = t.length > 120 && !/Something went wrong|Unexpected Application Error/i.test(t);
+    check(`${role} ${route} renders`, alive, `len=${t.length}`);
+
+    // 2. It shows content relevant to the screen (data or an honest empty state).
+    const hasContent = expect.some((w) => t.includes(w));
+    check(`${role} ${route} shows its content`, hasContent,
+      `none of ${JSON.stringify(expect)} in "${t.slice(0, 90).replace(/\s+/g, ' ')}…"`);
+
+    // 3. Nothing is pinned wider than a phone. jsdom does not lay out, but it
+    //    does expose inline styles and width attributes, which is where a
+    //    hard-coded desktop width would come from.
+    const wide = [...app.$$('[style]')].filter((el) => {
+      const st = el.getAttribute('style') || '';
+      const m = /(?:^|[^-])width:\s*(\d+)px/.exec(st);
+      return m && Number(m[1]) > 360;
+    });
+    check(`${role} ${route} has no element wider than 360px`, wide.length === 0,
+      wide.length ? wide.slice(0, 2).map((e) => e.getAttribute('style')).join(' | ') : '');
+
+    // 4. No console errors while rendering the screen.
+    check(`${role} ${route} renders without console errors`,
+      app.consoleErrors.length === 0,
+      app.consoleErrors.slice(0, 1).join(' | ').slice(0, 140));
+
+    app.close();
+  }
+}
+
+// ── 28. Logout is reachable on a phone ──────────────────────────────────────
+// It previously existed only in the sidebar drawer, which is hidden behind the
+// hamburger on mobile — effectively unreachable for anyone who did not know to
+// open it.
+section('28. Logout reachable on mobile');
+{
+  const app = await mount('/buyer', { token: buyer.token, user: buyer.user ?? buyer }, { settleMs: 1600 });
+  const logoutButtons = [...app.$$('[aria-label="Log out"]')];
+  check('a logout control exists', logoutButtons.length > 0, `found ${logoutButtons.length}`);
+  const inTopbar = logoutButtons.some((b) => b.closest('.topbar'));
+  check('logout is present in the topbar (visible without opening the drawer)', inTopbar);
+  const mobileVisible = logoutButtons.some((b) => b.classList.contains('show-sm') || b.closest('.topbar'));
+  check('logout is marked visible on small screens', mobileVisible);
+  app.close();
 }
 
 // ── Cleanup ─────────────────────────────────────────────────────────────────

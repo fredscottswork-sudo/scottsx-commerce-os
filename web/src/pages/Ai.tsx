@@ -21,7 +21,7 @@ export default function Ai() {
         audience="buyer"
         screen="web-public-ai"
         title="Shop by conversation"
-        subtitle="Tell the assistant what you need and your budget. It searches the whole ScottsTechX catalogue and explains its picks."
+        subtitle="Tell the assistant what you need and your budget — it searches the whole catalogue and explains its picks."
       />
     </>
   );

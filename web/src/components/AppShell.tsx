@@ -262,6 +262,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme">
             {resolved === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
+          {/* Logout lived only in the sidebar footer, and on a phone the
+              sidebar is a drawer behind the hamburger — so there was no way to
+              sign out without knowing to open it. Surface it in the topbar on
+              small screens; the sidebar keeps its own copy on desktop. */}
+          <button className="btn btn-icon show-sm" title="Log out" aria-label="Log out"
+            onClick={() => { logout(); navigate('/'); }}>
+            <LogOut size={17} />
+          </button>
         </header>
 
         <MainNav role={user.role} counts={navCounts} />
