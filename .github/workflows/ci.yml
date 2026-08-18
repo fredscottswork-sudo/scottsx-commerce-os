@@ -29,7 +29,7 @@ jobs:
     env:
       # Points the backend at the service container above, so the embedded
       # Postgres (a local-dev-only convenience) is never started in CI.
-      DATABASE_URL: postgresql://app:app@127.0.0.1:5433/scottstechx
+      DATABASE_URL: postgresql://app:***@127.0.0.1:5433/scottstechx
       JWT_SECRET: ci-test-secret-not-used-in-production
       PORT: '3001'
 
@@ -111,6 +111,10 @@ jobs:
       - uses: android-actions/setup-android@v3
 
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        working-directory: scottsx-android
+        run: chmod +x gradlew
 
       - name: Build debug APK
         working-directory: scottsx-android
