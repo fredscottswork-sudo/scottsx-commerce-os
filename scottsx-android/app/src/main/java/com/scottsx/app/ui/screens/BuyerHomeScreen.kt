@@ -137,11 +137,16 @@ fun BuyerHomeScreen(
                         Icons.Filled.Menu,
                         contentDescription = "Menu",
                         tint = MaterialTheme.colorScheme.onSurface,
+                        // Size first, then clip, then the ripple, then inset
+                        // the glyph. The old order (.clip.clickable.padding
+                        // .size) sized the GLYPH to 28dp and let the padding
+                        // inflate the circle to 40dp, so the ripple disc was
+                        // bigger than it looked and clipped at the wrong bounds.
                         modifier = Modifier
+                            .size(40.dp)
                             .clip(CircleShape)
                             .clickable { onNavigate(Routes.PROFILE) }
-                            .padding(6.dp)
-                            .size(28.dp),
+                            .padding(6.dp),
                     )
                     Spacer(Modifier.width(8.dp))
                     Surface(
@@ -166,10 +171,14 @@ fun BuyerHomeScreen(
                     // Cart, with a live count so the buyer can see they have
                     // something waiting without opening the screen.
                     Box(
+                        // Give the ripple a fixed round target instead of
+                        // letting it take the icon's size plus padding.
                         modifier = Modifier
+                            .size(40.dp)
                             .clip(CircleShape)
                             .clickable { onNavigate(Routes.CART) }
                             .padding(6.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             Icons.Filled.ShoppingCart,

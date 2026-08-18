@@ -128,8 +128,8 @@ fun CartScreen(
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .clickable(onClick = onBack)
-                        .padding(4.dp)
-                        .size(32.dp),
+                        .size(40.dp)
+                        .padding(4.dp),
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -394,8 +394,8 @@ private fun CartRow(
                     modifier = Modifier
                         .clip(CircleShape)
                         .clickable(enabled = !busy, onClick = onRemove)
-                        .padding(6.dp)
-                        .size(18.dp),
+                        .size(30.dp)
+                        .padding(6.dp),
                 )
             }
         }

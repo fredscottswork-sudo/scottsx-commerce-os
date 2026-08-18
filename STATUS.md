@@ -31,12 +31,12 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
-| 7b | Android layout (edge-to-edge insets, overflow, brand artwork) | 45 | passing |
+| 7b | Android layout (edge-to-edge insets, overflow, brand artwork) | 46 | passing |
 | 7c | Compose API contract (@Composable context, imports, call sites) | 7 | passing |
 | 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**842 checks.** Every suite cleans up after itself; the database returns to 7
+**843 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 

@@ -184,8 +184,8 @@ fun NearbyScreen(onBack: () -> Unit) {
                             .clip(CircleShape)
                             .background(Color.White.copy(alpha = 0.15f))
                             .clickable(onClick = onBack)
-                            .padding(4.dp)
-                            .size(32.dp),
+                            .size(40.dp)
+                            .padding(4.dp),
                     )
                     Spacer(Modifier.size(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -223,8 +223,8 @@ fun NearbyScreen(onBack: () -> Unit) {
                                     }
                                 }
                             }
-                            .padding(7.dp)
-                            .size(22.dp),
+                            .size(36.dp)
+                            .padding(7.dp),
                     )
                 }
                 Spacer(Modifier.height(8.dp))

@@ -201,8 +201,8 @@ fun MessageThreadScreen(
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.15f))
                     .clickable(onClick = onBack)
-                    .padding(4.dp)
-                    .size(34.dp),
+                    .size(42.dp)
+                    .padding(4.dp),
             )
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -249,8 +249,8 @@ fun MessageThreadScreen(
                             reload()
                         }
                     }
-                    .padding(6.dp)
-                    .size(22.dp),
+                    .size(34.dp)
+                    .padding(6.dp),
             )
             // Pin
             Icon(
@@ -266,8 +266,8 @@ fun MessageThreadScreen(
                             reload()
                         }
                     }
-                    .padding(6.dp)
-                    .size(22.dp),
+                    .size(34.dp)
+                    .padding(6.dp),
             )
         }
 

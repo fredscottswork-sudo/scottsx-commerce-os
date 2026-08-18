@@ -208,8 +208,8 @@ internal fun ScreenHeader(title: String, onBack: () -> Unit) {
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.15f))
                     .clickable(onClick = onBack)
-                    .padding(4.dp)
-                    .size(32.dp),
+                    .size(40.dp)
+                    .padding(4.dp),
             )
             Spacer(Modifier.size(8.dp))
             Text(title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)

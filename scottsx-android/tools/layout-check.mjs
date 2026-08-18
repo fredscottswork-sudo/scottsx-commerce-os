@@ -241,6 +241,27 @@ console.log('\n\x1b[1m4. Seller dashboard stat tiles\x1b[0m');
   const uk = read('app/src/main/java/com/scottsx/app/ui/components/UiKit.kt');
   ok_if('no icon button pads before sizing (inflates the circle)',
     !/\.padding\(\d+\.dp\)\s*\n\s*\.size\(\d+\.dp\)/.test(uk));
+  // App-wide: .padding(p).size(n) sizes the CONTENT and inflates the drawn box
+  // to n+2p, so a clipped circle comes out oversized. The exception is when the
+  // padding sits BEFORE the clip/background — there it is an edge inset that
+  // positions the disc, which is legitimate.
+  {
+    const offenders = [];
+    for (const f of files) {
+      const src = read(f);
+      for (const m of src.matchAll(/\.padding\((\d+)\.dp\)\s*\n\s*\.size\((\d+)\.dp\)/g)) {
+        const after = src.slice(m.index + m[0].length, m.index + m[0].length + 160);
+        const insetBeforeShape = /\.clip\(|\.background\(/.test(after);
+        if (!insetBeforeShape) {
+          const line = src.slice(0, m.index).split('\n').length;
+          offenders.push(`${rel(f).split('/').pop()}:${line}`);
+        }
+      }
+    }
+    ok_if('no icon button inflates its circle by padding before sizing',
+      offenders.length === 0, offenders.join(', '));
+  }
+
   ok_if('the gradient header back button has a fixed touch target',
     /\.size\(40\.dp\)\s*\n\s*\.clip\(CircleShape\)/.test(uk));
 }

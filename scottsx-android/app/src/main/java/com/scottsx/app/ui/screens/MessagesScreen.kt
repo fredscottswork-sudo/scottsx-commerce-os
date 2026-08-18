@@ -176,8 +176,8 @@ fun ConversationListScreen(
                             .clip(CircleShape)
                             .background(Color.White.copy(alpha = 0.15f))
                             .clickable(onClick = onBack)
-                            .padding(4.dp)
-                            .size(32.dp),
+                            .size(40.dp)
+                            .padding(4.dp),
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -200,8 +200,8 @@ fun ConversationListScreen(
                                 searchOpen = !searchOpen
                                 if (!searchOpen) search = ""
                             }
-                            .padding(6.dp)
-                            .size(30.dp),
+                            .size(42.dp)
+                            .padding(6.dp),
                     )
                     Icon(
                         Icons.Filled.ChatBubble,
@@ -484,8 +484,8 @@ private fun ConversationRow(
                 modifier = Modifier
                     .clip(CircleShape)
                     .clickable(onClick = onTogglePin)
-                    .padding(6.dp)
-                    .size(18.dp),
+                    .size(30.dp)
+                    .padding(6.dp),
             )
             Icon(
                 if (conversation.archived) Icons.Filled.Unarchive else Icons.Filled.Archive,
@@ -494,8 +494,8 @@ private fun ConversationRow(
                 modifier = Modifier
                     .clip(CircleShape)
                     .clickable(onClick = onToggleArchive)
-                    .padding(6.dp)
-                    .size(18.dp),
+                    .size(30.dp)
+                    .padding(6.dp),
             )
         }
     }
