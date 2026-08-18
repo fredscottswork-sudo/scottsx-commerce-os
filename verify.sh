@@ -22,28 +22,31 @@ if ! curl -sf -m 5 "$API/healthz" >/dev/null; then
   exit 1
 fi
 
-hr "1/6  Backend end-to-end"
+hr "1/7  Backend end-to-end"
 (cd "$ROOT/12_Backend" && node tests/e2e.mjs) || FAILED=1
 
-hr "2/6  Android ⇆ backend contract"
+hr "2/7  Google Sign-In (local IdP, no egress)"
+(cd "$ROOT/12_Backend" && node tests/google-auth.mjs) || FAILED=1
+
+hr "3/7  Android ⇆ backend contract"
 (cd "$ROOT/12_Backend" && node tests/android-contract.mjs) || FAILED=1
 
-hr "3/6  Web UI (real bundle, real backend)"
+hr "4/7  Web UI (real bundle, real backend)"
 (cd "$ROOT/web" && npm run build >/dev/null 2>&1 && node tests/ui.mjs) || FAILED=1
 
-hr "4/6  TypeScript"
+hr "5/7  TypeScript"
 (cd "$ROOT/12_Backend" && npx tsc --noEmit && echo "backend: clean") || FAILED=1
 (cd "$ROOT/web" && npx tsc --noEmit -p tsconfig.json && echo "web: clean") || FAILED=1
 
 KOTLINC="${KOTLINC:-$(command -v kotlinc || true)}"
 if [ -n "$KOTLINC" ] && [ -n "${JAVA_HOME:-}" ]; then
-  hr "5/6  Kotlin syntax"
+  hr "6/7  Kotlin syntax"
   (cd "$ROOT/scottsx-android" && ./tools/kotlin-syntax-check.sh "$KOTLINC") || FAILED=1
 
-  hr "6/6  Kotlin parsers vs real API JSON"
+  hr "7/7  Kotlin parsers vs real API JSON"
   (cd "$ROOT/scottsx-android" && ./tools/parser-check/run.sh "$KOTLINC") || FAILED=1
 else
-  hr "5-6/6  Kotlin checks"
+  hr "6-7/7  Kotlin checks"
   note "skipped — set \$JAVA_HOME and \$KOTLINC (see scottsx-android/tools/README.md)"
   note "on a machine with the Android SDK, run ./gradlew assembleDebug instead"
 fi
