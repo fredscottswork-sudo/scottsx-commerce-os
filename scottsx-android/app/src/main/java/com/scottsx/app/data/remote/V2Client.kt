@@ -2,6 +2,7 @@ package com.scottsx.app.data.remote
 
 import com.scottsx.app.SessionCache
 import com.scottsx.app.data.domain.Address
+import com.scottsx.app.data.domain.optStringSafe
 import com.scottsx.app.data.domain.AiReply
 import com.scottsx.app.data.domain.AppNotification
 import com.scottsx.app.data.domain.AuthResult
