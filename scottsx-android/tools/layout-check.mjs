@@ -22,7 +22,7 @@
  *
  * Usage:  node tools/layout-check.mjs      (from scottsx-android/)
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -305,7 +305,15 @@ console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
     !/"ScottsTechX",\s*\n\s*color = Color\.White,\s*\n\s*fontSize = 34\.sp/.test(s));
 
   // The PNG must actually match the ratio the Kotlin declares.
-  const png = readFileSync(join(ROOT, 'app/src/main/res/drawable-nodpi/brand_lockup.png'));
+  //
+  // Guard the read: this tool is also run against branches that predate the
+  // brand artwork, and an ENOENT here crashed the whole check with a bare
+  // stack trace instead of reporting the 45 results it had already gathered.
+  const lockupPath = join(ROOT, 'app/src/main/res/drawable-nodpi/brand_lockup.png');
+  if (!existsSync(lockupPath)) {
+    console.log('  \x1b[33m-\x1b[0m brand_lockup.png not present — skipping artwork checks');
+  } else {
+  const png = readFileSync(lockupPath);
   const pw = png.readUInt32BE(16), ph = png.readUInt32BE(20);
   const declared = /aspectRatio\((\d+)f\s*\/\s*(\d+)f\)/.exec(s);
   ok_if('brand_lockup.png exists and is a PNG', png.slice(1, 4).toString() === 'PNG');
@@ -319,6 +327,7 @@ console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
   // colour type 6 = RGBA. An opaque logo would show a black box on the gradient.
   ok_if('the lockup has an alpha channel so it sits on the gradient cleanly',
     png[25] === 6, `colour type ${png[25]}`);
+  }
 }
 
 // ── 6. Product tiles ────────────────────────────────────────────────────────

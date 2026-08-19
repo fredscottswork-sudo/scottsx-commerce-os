@@ -75,6 +75,22 @@ and runs fine for testing; it cannot go to the Play Store. Signing needs
 
 ---
 
+## If you already ran this and hit `exit code 127`
+
+`./tools/wiring-check.sh: No such file or directory` means you copied the
+workflow before the script knew to bring its tools along. Just re-run it:
+
+```bash
+git checkout origin/arena/01a01321-scottsx-commerce-os -- ci/apply-workflow-fixes.sh
+bash ci/apply-workflow-fixes.sh
+git commit -m "Fix CI: copy the test tools the workflows run"
+git push
+```
+
+Step **2b** now copies the seven files `master` was missing.
+
+---
+
 ## What the script actually changes
 
 | Change | Why |
@@ -83,6 +99,7 @@ and runs fine for testing; it cannot go to the Play Store. Signing needs
 | `chmod +x ./gradlew` added to `android-release.yml` | Belt and braces. The earlier fix on `master` added this to `ci.yml` (the *debug* build) — the release workflow never got it, which is why the error kept coming back. |
 | `API_BASE_URL` no longer required | The workflow used to hard-fail when the secret was unset. It now falls back to `https://scottstechx-api.onrender.com/api/v1` and logs a warning. |
 | `ci.yml` `DATABASE_URL` restored | The password had been replaced with a literal `***`, copied out of a masked log. That breaks the CI database. |
+| 7 test tools copied across | `master` never had `wiring-check.sh`, `layout-check.mjs`, `compose-contract-check.mjs`, `res-check.sh`, `firebase-auth.mjs`, `production-safety.mjs` or `generate-sitemap.mjs`. The workflow runs them, hence exit 127. |
 | 5 missing Kotlin imports | `ChatTurn` / `ChatTurnBubble` in `RealAiChatScreen` + `SellerAIAssistantScreen`, and `Row` in `SupportScreen`. |
 
 The 17 compile errors in the last run come from just those 5 imports. The

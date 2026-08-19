@@ -76,6 +76,36 @@ echo "       it now falls back to the deployed Render API with a warning"
 echo "     - ci.yml's DATABASE_URL password had been replaced with literal"
 echo "       '***', copied out of a masked log - that breaks the CI database"
 
+say "2b. Copying the test tools the workflows run"
+# The corrected ci.yml runs gates that only exist on the working branch. Copying
+# the workflow without them gives:
+#     ./tools/wiring-check.sh: No such file or directory   (exit 127)
+# Each of these is self-contained -- Node built-ins and POSIX shell only -- so
+# they run anywhere without extra dependencies.
+if [ -n "$WF_SRC" ]; then
+  copied=0
+  for f in \
+    scottsx-android/tools/wiring-check.sh \
+    scottsx-android/tools/layout-check.mjs \
+    scottsx-android/tools/compose-contract-check.mjs \
+    scottsx-android/tools/res-check.sh \
+    12_Backend/tests/firebase-auth.mjs \
+    12_Backend/tests/production-safety.mjs \
+    web/scripts/generate-sitemap.mjs
+  do
+    if git cat-file -e "origin/$BRANCH:$f" 2>/dev/null; then
+      mkdir -p "$(dirname "$f")"
+      git show "origin/$BRANCH:$f" > "$f"
+      case "$f" in *.sh) chmod +x "$f"; git update-index --add --chmod=+x "$f" 2>/dev/null || true ;; esac
+      echo "   + $f"
+      copied=$((copied + 1))
+    fi
+  done
+  echo "   $copied file(s) in place"
+else
+  echo "   skipped (branch unavailable)"
+fi
+
 say "3. Fixing the Kotlin compile errors"
 # These three files use symbols they never import. The compiler reports:
 #   Unresolved reference: ChatTurn / ChatTurnBubble   (RealAiChatScreen,
@@ -123,7 +153,7 @@ add_import "$S/SupportScreen.kt" \
   "import androidx.compose.foundation.layout.Spacer"
 
 say "4. Staging"
-git add -A scottsx-android
+git add -A scottsx-android 12_Backend/tests web/scripts
 [ -n "$WF_SRC" ] && git add .github/workflows/android-release.yml .github/workflows/ci.yml
 git status --short
 
