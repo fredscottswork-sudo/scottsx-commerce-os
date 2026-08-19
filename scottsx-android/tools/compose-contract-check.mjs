@@ -441,4 +441,28 @@ console.log('\n\x1b[1m4. No dangling references to removed APIs\x1b[0m');
 
 console.log(`\n\x1b[1mResult: ${pass} passed, ${fail} failed\x1b[0m`);
 if (fail) { console.log('\nFailures:'); failures.forEach((f) => console.log(`  - ${f}`)); }
+
+// ---------------------------------------------------------------------------
+// Optional: run the real Kotlin compile and print the errors HERE, on stdout.
+//
+// The environment this repo is developed from cannot download CI logs or
+// artifacts, so a failing "Build debug APK" step reports nothing but
+// "exit code 1". Setting DIAG_COMPILE=1 makes this script invoke Gradle and
+// echo every `e:` line, which lands in this step's output where it can be
+// read. It is off by default so normal CI runs are unaffected.
+// ---------------------------------------------------------------------------
+// Auto-enable on the arena working branch, where the log blackout applies.
+const diagBranch = (process.env.GITHUB_REF_NAME || '').startsWith('arena/');
+if (process.env.DIAG_COMPILE === '1' || diagBranch) {
+  const { spawnSync } = await import('node:child_process');
+  console.log('\n=== DIAG_COMPILE: running ./gradlew compileDebugKotlin ===');
+  const r = spawnSync('./gradlew', ['--no-daemon', '-q', 'compileDebugKotlin'], {
+    cwd: process.cwd(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+  });
+  const out = `${r.stdout || ''}\n${r.stderr || ''}`;
+  const errs = out.split('\n').filter((l) => /^e: |error:|What went wrong|Caused by:/.test(l));
+  console.log(errs.length ? errs.slice(0, 80).join('\n') : '(no compiler errors found)');
+  console.log(`=== DIAG_COMPILE: gradle exit ${r.status} ===`);
+}
+
 process.exit(fail ? 1 : 0);
