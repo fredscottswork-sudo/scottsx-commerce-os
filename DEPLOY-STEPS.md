@@ -315,11 +315,38 @@ fine and then fails on every screen, so it is better to fail the build.
 | **Google Sign-In + verification emails (Firebase — recommended, free)** | See "Firebase setup" below. This is the easiest path: Firebase sends the verification emails for you, so **no SMTP is needed at all**. |
 | **Google Sign-In (direct, without Firebase)** | Fallback path, used automatically if Firebase Auth is not enabled. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → your OAuth client → **Authorised JavaScript origins** → add `https://scottstechx.pages.dev`. Optionally set `VITE_GOOGLE_CLIENT_ID` (Cloudflare) and `GOOGLE_CLIENT_ID` (Render). |
 | **Phone push notifications** | Firebase Console → Project settings → Service accounts → **Generate new private key**. Add the JSON to Render as a secret file at `12_Backend/secrets/firebase-admin-key.json`. Until then, in-app and web notifications still work and are stored. |
-| **Verification emails without Firebase (SMTP)** | Only needed if you are *not* using Firebase. Add `SMTP_HOST`, `SMTP_PORT` (465), `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` on Render. Until one of the two is configured, the six-digit code is shown on screen instead of emailed — fine for testing, **not** for real users. |
+| **Verification emails without Firebase (SMTP)** | Only needed if you are *not* using Firebase. Add `SMTP_HOST`, `SMTP_PORT` (465), `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` on Render. **Until one of the two is configured, email/password sign-up is refused with a 503** — see below. Google sign-in keeps working. |
 | **Real AI (instead of the built-in engine)** | Add `LLM_API_KEY` on Render. Without it the catalogue-grounded local engine handles search and agents. |
 | **Card / mobile-money payments** | Add `NYLON_PAY_API_KEY` and `NYLON_PAY_API_SECRET`. Until then `POST /orders/checkout` returns 503 and cash-on-delivery is the only buy path — which works fully on both web and Android. |
 
 ---
+
+### Why email/password sign-up may say "temporarily unavailable"
+
+If the backend has **no** way to send email — no Firebase, no SMTP — it refuses
+email/password sign-up with a 503 rather than creating the account.
+
+That is deliberate. The alternative, which this project used to do, is to
+return the six-digit code in the API response so the flow can still be
+completed. On a laptop that is a convenience. On a public server it means
+**anyone can verify an address they do not own**: register `someone@bank.com`,
+read the code out of the HTTP response, and the account is verified. Email
+verification stops meaning anything at all.
+
+So the rule is now:
+
+| Server state | Email/password sign-up | Code in the API response |
+|---|---|---|
+| SMTP or Firebase configured | works | never |
+| No mailer, `NODE_ENV != production` | works | yes (local dev only) |
+| No mailer, **production** | **refused, 503** | never |
+| No mailer, `ALLOW_DEV_VERIFICATION_CODES=true` | works | yes (opt-in, keep private) |
+
+Google sign-in is unaffected in every row — Google proves the address itself,
+so those accounts arrive already verified. Existing accounts can always sign in.
+
+The server prints which mode it is in at startup; check the Render logs if you
+are unsure.
 
 ## Firebase setup (Google sign-in + verification email, free)
 

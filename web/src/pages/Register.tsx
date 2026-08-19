@@ -139,7 +139,18 @@ export default function Register() {
       // The fallback path is unverified too, so it goes through the same gate.
       navigate('/verify-email', { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Registration failed');
+      // 503 means the backend has no way to send a verification email, so it
+      // refuses to create an account it could never verify. Say that plainly
+      // and point at the route that still works, rather than leaving someone
+      // retyping a password that was never the problem.
+      if (err instanceof ApiError && err.status === 503) {
+        setError(
+          'Email sign-up is temporarily unavailable on this site — the server cannot ' +
+            'send verification emails yet. You can continue with Google instead.'
+        );
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Registration failed');
+      }
     } finally {
       setBusy(false);
     }

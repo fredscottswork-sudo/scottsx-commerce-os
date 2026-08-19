@@ -26,6 +26,36 @@ export function mailConfigured(): boolean {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+/**
+ * May the API hand a verification code back in its own response?
+ *
+ * Only ever as a local development convenience. Returning the code to the
+ * caller defeats the entire point of email verification: whoever asks for it
+ * receives it, so any string shaped like an address becomes a verified
+ * account without anyone ever opening a mailbox.
+ *
+ * That is tolerable on a laptop with no mailer. It is not tolerable on a
+ * deployed server, so in production the code is never exposed - even when
+ * SMTP is missing. A sign-up that cannot be delivered must fail loudly rather
+ * than quietly issue credentials to a fake address.
+ *
+ * ALLOW_DEV_VERIFICATION_CODES=true is the deliberate escape hatch for staging
+ * environments that genuinely have no mailer and are not open to the public.
+ */
+export function devCodesAllowed(): boolean {
+  if (mailConfigured()) return false;
+  if (process.env.ALLOW_DEV_VERIFICATION_CODES === 'true') return true;
+  return process.env.NODE_ENV !== 'production';
+}
+
+/**
+ * True when the server cannot deliver mail AND is not allowed to fall back to
+ * returning codes - i.e. verification is impossible and sign-up must say so.
+ */
+export function verificationUndeliverable(): boolean {
+  return !mailConfigured() && !devCodesAllowed();
+}
+
 function mailFrom(): string {
   return process.env.MAIL_FROM || process.env.SMTP_USER || 'no-reply@scottstechx.ug';
 }

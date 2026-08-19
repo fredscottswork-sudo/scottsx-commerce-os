@@ -18,8 +18,14 @@ import {
   requireAuth,
   authedUser,
 } from '../../auth.js';
-import { UnauthorizedError, ConflictError, NotFoundError } from '../../errors.js';
+import {
+  UnauthorizedError,
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from '../../errors.js';
 import { issueVerification } from './verify.route.js';
+import { verificationUndeliverable } from '../../mail.js';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -72,6 +78,19 @@ export default async function registerAuthRoute(app: FastifyInstance) {
     const body = registerSchema.parse(request.body);
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [body.email]);
     if ((existing.rowCount ?? 0) > 0) throw new ConflictError('Email already registered');
+
+    // Refuse to create an account we could never verify. Previously a server
+    // with no mailer answered by returning the code in the response body,
+    // which meant anyone could "verify" an address they cannot read - the
+    // exact opposite of what sign-up is for. Failing here is the honest
+    // outcome: it tells the operator to configure SMTP instead of silently
+    // handing out verified accounts.
+    if (verificationUndeliverable()) {
+      throw new ServiceUnavailableError(
+        'Sign-up is temporarily unavailable: this server cannot send verification emails yet. ' +
+          'Please try again later, or continue with Google.'
+      );
+    }
 
     const hash = await hashPassword(body.password);
     const { rows } = await pool.query(

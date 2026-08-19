@@ -109,10 +109,16 @@ services:
         sync: false
 
       # ── Verification email (SMTP) ───────────────────────────────────────
-      # Sign-up always requires a 6-digit code, so that a fake address cannot
-      # become an account. Without these the backend cannot send it: the code
-      # is logged and returned to the browser instead, which is fine for
-      # testing and wrong for real users. Set them before launch.
+      # REQUIRED for email/password sign-up.
+      #
+      # Sign-up always requires a 6-digit code so a fake address cannot become
+      # an account. Without a mailer the server cannot send that code — and it
+      # will NOT fall back to returning the code in the API response, because
+      # anyone could then verify an address they do not own. Instead,
+      # email/password sign-up is refused with 503 until these are set.
+      #
+      # Google sign-in keeps working without them (Google proves the address),
+      # so the site stays usable while you configure this.
       #
       # Any SMTP provider works (Zoho, Brevo, Mailgun, Gmail app password…).
       # Port 465 is implicit TLS, which is what the sender speaks.

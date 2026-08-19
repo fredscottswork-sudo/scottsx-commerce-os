@@ -13,8 +13,10 @@
  *   - codes expire (15 min) and are single-use
  *   - 6 wrong attempts burns the code, defeating a 1-in-a-million brute force
  *   - a fresh request invalidates older outstanding codes
- *   - the code is only returned in the response when SMTP is NOT configured
- *     (local dev); with a real mailer it is never exposed over the API
+ *   - the code is only ever returned in the response on a NON-production
+ *     server that has no mailer (local dev). In production it is never
+ *     exposed, even when SMTP is missing - otherwise anyone could verify an
+ *     address they do not own by simply reading the API response.
  */
 import type { FastifyInstance } from 'fastify';
 import { createHash, randomInt } from 'node:crypto';
@@ -23,7 +25,7 @@ import { getPool } from '../../db.js';
 import { requireAuth, markVerified } from '../../auth.js';
 import { publicUser } from './login.route.js';
 import { ValidationError } from '../../errors.js';
-import { sendMail, mailConfigured } from '../../mail.js';
+import { sendMail, mailConfigured, devCodesAllowed } from '../../mail.js';
 
 const CODE_TTL_MIN = 15;
 const MAX_ATTEMPTS = 6;
@@ -71,8 +73,11 @@ export async function issueVerification(userId: string, email: string, displayNa
 
   return {
     delivered,
-    // Never leak the code once a real mailer is wired up.
-    devCode: mailConfigured() ? undefined : code,
+    // Never leak the code once a real mailer is wired up - and never in
+    // production even without one. Handing the code to the caller would let
+    // anyone verify an address they cannot read, which is exactly the "no fake
+    // emails" rule this whole flow exists to enforce.
+    devCode: devCodesAllowed() ? code : undefined,
   };
 }
 

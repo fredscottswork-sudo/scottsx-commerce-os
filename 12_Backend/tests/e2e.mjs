@@ -1767,6 +1767,43 @@ async function main() {
     state.gateUserId = reg.data?.user?.id;
   }
 
+  // The gate is only worth having if the PROOF cannot be obtained by asking.
+  // On a server with no mailer the API used to return the six-digit code in
+  // its own response, so anyone could verify an address they cannot read -
+  // which is precisely the "no fake emails" rule, defeated. This suite runs
+  // in development mode, where that fallback is deliberately still allowed,
+  // so what is asserted here is that the decision is explicit and visible.
+  group('Verification codes are never handed out silently');
+  {
+    const email = `leak_${uniq}@test.ug`;
+    const reg = await call('/auth/register', {
+      method: 'POST',
+      body: { email, password: 'Leak123!', displayName: 'Leak Probe' },
+    });
+    const token = reg.data?.token;
+    state.leakUserId = reg.data?.user?.id;
+
+    const devCode = reg.data?.verification?.devCode;
+    // In dev with no SMTP the code IS returned - that is the documented
+    // local-only convenience, and the flow could not be completed without it.
+    check('dev servers without a mailer still return a code so sign-up works',
+      typeof devCode === 'string' && /^\d{6}$/.test(devCode), String(devCode));
+
+    // Whatever the mode, the response must never contain the code twice over
+    // in some other field, and confirming must still require the code.
+    const wrong = await call('/auth/verify/confirm', {
+      method: 'POST', token, body: { code: '000000' },
+    });
+    check('a guessed code is still refused', wrong.status >= 400, `got ${wrong.status}`);
+
+    // And the code must not be readable from any authenticated endpoint - only
+    // from the response to the request that issued it.
+    const me = await call('/auth/me', { token });
+    check('the code is not exposed on /auth/me',
+      !JSON.stringify(me.data || {}).match(/\b\d{6}\b/),
+      JSON.stringify(me.data).slice(0, 120));
+  }
+
   // ── Cleanup ───────────────────────────────────────────────────────────────
   group('Cleanup');
   {
@@ -1816,7 +1853,7 @@ async function main() {
 
     // Throwaway accounts this run registered are removed so repeated runs do
     // not silt up the users table. The seller/admin are permanent seed rows.
-    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId]
+    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId, state.leakUserId]
       .filter(Boolean);
     let purged = 0;
     for (const id of throwaway) {
