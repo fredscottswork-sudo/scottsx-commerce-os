@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -32,6 +31,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -204,7 +204,7 @@ private fun OnboardPicturesPage() {
     // Drives the staggered entrance so the four tiles arrive one after another
     // instead of snapping in together.
     var shown by remember { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(Unit) { shown = true }
+    LaunchedEffect(Unit) { shown = true }
 
     Box(
         Modifier
