@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { rememberDevCode } from '../components/VerifyEmailBanner';
+import { rememberDevCode } from '../lib/devCode';
 import { authService } from '../api/services';
 import { forgetGoogleSession } from '../lib/google';
 import { tokenStore, userStore, onUnauthorized, type StoredUser } from '../api/client';

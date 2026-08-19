@@ -1592,40 +1592,39 @@ tbody tr.row-click { cursor: pointer; }
   .verify-sent-icon { animation: none; }
 }
 
-/* Email verification banner ------------------------------------------------- */
-/* Sits at the top of the signed-in content area until the address is proven.
-   Amber, not red: the account works, it is just not fully trusted yet. */
-.verify-banner {
-  display: flex; flex-direction: column; gap: 10px;
-  padding: 14px 16px; margin-bottom: 16px;
-  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
-  border-left: 3px solid var(--warning);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+/* Email verification gate (/verify-email) ----------------------------------- */
+.verify-done-icon {
+  background: color-mix(in srgb, var(--success, #10b981) 18%, transparent);
+  color: var(--success, #10b981);
 }
-.verify-banner-main { display: flex; align-items: flex-start; gap: 10px; }
-.verify-banner-dot {
-  flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: 50%;
-  background: var(--warning);
-  animation: verify-pulse 2s ease-in-out infinite;
-}
-@keyframes verify-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 60%, transparent); }
-  50%      { opacity: .75; box-shadow: 0 0 0 6px transparent; }
-}
-.verify-banner-sub { margin: 3px 0 0; color: var(--text-muted); font-size: var(--fs-sm); }
-.verify-banner-actions, .verify-banner-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.verify-banner-form input {
-  width: 8.5ch; text-align: center;
-  font-size: var(--fs-lg); font-variant-numeric: tabular-nums; letter-spacing: .18em;
-}
-.verify-banner-dev {
-  margin: 0; font-size: var(--fs-xs); color: var(--text-muted);
-}
-.verify-banner-dev b { font-variant-numeric: tabular-nums; letter-spacing: .12em; color: var(--text); }
+.verify-done { text-align: center; padding: 8px 0 4px; }
 
-@media (prefers-reduced-motion: reduce) {
-  .verify-banner-dot { animation: none; }
+/* "or enter the code" rule between the two proofs. */
+.verify-page-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 18px 0 14px; color: var(--text-muted); font-size: var(--fs-sm);
+}
+.verify-page-divider::before,
+.verify-page-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+.verify-page-form { display: flex; gap: 8px; align-items: center; }
+.verify-page-form input {
+  flex: 1; text-align: center;
+  font-size: var(--fs-lg); font-variant-numeric: tabular-nums; letter-spacing: .3em;
+}
+.verify-page-form .btn { flex: none; }
+
+.verify-page-actions {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;
+}
+.verify-page-actions .btn { flex: 1 1 auto; justify-content: center; }
+
+@media (max-width: 620px) {
+  /* Two buttons at 360px would each be too narrow to read. */
+  .verify-page-actions { flex-direction: column; }
+  .verify-page-actions .btn { width: 100%; }
 }
 
 /* Auth screens (Login / Register) ------------------------------------------- */

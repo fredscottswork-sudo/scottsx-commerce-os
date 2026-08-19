@@ -6,6 +6,7 @@ import { useSeo } from './hooks/useSeo';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
 import Home from './pages/Home';
 import ProductDetail from './pages/ProductDetail';
 import SellerStorefront from './pages/SellerStorefront';
@@ -52,6 +53,9 @@ function RequireRole({ role, children }: { role: 'buyer' | 'seller' | 'admin'; c
   // inherits it automatically.
   useSeo({ noIndex: true });
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  // An unverified address is not a usable account. This is the gate: signing
+  // up no longer drops you straight into a dashboard.
+  if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
   if (user.role !== role) {
     // Auto-redirect each role to its own home.
     const home = user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : '/buyer';
@@ -64,12 +68,16 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   useSeo({ noIndex: true });
   if (!user) return <Navigate to="/login" replace />;
+  if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
   return <>{children}</>;
 }
 
 function RedirectByRole() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/" replace />;
+  // Never bounce an unverified account into a dashboard — that is exactly the
+  // "logged in without verifying" behaviour this gate exists to stop.
+  if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
   return <Navigate to={user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : '/buyer'} replace />;
 }
 
@@ -90,6 +98,20 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={user ? <RedirectByRole /> : <Login />} />
         <Route path="/register" element={user ? <RedirectByRole /> : <Register />} />
+        {/* The verification gate. Signed-out visitors have nothing to verify;
+            already-verified users have no reason to be here. */}
+        <Route
+          path="/verify-email"
+          element={
+            !user ? (
+              <Navigate to="/login" replace />
+            ) : user.emailVerified ? (
+              <RedirectByRole />
+            ) : (
+              <VerifyEmail />
+            )
+          }
+        />
         <Route path="/product/:id" element={<ProductDetail />} />
         <Route path="/seller/:id" element={<SellerStorefront />} />
         <Route path="/nearby" element={<Nearby />} />

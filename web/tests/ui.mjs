@@ -263,6 +263,24 @@ const reg = await apiFetch('/auth/register', {
 });
 if (reg.status !== 201) { console.error('Could not create the test buyer', reg); process.exit(1); }
 const buyer = reg.body;
+
+// Verification is a hard gate now, so a freshly-registered account cannot
+// reach any private route. Take the fixture through the real flow rather than
+// forging the flag — that way these tests exercise the path users take.
+{
+  const req = await apiFetch('/auth/verify/request', {
+    method: 'POST', headers: { authorization: `Bearer ${buyer.token}` },
+  });
+  const code = req.body?.devCode;
+  if (!code) { console.error('No verification code issued for the test buyer', req); process.exit(1); }
+  const conf = await apiFetch('/auth/verify/confirm', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${buyer.token}` },
+    body: JSON.stringify({ code }),
+  });
+  if (conf.status !== 200) { console.error('Could not verify the test buyer', conf); process.exit(1); }
+  buyer.user = { ...buyer.user, ...(conf.body?.user || {}), emailVerified: true };
+}
 const buyerAuth = { authorization: `Bearer ${buyer.token}` };
 const sellerAuth = { authorization: `Bearer ${seller.token}` };
 
@@ -1919,43 +1937,64 @@ section('32. Email verification blocks fake addresses');
   }).catch(() => {});
 }
 
-// ── 33. Verification banner in the UI ───────────────────────────────────────
-section('33. The verification banner appears only when it should');
+// ── 33. Unverified accounts are GATED, not merely nagged ────────────────────
+section('33. An unverified account cannot reach the app');
 {
-  const unverified = {
-    token: buyer.token,
-    user: { ...buyer.user, emailVerified: false },
-  };
-  const app = await mount('/buyer', unverified, { settleMs: 1700 });
-  const banner = app.$('[data-testid="verify-banner"]');
-  check('an unverified user sees the verification banner', !!banner);
-  if (banner) {
-    const t = banner.textContent || '';
-    check('the banner names the address to check', t.includes(buyer.user.email),
-      t.slice(0, 120));
-    check('the banner explains what to do', /verify/i.test(t));
-    check('the banner offers a way to enter the code',
-      !!app.$('[data-testid="verify-open"]'));
-    check('the banner offers a resend', !!app.$('[data-testid="verify-resend"]'));
-    // Firebase's link opens in the mail client, not this tab, so the user
-    // needs a way to say "I've done it" and have the app re-check.
-    check('the banner offers an "I have verified" re-check',
-      !!app.$('[data-testid="verify-recheck"]'));
+  // The bug: signing up logged you straight in and verification was a
+  // dismissible banner. Every private route must now bounce to /verify-email.
+  const unverified = { token: buyer.token, user: { ...buyer.user, emailVerified: false } };
+
+  for (const route of ['/buyer', '/buyer/orders', '/buyer/saved', '/buyer/settings']) {
+    const app = await mount(route, unverified, { settleMs: 1700 });
+    check(`${route} redirects an unverified user to the gate`,
+      !!app.$('[data-testid="verify-email-page"]'),
+      `landed on ${app.window.location.pathname}`);
+    check(`${route} does not render dashboard content`,
+      !app.$('.dashboard-grid') && !app.$('[data-testid="orders-table"]'));
+    app.close();
   }
-  check('no runtime errors with the banner mounted', app.consoleErrors.length === 0,
-    app.consoleErrors[0]);
-  app.close();
 
-  // Verified users must never see it.
-  const app2 = await mount('/buyer', { token: buyer.token, user: { ...buyer.user, emailVerified: true } },
-    { settleMs: 1700 });
-  check('a verified user sees no banner', !app2.$('[data-testid="verify-banner"]'));
-  app2.close();
+  // The gate itself must be usable.
+  const gate = await mount('/verify-email', unverified, { settleMs: 1700 });
+  check('the gate names the address awaiting proof',
+    (gate.text() || '').includes(buyer.user.email));
+  check('the gate offers the "I clicked the link" check',
+    !!gate.$('[data-testid="verify-page-check"]'));
+  check('the gate accepts a six-digit code too',
+    !!gate.$('[data-testid="verify-page-code"]'));
+  check('the gate can resend', !!gate.$('[data-testid="verify-page-resend"]'));
+  // Without this a typo in the address strands the user forever.
+  check('the gate offers a way out (sign out)',
+    !!gate.$('[data-testid="verify-page-signout"]'));
+  check('no runtime errors on the gate', gate.consoleErrors.length === 0,
+    gate.consoleErrors[0]);
+  gate.close();
 
-  // Signed-out visitors must never see it either.
-  const app3 = await mount('/', null, { settleMs: 1400 });
-  check('a logged-out visitor sees no banner', !app3.$('[data-testid="verify-banner"]'));
-  app3.close();
+  // A verified user must never be trapped on it.
+  const verified = { token: buyer.token, user: { ...buyer.user, emailVerified: true } };
+  const skip = await mount('/verify-email', verified, { settleMs: 1700 });
+  check('a verified user is sent past the gate',
+    !skip.$('[data-testid="verify-email-page"]'),
+    `still on the gate at ${skip.window.location.pathname}`);
+  skip.close();
+
+  // And a verified user reaches their dashboard as before.
+  const dash = await mount('/buyer', verified, { settleMs: 1700 });
+  check('a verified user still reaches the dashboard',
+    !dash.$('[data-testid="verify-email-page"]'));
+  dash.close();
+
+  // Signed-out visitors have nothing to verify.
+  const out = await mount('/verify-email', null, { settleMs: 1400 });
+  check('a logged-out visitor is not shown the gate',
+    !out.$('[data-testid="verify-email-page"]'));
+  out.close();
+
+  // Public browsing must stay open — the gate is for private routes only.
+  const pub = await mount('/', unverified, { settleMs: 1600 });
+  check('an unverified user can still browse the public marketplace',
+    !pub.$('[data-testid="verify-email-page"]') && pub.$$('.pcard').length > 0);
+  pub.close();
 }
 
 // ── 34. The API base URL is resolved, never left empty in production ────────
@@ -2054,10 +2093,10 @@ section('37. Sign-up sends a real verification link');
     /verify\/confirm/.test(bundleJs));
 
   // The confirmation screen must actually tell the user to go and check.
-  check('there is a "check your email" confirmation screen',
-    /Check your email/i.test(bundleJs));
+  check('there is a dedicated verification page',
+    /Verify your email/i.test(bundleJs));
   check('it suggests the spam folder', /spam/i.test(bundleJs));
-  check('it offers to resend', /Resend the email/i.test(bundleJs));
+  check('it offers to resend', /Resend email/i.test(bundleJs));
 }
 
 // ── 38. The registration form still works end to end ────────────────────────
@@ -2067,8 +2106,8 @@ section('38. Registration form renders and validates');
   check('the form asks for an email', !!app.$('input[type="email"]'));
   check('the form asks for a password', !!app.$('input[type="password"]'));
   check('a buyer/seller choice is offered', !!app.$('select'));
-  check('the confirmation screen is NOT shown before submitting',
-    !app.$('[data-testid="verify-sent"]'));
+  check('the verification gate is NOT shown before submitting',
+    !app.$('[data-testid="verify-email-page"]'));
 
   // Mismatched passwords must be caught in the browser, before any account
   // exists anywhere.
@@ -2107,11 +2146,11 @@ section('39. Sign-up explains itself when Firebase cannot be used');
   check('the fallback tells the user a code was used instead of a link',
     /verify with the code shown on screen/i.test(bundleJs));
 
-  // The banner must explain the code, not just print it.
+  // The gate must explain the code, not just print it.
   check('a shown code explains that email delivery is not set up',
     /Email delivery is not set up/i.test(bundleJs));
-  check('the banner tells link-users to press "I\'ve verified"',
-    /I&rsquo;ve verified|I’ve verified|I've verified/.test(bundleJs));
+  check('the gate tells link-users to confirm once they have clicked',
+    /I&rsquo;ve clicked the link|I’ve clicked the link|I've clicked the link/.test(bundleJs));
 
   // A fabricated appId is what broke this. Real ones carry a hex suffix, so
   // assert we never ship a hand-written placeholder again.

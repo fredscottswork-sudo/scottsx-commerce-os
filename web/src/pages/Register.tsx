@@ -5,7 +5,6 @@ import { useToast } from '../store/ToastContext';
 import { Btn, Field, Input, Select } from '../components/ui';
 import { ApiError } from '../api/client';
 import GoogleButton from '../components/GoogleButton';
-import { MailCheck } from 'lucide-react';
 import { BrandLockup } from '../components/BrandLogo';
 import { useSeo } from '../hooks/useSeo';
 
@@ -47,9 +46,6 @@ export default function Register() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   /** Set once Firebase has emailed a verification link. */
-  const [sentTo, setSentTo] = useState('');
-  const [resending, setResending] = useState(false);
-  const [resendNote, setResendNote] = useState('');
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -103,8 +99,8 @@ export default function Register() {
       }
 
       await loginWithFirebase(idToken, profile);
-      setSentTo(email);
-      toast('Account created — check your email to verify', 'success');
+      toast('Account created — verify your email to continue', 'success');
+      navigate('/verify-email', { replace: true });
       return;
     } catch (err) {
       if (!(err instanceof FirebaseFallback)) {
@@ -137,90 +133,16 @@ export default function Register() {
       toast(
         fallbackReason
           ? 'Account created — verify with the code shown on screen'
-          : 'Account created',
+          : 'Account created — verify your email to continue',
         'success'
       );
-      navigate('/');
+      // The fallback path is unverified too, so it goes through the same gate.
+      navigate('/verify-email', { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed');
     } finally {
       setBusy(false);
     }
-  }
-
-  // Firebase has emailed the link. Say so plainly and give the two actions
-  // that actually help: resend, and continue browsing while they go check.
-  if (sentTo) {
-    return (
-      <div className="auth-wrap">
-        <div className="auth-brand">
-          <BrandLockup width={300} className="auth-lockup" />
-          <h1 className="auth-tagline">One more step.</h1>
-          <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
-            Verifying your email keeps your account recoverable and unlocks selling.
-          </p>
-        </div>
-        <div className="auth-form">
-          <div className="auth-card" data-testid="verify-sent">
-            <div className="verify-sent-icon" aria-hidden="true">
-              <MailCheck size={30} />
-            </div>
-            <h2 style={{ marginTop: 12 }}>Check your email</h2>
-            <p className="muted">
-              We sent a verification link to <b>{sentTo}</b>. Open it to confirm this
-              address is yours.
-            </p>
-            <p className="muted" style={{ fontSize: 13 }}>
-              Nothing yet? It can take a minute — and it is worth checking your spam
-              folder.
-            </p>
-
-            {resendNote && (
-              <div className="field-note mb-8" data-testid="verify-sent-note">{resendNote}</div>
-            )}
-
-            <Btn
-              variant="primary"
-              className="btn-block btn-lg"
-              disabled={resending}
-              data-testid="verify-sent-resend"
-              onClick={async () => {
-                setResending(true);
-                setResendNote('');
-                try {
-                  const { resendVerificationEmail } = await import('../lib/firebase');
-                  setResendNote(
-                    (await resendVerificationEmail())
-                      ? 'Sent again — check your inbox.'
-                      : 'Please sign in again to resend.'
-                  );
-                } catch (err) {
-                  const { friendlyAuthError } = await import('../lib/firebase');
-                  setResendNote(friendlyAuthError(err));
-                } finally {
-                  setResending(false);
-                }
-              }}
-            >
-              {resending ? 'Sending…' : 'Resend the email'}
-            </Btn>
-
-            <Btn
-              className="btn-block mt-8"
-              data-testid="verify-sent-continue"
-              onClick={() => navigate('/')}
-            >
-              Continue to ScottsTechX
-            </Btn>
-
-            <p className="muted mt-16" style={{ textAlign: 'center', fontSize: 13 }}>
-              You are signed in already. We will keep reminding you until the address
-              is verified.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   return (

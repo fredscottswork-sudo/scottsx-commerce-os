@@ -28,7 +28,7 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 2b | Firebase Authentication (local JWKS, no egress) | 39 | passing |
 | 3 | Android ⇆ backend contract | 98 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 572 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 581 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
@@ -38,7 +38,7 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**1,128 checks.** Every suite cleans up after itself; the database returns to 7
+**1,137 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -125,6 +125,7 @@ These were all found by running things, not by reading code:
 | Low stock was stated three times on the seller dashboard | Stat tile + warning banner + an "Inventory alerts" strip whose own comment called it a duplicate; the strip drew its heading even with nothing to show |
 | `ProductCard`'s wishlist heart sat on an opaque white disc, state in a local `var` | The discs were the circles making the grid look messy, the heart appeared on sellers' own products, and taps never reached the backend |
 | An unreachable backend made the cart render "Your cart is empty" | `Promise.allSettled` swallowed the failure, so a buyer whose basket was safe on the server was told it had been emptied — the worst possible moment to lose trust |
+| Sign-up logged you in and reduced verification to a dismissible banner | An address that had never been proven got a working account — exactly what "no fake emails" was meant to prevent. Verification is now a route gate: every private page redirects to `/verify-email` until the address is confirmed |
 
 ---
 
