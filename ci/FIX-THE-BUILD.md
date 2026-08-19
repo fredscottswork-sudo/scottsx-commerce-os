@@ -1,141 +1,89 @@
-# Get the APK building — Codespace instructions
+# Fix the APK build — one command
 
-You are on `master` in a Codespace. Copy-paste these blocks in order.
+## What was actually wrong
 
-Every command below was executed against a real clone of `master` before being
-written here, so the output you see should match.
+The release build failed after ~46 seconds, every time, with **no error message**.
+The log always stopped at the same place:
 
----
+```
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+```
 
-## Step 1 — get the fix script
+…and then nothing. No `e:` line, no `FAILURE:` block.
 
-The script lives on the working branch, not on `master`. Pull just that one
-file across:
+The task that runs at exactly that point is **`:app:checkReleaseAarMetadata`**.
+
+**`compileSdk 35` requires Android Gradle Plugin 8.6.0 or newer. This project
+pinned AGP 8.5.2.**
+
+On 8.5.2, Gradle's configuration phase only *warns* about `compileSdk 35`
+(that warning is visible in the run #6 log) and keeps going. The build then
+hard-fails in the AAR metadata check, because the AndroidX libraries this app
+uses are compiled against API 35 and refuse any consumer on an AGP older than
+8.6.0. That check runs **before** Kotlin compiles — which is why no compiler
+error was ever printed, and why the earlier guesses (missing icons, duplicate
+imports, a non-exhaustive `when`) were all wrong. They were guesses at an
+invisible log; this one is pinned down by *where the log stops*.
+
+AGP 8.6.0 needs Gradle ≥ 8.7. The wrapper is already on `gradle-8.7-all`, so
+this is a **one-line change with no wrapper upgrade**.
+
+## Run this
+
+From a clone of the repo, on `master`:
 
 ```bash
 git fetch origin arena/01a01321-scottsx-commerce-os
-git checkout origin/arena/01a01321-scottsx-commerce-os -- ci/apply-workflow-fixes.sh
-```
-
-Nothing else from that branch comes with it.
-
----
-
-## Step 2 — run it
-
-```bash
+git show origin/arena/01a01321-scottsx-commerce-os:ci/apply-workflow-fixes.sh > ci/apply-workflow-fixes.sh
 bash ci/apply-workflow-fixes.sh
-```
-
-Expected output:
-
-```
-0. Fetching the corrected workflows from arena/01a01321-...
-1. Making the Gradle wrapper executable in Git
-   scottsx-android/gradlew -> 100755
-2. Installing the corrected workflows
-   .github/workflows/android-release.yml
-   .github/workflows/ci.yml
-3. Fixing the Kotlin compile errors
-   + RealAiChatScreen.kt: ChatTurn
-   + RealAiChatScreen.kt: ChatTurnBubble
-   + SellerAIAssistantScreen.kt: ChatTurn
-   + SellerAIAssistantScreen.kt: ChatTurnBubble
-   + SupportScreen.kt: Row
-4. Staging
-```
-
-Re-running it is safe — it reports `= already imports ...` and changes nothing.
-
----
-
-## Step 3 — commit and push
-
-```bash
-git commit -m "Fix CI: gradlew mode, release chmod, DATABASE_URL, missing Kotlin imports"
+git commit -m "Fix APK build: AGP 8.6.0 for compileSdk 35"
 git push
 ```
 
-If the push is rejected because the workflow files need extra permission, see
-**"If the push is rejected"** at the bottom.
+Then: **Actions → "Android release APK" → Run workflow**.
 
----
+The APK appears in that run's **Artifacts**, as `scottsx-release-apk`.
+Without keystore secrets it is debug-signed — fine for installing and testing,
+not acceptable for the Play Store.
 
-## Step 4 — build the APK
+## Heads-up: the script used to install a stale workflow
 
-On GitHub: **Actions → "Android release APK" → Run workflow → Run workflow**.
+The previous version only fetched `ci/github-workflows/` when that folder was
+missing. `master` carries an *older* copy of `android-release.yml`, so the check
+passed, the fetch was skipped, and the outdated workflow was installed —
+throwing away the fixes. It now always fetches from the branch. This was found
+by running the script against a real `master` clone, not by reading it.
 
-When it finishes, the APK is at the bottom of the run page under **Artifacts**,
-named `scottsx-release-apk`. Download, unzip, install on your phone.
+## If it still fails, the error can no longer hide
 
-It is **debug-signed** because no keystore secret is configured. That installs
-and runs fine for testing; it cannot go to the Play Store. Signing needs
-`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
-`ANDROID_KEY_PASSWORD` as repository secrets.
+Log truncation is why three rounds were lost to guessing. The error is now
+captured three ways that cannot be truncated:
 
----
+1. **`build-log` artifact** — the complete Gradle log, downloadable from the run
+   page (uploaded even when the build fails).
+2. **Job Summary** — the error lines and the last 80 lines are written to the
+   run's summary page, which is never truncated.
+3. **End of the step log** — the tail is echoed last, so it survives at the
+   bottom.
 
-## If you already ran this and hit `exit code 127`
+Send me the **Summary page** text or the `build-log` artifact and the next fix
+is exact rather than inferred.
 
-`./tools/wiring-check.sh: No such file or directory` means you copied the
-workflow before the script knew to bring its tools along. Just re-run it:
+## Verified before shipping
 
-```bash
-git checkout origin/arena/01a01321-scottsx-commerce-os -- ci/apply-workflow-fixes.sh
-bash ci/apply-workflow-fixes.sh
-git commit -m "Fix CI: copy the test tools the workflows run"
-git push
-```
+- Script run against a fresh `master` clone: AGP `8.5.2 → 8.6.0`, correct
+  workflow installed (byte-identical to the fixed source), all 7 invoked tool
+  files present.
+- Run twice: idempotent, no double-edit.
+- Failure diagnostics tested against a simulated Gradle failure that buries the
+  real error under 500 lines of task output — the error still surfaced, and the
+  step still exited 1.
 
-Step **2b** now copies the seven files `master` was missing.
+## Not verified
 
----
-
-## What the script actually changes
-
-| Change | Why |
-|---|---|
-| `scottsx-android/gradlew` mode `100644` → `100755` | The cause of `./gradlew: Permission denied` (exit 126). Stored in Git, so it survives a fresh runner checkout. |
-| `chmod +x ./gradlew` added to `android-release.yml` | Belt and braces. The earlier fix on `master` added this to `ci.yml` (the *debug* build) — the release workflow never got it, which is why the error kept coming back. |
-| `API_BASE_URL` no longer required | The workflow used to hard-fail when the secret was unset. It now falls back to `https://scottstechx-api.onrender.com/api/v1` and logs a warning. |
-| `ci.yml` `DATABASE_URL` restored | The password had been replaced with a literal `***`, copied out of a masked log. That breaks the CI database. |
-| 7 test tools copied across | `master` never had `wiring-check.sh`, `layout-check.mjs`, `compose-contract-check.mjs`, `res-check.sh`, `firebase-auth.mjs`, `production-safety.mjs` or `generate-sitemap.mjs`. The workflow runs them, hence exit 127. |
-| 5 missing Kotlin imports | `ChatTurn` / `ChatTurnBubble` in `RealAiChatScreen` + `SellerAIAssistantScreen`, and `Row` in `SupportScreen`. |
-
-The 17 compile errors in the last run come from just those 5 imports. The
-`Not enough information to infer type variable T` and `@Composable invocations
-can only happen from...` messages are cascades — they clear on their own once
-the imports resolve.
-
----
-
-## If the push is rejected
-
-Some tokens cannot write `.github/workflows/`. If that happens:
-
-```bash
-git reset --soft HEAD~1
-git restore --staged .github
-git checkout -- .github
-git commit -m "Fix CI: gradlew mode and missing Kotlin imports"
-git push
-```
-
-(`git checkout -- .github` puts the workflow files back to master's committed
-versions. Do **not** `rm -rf .github` — those files are tracked on `master`,
-and deleting them would commit their removal.)
-
-That pushes the Kotlin and `gradlew` fixes, which alone clear both the
-permission error and the compile errors. Then edit
-`.github/workflows/android-release.yml` in the GitHub web UI and add
-`chmod +x ./gradlew && ` in front of `./gradlew --no-daemon assembleRelease`.
-
----
-
-## If the next run shows new compile errors
-
-Likely, and not a setback. The Kotlin compiler stops after the first batch of
-failing files, so a second wave can appear behind the first.
-
-Paste the new `e: ...` lines into the chat. They can now be checked against a
-real Kotlin 1.9.24 compiler rather than by inspection.
+A full APK cannot be built in my sandbox: `maven.google.com`, `dl.google.com`
+and `services.gradle.org` are all blocked, so the Compose/AndroidX artifacts
+can't be downloaded. I confirmed the AGP/`compileSdk` requirement from Google's
+own compatibility matrix and matched it to the exact task where your build
+stops. If a *different* error appears after this, it will now be legible.
