@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,6 +41,24 @@ import java.text.DecimalFormat
 fun formatUgx(amount: Long): String {
     val formatted = DecimalFormat("#,###").format(amount)
     return "UGX $formatted"
+}
+
+/**
+ * Compact money for dashboard tiles: 45,000,000 -> "45.0M", 320,500 -> "320.5K".
+ *
+ * A seller's revenue is a full UGX figure. Printed in full it is up to 13
+ * characters, and four of those side by side overflow a 360dp phone — which is
+ * exactly what the stats row used to do.
+ */
+fun formatUgxCompact(amount: Long): String {
+    val a = kotlin.math.abs(amount)
+    val sign = if (amount < 0) "-" else ""
+    return when {
+        a >= 1_000_000_000L -> sign + DecimalFormat("#,##0.0").format(a / 1_000_000_000.0) + "B"
+        a >= 1_000_000L -> sign + DecimalFormat("#,##0.0").format(a / 1_000_000.0) + "M"
+        a >= 10_000L -> sign + DecimalFormat("#,##0.0").format(a / 1_000.0) + "K"
+        else -> sign + DecimalFormat("#,###").format(a)
+    }
 }
 
 /** Full price with strikethrough old price, e.g. for detail screens. */
@@ -154,7 +173,10 @@ fun ListDivider() {
 
 /** Quick reply chip used by AI screens and the thread composer. */
 @Composable
-fun QuickChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+// onClick is LAST so `QuickChip("hi") { … }` binds the trailing lambda to it.
+// With modifier last, the lambda bound to `modifier` instead and the compiler
+// reported "No value passed for parameter 'onClick'".
+fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
         color = ScottsTechXColors.BluePrimary.copy(alpha = 0.10f),
         shape = RoundedCornerShape(16.dp),
@@ -188,6 +210,12 @@ fun GradientHeader(
                 Brush.horizontalGradient(colors),
                 RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
             )
+            // Deliberate order: background() FIRST, then the insets. A
+            // padding modifier only shrinks what comes after it, so painting
+            // first lets the gradient fill the status-bar strip while the
+            // title below is inset. Swapping these two lines would leave a
+            // bare band above the gradient. Do not "tidy" this.
+            .statusBarSpacer()
             .padding(horizontal = 16.dp, vertical = 18.dp),
     ) {
         Column {
@@ -196,12 +224,18 @@ fun GradientHeader(
                     Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                     contentDescription = "Back",
                     tint = Color.White,
+                    // Modifier order is evaluation order, innermost last.
+                    // The old chain ended .padding(6.dp).size(36.dp), so the
+                    // GLYPH was 36dp and the padding grew the disc to 48dp —
+                    // an oversized circle with an oversized arrow in it. Now
+                    // the disc is a fixed 40dp touch target and the padding
+                    // insets the glyph to 24dp inside it.
                     modifier = Modifier
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .clickable(onClick = onBack)
-                        .padding(6.dp)
-                        .size(36.dp),
+                        .padding(8.dp),
                 )
                 Spacer(Modifier.height(6.dp))
             }

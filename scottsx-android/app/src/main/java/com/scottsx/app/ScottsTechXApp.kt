@@ -46,7 +46,7 @@ class ScottsTechXApp : Application(), ImageLoaderFactory {
             .okHttpClient(okHttp)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizeBytes(maxMemory / 4)
+                    .maxSizeBytes((maxMemory / 4).toInt())
                     .build()
             }
             .diskCache {
