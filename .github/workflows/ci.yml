@@ -7,6 +7,11 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      apiBaseUrl:
+        description: 'API base URL to bake into the test APK (must end /api/v1). Blank uses the built-in default.'
+        required: false
+        type: string
 
 jobs:
   backend-and-web:
@@ -29,7 +34,7 @@ jobs:
     env:
       # Points the backend at the service container above, so the embedded
       # Postgres (a local-dev-only convenience) is never started in CI.
-      DATABASE_URL: postgresql://app:***@127.0.0.1:5433/scottstechx
+      DATABASE_URL: postgresql://app:app@127.0.0.1:5433/scottstechx
       JWT_SECRET: ci-test-secret-not-used-in-production
       PORT: '3001'
 
@@ -68,6 +73,11 @@ jobs:
 
       - name: Start the API
         working-directory: 12_Backend
+        env:
+          # Verification emails link to <PUBLIC_WEB_URL>/verify-email?token=...
+          # Set it so the suites exercise the configured path rather than the
+          # built-in fallback origin.
+          PUBLIC_WEB_URL: http://127.0.0.1:5173
         run: |
           node dist/server.js > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
@@ -78,6 +88,17 @@ jobs:
           done
           echo "API failed to start"; cat /tmp/api.log; exit 1
 
+      - name: Regenerate the sitemap against the live API
+        working-directory: web
+        # The web build runs before the API is up, so the sitemap it produced
+        # contains only the static routes. Regenerate now that /products is
+        # answering, so CI exercises the full path (products, storefronts, CMS)
+        # rather than only the offline fallback.
+        env:
+          VITE_API_URL: http://127.0.0.1:3001
+          SITE_URL: http://127.0.0.1:5173
+        run: node scripts/generate-sitemap.mjs
+
       - name: Backend end-to-end suite
         working-directory: 12_Backend
         run: node tests/e2e.mjs
@@ -85,6 +106,14 @@ jobs:
       - name: Google Sign-In suite
         working-directory: 12_Backend
         run: node tests/google-auth.mjs
+
+      - name: Firebase Authentication suite (local JWKS, no egress)
+        working-directory: 12_Backend
+        run: node tests/firebase-auth.mjs
+
+      - name: Production-mode safety suite
+        working-directory: 12_Backend
+        run: node tests/production-safety.mjs
 
       - name: Android/backend contract suite
         working-directory: 12_Backend
@@ -112,18 +141,52 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Make gradlew executable
+      - name: Android wiring check
         working-directory: scottsx-android
-        run: chmod +x gradlew
+        # Fails fast on the mistakes Gradle would only catch minutes later:
+        # a call to a V2Client method that does not exist, an undefined route,
+        # or a screen nobody can navigate to.
+        run: ./tools/wiring-check.sh
+
+      - name: Android layout check (edge-to-edge insets, overflow, artwork)
+        working-directory: scottsx-android
+        # Catches the class of bug that made the app render under the status
+        # bar and off the right edge of a 360dp phone.
+        run: node ./tools/layout-check.mjs
+
+      - name: Compose API contract check
+        working-directory: scottsx-android
+        # The syntax gate runs without the Android SDK and cannot resolve
+        # androidx symbols, so it cannot catch a misuse of a real API such as
+        # reading a @Composable getter from a plain function. This can.
+        run: node ./tools/compose-contract-check.mjs
 
       - name: Build debug APK
         working-directory: scottsx-android
         # The app talks to whatever API_BASE_URL is baked in at build time.
-        # Override with a real host for a shippable build (see the release job).
-        run: ./gradlew --no-daemon assembleDebug
+        # Supply one when dispatching this workflow to test against a live
+        # backend; otherwise the app-level default is used.
+        env:
+          INPUT_URL: ${{ inputs.apiBaseUrl }}
+          SECRET_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          chmod +x ./gradlew
+          URL="${INPUT_URL:-$SECRET_URL}"
+          if [ -n "$URL" ]; then
+            case "$URL" in
+              */api/v1) ;;
+              *) echo "::error::API base URL must end with /api/v1 (got: $URL)"; exit 1 ;;
+            esac
+            echo "Building the test APK against $URL"
+            ./gradlew --no-daemon assembleDebug -PapiBaseUrl="$URL"
+          else
+            echo "::notice::No API base URL supplied — using the built-in default (emulator loopback)."
+            ./gradlew --no-daemon assembleDebug
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: scottsx-debug-apk
+          name: scottsx-test-apk
           path: scottsx-android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 30
