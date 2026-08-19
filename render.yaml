@@ -62,9 +62,14 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
-      # Canonical public address of the WEB app (not this API). /sitemap.xml
-      # needs it to emit absolute <loc> URLs and returns 503 without it, rather
-      # than advertising links to a guessed domain.
+      # Canonical public address of the WEB app (not this API).
+      #
+      # REQUIRED for email verification links: the verification email links to
+      # <PUBLIC_WEB_URL>/verify-email?token=... and without this the server can
+      # only fall back to emailing a six-digit code.
+      #
+      # /sitemap.xml also needs it to emit absolute <loc> URLs, and returns 503
+      # without it rather than advertising links to a guessed domain.
       #
       # This is prompted for on first sync instead of being wired with
       # fromService: Render's fromService only exposes host/port/hostport for

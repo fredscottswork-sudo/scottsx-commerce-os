@@ -1969,6 +1969,86 @@ section('33. An unverified account cannot reach the app');
     gate.consoleErrors[0]);
   gate.close();
 
+  // ── Verification by LINK ──────────────────────────────────────────────────
+  // This is the flow the product is supposed to use, and the one that was
+  // reported broken: the user only ever saw a six-digit code.
+  //
+  // The hard part is that the link is normally opened on a DIFFERENT device
+  // from the one that signed up, so it must work with no session at all.
+  // Passing session = null below is exactly that case.
+  {
+    const email = `uilink_${Date.now()}@scottstechx.test`;
+    const reg = await apiFetch('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email, password: 'Link123!', displayName: 'UI Link Tester', role: 'buyer',
+      }),
+    });
+    check('a link-test account can be created', reg.status === 201, `got ${reg.status}`);
+
+    const devLink = reg.body?.verification?.devLink;
+    check('registration hands back a clickable verification link',
+      typeof devLink === 'string' && devLink.includes('/verify-email?token='),
+      JSON.stringify(reg.body?.verification));
+
+    if (devLink) {
+      const route = devLink.slice(devLink.indexOf('/verify-email'));
+
+      // No session: a fresh browser opening the email.
+      const clicked = await mount(route, null, { settleMs: 2600 });
+      const text = clicked.text() || '';
+      check('clicking the link with no session does not bounce to login',
+        !/Welcome back|Sign in to your account/i.test(text) &&
+        clicked.window.location.pathname !== '/login',
+        `landed on ${clicked.window.location.pathname}`);
+      check('the link verifies and lands the user inside the app',
+        clicked.window.location.pathname === '/buyer' || /Email verified/i.test(text),
+        `path ${clicked.window.location.pathname} — ${text.slice(0, 120)}`);
+      check('the bearer token is stripped from the address bar',
+        !clicked.window.location.search.includes('token='),
+        clicked.window.location.search);
+      check('no runtime errors while redeeming the link',
+        clicked.consoleErrors.length === 0, clicked.consoleErrors[0]);
+      clicked.close();
+
+      // A spent link must explain itself rather than silently doing nothing.
+      const reused = await mount(route, null, { settleMs: 2600 });
+      const reusedText = reused.text() || '';
+      check('a link that has already been used says so',
+        /no longer valid|did not work|expired/i.test(reusedText),
+        reusedText.slice(0, 160));
+      reused.close();
+    }
+
+    // Clean up: this account is real.
+    const admin = await login('admin@scottstechx.ug', 'Admin123!');
+    const who = await apiFetch(`/admin/users?search=${encodeURIComponent(email)}`, {
+      headers: { authorization: `Bearer ${admin.token}` },
+    });
+    const found = (who.body?.users || []).find((u) => u.email === email);
+    if (found) {
+      await apiFetch(`/admin/users/${found.id}`, {
+        method: 'DELETE', headers: { authorization: `Bearer ${admin.token}` },
+      });
+    }
+  }
+
+  // The gate must lead with the link, not the code. Presenting both as equal
+  // choices is what made the code look like the intended path.
+  {
+    const g = await mount('/verify-email', unverified, { settleMs: 1700 });
+    const gtext = g.text() || '';
+    check('the gate tells the user to open the link',
+      /verification link|open it|click the link/i.test(gtext), gtext.slice(0, 160));
+    check('the code entry is tucked behind a fallback disclosure',
+      !!g.$('[data-testid="verify-page-code-fallback"]'));
+    const summary = g.$('[data-testid="verify-page-code-fallback"] summary');
+    check('the fallback is labelled as a fallback',
+      !!summary && /link not working/i.test(summary.textContent || ''),
+      summary?.textContent);
+    g.close();
+  }
+
   // A verified user must never be trapped on it.
   const verified = { token: buyer.token, user: { ...buyer.user, emailVerified: true } };
   const skip = await mount('/verify-email', verified, { settleMs: 1700 });
@@ -2049,6 +2129,69 @@ section('33. An unverified account cannot reach the app');
 }
 
 // ── 34. The API base URL is resolved, never left empty in production ────────
+// ── 33b. The sitemap is a real file, not the SPA shell ──────────────────────
+section('33b. Search engines get XML, not the app shell');
+{
+  // The reported bug: Google Search Console said "Sitemap is HTML".
+  //
+  // The API serves a database-driven /sitemap.xml, but that lives on the API
+  // origin. Google was pointed at the WEB origin, where no such file existed -
+  // so the SPA catch-all ("/*  /index.html  200") answered with the app shell.
+  // It returned 200, which made it look healthy while being useless.
+  //
+  // The fix is a real file in the build output, which takes precedence over
+  // the catch-all. These checks read dist/ directly, because that is what gets
+  // uploaded to the static host.
+  const sitemapPath = join(DIST, 'sitemap.xml');
+  const robotsPath = join(DIST, 'robots.txt');
+
+  check('the build produces a sitemap file', existsSync(sitemapPath));
+  check('the build produces a robots.txt', existsSync(robotsPath));
+
+  if (existsSync(sitemapPath)) {
+    const xml = readFileSync(sitemapPath, 'utf8');
+
+    // The exact failure Search Console reported.
+    check('the sitemap is NOT html',
+      !/^\s*<!doctype html/i.test(xml) && !/<html/i.test(xml), xml.slice(0, 80));
+    check('it declares itself as XML', /^<\?xml version="1\.0" encoding="UTF-8"\?>/.test(xml),
+      xml.slice(0, 40));
+    check('it uses the sitemaps.org namespace',
+      xml.includes('http://www.sitemaps.org/schemas/sitemap/0.9'));
+
+    const locs = [...xml.matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1]);
+    check('it lists URLs', locs.length > 0, `${locs.length}`);
+    check('every URL is absolute', locs.every((u) => /^https?:\/\//.test(u)),
+      locs.find((u) => !/^https?:\/\//.test(u)));
+    check('there are no duplicates', new Set(locs).size === locs.length);
+    check('no doubled slashes from a trailing-slash origin',
+      !locs.some((u) => u.replace(/^https?:\/\//, '').includes('//')));
+    check('the home page is listed', locs.some((u) => /\/$/.test(u)));
+
+    // A sitemap that advertises private pages wastes crawl budget and reports
+    // soft 404s once the crawler is bounced to /login.
+    check('no private routes are advertised',
+      !locs.some((u) => /\/(admin|cart|messages|notifications|verify-email)(\/|$|\?)/.test(u)),
+      locs.find((u) => /\/(admin|cart|messages|notifications|verify-email)/.test(u)));
+
+    // Unescaped & or < is the classic way a generated feed becomes invalid.
+    const stripped = xml.replace(/&(amp|lt|gt|quot|apos);/g, '');
+    check('special characters are escaped', !stripped.includes('&'),
+      stripped.slice(stripped.indexOf('&') - 40, stripped.indexOf('&') + 40));
+  }
+
+  if (existsSync(robotsPath)) {
+    const robots = readFileSync(robotsPath, 'utf8');
+    check('robots.txt is not html', !/<html/i.test(robots), robots.slice(0, 60));
+    check('robots.txt points crawlers at the sitemap',
+      /^Sitemap:\s*https?:\/\/\S+\/sitemap\.xml$/m.test(robots),
+      robots.slice(0, 200));
+    check('dashboards are disallowed', /Disallow:\s*\/admin/.test(robots));
+    check('the verification gate is disallowed', /Disallow:\s*\/verify-email/.test(robots));
+    check('the public catalogue is still allowed', /Allow:\s*\//.test(robots));
+  }
+}
+
 section('34. Deployed builds always know where the API is');
 {
   // The bug this locks down: with VITE_API_URL unset the bundle called the API

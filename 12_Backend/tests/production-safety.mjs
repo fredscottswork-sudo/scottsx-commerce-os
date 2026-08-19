@@ -339,6 +339,55 @@ console.log('\n\x1b[1m2d. A resent verification code replaces the old one\x1b[0m
   stop(srv);
 }
 
+// ── 2e. The verification LINK token is never leaked in production ───────────
+// The link token is a bearer credential: whoever holds it can verify that
+// address and receive a working session, without a password. It travels in a
+// URL, so it is longer-lived in logs and history than a typed code - which
+// makes leaking it in an API response strictly worse than leaking the code.
+//
+// devLink exists for mailerless local development, on exactly the same terms
+// as devCode. This proves the production gate covers the new field too: a
+// guard written for one secret does not automatically cover the next one added
+// beside it.
+console.log('\n\x1b[1m2e. Verification link tokens stay secret in production\x1b[0m');
+{
+  const srv = await boot({ SMTP_HOST: 'localhost', SMTP_USER: 'u', SMTP_PASS: 'p',
+    PUBLIC_WEB_URL: 'https://example.test' }, 'production/link');
+  const email = `prodlink_${stamp}@example.test`;
+  const reg = await call('/auth/register', {
+    method: 'POST',
+    body: { email, password: 'Link123!', displayName: 'Prod Link Probe' },
+  });
+  check('registration is accepted when a mailer is configured', reg.status === 201,
+    `got ${reg.status}`);
+  if (reg.data?.user?.id) created.push({ id: reg.data.user.id });
+
+  const v = reg.data?.verification ?? {};
+  check('the response does NOT contain the link', v.devLink === undefined, JSON.stringify(v));
+  check('the response does NOT contain the code', v.devCode === undefined, JSON.stringify(v));
+
+  // Nothing resembling a token or a verify URL anywhere in the payload.
+  const raw = JSON.stringify(reg.data ?? {});
+  check('no verification URL appears anywhere in the response',
+    !/verify-email\?token=/.test(raw), raw.slice(0, 160));
+  check('no 6-digit code appears anywhere in the response',
+    !/\b\d{6}\b/.test(raw), raw.slice(0, 160));
+
+  // The server should still report that a link WAS built and sent, because
+  // that is what the UI tells the user to go and click.
+  check('but it still reports that a link was sent', v.linkSent === true, JSON.stringify(v));
+
+  // A guessed token must not verify anyone.
+  const guess = await call('/auth/verify/link', {
+    method: 'POST', body: { token: 'Z'.repeat(43) },
+  });
+  check('a guessed link token is refused', guess.status >= 400, `got ${guess.status}`);
+  check('and the refusal returns no session',
+    guess.data?.token === undefined, JSON.stringify(guess.data));
+
+  stop(srv);
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 console.log('\n\x1b[1mCleanup\x1b[0m');
 {

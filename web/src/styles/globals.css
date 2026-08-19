@@ -1616,6 +1616,33 @@ tbody tr.row-click { cursor: pointer; }
 }
 .verify-page-form .btn { flex: none; }
 
+/* The code entry is a fallback behind a disclosure, so the link stays the
+   obvious path. Styled to read as a quiet secondary option, not a second
+   equally-weighted form. */
+.verify-page-fallback {
+  margin: 18px 0 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.verify-page-fallback > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  list-style: none;
+  padding: 4px 0;
+  transition: color .15s ease;
+}
+.verify-page-fallback > summary:hover { color: var(--text); }
+.verify-page-fallback > summary::-webkit-details-marker { display: none; }
+.verify-page-fallback > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform .15s ease;
+}
+.verify-page-fallback[open] > summary::before { transform: rotate(90deg); }
+.verify-page-fallback[open] > summary { margin-bottom: 12px; }
+
 .verify-rescue { margin-top: 18px; }
 .verify-rescue .verify-page-divider { margin-top: 0; }
 

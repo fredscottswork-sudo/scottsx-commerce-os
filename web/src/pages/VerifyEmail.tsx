@@ -18,17 +18,20 @@
  * worked is a poor experience when we can simply check.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MailCheck, RefreshCw, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { authService } from '../api/services';
-import { ApiError } from '../api/client';
+import { ApiError, tokenStore } from '../api/client';
 import { Btn, Input } from '../components/ui';
 import { BrandLockup } from '../components/BrandLogo';
 import GoogleButton from '../components/GoogleButton';
 import { useSeo } from '../hooks/useSeo';
-import { readDevCode, rememberDevCode, clearDevCode } from '../lib/devCode';
+import {
+  readDevCode, rememberDevCode, clearDevCode,
+  readDevLink, rememberDevLink, clearDevLink,
+} from '../lib/devCode';
 
 /** How often to ask Firebase whether the link has been clicked. */
 const POLL_MS = 4000;
@@ -37,6 +40,8 @@ export default function VerifyEmail() {
   useSeo({ title: 'Verify your email', noIndex: true });
 
   const { user, setUser, loginWithFirebase, logout } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkToken = searchParams.get('token');
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -47,9 +52,13 @@ export default function VerifyEmail() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [devCode, setDevCode] = useState('');
+  const [devLink, setDevLink] = useState('');
   const [undeliverable, setUndeliverable] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [done, setDone] = useState(false);
+  // Redeeming a ?token= from the email link, before anything else is shown.
+  const [redeeming, setRedeeming] = useState(false);
+  const [linkFailed, setLinkFailed] = useState('');
 
   // Guards the poll so a slow request cannot overlap the next tick, and so
   // nothing runs after the component is gone.
@@ -59,6 +68,7 @@ export default function VerifyEmail() {
   useEffect(() => {
     alive.current = true;
     setDevCode(readDevCode());
+    setDevLink(readDevLink());
     return () => {
       alive.current = false;
     };
@@ -67,6 +77,7 @@ export default function VerifyEmail() {
   const succeed = useCallback(
     (next?: { role?: string }) => {
       clearDevCode();
+      clearDevLink();
       setDone(true);
       toast('Email verified — welcome to ScottsTechX', 'success');
       const role = next?.role || user?.role;
@@ -79,6 +90,52 @@ export default function VerifyEmail() {
     },
     [navigate, toast, user?.role]
   );
+
+  /**
+   * Redeem a ?token= from the verification email.
+   *
+   * This is THE path the product is meant to use: click the link, done. It
+   * runs before any of the code-entry machinery and works with no session,
+   * because the link is usually opened in a different browser from the one
+   * that signed up. The server hands back a session with the confirmation, so
+   * the click lands the user inside the app rather than at a login form.
+   */
+  useEffect(() => {
+    if (!linkToken || redeeming || done) return;
+    let cancelled = false;
+    setRedeeming(true);
+    setLinkFailed('');
+
+    (async () => {
+      try {
+        const res = await authService.confirmVerificationLink(linkToken);
+        if (cancelled) return;
+        if (res?.token) tokenStore.set(res.token);
+        if (res?.user) setUser({ ...res.user, emailVerified: true });
+        // Drop the token from the address bar: it is a bearer credential and
+        // has no business sitting in history, or being re-sent on refresh.
+        setSearchParams({}, { replace: true });
+        succeed({ role: res?.user?.role });
+      } catch (err) {
+        if (cancelled) return;
+        setLinkFailed(
+          err instanceof ApiError
+            ? err.message
+            : 'That verification link could not be used. Request a new one below.'
+        );
+        setSearchParams({}, { replace: true });
+      } finally {
+        if (!cancelled) setRedeeming(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately keyed on the token alone: this must run exactly once per
+    // link, not again whenever an unrelated callback identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkToken]);
 
   /**
    * Ask Firebase whether the address is verified yet.
@@ -199,6 +256,10 @@ export default function VerifyEmail() {
         rememberDevCode(res.devCode);
         setDevCode(res.devCode);
       }
+      if (res.devLink) {
+        rememberDevLink(res.devLink);
+        setDevLink(res.devLink);
+      }
       // The server now reports what actually happened. Telling someone to check
       // an inbox that will never receive anything is worse than saying nothing.
       if (res.undeliverable) {
@@ -210,7 +271,13 @@ export default function VerifyEmail() {
             'your account.'
         );
       } else {
-        setNote(res.sent ? 'Sent — check your inbox.' : 'A new code was generated.');
+        setNote(
+          res.sent
+            ? 'Sent — check your inbox and click the link.'
+            : res.linkSent === false
+              ? 'A new code was generated.'
+              : 'A new link was generated.'
+        );
       }
     } catch (err) {
       // 429: the server is protecting its send quota — and the user's inbox.
@@ -227,7 +294,50 @@ export default function VerifyEmail() {
     }
   }, [setUser, succeed, user]);
 
-  if (!user) return null;
+  // A link opened on a device with no session: there is no user to render a
+  // page around, but there IS work to do. Show the progress of redeeming the
+  // token instead of a blank screen, and show the failure if it does not work
+  // - silently rendering nothing is how "the link is broken" gets reported.
+  if (!user) {
+    if (redeeming || (linkToken && !linkFailed)) {
+      return (
+        <div className="auth-wrap" data-testid="verify-email-page">
+          <div className="auth-form">
+            <div className="auth-card verify-done" data-testid="verify-link-working">
+              <div className="verify-sent-icon" aria-hidden="true">
+                <MailCheck size={30} />
+              </div>
+              <h2 style={{ marginTop: 12 }}>Confirming your email…</h2>
+              <p className="muted">One moment.</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    if (linkFailed) {
+      return (
+        <div className="auth-wrap" data-testid="verify-email-page">
+          <div className="auth-form">
+            <div className="auth-card" data-testid="verify-link-failed">
+              <div className="verify-sent-icon" aria-hidden="true">
+                <MailCheck size={30} />
+              </div>
+              <h2 style={{ marginTop: 12 }}>That link did not work</h2>
+              <p className="muted">{linkFailed}</p>
+              <Btn
+                variant="primary"
+                className="btn-block btn-lg"
+                onClick={() => navigate('/login', { replace: true })}
+              >
+                <span>Sign in to get a new link</span>
+              </Btn>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
 
   return (
     <div className="auth-wrap" data-testid="verify-email-page">
@@ -261,7 +371,23 @@ export default function VerifyEmail() {
                 continue by itself.
               </p>
 
-              {devCode ? (
+              {linkFailed && (
+                <div className="field-error mb-8" data-testid="verify-page-link-failed">
+                  {linkFailed}
+                </div>
+              )}
+
+              {devLink ? (
+                // No mail server on this deployment, so the link cannot be
+                // delivered. Show the real link rather than a bare code: the
+                // point is that clicking a link is the flow, and this keeps
+                // local development on the same path as production.
+                <div className="field-note mb-8" data-testid="verify-page-dev-link">
+                  Email delivery is not set up for this site yet, so the link could not be
+                  sent. Use it directly:{' '}
+                  <a href={devLink} data-testid="verify-page-dev-link-anchor">Confirm my email</a>
+                </div>
+              ) : devCode ? (
                 <div className="field-note mb-8" data-testid="verify-page-dev-code">
                   Email delivery is not set up for this site yet, so no link could be sent.
                   Use this code instead: <b>{devCode}</b>
@@ -283,7 +409,12 @@ export default function VerifyEmail() {
                 <span>{checking ? 'Checking…' : "I've clicked the link"}</span>
               </Btn>
 
-              <div className="verify-page-divider"><span>or enter the code</span></div>
+              {/* The link is the flow. A code is only useful when a mail
+                  client mangled the URL, so it is tucked away rather than
+                  presented as an equal choice - showing both side by side is
+                  what made the code feel like the real path. */}
+              <details className="verify-page-fallback" data-testid="verify-page-code-fallback">
+                <summary>Link not working? Enter a code instead</summary>
 
               <form
                 className="verify-page-form"
@@ -306,6 +437,7 @@ export default function VerifyEmail() {
                   {busy ? 'Checking…' : 'Verify'}
                 </Btn>
               </form>
+              </details>
 
               {note && <div className="field-note mt-8" data-testid="verify-page-note">{note}</div>}
               {error && (

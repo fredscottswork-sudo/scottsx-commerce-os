@@ -45,6 +45,18 @@ import AdminProducts from './pages/admin/AdminProducts';
 import AdminQueue from './pages/admin/AdminQueue';
 import AdminSupport from './pages/admin/AdminSupport';
 
+/**
+ * Is the visitor arriving from a verification link?
+ *
+ * Read straight off window.location rather than useSearchParams because this
+ * is evaluated while deciding which element to render, above the router's own
+ * param context.
+ */
+function hasVerificationToken(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).has('token');
+}
+
 function RequireRole({ role, children }: { role: 'buyer' | 'seller' | 'admin'; children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
@@ -109,12 +121,21 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={user ? <RedirectByRole /> : <Login />} />
         <Route path="/register" element={user ? <RedirectByRole /> : <Register />} />
-        {/* The verification gate. Signed-out visitors have nothing to verify;
-            already-verified users have no reason to be here. */}
+        {/* The verification gate.
+            A ?token= in the URL means the visitor is arriving from the link in
+            their email, and that MUST be honoured whatever the session says.
+            They routinely open it on a different device with no session at
+            all, and bouncing them to /login would throw the token away - the
+            link would appear broken through no fault of theirs. The page
+            redeems the token and signs them in itself.
+            Without a token the old rules apply: nothing to verify when signed
+            out, nothing to do here once verified. */}
         <Route
           path="/verify-email"
           element={
-            !user ? (
+            hasVerificationToken() ? (
+              <VerifyEmail />
+            ) : !user ? (
               <Navigate to="/login" replace />
             ) : user.emailVerified ? (
               <RedirectByRole />

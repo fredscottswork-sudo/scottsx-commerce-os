@@ -127,9 +127,13 @@ export default async function registerAuthRoute(app: FastifyInstance) {
       verification: {
         required: true,
         sent: issued.delivered,
+        // Whether the email actually contained a clickable link. False means
+        // PUBLIC_WEB_URL is unset and only a code could be sent.
+        linkSent: issued.linkSent,
         // Only present when no SMTP is configured (local/dev), so the flow can
-        // still be completed. With a real mailer this is undefined.
+        // still be completed. With a real mailer these are undefined.
         devCode: issued.devCode,
+        devLink: issued.devLink,
       },
     });
   });

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { rememberDevCode } from '../lib/devCode';
+import { rememberDevCode, rememberDevLink } from '../lib/devCode';
 import { authService } from '../api/services';
 import { forgetGoogleSession } from '../lib/google';
 import { tokenStore, userStore, onUnauthorized, onEmailUnverified, type StoredUser } from '../api/client';
@@ -111,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // With no SMTP configured the API hands back the code so the flow is
         // still completable; the banner reads it from sessionStorage.
         rememberDevCode(res.verification?.devCode);
+        rememberDevLink(res.verification?.devLink);
         return res.verification;
       } finally {
         setLoading(false);

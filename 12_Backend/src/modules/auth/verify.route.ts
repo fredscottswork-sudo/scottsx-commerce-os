@@ -19,10 +19,10 @@
  *     address they do not own by simply reading the API response.
  */
 import type { FastifyInstance } from 'fastify';
-import { createHash, randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
-import { requireAuth, markVerified } from '../../auth.js';
+import { requireAuth, markVerified, tokenForUser } from '../../auth.js';
 import { publicUser } from './login.route.js';
 import { ValidationError, TooManyRequestsError } from '../../errors.js';
 import { sendMail, mailConfigured, devCodesAllowed } from '../../mail.js';
@@ -54,6 +54,31 @@ const MAX_SENDS_PER_HOUR = Number(process.env.VERIFY_MAX_SENDS_PER_HOUR ?? 6);
 
 const hashCode = (code: string) => createHash('sha256').update(code).digest('hex');
 const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
+
+/**
+ * The link token is a bearer credential: whoever holds it can verify the
+ * address, without signing in. So it must be long enough that guessing is
+ * hopeless - 32 random bytes, base64url - rather than reusing the six-digit
+ * code, which is short on purpose so a human can retype it.
+ */
+const newLinkToken = () => randomBytes(32).toString('base64url');
+const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
+
+/**
+ * Where the verification link should point: the WEB app, not this API.
+ *
+ * The link has to land on a real page that can show success or failure and
+ * then move the user on. PUBLIC_WEB_URL is the same variable the sitemap uses
+ * for the canonical site origin.
+ *
+ * With nothing configured, fall back to the request's own origin so local
+ * development still produces a clickable link.
+ */
+function verifyLinkBase(): string | null {
+  const raw = process.env.PUBLIC_WEB_URL?.trim();
+  if (!raw) return null;
+  return raw.replace(/\/+$/, '');
+}
 
 /** Issue a code, email it, and return it only when there is no mailer. */
 export async function issueVerification(userId: string, email: string, displayName?: string) {
@@ -98,11 +123,23 @@ export async function issueVerification(userId: string, email: string, displayNa
     [userId]
   );
   const code = newCode();
+  const linkToken = newLinkToken();
   await pool.query(
-    `INSERT INTO email_verifications (user_id, code_hash, purpose, expires_at)
-     VALUES ($1, $2, 'signup', now() + ($3 || ' minutes')::interval)`,
-    [userId, hashCode(code), String(CODE_TTL_MIN)]
+    `INSERT INTO email_verifications (user_id, code_hash, token_hash, purpose, expires_at)
+     VALUES ($1, $2, $3, 'signup', now() + ($4 || ' minutes')::interval)`,
+    [userId, hashCode(code), hashToken(linkToken), String(CODE_TTL_MIN)]
   );
+
+  // The link is the primary path. It only works if we know the public site
+  // origin - a relative link in an email is meaningless.
+  const base = verifyLinkBase();
+  const link = base ? `${base}/verify-email?token=${encodeURIComponent(linkToken)}` : null;
+  if (!base) {
+    console.warn(
+      '[verify] PUBLIC_WEB_URL is not set, so the email cannot contain a ' +
+      'verification link. Set it to the public site origin.'
+    );
+  }
 
   // Delivery must never decide whether the account exists. A dead or slow
   // mail server would otherwise turn "sign up" into a 15-second hang or a 500
@@ -110,13 +147,26 @@ export async function issueVerification(userId: string, email: string, displayNa
   // send is best-effort, and the user can always ask for another code.
   let delivered = false;
   try {
-    const res = await sendMail(
-      email,
-      'Your ScottsTechX verification code',
-      `Hello${displayName ? ` ${displayName}` : ''},\n\n`
+    // Link first: that is what people expect and what the product requires.
+    // The code is kept only as a manual fallback for mail clients that mangle
+    // long URLs, and is omitted entirely when a link could be built.
+    const greeting = `Hello${displayName ? ` ${displayName}` : ''},\n\n`;
+    const body = link
+      ? greeting
+        + `Confirm your email address to finish setting up your ScottsTechX account:\n\n`
+        + `${link}\n\n`
+        + `This link expires in ${CODE_TTL_MIN} minutes and can only be used once.\n\n`
+        + `If the link does not open, copy it into your browser's address bar.\n\n`
+        + `If you did not create this account you can ignore this email.\n`
+      : greeting
         + `Your ScottsTechX verification code is ${code}\n`
         + `It expires in ${CODE_TTL_MIN} minutes.\n\n`
-        + `If you did not create this account you can ignore this email.\n`
+        + `If you did not create this account you can ignore this email.\n`;
+
+    const res = await sendMail(
+      email,
+      link ? 'Confirm your ScottsTechX email address' : 'Your ScottsTechX verification code',
+      body
     );
     delivered = res.delivered;
     if (!res.delivered && mailConfigured()) {
@@ -128,6 +178,12 @@ export async function issueVerification(userId: string, email: string, displayNa
 
   return {
     delivered,
+    // Whether a clickable link could actually be built. The UI needs to know:
+    // telling someone to "click the link in your email" when the server could
+    // not put one there is the same class of lie as claiming an email was sent.
+    linkSent: Boolean(link),
+    // Dev only, on the same terms as devCode - it is a bearer credential.
+    devLink: devCodesAllowed() ? link ?? undefined : undefined,
     // Never leak the code once a real mailer is wired up - and never in
     // production even without one. Handing the code to the caller would let
     // anyone verify an address they cannot read, which is exactly the "no fake
@@ -163,6 +219,69 @@ export async function registerVerifyRoutes(app: FastifyInstance) {
   });
 
   const confirmSchema = z.object({ code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code') });
+
+  // base64url of 32 bytes is 43 chars; allow a range so a future length change
+  // does not silently start rejecting valid links.
+  const linkSchema = z.object({
+    token: z.string().trim().min(20).max(200).regex(/^[A-Za-z0-9_-]+$/, 'Invalid verification link'),
+  });
+
+  /**
+   * Confirm by LINK.
+   *
+   * Deliberately NOT behind requireAuth. The user clicks this from their email
+   * client, quite possibly on a different device or a browser with no session,
+   * and demanding a login first would defeat the entire point of a link - it
+   * is the case where someone signed up on their phone and opens the mail on a
+   * laptop. The token itself is the proof: 32 random bytes that only reached
+   * the person who can read that inbox.
+   *
+   * Returns the same shape as the code path, plus a token so the browser that
+   * clicked can be signed straight in rather than bounced to a login form.
+   */
+  app.post('/api/v1/auth/verify/link', async (request) => {
+    const { token } = linkSchema.parse(request.body);
+
+    const { rows } = await pool.query(
+      `SELECT * FROM email_verifications
+        WHERE token_hash = $1 AND purpose = 'signup'
+        ORDER BY created_at DESC LIMIT 1`,
+      [hashToken(token)]
+    );
+    const rec = rows[0];
+
+    // One message for "no such token" and "already used" - distinguishing them
+    // tells an attacker probing tokens which guesses were once real.
+    if (!rec || rec.consumed_at) {
+      throw new ValidationError(
+        'This verification link is no longer valid. It may have already been ' +
+        'used or replaced by a newer one. Sign in to send a fresh link.'
+      );
+    }
+    if (new Date(rec.expires_at).getTime() < Date.now()) {
+      throw new ValidationError(
+        'This verification link has expired. Sign in to send a fresh one.'
+      );
+    }
+
+    await pool.query('UPDATE email_verifications SET consumed_at = now() WHERE id = $1', [rec.id]);
+    const upd = await pool.query(
+      'UPDATE users SET email_verified = true WHERE id = $1 RETURNING *',
+      [rec.user_id]
+    );
+    const user = upd.rows[0];
+    if (!user) throw new ValidationError('That account no longer exists.');
+
+    markVerified(user.id);
+
+    // Sign them in on the spot. They have just proved they control the
+    // address, and making them retype a password now is friction for nothing.
+    return {
+      verified: true,
+      token: await tokenForUser(user),
+      user: publicUser(user),
+    };
+  });
 
   app.post('/api/v1/auth/verify/confirm', { preHandler: requireAuth }, async (request) => {
     const { code } = confirmSchema.parse(request.body);

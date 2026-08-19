@@ -233,9 +233,23 @@ curl -X POST https://scottstechx-api.onrender.com/api/v1/auth/login \
 
    ```
    VITE_API_URL = https://scottstechx-api.onrender.com
+   SITE_URL     = https://scottstechx.pages.dev
    ```
 
    Note: **no** `/api/v1` on the end — the frontend appends it.
+
+   `SITE_URL` is this site's own public address, and it is what the build
+   writes into `dist/sitemap.xml` and `dist/robots.txt`. Set it to your custom
+   domain once you have one, because that is the origin Google should index —
+   a sitemap whose URLs point at a different host than the sitemap itself is
+   rejected. If it is omitted the build falls back to
+   `https://scottstechx.pages.dev`.
+
+   The sitemap is generated at build time (`scripts/generate-sitemap.mjs`) and
+   asks the API for the approved catalogue, so **redeploy the site after
+   approving a batch of products** to get them indexed. If the API is
+   unreachable during the build the sitemap is still emitted with the static
+   routes — it stays valid XML, just shorter.
 
    These are build-time values that get inlined into the JavaScript, so they
    are public. Never put a secret here. To change one you must redeploy.
@@ -454,6 +468,10 @@ GitHub Actions  -> APK artifact  (API_BASE_URL = Render URL + /api/v1)
 | Website loads, but every request fails | `VITE_API_URL` wrong, or it has `/api/v1` on the end (it must not). Rebuild after changing it. |
 | "Continue with Google" pops up, I pick my account, then nothing happens | The site cannot reach the API. `_redirects` sends every unmatched path to `index.html` with a **200**, so if `VITE_API_URL` is missing the API call returns the site's own HTML and the app has no session to store. The build now falls back to `https://scottstechx-api.onrender.com` and shows a real error instead of failing silently, but the proper fix is to set `VITE_API_URL` in Cloudflare and redeploy. Note the Render free tier sleeps after ~15 min idle, so the first request after a pause can take ~50s. |
 | Hard-refresh on a sub-page 404s | Missing SPA rewrite. `web/public/_redirects` is in the repo; confirm output directory is `dist`. |
+| Search Console: **"Sitemap is HTML"** | `/sitemap.xml` did not exist as a file on the static host, so the SPA catch-all in `_redirects` answered it with `index.html` at **200** — healthy-looking but useless. The build now writes a real `dist/sitemap.xml`, and a real file always beats the catch-all. If it comes back: confirm the build ran `scripts/generate-sitemap.mjs` (it is part of `npm run build`) and that you are fetching the **website** origin, not the API. |
+| Sitemap lists the wrong domain | `SITE_URL` was unset or stale at build time, so the URLs point at the fallback host. Google rejects a sitemap whose URLs live on another host. Set `SITE_URL` to the domain you submitted and redeploy. |
+| Verification email contains a code, not a link | `PUBLIC_WEB_URL` is not set on the **API** service. Without it the server cannot build `<PUBLIC_WEB_URL>/verify-email?token=…` and falls back to a six-digit code. Set it on Render and redeploy the API. |
+| Clicking the verification link says the link is invalid | Links are single-use and expire after 15 minutes; requesting a new one supersedes the old. Sign in and press **Resend email** for a fresh link. |
 | First request after idle takes 30 s | Render free tier cold start. Expected. |
 | APK installs but nothing loads | Built with the emulator default URL. Set `API_BASE_URL` and rebuild. |
 | Login says invalid credentials | `SEED_DATABASE=false` means no demo users exist. Use `ADMIN_EMAIL` / `ADMIN_PASSWORD`. |

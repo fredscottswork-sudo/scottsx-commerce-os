@@ -111,11 +111,20 @@ one Postgres, no Docker needed).
    PUBLIC_WEB_URL=https://<your-web-host>   # no trailing slash
    ```
 
-   `PUBLIC_WEB_URL` is the address of the **web app**, not this API. It is what
-   `/sitemap.xml` uses to build absolute URLs. Leave it unset and the sitemap
-   returns 503 rather than publishing links to a guessed domain; `robots.txt`
-   still works, it just omits the `Sitemap:` line. Set it to your custom domain
-   once you have one, since that is the origin Google should index.
+   `PUBLIC_WEB_URL` is the address of the **web app**, not this API. Two things
+   depend on it:
+
+   1. **Verification links.** The email says "confirm your address" and links to
+      `<PUBLIC_WEB_URL>/verify-email?token=…`. Without it the server cannot build
+      a link at all and falls back to emailing a six-digit code, which is not the
+      intended flow. If users report only ever seeing a code, this variable is
+      the first thing to check.
+   2. `/sitemap.xml` uses it to build absolute URLs. Leave it unset and the
+      sitemap returns 503 rather than publishing links to a guessed domain;
+      `robots.txt` still works, it just omits the `Sitemap:` line.
+
+   Set it to your custom domain once you have one, since that is the origin
+   Google should index and the domain users should see in their email.
 
    `PORT` is injected by Render and already respected by `src/server.ts`.
 

@@ -1004,7 +1004,12 @@ async function main() {
     const sitemap = await fetch(`${BASE}/sitemap.xml`);
     const body = await sitemap.text();
 
-    if (!process.env.PUBLIC_WEB_URL) {
+    // Which branch applies depends on the SERVER's environment, not this
+    // process's. Reading process.env here was wrong: the suite and the server
+    // are separate processes, so a server started with PUBLIC_WEB_URL set
+    // (which it must be for verification links to work) was being judged
+    // against the "not configured" rules. Ask the response what happened.
+    if (sitemap.status === 503) {
       // Absolute URLs are mandatory in a sitemap, so with no canonical host
       // configured the only correct behaviour is to refuse — publishing links
       // to a guessed domain is worse than publishing nothing.
@@ -1013,7 +1018,10 @@ async function main() {
       check('the refusal explains which variable to set',
         /PUBLIC_WEB_URL/.test(body), body.slice(0, 120));
     } else {
-      const origin = process.env.PUBLIC_WEB_URL.replace(/\/+$/, '');
+      // Derive the canonical origin from the sitemap itself rather than from
+      // this process's env, for the same reason.
+      const firstLoc = (body.match(/<loc>([^<]*)<\/loc>/) || [])[1] || '';
+      const origin = firstLoc.replace(/\/$/, '');
       check('the sitemap is served', sitemap.status === 200, `got ${sitemap.status}`);
       check('it is XML', (sitemap.headers.get('content-type') || '').includes('xml'),
         sitemap.headers.get('content-type'));
@@ -1707,6 +1715,74 @@ async function main() {
     state.verifyUserId = reg.data?.user?.id;
   }
 
+  // Verification by LINK is the flow the product is meant to use: click once,
+  // done. The code is only a fallback for mail clients that mangle URLs.
+  //
+  // The critical property is that the link works with NO session. People sign
+  // up on a phone and open the email on a laptop, so a link that only works in
+  // the originating browser is a link that appears broken to a large share of
+  // users.
+  group('Email can be verified by clicking the link');
+  {
+    const email = `link_${uniq}@test.ug`;
+    const reg = await call('/auth/register', {
+      method: 'POST',
+      body: { email, password: 'Link123!', displayName: 'Link User', role: 'buyer' },
+    });
+    check('registration succeeds', reg.status === 201, `got ${reg.status}`);
+    check('the account starts unverified', reg.data?.user?.emailVerified === false);
+
+    const v = reg.data?.verification ?? {};
+    check('the server reports that a link was sent', v.linkSent === true, JSON.stringify(v));
+
+    // devLink is only returned on a mailerless dev server, which is what the
+    // suite runs against; it stands in for reading the email.
+    const link = v.devLink;
+    check('a verification link is available to click', typeof link === 'string' && link.length > 0);
+
+    if (link) {
+      check('the link points at the web app\'s verify page', link.includes('/verify-email?token='),
+        link);
+      const tokenParam = new URL(link).searchParams.get('token');
+      check('the link carries a high-entropy token, not the 6-digit code',
+        typeof tokenParam === 'string' && tokenParam.length >= 32 && !/^\d{6}$/.test(tokenParam),
+        `len ${tokenParam?.length}`);
+
+      // The whole point: no Authorization header. A different device.
+      const clicked = await call('/auth/verify/link', {
+        method: 'POST', body: { token: tokenParam },
+      });
+      check('clicking the link verifies the address with no session',
+        clicked.status === 200 && clicked.data?.verified === true, `got ${clicked.status}`);
+      check('and the account comes back verified',
+        clicked.data?.user?.emailVerified === true);
+      check('the click also returns a session so the user lands signed in',
+        typeof clicked.data?.token === 'string' && clicked.data.token.length > 20);
+
+      // That session must be a real one, not a decoration.
+      const me = await call('/auth/me', { token: clicked.data?.token });
+      check('the returned session actually works',
+        me.status === 200 && me.data?.user?.email === email, `got ${me.status}`);
+
+      // A verification link is a bearer credential; replaying it must fail.
+      const replay = await call('/auth/verify/link', {
+        method: 'POST', body: { token: tokenParam },
+      });
+      check('the link cannot be used twice', replay.status >= 400, `got ${replay.status}`);
+
+      // An unknown token must not reveal whether it ever existed.
+      const bogus = await call('/auth/verify/link', {
+        method: 'POST', body: { token: 'A'.repeat(43) },
+      });
+      check('an unknown token is refused', bogus.status >= 400, `got ${bogus.status}`);
+      check('and is refused with the same message as a spent one',
+        bogus.data?.error === replay.data?.error,
+        `${bogus.data?.error} vs ${replay.data?.error}`);
+    }
+
+    state.linkUserId = reg.data?.user?.id;
+  }
+
   // The gate must live on the SERVER. A client-side redirect is a suggestion:
   // anyone with the token from sign-up can call the API directly. This group
   // exists because that hole was real — an unverified account created a live
@@ -1926,7 +2002,7 @@ async function main() {
 
     // Throwaway accounts this run registered are removed so repeated runs do
     // not silt up the users table. The seller/admin are permanent seed rows.
-    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId, state.leakUserId, state.rateUserId]
+    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId, state.leakUserId, state.rateUserId, state.linkUserId]
       .filter(Boolean);
     let purged = 0;
     for (const id of throwaway) {

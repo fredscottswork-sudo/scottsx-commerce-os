@@ -52,7 +52,14 @@ export const authService = {
       token: string;
       user: any;
       /** Accounts start unverified; a code is emailed on registration. */
-      verification?: { required: boolean; sent: boolean; devCode?: string };
+      verification?: {
+        required: boolean;
+        sent: boolean;
+        /** Whether the email actually contained a clickable link. */
+        linkSent?: boolean;
+        devCode?: string;
+        devLink?: string;
+      };
     }>('/auth/register', { method: 'POST', auth: false, body }),
   /** Re-send the six-digit email verification code. */
   requestVerification: () =>
@@ -61,12 +68,26 @@ export const authService = {
       sent: boolean;
       /** True when the server can neither email the code nor show it. */
       undeliverable?: boolean;
+      /** Whether the email actually contained a clickable link. */
+      linkSent?: boolean;
       devCode?: string;
+      devLink?: string;
     }>('/auth/verify/request', { method: 'POST' }),
   /** Confirm the six-digit code and mark the address verified. */
   confirmVerification: (code: string) =>
     api<{ verified: boolean; user: any }>(
       '/auth/verify/confirm', { method: 'POST', body: { code } }),
+  /**
+   * Confirm the address from a link the user clicked in their email.
+   *
+   * Sent without auth on purpose: the link is routinely opened on a different
+   * device from the one that signed up, where there is no session at all. The
+   * token in the URL is the proof, and the server returns a session so the
+   * click lands the user straight in the app.
+   */
+  confirmVerificationLink: (token: string) =>
+    api<{ verified: boolean; token: string; user: any }>(
+      '/auth/verify/link', { method: 'POST', auth: false, body: { token } }),
   me: () => api<{ user: any }>('/auth/me'),
   updateMe: (body: { displayName?: string; phone?: string; profilePhotoUrl?: string | null; city?: string }) =>
     api<{ user: any }>('/auth/me', { method: 'PATCH', body }),
