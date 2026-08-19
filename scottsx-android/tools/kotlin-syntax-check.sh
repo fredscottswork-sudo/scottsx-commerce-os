@@ -105,6 +105,17 @@ IGNORE="$IGNORE|expected type mismatch"
 # so the compiler cannot tell that suspend calls inside it are legal.
 IGNORE="$IGNORE|can only be called from a coroutine"
 IGNORE="$IGNORE|suspension functions can be called only within coroutine"
+# Kotlin 1.9.x words the same diagnostic differently. Without the exact string
+# the check drowns in ~80 false positives and stops being readable, which is
+# how a real error hides.
+IGNORE="$IGNORE|should be called only from a coroutine or another suspend function"
+# `_state.value = x` where _state is an unresolved MutableStateFlow.
+IGNORE="$IGNORE|variable expected"
+# `return` inside an inline lambda (Closeable.use) is legal, but okhttp is not
+# on the classpath so the compiler treats .use as a non-inline call.
+IGNORE="$IGNORE|.return. is not allowed here"
+IGNORE="$IGNORE|a .return. expression required in a function with a block body"
+IGNORE="$IGNORE|cannot infer a type for this parameter"
 # Opt-in diagnostics are raised against unresolved Compose/stdlib declarations.
 IGNORE="$IGNORE|this declaration needs opt-in"
 IGNORE="$IGNORE|this class can only be used with the compiler argument"

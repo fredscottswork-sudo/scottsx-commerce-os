@@ -111,3 +111,40 @@ tools/res-check.sh      # from scottsx-android/, ~0.2s
 ```
 
 It is gate 7 in `./verify.sh`.
+
+## Getting a JVM + kotlinc in a network-restricted sandbox
+
+Verified working. Only `registry.npmjs.org` and `github.com` were reachable;
+`dl.google.com`, `repo1.maven.org`, `services.gradle.org`, `api.adoptium.net`
+and GitHub *release assets* were all blocked, and `curl` had no egress at all
+(every request returned 000) while npm worked.
+
+Both pieces of the toolchain are published on npm, so they arrive over the one
+channel that works:
+
+```bash
+# JRE 17 (46 MB, self-contained - the tarball is inside the package)
+cd /tmp && npm pack @spcookie/erii-runtime-linux-x64
+tar xzf spcookie-erii-runtime-linux-x64-*.tgz
+mkdir -p ~/.local/jvm && tar xzf package/linux-x64.tar.gz -C ~/.local/jvm
+export JAVA_HOME=~/.local/jvm/jdk-17.0.19+10-jre
+export PATH="$JAVA_HOME/bin:$PATH"
+
+# Kotlin compiler, matching the project's Kotlin version exactly
+cd /tmp && npm pack kotlin-compiler@1.9.24
+tar xzf kotlin-compiler-1.9.24.tgz && chmod +x package/bin/kotlinc
+
+tools/kotlin-syntax-check.sh /tmp/package/bin/kotlinc
+```
+
+### What this does and does not give you
+
+It is a **JRE**, not a JDK: there is no `javac`, and `java --list-modules`
+shows `java.compiler` (the API) but not `jdk.compiler` (the implementation).
+That is fine for Kotlin, whose compiler ships as JARs and only needs a JVM to
+run, and it is enough to parse and partially analyse every source file.
+
+It is **not** enough to build an APK. That needs `android.jar` from the Android
+SDK plus the Compose/AndroidX artifacts from `dl.google.com` and Maven Central,
+all of which are unreachable. `./gradlew assembleRelease` must run in CI or on
+a developer machine.
