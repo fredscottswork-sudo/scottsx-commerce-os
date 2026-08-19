@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.sp
 import com.scottsx.app.ai.AiTools
 import com.scottsx.app.ui.components.ChatTurn
 import com.scottsx.app.ui.components.ChatTurnBubble
+import com.scottsx.app.ui.components.ChatTurn
+import com.scottsx.app.ui.components.ChatTurnBubble
 import com.scottsx.app.ui.components.GradientHeader
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
