@@ -211,8 +211,19 @@ object V2Client {
         null
     }
 
-    suspend fun signInWithFirebase(idToken: String): AuthResult? = try {
-        val r = call("/auth/firebase/sign-in", "POST", JSONObject().put("idToken", idToken), auth = false)
+    suspend fun signInWithFirebase(
+        idToken: String,
+        displayName: String = "",
+        phone: String = "",
+        role: String = "buyer",
+    ): AuthResult? = try {
+        // The profile fields are applied by the backend only when the row is
+        // first created, so re-sending them on a later sign-in is harmless.
+        val body = JSONObject().put("idToken", idToken)
+        if (displayName.isNotBlank()) body.put("displayName", displayName)
+        if (phone.isNotBlank()) body.put("phone", phone)
+        if (role == "seller") body.put("role", "seller")
+        val r = call("/auth/firebase/sign-in", "POST", body, auth = false)
         AuthResult(
             token = r.optString("token"),
             user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
