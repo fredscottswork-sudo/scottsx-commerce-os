@@ -165,6 +165,106 @@ console.log('\n\x1b[1m3. Imports exist for every symbol used\x1b[0m');
     missing.length === 0, missing.slice(0, 6).join(' | '));
 }
 
+{
+  // The check above relies on a hand-written list, and a list you have to
+  // remember to extend is a list that will be out of date. ChatTurn,
+  // ChatTurnBubble and Row were all missing from it, and all three reached CI
+  // as "Unresolved reference".
+  //
+  // So derive the symbols instead: every top-level declaration in
+  // ui/components is discovered automatically, and any file that uses one
+  // without importing it fails here.
+  const compDir = join(SRC, 'ui/components');
+  const declared = new Map();               // symbol -> fully-qualified import
+  for (const f of files.filter((x) => x.startsWith(compDir))) {
+    const src = readFileSync(f, 'utf8');
+    const pkg = (/^package\s+(\S+)/m.exec(src) || [])[1] || '';
+    for (const m of src.matchAll(
+      /^(?:internal\s+|public\s+)?(?:data\s+)?(?:class|object|enum class|fun)\s+([A-Za-z_]\w*)/gm
+    )) {
+      // Modifier.foo() style extensions are matched as "Modifier" - skip them.
+      if (m[1] === 'Modifier') continue;
+      declared.set(m[1], `${pkg}.${m[1]}`);
+    }
+  }
+
+  const missingAuto = [];
+  for (const f of files) {
+    if (f.startsWith(compDir)) continue;    // same package, no import needed
+    const src = readFileSync(f, 'utf8');
+    // Drop comments and string literals so prose mentions never count.
+    const body = src
+      .split('\n').filter((l) => !/^\s*import\s/.test(l)).join('\n')
+      .replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""');
+    for (const [sym, fq] of declared) {
+      // Used as a call, generic arg, or constructor - not as a property suffix.
+      if (!new RegExp(`(?<![\\w.])${sym}\\s*[(<]`).test(body)) continue;
+      if (src.includes(`import ${fq}`)) continue;
+      if (src.includes('import com.scottsx.app.ui.components.*')) continue;
+      if (new RegExp(`(?:fun|class|object|val|var)\\s+${sym}\\b`).test(body)) continue;
+      missingAuto.push(`${rel(f)}: ${sym}`);
+    }
+  }
+  ok_if(`every ui/components symbol used elsewhere is imported (${declared.size} discovered)`,
+    missingAuto.length === 0, [...new Set(missingAuto)].slice(0, 8).join(' | '));
+}
+
+{
+  // Same idea for the framework itself. SupportScreen.kt used Row without
+  // importing androidx.compose.foundation.layout.Row, which the compiler
+  // reported as "Unresolved reference: Row" plus two misleading
+  // "@Composable invocations can only happen from..." errors underneath it.
+  const FRAMEWORK = {
+    Row: 'androidx.compose.foundation.layout.Row',
+    Column: 'androidx.compose.foundation.layout.Column',
+    Box: 'androidx.compose.foundation.layout.Box',
+    Spacer: 'androidx.compose.foundation.layout.Spacer',
+    Arrangement: 'androidx.compose.foundation.layout.Arrangement',
+    LazyColumn: 'androidx.compose.foundation.lazy.LazyColumn',
+    LazyRow: 'androidx.compose.foundation.lazy.LazyRow',
+    Text: 'androidx.compose.material3.Text',
+    Surface: 'androidx.compose.material3.Surface',
+    Scaffold: 'androidx.compose.material3.Scaffold',
+    Icon: 'androidx.compose.material3.Icon',
+    IconButton: 'androidx.compose.material3.IconButton',
+    Button: 'androidx.compose.material3.Button',
+    TextButton: 'androidx.compose.material3.TextButton',
+    OutlinedTextField: 'androidx.compose.material3.OutlinedTextField',
+    Card: 'androidx.compose.material3.Card',
+    CircularProgressIndicator: 'androidx.compose.material3.CircularProgressIndicator',
+    MaterialTheme: 'androidx.compose.material3.MaterialTheme',
+    Switch: 'androidx.compose.material3.Switch',
+    AlertDialog: 'androidx.compose.material3.AlertDialog',
+    remember: 'androidx.compose.runtime.remember',
+    mutableStateOf: 'androidx.compose.runtime.mutableStateOf',
+    LaunchedEffect: 'androidx.compose.runtime.LaunchedEffect',
+    Alignment: 'androidx.compose.ui.Alignment',
+    Color: 'androidx.compose.ui.graphics.Color',
+    FontWeight: 'androidx.compose.ui.text.font.FontWeight',
+    TextAlign: 'androidx.compose.ui.text.style.TextAlign',
+    KeyboardType: 'androidx.compose.ui.text.input.KeyboardType',
+  };
+  const missingFw = [];
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    const body = src
+      .split('\n').filter((l) => !/^\s*import\s/.test(l)).join('\n')
+      .replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""');
+    for (const [sym, fq] of Object.entries(FRAMEWORK)) {
+      if (!new RegExp(`(?<![\\w.])${sym}\\s*[({<.]`).test(body)) continue;
+      if (src.includes(`import ${fq}`)) continue;
+      const pkg = fq.slice(0, fq.lastIndexOf('.'));
+      if (src.includes(`import ${pkg}.*`)) continue;
+      if (new RegExp(`(?:fun|class|object|val|var)\\s+${sym}\\b`).test(body)) continue;
+      missingFw.push(`${rel(f)}: ${sym}`);
+    }
+  }
+  ok_if('every Compose framework symbol used is imported',
+    missingFw.length === 0, [...new Set(missingFw)].slice(0, 8).join(' | '));
+}
+
 console.log('\n\x1b[1m4. No dangling references to removed APIs\x1b[0m');
 {
   const pc = readFileSync(join(SRC, 'ui/components/ProductCard.kt'), 'utf8');
