@@ -24,11 +24,33 @@ import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { requireAuth, markVerified } from '../../auth.js';
 import { publicUser } from './login.route.js';
-import { ValidationError } from '../../errors.js';
+import { ValidationError, TooManyRequestsError } from '../../errors.js';
 import { sendMail, mailConfigured, devCodesAllowed } from '../../mail.js';
 
 const CODE_TTL_MIN = 15;
 const MAX_ATTEMPTS = 6;
+
+/**
+ * Minimum gap between two verification emails for one account, and the cap on
+ * how many may be issued in an hour.
+ *
+ * Without these, /auth/verify/request is a mail cannon: one session could fire
+ * it in a loop, and every send costs someone something. On Firebase's free
+ * Spark plan the whole project gets 1,000 verification emails a day, so a
+ * single account could exhaust the quota for every real user in seconds. It is
+ * also an abuse vector pointed at the address itself - sign up as
+ * someone@example.com and hammer resend to flood their inbox.
+ *
+ * 60s is long enough to stop that and short enough that a genuine "it did not
+ * arrive" retry is not annoying.
+ */
+/**
+ * Overridable so tests can exercise the supersede-and-confirm path without
+ * sleeping a real minute. Production never sets these; the defaults are the
+ * product behaviour.
+ */
+const RESEND_COOLDOWN_SEC = Number(process.env.VERIFY_RESEND_COOLDOWN_SEC ?? 60);
+const MAX_SENDS_PER_HOUR = Number(process.env.VERIFY_MAX_SENDS_PER_HOUR ?? 6);
 
 const hashCode = (code: string) => createHash('sha256').update(code).digest('hex');
 const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -36,6 +58,39 @@ const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
 /** Issue a code, email it, and return it only when there is no mailer. */
 export async function issueVerification(userId: string, email: string, displayName?: string) {
   const pool = getPool();
+
+  // Rate limit BEFORE issuing anything. The window is measured against rows
+  // actually written, so it survives a restart - an in-memory counter would
+  // reset every deploy and on Render's free tier that is every 15 idle minutes.
+  const recent = await pool.query(
+    `SELECT
+       COUNT(*)::int AS hourly,
+       MAX(created_at) AS last_at
+     FROM email_verifications
+     WHERE user_id = $1 AND purpose = 'signup'
+       AND created_at > now() - interval '1 hour'`,
+    [userId]
+  );
+  const { hourly, last_at: lastAt } = recent.rows[0] ?? { hourly: 0, last_at: null };
+
+  if (lastAt) {
+    const waited = (Date.now() - new Date(lastAt).getTime()) / 1000;
+    if (waited < RESEND_COOLDOWN_SEC) {
+      const retryIn = Math.ceil(RESEND_COOLDOWN_SEC - waited);
+      throw new TooManyRequestsError(
+        `Please wait ${retryIn} second${retryIn === 1 ? '' : 's'} before requesting another code.`,
+        retryIn
+      );
+    }
+  }
+  if (hourly >= MAX_SENDS_PER_HOUR) {
+    throw new TooManyRequestsError(
+      'Too many verification emails requested. Please try again in an hour, ' +
+        'or continue with Google.',
+      3600
+    );
+  }
+
   // A new code supersedes any outstanding one.
   await pool.query(
     `UPDATE email_verifications SET consumed_at = now()

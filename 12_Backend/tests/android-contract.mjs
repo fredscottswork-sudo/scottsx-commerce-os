@@ -18,9 +18,12 @@ const buyer=await call('/auth/register',{method:'POST',body:{email:`andro_${s}@t
 const bt=buyer.data.token;
 // The API refuses unverified accounts on private routes, so the Android
 // fixture verifies itself the way the app's own user would.
+// Resends are rate limited, so use the code registration already returned -
+// which is exactly what the app does with its own signup response.
 {
-  const vr=await call('/auth/verify/request',{method:'POST',token:bt});
-  await call('/auth/verify/confirm',{method:'POST',token:bt,body:{code:vr.data?.devCode}});
+  const code=buyer.data?.verification?.devCode;
+  const cf=await call('/auth/verify/confirm',{method:'POST',token:bt,body:{code}});
+  if(cf.status!==200) throw new Error(`fixture could not verify buyer: ${cf.status} ${JSON.stringify(cf.data)}`);
 }
 const seller=await call('/auth/login',{method:'POST',body:{email:'techhub@scottstechx.ug',password:'Seller123!'}});
 const st=seller.data.token, sid=seller.data.user.id;

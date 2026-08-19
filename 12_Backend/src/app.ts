@@ -10,7 +10,15 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { ZodError } from 'zod';
-import { UnauthorizedError, ForbiddenError, NotFoundError, ConflictError, ServiceUnavailableError, ValidationError } from './errors.js';
+import {
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  ConflictError,
+  ServiceUnavailableError,
+  TooManyRequestsError,
+  ValidationError,
+} from './errors.js';
 
 import registerAuthRoute from './modules/auth/login.route.js';
 import registerFirebaseAuthRoute from './modules/auth/firebase-auth.route.js';
@@ -63,6 +71,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (err instanceof ForbiddenError) return reply.code(403).send({ error: err.message });
     if (err instanceof NotFoundError) return reply.code(404).send({ error: err.message });
     if (err instanceof ConflictError) return reply.code(409).send({ error: err.message });
+    if (err instanceof TooManyRequestsError) {
+      // Retry-After lets the client show a real countdown instead of guessing.
+      return reply
+        .code(429)
+        .header('Retry-After', String(err.retryAfterSec))
+        .send({ error: err.message, retryAfterSec: err.retryAfterSec });
+    }
     if (err instanceof ServiceUnavailableError) return reply.code(503).send({ error: err.message });
     request.log.error(err);
     return reply.code(500).send({ error: err instanceof Error ? err.message : 'Internal server error' });

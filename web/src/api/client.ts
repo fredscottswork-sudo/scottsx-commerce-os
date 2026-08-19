@@ -57,10 +57,13 @@ const USER_KEY = 'stx_user';
 export class ApiError extends Error {
   status: number;
   issues?: unknown[];
-  constructor(status: number, message: string, issues?: unknown[]) {
+  /** Seconds to wait, when the server sent a 429 with Retry-After. */
+  retryAfterSec?: number;
+  constructor(status: number, message: string, issues?: unknown[], retryAfterSec?: number) {
     super(message);
     this.status = status;
     this.issues = issues;
+    this.retryAfterSec = retryAfterSec;
   }
 }
 
@@ -206,7 +209,12 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
       (data && (data.error as string)) ||
       (data && data.message as string) ||
       `Request failed (${res.status})`;
-    throw new ApiError(res.status, message, data?.issues);
+    throw new ApiError(
+      res.status,
+      message,
+      data?.issues,
+      typeof data?.retryAfterSec === 'number' ? data.retryAfterSec : undefined
+    );
   }
   rewriteMedia(data);
   return data as T;

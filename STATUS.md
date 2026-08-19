@@ -24,12 +24,12 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 
 | # | Gate | Checks | Status |
 |---|------|--------|--------|
-| 1 | Backend end-to-end | 363 | passing |
+| 1 | Backend end-to-end | 380 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 2b | Firebase Authentication (local JWKS, no egress) | 39 | passing |
-| 2c | Production-mode safety (NODE_ENV=production, no mailer) | 26 | passing |
+| 2c | Production-mode safety (NODE_ENV=production, no mailer) | 40 | passing |
 | 3 | Android ⇆ backend contract | 100 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 589 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 591 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
@@ -39,7 +39,7 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**1,200 checks.** Every suite cleans up after itself; the database returns to 7
+**1,233 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -116,6 +116,7 @@ These were all found by running things, not by reading code:
 | Android had no cart; "Buy now" called a 503 payment route | **Buying anything on the phone was impossible** |
 | Notification small icon was the opaque logo PNG | Android draws small icons from **alpha only** — every push would have shown a solid white square |
 | Launch theme was `Material.Light` under a dark UI | White flash before the first frame; invisible status-bar icons |
+| `/auth/verify/request` had no rate limit | 20 rapid resends were **all** accepted. Firebase's free tier allows 1,000 verification emails per **day for the whole project**, so one account could exhaust it for every user — and the same endpoint could flood any stranger's inbox |
 | Launcher icon was a 1.77 MB nodpi PNG, no adaptive icon | Oversized in the APK; no themed/adaptive icon on API 26+ |
 | Web shipped a placeholder "S" tile and an inline-SVG favicon | Web and app did not share a brand |
 | A price above int4 committed the INSERT, then 500'd on the read-back cast | Seller saw "integer out of range" while the product **silently existed** — and the raw Postgres message leaked to the client |

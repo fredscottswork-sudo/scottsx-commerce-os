@@ -102,9 +102,10 @@ async function main() {
     // the role checks below honest, since an unverified 403 would otherwise
     // masquerade as a role 403.
     {
-      const vr = await call('/auth/verify/request', { method: 'POST', token: state.buyerToken });
       const vc = await call('/auth/verify/confirm', {
-        method: 'POST', token: state.buyerToken, body: { code: vr.data?.devCode },
+        method: 'POST',
+        token: state.buyerToken,
+        body: { code: buyer.data?.verification?.devCode },
       });
       check('test buyer verifies its address', vc.status === 200, `got ${vc.status}`);
     }
@@ -1128,9 +1129,10 @@ async function main() {
     // for being unverified would hide whether the thread is actually private,
     // which is the one thing they exist to prove.
     {
-      const vr = await call('/auth/verify/request', { method: 'POST', token: outsider.data?.token });
       await call('/auth/verify/confirm', {
-        method: 'POST', token: outsider.data?.token, body: { code: vr.data?.devCode },
+        method: 'POST',
+        token: outsider.data?.token,
+        body: { code: outsider.data?.verification?.devCode },
       });
     }
     const peek = await call(`/conversations/${state.convId}/messages`, { token: outsider.data?.token });
@@ -1664,22 +1666,35 @@ async function main() {
     check('unverified accounts cannot open a store', gate.status >= 400, `got ${gate.status}`);
 
     // Re-requesting supersedes the old code, so the original must stop working.
+    // Resends are rate limited, so this only runs when the server was started
+    // with a short cooldown (verify.sh does that); otherwise the 429 IS the
+    // correct answer and is asserted as such.
     const resent = await call('/auth/verify/request', { method: 'POST', token });
-    check('a new code can be requested', resent.status === 200);
-    const fresh = resent.data?.devCode;
-    check('the resent code is different', /^\d{6}$/.test(String(fresh)));
+    check('a resend is either issued or correctly throttled',
+      resent.status === 200 || resent.status === 429, `got ${resent.status}`);
 
-    const stale = await call('/auth/verify/confirm', { method: 'POST', token, body: { code } });
-    check('the superseded code no longer works', stale.status >= 400, `got ${stale.status}`);
+    let confirmCode = code;
+    if (resent.status === 200) {
+      const fresh = resent.data?.devCode;
+      check('the resent code is different', /^\d{6}$/.test(String(fresh)) && fresh !== code);
 
-    const ok = await call('/auth/verify/confirm', { method: 'POST', token, body: { code: fresh } });
+      const stale = await call('/auth/verify/confirm', { method: 'POST', token, body: { code } });
+      check('the superseded code no longer works', stale.status >= 400, `got ${stale.status}`);
+      confirmCode = fresh;
+    }
+
+    const ok = await call('/auth/verify/confirm', {
+      method: 'POST', token, body: { code: confirmCode },
+    });
     check('the current code verifies the address', ok.status === 200 && ok.data?.verified === true,
       `got ${ok.status}`);
 
     const me = await call('/auth/me', { token });
     check('the account reads back as verified', me.data?.user?.emailVerified === true);
 
-    const twice = await call('/auth/verify/confirm', { method: 'POST', token, body: { code: fresh } });
+    const twice = await call('/auth/verify/confirm', {
+      method: 'POST', token, body: { code: confirmCode },
+    });
     check('a spent code cannot be replayed', twice.status >= 400, `got ${twice.status}`);
 
     const already = await call('/auth/verify/request', { method: 'POST', token });
@@ -1734,15 +1749,21 @@ async function main() {
 
     // …but the routes needed to BECOME verified, or to see who you are, stay
     // open. Otherwise the account is bricked.
+    // Allowlisted, but rate limited: right after registration the cooldown is
+    // active, so the honest assertion is that it is not BLOCKED BY THE GATE -
+    // a 403 here would mean verification is unreachable, which is the bug.
     const req = await call('/auth/verify/request', { method: 'POST', token });
-    check('unverified: /auth/verify/request stays open', req.status === 200, `got ${req.status}`);
+    check('unverified: /auth/verify/request is not gated (200 or 429, never 403)',
+      req.status === 200 || req.status === 429, `got ${req.status}`);
     const who = await call('/auth/me', { token });
     check('unverified: /auth/me stays open', who.status === 200, `got ${who.status}`);
 
     // Verifying must take effect immediately, on the SAME token — a 24h JWT
     // minted at sign-up would otherwise keep the user locked out all day.
     const conf = await call('/auth/verify/confirm', {
-      method: 'POST', token, body: { code: req.data?.devCode },
+      method: 'POST',
+      token,
+      body: { code: req.data?.devCode ?? reg.data?.verification?.devCode },
     });
     check('the gate fixture verifies', conf.status === 200, `got ${conf.status}`);
 
@@ -1773,6 +1794,58 @@ async function main() {
   // which is precisely the "no fake emails" rule, defeated. This suite runs
   // in development mode, where that fallback is deliberately still allowed,
   // so what is asserted here is that the decision is explicit and visible.
+  // Every verification email costs something: Firebase's free tier allows
+  // 1,000 a DAY for the whole project, so an unthrottled resend endpoint lets
+  // one account exhaust it for everybody. It is also an abuse vector aimed at
+  // the address itself - sign up as someone@example.com, hammer resend, flood
+  // their inbox.
+  // Every verification email costs something: Firebase's free tier allows
+  // 1,000 a DAY for the whole project, so an unthrottled resend endpoint lets
+  // one account exhaust it for everybody. It is also an abuse vector aimed at
+  // the address itself - sign up as someone@example.com, hammer resend, flood
+  // their inbox.
+  //
+  // verify.sh runs this server with the cooldown disabled so the supersede
+  // path above can be tested, so the limit itself is asserted in
+  // tests/production-safety.mjs, which controls its own server. What is
+  // checked here is the part that must hold in EVERY configuration: asking
+  // repeatedly must never break the account or lose the code.
+  group('Repeated verification requests never strand an account');
+  {
+    const email = `rate_${uniq}@test.ug`;
+    const reg = await call('/auth/register', {
+      method: 'POST',
+      body: { email, password: 'Rate123!', displayName: 'Rate Probe' },
+    });
+    const token = reg.data?.token;
+    state.rateUserId = reg.data?.user?.id;
+    check('registration still succeeds', reg.status === 201, `got ${reg.status}`);
+
+    // Hammer it. Whatever the limit, the answers must be sane.
+    const codes = [];
+    for (let i = 0; i < 8; i++) {
+      const r = await call('/auth/verify/request', { method: 'POST', token });
+      check(`resend ${i + 1} answers 200 or 429, never 5xx`,
+        r.status === 200 || r.status === 429, `got ${r.status}`);
+      if (r.status === 429) {
+        check('a throttled answer says how long to wait',
+          typeof r.data?.retryAfterSec === 'number' && r.data.retryAfterSec > 0,
+          JSON.stringify(r.data));
+      }
+      if (r.data?.devCode) codes.push(r.data.devCode);
+    }
+
+    // The most recent code must still work: a resend storm must not lock
+    // someone out of their own account.
+    const usable = codes[codes.length - 1] ?? reg.data?.verification?.devCode;
+    const confirmed = await call('/auth/verify/confirm', {
+      method: 'POST', token, body: { code: usable },
+    });
+    check('the latest code still verifies after repeated requests',
+      confirmed.status === 200, `got ${confirmed.status}`);
+    check('and the account is now usable', (await call('/me/cart', { token })).status === 200);
+  }
+
   group('Verification codes are never handed out silently');
   {
     const email = `leak_${uniq}@test.ug`;
@@ -1853,7 +1926,7 @@ async function main() {
 
     // Throwaway accounts this run registered are removed so repeated runs do
     // not silt up the users table. The seller/admin are permanent seed rows.
-    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId, state.leakUserId]
+    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId, state.leakUserId, state.rateUserId]
       .filter(Boolean);
     let purged = 0;
     for (const id of throwaway) {

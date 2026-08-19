@@ -5,6 +5,9 @@
 #   ./verify.sh
 #
 # Requires the backend running on :3001 (cd 12_Backend && npm run dev).
+# Verification resends are rate limited in production; tests/production-safety.mjs
+# boots its own servers to cover both the limit and the supersede path, so this
+# server can run with either setting.
 #
 # The Kotlin checks are skipped unless a JDK + kotlinc are available; see
 # scottsx-android/tools/README.md for how to obtain them without root.

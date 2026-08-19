@@ -268,11 +268,10 @@ const buyer = reg.body;
 // reach any private route. Take the fixture through the real flow rather than
 // forging the flag — that way these tests exercise the path users take.
 {
-  const req = await apiFetch('/auth/verify/request', {
-    method: 'POST', headers: { authorization: `Bearer ${buyer.token}` },
-  });
-  const code = req.body?.devCode;
-  if (!code) { console.error('No verification code issued for the test buyer', req); process.exit(1); }
+  // Registration already issued a code and resends are rate limited, so use
+  // that one - the same thing the real signup screen does.
+  const code = reg.body?.verification?.devCode;
+  if (!code) { console.error('No verification code issued for the test buyer', reg); process.exit(1); }
   const conf = await apiFetch('/auth/verify/confirm', {
     method: 'POST',
     headers: { authorization: `Bearer ${buyer.token}` },
@@ -2039,6 +2038,14 @@ section('33. An unverified account cannot reach the app');
     /or verify instantly/i.test(bundleJs));
   check('with a note that the existing account is kept',
     /your account stays as it is/i.test(bundleJs));
+
+  // Resends are rate limited server-side. If the UI does not reflect that, the
+  // user just sees a button that silently stops working, so the countdown has
+  // to be visible and the button disabled while it runs.
+  check('a throttled resend shows a live countdown, not a dead button',
+    /Resend in \$\{|Resend in /.test(bundleJs));
+  check('the countdown is driven by the server\'s own retry window',
+    /retryAfterSec/.test(bundleJs));
 }
 
 // ── 34. The API base URL is resolved, never left empty in production ────────

@@ -185,7 +185,12 @@ console.log('\n\x1b[1m2b. A pre-existing unverified account is told the truth\x1
     reg.status === 201 && reg.data?.user?.emailVerified === false, `got ${reg.status}`);
   stop(optIn);
 
-  const srv = await boot({}, 'production/stranded');
+  // A real stranded account registered months ago, so its resend is not in a
+  // cooldown window. This one was created seconds ago purely to set the scene,
+  // so the cooldown is switched off here to keep that seeding artifact out of
+  // the way - what is under test is what the server SAYS about delivery. The
+  // rate limit itself is tested at its production defaults in 2c.
+  const srv = await boot({ VERIFY_RESEND_COOLDOWN_SEC: '0' }, 'production/stranded');
 
   // It is gated, as it should be.
   check('the stranded account is gated',
@@ -227,6 +232,110 @@ console.log('\n\x1b[1m3. ALLOW_DEV_VERIFICATION_CODES is an explicit opt-in\x1b[
     /^\d{6}$/.test(String(reg.data?.verification?.devCode)),
     String(reg.data?.verification?.devCode));
 
+  stop(srv);
+}
+
+// ── 2c. Verification emails are rate limited ────────────────────────────────
+// Firebase's free tier sends 1,000 verification emails per DAY for the entire
+// project. An unthrottled resend endpoint means a single account can burn the
+// whole day's quota, and every other user silently stops receiving mail. The
+// same endpoint is also a way to flood a stranger's inbox: sign up with their
+// address and hold down resend.
+//
+// This suite boots its own server, so the limit is tested at its real
+// production defaults - no cooldown override.
+console.log('\n\x1b[1m2c. Verification emails are rate limited\x1b[0m');
+{
+  const srv = await boot({ ALLOW_DEV_VERIFICATION_CODES: 'true' }, 'rate limit');
+  const email = `ratelimit_${stamp}@example.test`;
+  const reg = await call('/auth/register', {
+    method: 'POST',
+    body: { email, password: 'Rate123!', displayName: 'Rate Limit Probe' },
+  });
+  check('the account registers', reg.status === 201, `got ${reg.status}`);
+  if (reg.data?.user?.id) created.push({ id: reg.data.user.id });
+  const token = reg.data?.token;
+
+  // Registration already sent one email. The immediate resend is the abuse.
+  const first = await call('/auth/verify/request', { method: 'POST', token });
+  check('an immediate resend is refused with 429', first.status === 429, `got ${first.status}`);
+  check('the refusal explains the wait in seconds',
+    typeof first.data?.retryAfterSec === 'number' && first.data.retryAfterSec > 0,
+    JSON.stringify(first.data));
+  check('the refusal is readable, not a raw error code',
+    typeof first.data?.error === 'string' && /wait/i.test(first.data.error),
+    JSON.stringify(first.data?.error));
+  check('a throttled resend does not leak a code', !('devCode' in (first.data ?? {})));
+
+  // The real damage is volume, so prove the flood is actually stopped.
+  let accepted = 0;
+  let limited = 0;
+  for (let i = 0; i < 15; i++) {
+    const r = await call('/auth/verify/request', { method: 'POST', token });
+    if (r.status === 200) accepted++;
+    else if (r.status === 429) limited++;
+  }
+  check('a 15-request flood sends no further emails', accepted === 0, `${accepted} accepted`);
+  check('every flood request was refused', limited === 15, `${limited}/15 limited`);
+
+  // Being throttled must not lock the user out of their own account: the code
+  // registration already issued has to keep working.
+  const confirmed = await call('/auth/verify/confirm', {
+    method: 'POST', token, body: { code: reg.data?.verification?.devCode },
+  });
+  check('the original code still verifies the account', confirmed.status === 200,
+    `got ${confirmed.status}`);
+
+  // And once verified, resending is answered politely rather than throttled.
+  const after = await call('/auth/verify/request', { method: 'POST', token });
+  check('a verified account is told it is already verified',
+    after.status === 200 && after.data?.alreadyVerified === true, `got ${after.status}`);
+
+  stop(srv);
+}
+
+// ── 2d. A resent code supersedes the one before it ──────────────────────────
+// If old codes stayed valid, every resend would widen the window an attacker
+// has to guess in, and a code read over someone's shoulder would never expire
+// by being replaced. e2e cannot rely on testing this (its server may be
+// running with production cooldowns, which throttle the second request), so it
+// is pinned here where the cooldown can be turned off deliberately.
+console.log('\n\x1b[1m2d. A resent verification code replaces the old one\x1b[0m');
+{
+  const srv = await boot(
+    { ALLOW_DEV_VERIFICATION_CODES: 'true', VERIFY_RESEND_COOLDOWN_SEC: '0' },
+    'supersede',
+  );
+  const reg = await call('/auth/register', {
+    method: 'POST',
+    body: {
+      email: `supersede_${stamp}@example.test`,
+      password: 'Super123!',
+      displayName: 'Supersede Probe',
+    },
+  });
+  if (reg.data?.user?.id) created.push({ id: reg.data.user.id });
+  const token = reg.data?.token;
+  const original = reg.data?.verification?.devCode;
+  check('the first code is issued', /^\d{6}$/.test(String(original)));
+
+  const resent = await call('/auth/verify/request', { method: 'POST', token });
+  const fresh = resent.data?.devCode;
+  check('a resend issues a different code',
+    resent.status === 200 && /^\d{6}$/.test(String(fresh)) && fresh !== original,
+    `got ${resent.status}`);
+
+  const stale = await call('/auth/verify/confirm', {
+    method: 'POST', token, body: { code: original },
+  });
+  check('the superseded code is rejected', stale.status >= 400, `got ${stale.status}`);
+
+  const ok = await call('/auth/verify/confirm', { method: 'POST', token, body: { code: fresh } });
+  check('the newest code verifies the account',
+    ok.status === 200 && ok.data?.verified === true, `got ${ok.status}`);
+
+  const replay = await call('/auth/verify/confirm', { method: 'POST', token, body: { code: fresh } });
+  check('a spent code cannot be replayed', replay.status >= 400, `got ${replay.status}`);
   stop(srv);
 }
 

@@ -48,6 +48,7 @@ export default function VerifyEmail() {
   const [note, setNote] = useState('');
   const [devCode, setDevCode] = useState('');
   const [undeliverable, setUndeliverable] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const [done, setDone] = useState(false);
 
   // Guards the poll so a slow request cannot overlap the next tick, and so
@@ -124,6 +125,13 @@ export default function VerifyEmail() {
     },
     [loginWithFirebase, setUser, succeed]
   );
+
+  // Tick the resend cooldown down so the button says when it will work again.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = window.setInterval(() => setCooldown((n) => (n > 0 ? n - 1 : 0)), 1000);
+    return () => window.clearInterval(id);
+  }, [cooldown]);
 
   // Poll while the page is open and the tab is visible. Firebase's link opens
   // elsewhere, so this is what makes the page notice on its own.
@@ -205,7 +213,15 @@ export default function VerifyEmail() {
         setNote(res.sent ? 'Sent — check your inbox.' : 'A new code was generated.');
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not send a new code.');
+      // 429: the server is protecting its send quota — and the user's inbox.
+      // Show the wait rather than an unexplained refusal.
+      if (err instanceof ApiError && err.status === 429) {
+        const wait = err.retryAfterSec ?? 60;
+        setCooldown(wait);
+        setError(err.message);
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not send a new code.');
+      }
     } finally {
       setResending(false);
     }
@@ -297,8 +313,16 @@ export default function VerifyEmail() {
               )}
 
               <div className="verify-page-actions">
-                <Btn onClick={resend} disabled={resending} data-testid="verify-page-resend">
-                  {resending ? 'Sending…' : 'Resend email'}
+                <Btn
+                  onClick={resend}
+                  disabled={resending || cooldown > 0}
+                  data-testid="verify-page-resend"
+                >
+                  {resending
+                    ? 'Sending…'
+                    : cooldown > 0
+                      ? `Resend in ${cooldown}s`
+                      : 'Resend email'}
                 </Btn>
                 {/* Signing out must stay reachable: a typo in the address would
                     otherwise strand someone on a page they can never pass. */}
