@@ -390,9 +390,20 @@ Register a throwaway account on the live site:
 
 - **Working** — a Firebase email arrives; after clicking the link and pressing
   "I've verified", the banner disappears.
-- **Not working** — the banner shows `No mail server configured — your code
-  is 123456`. That means neither Firebase nor SMTP is active, so the app fell
-  back to its own six-digit code. Re-check steps 1 and 2.
+- **Not working** — the banner shows *"Email delivery is not set up for this
+  site yet"* with a six-digit code. That means Firebase could not be used and
+  the app fell back to its own code. The registration page now names the cause
+  directly (for example *"Enable Email/Password in Firebase Console →
+  Authentication → Sign-in method"*), and the browser console logs
+  `[signup] Firebase unavailable, using fallback: <code>`.
+
+  The usual causes, in order of likelihood:
+
+  | What you see | Cause | Fix |
+  |---|---|---|
+  | `auth/operation-not-allowed` | **Email/Password is not enabled.** Enabling Google does *not* enable it — they are separate toggles. | Step 1 above |
+  | `auth/unauthorized-domain` | The site's domain is not authorised | Step 2 above |
+  | `auth/invalid-api-key` | Wrong or missing `VITE_FIREBASE_API_KEY` | Step 3 above |
 
 ---
 

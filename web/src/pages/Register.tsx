@@ -10,7 +10,29 @@ import { BrandLockup } from '../components/BrandLogo';
 import { useSeo } from '../hooks/useSeo';
 
 /** Signals "Firebase could not be used" so the catch can fall back. */
-class FirebaseFallback extends Error {}
+class FirebaseFallback extends Error {
+  constructor(public reason: string) {
+    super(reason);
+  }
+}
+
+/**
+ * Firebase codes that mean the project is not finished being set up. These get
+ * an explicit instruction rather than a vague apology, because the fix is a
+ * console toggle and only the site owner can do it.
+ */
+const SETUP_INCOMPLETE: Record<string, string> = {
+  'auth/operation-not-allowed':
+    'Email sign-up is not enabled for this site yet. Enable Email/Password in Firebase Console → Authentication → Sign-in method.',
+  'auth/configuration-not-found':
+    'Sign-in is not configured for this site yet. Open Firebase Console → Authentication and enable Email/Password.',
+  'auth/unauthorized-domain':
+    'This website is not authorised for sign-in yet. Add it in Firebase Console → Authentication → Settings → Authorised domains.',
+  'auth/invalid-api-key':
+    'The sign-in configuration for this site is invalid. Check VITE_FIREBASE_API_KEY.',
+  'auth/api-key-not-valid':
+    'The sign-in configuration for this site is invalid. Check VITE_FIREBASE_API_KEY.',
+};
 
 export default function Register() {
   useSeo({
@@ -39,6 +61,8 @@ export default function Register() {
     if (form.password !== form.confirm) return setError('Passwords do not match');
     setBusy(true);
     const email = form.email.trim();
+    /** Why Firebase was skipped, if it was. Shown with the fallback code. */
+    let fallbackReason = '';
     const profile = {
       displayName: form.displayName,
       phone: form.phone,
@@ -68,9 +92,14 @@ export default function Register() {
           setBusy(false);
           return;
         }
-        // Anything else (Firebase disabled, offline, SDK blocked) is an
-        // infrastructure problem, not the user's fault: fall back below.
-        throw new FirebaseFallback();
+        // Anything else is an infrastructure problem, not the user's fault.
+        // We still fall back so sign-up never becomes impossible — but we
+        // record WHY, because silently handing someone a six-digit code when
+        // they were promised an email link is indistinguishable from the
+        // feature being broken. It is the reason this bug went unnoticed.
+        // eslint-disable-next-line no-console
+        console.error('[signup] Firebase unavailable, using fallback:', code || fbErr);
+        throw new FirebaseFallback(code || (fbErr as Error)?.message || 'unknown');
       }
 
       await loginWithFirebase(idToken, profile);
@@ -83,6 +112,15 @@ export default function Register() {
         setBusy(false);
         return;
       }
+      // A misconfigured project is not a transient glitch: say exactly what to
+      // fix rather than quietly downgrading to the code and looking broken.
+      const setupMsg = SETUP_INCOMPLETE[err.reason];
+      if (setupMsg) {
+        setError(setupMsg);
+        setBusy(false);
+        return;
+      }
+      fallbackReason = err.reason;
     }
 
     // Fallback: our own account + six-digit code. Used when Firebase Auth is
@@ -96,7 +134,12 @@ export default function Register() {
         role: form.role as 'buyer' | 'seller',
         storeName: form.storeName,
       } as any);
-      toast('Account created', 'success');
+      toast(
+        fallbackReason
+          ? 'Account created — verify with the code shown on screen'
+          : 'Account created',
+        'success'
+      );
       navigate('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed');

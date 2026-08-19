@@ -27,7 +27,14 @@ export const FIREBASE_CONFIG = {
   storageBucket:
     (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string) || 'scottstechx-52bab.firebasestorage.app',
   messagingSenderId: (import.meta.env.VITE_FIREBASE_SENDER_ID as string) || '911393008938',
-  appId: (import.meta.env.VITE_FIREBASE_APP_ID as string) || '1:911393008938:web:scottstechx',
+  // appId is intentionally omitted unless supplied. Firebase Authentication
+  // does not need it, and a WRONG one is far worse than a missing one: an
+  // invented id does not fail at initializeApp(), it fails later on the first
+  // network call, which is much harder to attribute. Set VITE_FIREBASE_APP_ID
+  // to the real value from the console if you add Analytics.
+  ...(import.meta.env.VITE_FIREBASE_APP_ID
+    ? { appId: import.meta.env.VITE_FIREBASE_APP_ID as string }
+    : {}),
 };
 
 export class FirebaseUnavailableError extends Error {

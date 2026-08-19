@@ -154,8 +154,15 @@ export default function VerifyEmailBanner() {
         <div>
           <strong>Verify your email</strong>
           <p className="verify-banner-sub">
-            We sent a 6-digit code to <b>{user.email}</b>. Verify to sell, and to keep your
-            account recoverable.
+            {devCode ? (
+              <>Enter the code below to confirm <b>{user.email}</b>.</>
+            ) : (
+              <>
+                Open the verification link we emailed to <b>{user.email}</b>, then press
+                “I&rsquo;ve verified”.
+              </>
+            )}{' '}
+            Verifying keeps your account recoverable and unlocks selling.
           </p>
         </div>
       </div>
@@ -163,7 +170,7 @@ export default function VerifyEmailBanner() {
       {!open ? (
         <div className="verify-banner-actions">
           <Btn variant="primary" onClick={() => setOpen(true)} data-testid="verify-open">
-            Enter code
+            {devCode ? 'Enter code' : 'Enter a code instead'}
           </Btn>
           <Btn onClick={resend} disabled={resending} data-testid="verify-resend">
             {resending ? 'Sending…' : 'Resend'}
@@ -203,7 +210,8 @@ export default function VerifyEmailBanner() {
         // Shown only when the backend reports no SMTP configured; with a real
         // mailer the API never returns a code at all.
         <p className="verify-banner-dev" data-testid="verify-dev-code">
-          No mail server configured — your code is <b>{devCode}</b>
+          Email delivery is not set up for this site yet, so no link could be
+          sent. Use this code instead: <b>{devCode}</b>
         </p>
       )}
       {error && (

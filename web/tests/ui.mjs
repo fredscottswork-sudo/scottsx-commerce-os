@@ -2092,6 +2092,34 @@ section('38. Registration form renders and validates');
   app.close();
 }
 
+// ── 39. A Firebase misconfiguration is never silent ─────────────────────────
+section('39. Sign-up explains itself when Firebase cannot be used');
+{
+  // The bug: registration caught EVERY Firebase error and quietly fell back to
+  // the six-digit code. The user was promised an email link, got a code, and
+  // nothing said why — indistinguishable from the feature being broken.
+  check('an unusable project explains that Email/Password must be enabled',
+    /Email\/Password in Firebase Console|enable Email\/Password/i.test(bundleJs));
+  check('an unauthorised domain names the setting to change',
+    /Authorised domains/i.test(bundleJs));
+  check('the fallback reason is logged for diagnosis',
+    /Firebase unavailable, using fallback/.test(bundleJs));
+  check('the fallback tells the user a code was used instead of a link',
+    /verify with the code shown on screen/i.test(bundleJs));
+
+  // The banner must explain the code, not just print it.
+  check('a shown code explains that email delivery is not set up',
+    /Email delivery is not set up/i.test(bundleJs));
+  check('the banner tells link-users to press "I\'ve verified"',
+    /I&rsquo;ve verified|I’ve verified|I've verified/.test(bundleJs));
+
+  // A fabricated appId is what broke this. Real ones carry a hex suffix, so
+  // assert we never ship a hand-written placeholder again.
+  check('no invented Firebase appId is compiled in',
+    !/1:911393008938:web:scottstechx/.test(bundleJs),
+    'a placeholder appId is still in the bundle');
+}
+
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 section('Cleanup');
 {
