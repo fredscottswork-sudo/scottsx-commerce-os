@@ -2496,6 +2496,13 @@ console.log(`\n\x1b[1mResult: ${pass} passed, ${fail} failed\x1b[0m`);
 if (fail > 0) {
   console.log('\nFailures:');
   for (const f of failures) console.log(`  • ${f}`);
+  // Also emit them as a GitHub error annotation. CI log and artifact
+  // downloads are blocked from the environment this repo is worked on from,
+  // so the console output above is unreadable there; annotation text is not.
+  if (process.env.GITHUB_ACTIONS) {
+    const msg = failures.join('%0A').slice(0, 3500);
+    console.log(`::error title=WEB UI SUITE FAILURES::${msg}`);
+  }
   process.exit(1);
 }
 process.exit(0);
