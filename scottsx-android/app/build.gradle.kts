@@ -11,7 +11,20 @@ android {
 
     defaultConfig {
         applicationId = "com.scottsx.app"
-        minSdk = 30
+        // minSdk 24, not 30.
+        //
+        // "There was a problem parsing the package" is what an Android device
+        // shows when the APK's minSdk is HIGHER than the device's API level --
+        // the package parser rejects it before installing. Nothing in this app
+        // actually needs API 30: every version-sensitive call is already
+        // guarded (POST_NOTIFICATIONS behind API 33, notification channels
+        // behind API 26), and no java.time / java.nio.file API is used, so no
+        // desugaring is required.
+        //
+        // Floor imposed by the dependencies: Compose + Material3 need 21,
+        // firebase-bom 33.x needs 23. 24 clears all of them and covers
+        // Android 7.0 and up (~99% of active devices) instead of Android 11+.
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "0.22.1"

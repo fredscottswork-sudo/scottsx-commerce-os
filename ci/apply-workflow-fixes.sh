@@ -224,6 +224,30 @@ else
   echo "   ! missing: $G"
 fi
 
+say "3c. Lowering minSdk 30 -> 24 (the parse error)"
+# "There was a problem parsing the package" is what a phone shows when the
+# APK's minSdk is HIGHER than the device's Android version -- the package
+# parser rejects it before install. minSdk 30 means Android 11+ only.
+#
+# Nothing in this app needs API 30: every version-sensitive call is already
+# guarded (notification channels behind API 26, POST_NOTIFICATIONS behind
+# API 33) and no java.time / java.nio.file API is used, so no desugaring is
+# needed. Dependency floor is 23 (firebase-bom 33.x), so 24 is safe and
+# covers Android 7.0+.
+G=scottsx-android/app/build.gradle.kts
+if [ -f "$G" ]; then
+  if grep -q "minSdk = 24" "$G"; then
+    echo "   already minSdk 24 - nothing to do"
+  elif grep -q "minSdk = 30" "$G"; then
+    sed -i.bak "s/minSdk = 30/minSdk = 24/" "$G" && rm -f "$G.bak"
+    echo "   minSdk 30 -> 24 (now installs on Android 7.0+)"
+  else
+    echo "   ! unexpected minSdk; check by hand:"; grep -n "minSdk" "$G" || true
+  fi
+else
+  echo "   ! missing: $G"
+fi
+
 say "4. Staging"
 git add -A scottsx-android 12_Backend/tests web/scripts
 [ -n "$WF_SRC" ] && git add .github/workflows/android-release.yml .github/workflows/ci.yml
