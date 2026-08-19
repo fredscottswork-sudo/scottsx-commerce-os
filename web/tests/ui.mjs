@@ -1959,8 +1959,10 @@ section('33. An unverified account cannot reach the app');
     (gate.text() || '').includes(buyer.user.email));
   check('the gate offers the "I clicked the link" check',
     !!gate.$('[data-testid="verify-page-check"]'));
-  check('the gate accepts a six-digit code too',
-    !!gate.$('[data-testid="verify-page-code"]'));
+  // Verification is link-only. A code box the site cannot act on is a dead
+  // end, so its ABSENCE is the requirement now.
+  check('the gate offers no six-digit code entry',
+    !gate.$('[data-testid="verify-page-code"]'));
   check('the gate can resend', !!gate.$('[data-testid="verify-page-resend"]'));
   // Without this a typo in the address strands the user forever.
   check('the gate offers a way out (sign out)',
@@ -2040,12 +2042,12 @@ section('33. An unverified account cannot reach the app');
     const gtext = g.text() || '';
     check('the gate tells the user to open the link',
       /verification link|open it|click the link/i.test(gtext), gtext.slice(0, 160));
-    check('the code entry is tucked behind a fallback disclosure',
-      !!g.$('[data-testid="verify-page-code-fallback"]'));
-    const summary = g.$('[data-testid="verify-page-code-fallback"] summary');
-    check('the fallback is labelled as a fallback',
-      !!summary && /link not working/i.test(summary.textContent || ''),
-      summary?.textContent);
+    check('there is no code-entry fallback anywhere on the gate',
+      !g.$('[data-testid="verify-page-code-fallback"]') &&
+      !g.$('[data-testid="verify-page-code"]') &&
+      !g.$('[data-testid="verify-page-submit"]'));
+    check('and the page never invites the user to type a code',
+      !/enter (the |a )?(6|six)[- ]digit|enter a code/i.test(gtext), gtext.slice(0, 200));
     g.close();
   }
 
@@ -2269,9 +2271,9 @@ section('36. Google sign-in falls back when Firebase is unavailable');
 // ── 37. Email/password sign-up goes through Firebase ────────────────────────
 section('37. Sign-up sends a real verification link');
 {
-  // Registration now creates the account in Firebase, which emails the
-  // verification link. The six-digit code remains only as a fallback for when
-  // Firebase Auth is unavailable, so sign-up can never become impossible.
+  // Registration creates the account in Firebase, which emails the
+  // verification link. Our own backend also emails a link, so verification is
+  // link-only end to end - the website has no code entry at all.
   const allJs = readdirSync(join(DIST, 'assets'))
     .filter((f) => f.endsWith('.js'))
     .map((f) => readFileSync(join(DIST, 'assets', f), 'utf8'))
@@ -2283,8 +2285,10 @@ section('37. Sign-up sends a real verification link');
     /sendEmailVerification/.test(allJs));
   check('an address already in Firebase is reported, not silently duplicated',
     /already exists with that email/i.test(bundleJs));
-  check('the six-digit code survives as a fallback',
-    /verify\/confirm/.test(bundleJs));
+  check('the site redeems verification links',
+    /verify\/link/.test(bundleJs));
+  check('the site ships no six-digit code entry',
+    !/one-time-code/.test(bundleJs) && !/6-digit verification code/.test(bundleJs));
 
   // The confirmation screen must actually tell the user to go and check.
   check('there is a dedicated verification page',
@@ -2337,11 +2341,11 @@ section('39. Sign-up explains itself when Firebase cannot be used');
     /Authorised domains/i.test(bundleJs));
   check('the fallback reason is logged for diagnosis',
     /Firebase unavailable, using fallback/.test(bundleJs));
-  check('the fallback tells the user a code was used instead of a link',
-    /verify with the code shown on screen/i.test(bundleJs));
+  check('the fallback still promises a link, because that is what it sends',
+    /check your email for the verification link/i.test(bundleJs));
 
-  // The gate must explain the code, not just print it.
-  check('a shown code explains that email delivery is not set up',
+  // A mailerless deployment must still hand over a working LINK, not a code.
+  check('an undeliverable link is explained rather than swapped for a code',
     /Email delivery is not set up/i.test(bundleJs));
   check('the gate tells link-users to confirm once they have clicked',
     /I&rsquo;ve clicked the link|I’ve clicked the link|I've clicked the link/.test(bundleJs));

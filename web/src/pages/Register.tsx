@@ -57,8 +57,6 @@ export default function Register() {
     if (form.password !== form.confirm) return setError('Passwords do not match');
     setBusy(true);
     const email = form.email.trim();
-    /** Why Firebase was skipped, if it was. Shown with the fallback code. */
-    let fallbackReason = '';
     const profile = {
       displayName: form.displayName,
       phone: form.phone,
@@ -116,11 +114,11 @@ export default function Register() {
         setBusy(false);
         return;
       }
-      fallbackReason = err.reason;
     }
 
-    // Fallback: our own account + six-digit code. Used when Firebase Auth is
-    // unavailable, so sign-up never becomes impossible.
+    // Fallback: our own account, verified by our own emailed link. Used when
+    // Firebase Auth is unavailable, so sign-up never becomes impossible - and
+    // the user still gets a link, not a code.
     try {
       await register({
         email,
@@ -130,12 +128,8 @@ export default function Register() {
         role: form.role as 'buyer' | 'seller',
         storeName: form.storeName,
       } as any);
-      toast(
-        fallbackReason
-          ? 'Account created — verify with the code shown on screen'
-          : 'Account created — verify your email to continue',
-        'success'
-      );
+      // Both paths email a link now, so the message is the same either way.
+      toast('Account created — check your email for the verification link', 'success');
       // The fallback path is unverified too, so it goes through the same gate.
       navigate('/verify-email', { replace: true });
     } catch (err) {

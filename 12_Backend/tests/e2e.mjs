@@ -1780,6 +1780,25 @@ async function main() {
         `${bogus.data?.error} vs ${replay.data?.error}`);
     }
 
+    // Link-ONLY: the requirement is not merely that a link exists, but that a
+    // code is never offered as an alternative. A code the website cannot
+    // accept is a dead end dressed up as a choice.
+    check('the server always reports a link, never a code-only send',
+      reg.data?.verification?.linkSent === true,
+      JSON.stringify(reg.data?.verification));
+
+    // A resend on an ALREADY-verified account correctly short-circuits, so the
+    // resend-is-a-link case is covered on the fresh account created below.
+    const fresh = await call('/auth/register', {
+      method: 'POST',
+      body: { email: `link2_${uniq}@test.ug`, password: 'Link123!', displayName: 'Link Two' },
+    });
+    state.link2UserId = fresh.data?.user?.id;
+    const again = await call('/auth/verify/request', { method: 'POST', token: fresh.data?.token });
+    check('a resend is a link too (or is correctly throttled)',
+      again.status === 429 || again.data?.linkSent === true,
+      `${again.status} ${JSON.stringify(again.data)}`);
+
     state.linkUserId = reg.data?.user?.id;
   }
 
@@ -2002,7 +2021,7 @@ async function main() {
 
     // Throwaway accounts this run registered are removed so repeated runs do
     // not silt up the users table. The seller/admin are permanent seed rows.
-    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId, state.leakUserId, state.rateUserId, state.linkUserId]
+    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId, state.leakUserId, state.rateUserId, state.linkUserId, state.link2UserId]
       .filter(Boolean);
     let purged = 0;
     for (const id of throwaway) {

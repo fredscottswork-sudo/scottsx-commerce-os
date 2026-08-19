@@ -24,12 +24,12 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 
 | # | Gate | Checks | Status |
 |---|------|--------|--------|
-| 1 | Backend end-to-end | 400 | passing |
+| 1 | Backend end-to-end | 402 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 2b | Firebase Authentication (local JWKS, no egress) | 39 | passing |
 | 2c | Production-mode safety (NODE_ENV=production, no mailer) | 48 | passing |
 | 3 | Android ⇆ backend contract | 100 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 618 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 619 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
@@ -39,7 +39,7 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**1,288 checks.** Every suite cleans up after itself; the database returns to 7
+**1,291 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -117,6 +117,8 @@ These were all found by running things, not by reading code:
 | Notification small icon was the opaque logo PNG | Android draws small icons from **alpha only** — every push would have shown a solid white square |
 | Launch theme was `Material.Light` under a dark UI | White flash before the first frame; invisible status-bar icons |
 | `/sitemap.xml` did not exist on the web host | The SPA catch-all answered it with `index.html` at **200**, so Google Search Console reported "Sitemap is HTML". A 200 made it look healthy while indexing nothing |
+| The website still offered a six-digit code box | Verification is link-only by requirement. The code entry has been removed from the site entirely, and the email no longer prints a code |
+| A missing `PUBLIC_WEB_URL` silently degraded the email to a code | One unset variable turned link verification back into the thing it replaced. The server now always emits a link, warning loudly and falling back to the deployed origin |
 | Verification was code-only in practice | The email sent a six-digit code to retype. A link is what users expect, and the one place it was attempted (Firebase) was unavailable on this deployment |
 | The `/verify-email` route bounced signed-out visitors to `/login` | A link is normally opened on a **different device** from the one that signed up. The redirect discarded the token, so the link looked broken to exactly the people it was for |
 | `/auth/verify/request` had no rate limit | 20 rapid resends were **all** accepted. Firebase's free tier allows 1,000 verification emails per **day for the whole project**, so one account could exhaust it for every user — and the same endpoint could flood any stranger's inbox |

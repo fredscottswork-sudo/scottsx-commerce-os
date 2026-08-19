@@ -8,9 +8,10 @@
  * redirects here until the address is proven, which is the whole point: an
  * address that cannot receive mail must not become a working account.
  *
- * Both proofs are accepted, because two sign-up paths exist:
- *   - the Firebase link  (normal path — user clicks it in their inbox)
- *   - a six-digit code   (fallback when Firebase Auth is unavailable)
+ * Verification is by LINK only. The user clicks the link in their email and
+ * lands here with a ?token=, which this page redeems. There is deliberately no
+ * six-digit code entry: a code the site cannot accept is a dead end, and
+ * offering both made the code look like the intended path.
  *
  * The page polls while it is open. Firebase's link opens in the mail client,
  * not this tab, so nothing would otherwise tell the app it was clicked — and
@@ -24,14 +25,11 @@ import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { authService } from '../api/services';
 import { ApiError, tokenStore } from '../api/client';
-import { Btn, Input } from '../components/ui';
+import { Btn } from '../components/ui';
 import { BrandLockup } from '../components/BrandLogo';
 import GoogleButton from '../components/GoogleButton';
 import { useSeo } from '../hooks/useSeo';
-import {
-  readDevCode, rememberDevCode, clearDevCode,
-  readDevLink, rememberDevLink, clearDevLink,
-} from '../lib/devCode';
+import { clearDevCode, readDevLink, rememberDevLink, clearDevLink } from '../lib/devCode';
 
 /** How often to ask Firebase whether the link has been clicked. */
 const POLL_MS = 4000;
@@ -45,13 +43,11 @@ export default function VerifyEmail() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
-  const [devCode, setDevCode] = useState('');
   const [devLink, setDevLink] = useState('');
   const [undeliverable, setUndeliverable] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -67,7 +63,6 @@ export default function VerifyEmail() {
 
   useEffect(() => {
     alive.current = true;
-    setDevCode(readDevCode());
     setDevLink(readDevLink());
     return () => {
       alive.current = false;
@@ -206,25 +201,6 @@ export default function VerifyEmail() {
     };
   }, [checkFirebase, done, user]);
 
-  /** Fallback path: confirm the six-digit code against our own backend. */
-  const confirmCode = useCallback(async () => {
-    const digits = code.replace(/\D/g, '');
-    if (digits.length !== 6) {
-      setError('Enter the 6-digit code from your email.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    try {
-      const res = await authService.confirmVerification(digits);
-      if (res?.user) setUser({ ...user!, ...res.user, emailVerified: true });
-      succeed(res?.user);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not verify that code.');
-    } finally {
-      setBusy(false);
-    }
-  }, [code, setUser, succeed, user]);
 
   const resend = useCallback(async () => {
     setResending(true);
@@ -244,17 +220,13 @@ export default function VerifyEmail() {
           setError('Too many requests. Please wait a minute before asking again.');
           return;
         }
-        /* not a Firebase session — fall through to the code mailer */
+        /* not a Firebase session — fall through to our own link mailer */
       }
       const res = await authService.requestVerification();
       if (res.alreadyVerified) {
         setUser({ ...user!, emailVerified: true });
         succeed();
         return;
-      }
-      if (res.devCode) {
-        rememberDevCode(res.devCode);
-        setDevCode(res.devCode);
       }
       if (res.devLink) {
         rememberDevLink(res.devLink);
@@ -266,7 +238,7 @@ export default function VerifyEmail() {
         setUndeliverable(true);
         setNote('');
         setError(
-          'This site cannot send verification emails yet, so no code could be delivered. ' +
+          'This site cannot send verification emails yet, so no link could be delivered. ' +
             'Signing in with Google below verifies the same address instantly and keeps ' +
             'your account.'
         );
@@ -274,9 +246,7 @@ export default function VerifyEmail() {
         setNote(
           res.sent
             ? 'Sent — check your inbox and click the link.'
-            : res.linkSent === false
-              ? 'A new code was generated.'
-              : 'A new link was generated.'
+            : 'A new link was generated.'
         );
       }
     } catch (err) {
@@ -287,7 +257,7 @@ export default function VerifyEmail() {
         setCooldown(wait);
         setError(err.message);
       } else {
-        setError(err instanceof ApiError ? err.message : 'Could not send a new code.');
+        setError(err instanceof ApiError ? err.message : 'Could not send a new link.');
       }
     } finally {
       setResending(false);
@@ -387,11 +357,6 @@ export default function VerifyEmail() {
                   sent. Use it directly:{' '}
                   <a href={devLink} data-testid="verify-page-dev-link-anchor">Confirm my email</a>
                 </div>
-              ) : devCode ? (
-                <div className="field-note mb-8" data-testid="verify-page-dev-code">
-                  Email delivery is not set up for this site yet, so no link could be sent.
-                  Use this code instead: <b>{devCode}</b>
-                </div>
               ) : (
                 <p className="muted" style={{ fontSize: 13 }}>
                   Nothing yet? It can take a minute — and it is worth checking your spam folder.
@@ -408,36 +373,6 @@ export default function VerifyEmail() {
                 <RefreshCw size={16} />
                 <span>{checking ? 'Checking…' : "I've clicked the link"}</span>
               </Btn>
-
-              {/* The link is the flow. A code is only useful when a mail
-                  client mangled the URL, so it is tucked away rather than
-                  presented as an equal choice - showing both side by side is
-                  what made the code feel like the real path. */}
-              <details className="verify-page-fallback" data-testid="verify-page-code-fallback">
-                <summary>Link not working? Enter a code instead</summary>
-
-              <form
-                className="verify-page-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void confirmCode();
-                }}
-              >
-                <Input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  placeholder="123456"
-                  aria-label="6-digit verification code"
-                  data-testid="verify-page-code"
-                />
-                <Btn type="submit" disabled={busy} data-testid="verify-page-submit">
-                  {busy ? 'Checking…' : 'Verify'}
-                </Btn>
-              </form>
-              </details>
 
               {note && <div className="field-note mt-8" data-testid="verify-page-note">{note}</div>}
               {error && (

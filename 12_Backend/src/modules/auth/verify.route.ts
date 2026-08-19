@@ -71,12 +71,19 @@ const hashToken = (token: string) => createHash('sha256').update(token).digest('
  * then move the user on. PUBLIC_WEB_URL is the same variable the sitemap uses
  * for the canonical site origin.
  *
- * With nothing configured, fall back to the request's own origin so local
- * development still produces a clickable link.
+ * Verification is link-only, so there must ALWAYS be a link. Returning null
+ * here used to mean the email silently degraded to a six-digit code, which is
+ * precisely the failure this flow exists to remove - and it happened whenever
+ * someone forgot one environment variable. The deployed site is the fallback
+ * instead, mirroring how the web client falls back to a known API origin.
+ *
+ * Set PUBLIC_WEB_URL anyway: it is what makes links point at a custom domain.
  */
-function verifyLinkBase(): string | null {
+const FALLBACK_WEB_URL = 'https://scottstechx.pages.dev';
+
+function verifyLinkBase(): string {
   const raw = process.env.PUBLIC_WEB_URL?.trim();
-  if (!raw) return null;
+  if (!raw) return FALLBACK_WEB_URL;
   return raw.replace(/\/+$/, '');
 }
 
@@ -130,14 +137,13 @@ export async function issueVerification(userId: string, email: string, displayNa
     [userId, hashCode(code), hashToken(linkToken), String(CODE_TTL_MIN)]
   );
 
-  // The link is the primary path. It only works if we know the public site
-  // origin - a relative link in an email is meaningless.
+  // Verification is by link, always.
   const base = verifyLinkBase();
-  const link = base ? `${base}/verify-email?token=${encodeURIComponent(linkToken)}` : null;
-  if (!base) {
+  const link = `${base}/verify-email?token=${encodeURIComponent(linkToken)}`;
+  if (!process.env.PUBLIC_WEB_URL?.trim()) {
     console.warn(
-      '[verify] PUBLIC_WEB_URL is not set, so the email cannot contain a ' +
-      'verification link. Set it to the public site origin.'
+      `[verify] PUBLIC_WEB_URL is not set - verification links point at ` +
+      `${FALLBACK_WEB_URL}. Set it to this site's public origin.`
     );
   }
 
@@ -147,26 +153,17 @@ export async function issueVerification(userId: string, email: string, displayNa
   // send is best-effort, and the user can always ask for another code.
   let delivered = false;
   try {
-    // Link first: that is what people expect and what the product requires.
-    // The code is kept only as a manual fallback for mail clients that mangle
-    // long URLs, and is omitted entirely when a link could be built.
-    const greeting = `Hello${displayName ? ` ${displayName}` : ''},\n\n`;
-    const body = link
-      ? greeting
+    // Link only. No code is printed here: the website has no way to enter one,
+    // so including it would invite people to try something that cannot work.
+    const res = await sendMail(
+      email,
+      'Confirm your ScottsTechX email address',
+      `Hello${displayName ? ` ${displayName}` : ''},\n\n`
         + `Confirm your email address to finish setting up your ScottsTechX account:\n\n`
         + `${link}\n\n`
         + `This link expires in ${CODE_TTL_MIN} minutes and can only be used once.\n\n`
         + `If the link does not open, copy it into your browser's address bar.\n\n`
         + `If you did not create this account you can ignore this email.\n`
-      : greeting
-        + `Your ScottsTechX verification code is ${code}\n`
-        + `It expires in ${CODE_TTL_MIN} minutes.\n\n`
-        + `If you did not create this account you can ignore this email.\n`;
-
-    const res = await sendMail(
-      email,
-      link ? 'Confirm your ScottsTechX email address' : 'Your ScottsTechX verification code',
-      body
     );
     delivered = res.delivered;
     if (!res.delivered && mailConfigured()) {
@@ -181,7 +178,7 @@ export async function issueVerification(userId: string, email: string, displayNa
     // Whether a clickable link could actually be built. The UI needs to know:
     // telling someone to "click the link in your email" when the server could
     // not put one there is the same class of lie as claiming an email was sent.
-    linkSent: Boolean(link),
+    linkSent: true,
     // Dev only, on the same terms as devCode - it is a bearer credential.
     devLink: devCodesAllowed() ? link ?? undefined : undefined,
     // Never leak the code once a real mailer is wired up - and never in
