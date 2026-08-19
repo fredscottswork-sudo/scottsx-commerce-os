@@ -191,6 +191,96 @@ console.log('\n\x1b[1m4. No dangling references to removed APIs\x1b[0m');
     badArgs.length === 0, badArgs.slice(0, 5).join(' | '));
 }
 
+// ── 5. Project symbols referenced actually exist ────────────────────────────
+//
+// Without the Android SDK nothing resolves names, so a plausible-but-wrong
+// symbol compiles fine here and explodes on a real build. Every one of these
+// was a genuine mistake caught by hand while writing the verification screen:
+// `ScottsTechXColors.AccentAmber` (the real name is WarningAmber) and
+// `collectAsStateSafely` (no such helper in this codebase).
+{
+  console.log('\n\x1b[1m5. Project symbols resolve\x1b[0m');
+
+  // Colours are a closed set defined in one object.
+  const colorsFile = files.find((f) => f.endsWith('ui/theme/ScottsTechXColors.kt'));
+  const colorSrc = colorsFile ? readFileSync(colorsFile, 'utf8') : '';
+  const known = new Set([...colorSrc.matchAll(/val\s+(\w+)\s*[:=]/g)].map((m) => m[1]));
+  ok_if('ScottsTechXColors palette parsed', known.size > 0, `${known.size} colours`);
+
+  const badColors = [];
+  for (const f of files) {
+    if (f === colorsFile) continue;
+    for (const m of readFileSync(f, 'utf8').matchAll(/ScottsTechXColors\.(\w+)/g)) {
+      if (!known.has(m[1])) badColors.push(`${rel(f)}: ScottsTechXColors.${m[1]}`);
+    }
+  }
+  ok_if('every ScottsTechXColors reference names a real colour',
+    badColors.length === 0, [...new Set(badColors)].slice(0, 5).join(' | '));
+
+  // SessionCache is our own object; calling a method it does not declare, or
+  // calling one with the wrong shape, is a compile error.
+  const sessionFile = files.find((f) => f.endsWith('SessionCache.kt'));
+  const sessionSrc = sessionFile ? readFileSync(sessionFile, 'utf8') : '';
+  const sessionFns = new Set([...sessionSrc.matchAll(/fun\s+(\w+)\s*\(/g)].map((m) => m[1]));
+  const sessionVals = new Set([...sessionSrc.matchAll(/va[lr]\s+(\w+)\s*:/g)].map((m) => m[1]));
+  ok_if('SessionCache members parsed', sessionFns.size > 0, [...sessionFns].join(','));
+
+  const badSession = [];
+  for (const f of files) {
+    if (f === sessionFile) continue;
+    for (const m of readFileSync(f, 'utf8').matchAll(/SessionCache\.(\w+)/g)) {
+      if (!sessionFns.has(m[1]) && !sessionVals.has(m[1])) {
+        badSession.push(`${rel(f)}: SessionCache.${m[1]}`);
+      }
+    }
+  }
+  ok_if('every SessionCache reference names a real member',
+    badSession.length === 0, [...new Set(badSession)].slice(0, 5).join(' | '));
+
+  // `updateUser(user)` takes a value. Passing a lambda — updateUser { ... } —
+  // is the trailing-lambda form and does not compile against that signature.
+  const lambdaMisuse = [];
+  for (const f of files) {
+    if (f === sessionFile) continue;
+    if (/SessionCache\.updateUser\s*\{/.test(readFileSync(f, 'utf8'))) {
+      lambdaMisuse.push(rel(f));
+    }
+  }
+  ok_if('SessionCache.updateUser is called with a value, not a lambda',
+    lambdaMisuse.length === 0, lambdaMisuse.join(' | '));
+
+  // A `by remember { mutableStateOf(...) }` delegate needs BOTH imports.
+  const missingDelegate = [];
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    if (!/\bby\s+remember\s*\{\s*mutableStateOf/.test(src)) continue;
+    const hasGet = src.includes('import androidx.compose.runtime.getValue');
+    const hasSet = src.includes('import androidx.compose.runtime.setValue');
+    if (!hasGet || !hasSet) {
+      missingDelegate.push(`${rel(f)} (${!hasGet ? 'getValue' : ''}${!hasGet && !hasSet ? '+' : ''}${!hasSet ? 'setValue' : ''})`);
+    }
+  }
+  ok_if('every `by remember { mutableStateOf }` file imports getValue and setValue',
+    missingDelegate.length === 0, missingDelegate.slice(0, 5).join(' | '));
+
+  // V2Client methods called from screens must exist.
+  const clientFile = files.find((f) => f.endsWith('data/remote/V2Client.kt'));
+  const clientSrc = clientFile ? readFileSync(clientFile, 'utf8') : '';
+  const clientFns = new Set([...clientSrc.matchAll(/fun\s+(\w+)\s*\(/g)].map((m) => m[1]));
+  const clientTypes = new Set([...clientSrc.matchAll(/(?:data class|class|object)\s+(\w+)/g)].map((m) => m[1]));
+  const badClient = [];
+  for (const f of files) {
+    if (f === clientFile) continue;
+    for (const m of readFileSync(f, 'utf8').matchAll(/V2Client\.(\w+)/g)) {
+      if (!clientFns.has(m[1]) && !clientTypes.has(m[1])) {
+        badClient.push(`${rel(f)}: V2Client.${m[1]}`);
+      }
+    }
+  }
+  ok_if('every V2Client call names a real method',
+    badClient.length === 0, [...new Set(badClient)].slice(0, 5).join(' | '));
+}
+
 console.log(`\n\x1b[1mResult: ${pass} passed, ${fail} failed\x1b[0m`);
 if (fail) { console.log('\nFailures:'); failures.forEach((f) => console.log(`  - ${f}`)); }
 process.exit(fail ? 1 : 0);

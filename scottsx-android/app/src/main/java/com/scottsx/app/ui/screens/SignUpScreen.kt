@@ -155,6 +155,10 @@ fun SignUpScreen(
                     val exchanged = FirebaseAuthRepository.exchangeForJwt()
                     if (!exchanged) {
                         // Fall back to local register so the demo keeps working offline.
+                        // The account this creates is unverified as far as our own
+                        // backend is concerned, so navigation routes it to the
+                        // verification gate rather than a home screen that would
+                        // 403 on every request.
                         val local = V2Client.register(email.trim(), password, name, phone, "buyer")
                         if (local != null) {
                             SessionCache.save(

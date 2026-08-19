@@ -38,6 +38,7 @@ import com.scottsx.app.ui.screens.SignUpScreen
 import com.scottsx.app.ui.screens.StoreSettingsDetailScreen
 import com.scottsx.app.ui.screens.SupportScreen
 import com.scottsx.app.ui.screens.ThemeScreen
+import com.scottsx.app.ui.screens.VerifyEmailScreen
 import com.scottsx.app.ui.screens.WelcomeScreen
 
 /** All navigation routes — kebab-case strings, matching the master doc. */
@@ -45,6 +46,7 @@ object Routes {
     const val WELCOME = "welcome"
     const val LOGIN = "login"
     const val SIGNUP = "signup"
+    const val VERIFY_EMAIL = "verify-email"
     const val BUYER_HOME = "buyer/home"
     const val SELLER_HOME = "seller/home"
     const val PRODUCT = "product/{id}"
@@ -105,6 +107,19 @@ fun AppNavigation() {
             SignUpScreen(
                 onBack = { navController.popBackStack() },
                 onLoggedIn = { role -> navigateHome(navController, role) },
+            )
+        }
+        composable(Routes.VERIFY_EMAIL) {
+            VerifyEmailScreen(
+                onVerified = { role ->
+                    navController.navigate(Routes.homeForRole(role)) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onSignOut = {
+                    SessionCache.clear()
+                    navController.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } }
+                },
             )
         }
         composable(Routes.BUYER_HOME) {
@@ -221,8 +236,22 @@ fun AppNavigation() {
     }
 }
 
+/**
+ * Send a freshly-authenticated user to the right place.
+ *
+ * The backend refuses every private route with 403 EMAIL_NOT_VERIFIED until the
+ * address is proven, so dropping an unverified account on a home screen would
+ * show it a wall of errors it has no way to clear. Route it to the gate
+ * instead. This is the single funnel both sign-in and sign-up use, so the check
+ * belongs here rather than duplicated in each screen.
+ */
 private fun navigateHome(navController: NavHostController, role: String?) {
-    navController.navigate(Routes.homeForRole(role)) {
+    val destination = if (SessionCache.user.value?.emailVerified == false) {
+        Routes.VERIFY_EMAIL
+    } else {
+        Routes.homeForRole(role)
+    }
+    navController.navigate(destination) {
         popUpTo(0) { inclusive = true }
     }
 }

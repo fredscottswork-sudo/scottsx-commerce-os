@@ -273,6 +273,45 @@ object V2Client {
         null
     }
 
+    // ── Email verification ────────────────────────────────────────────────────
+    //
+    // The backend refuses every private route until the address is proven, so
+    // an account that skips this is unusable. Both of these stay reachable
+    // while unverified - they are on the server's allowlist.
+
+    /** Result of asking for a verification email. */
+    data class VerificationRequest(
+        val sent: Boolean,
+        val alreadyVerified: Boolean,
+        /** Only present when the server has no mail transport configured. */
+        val devCode: String?,
+    )
+
+    /** Ask the backend to send a fresh verification code/link. */
+    suspend fun requestVerification(): VerificationRequest? = try {
+        val r = call("/auth/verify/request", "POST")
+        VerificationRequest(
+            sent = r.optBoolean("sent", false),
+            alreadyVerified = r.optBoolean("alreadyVerified", false),
+            devCode = r.optString("devCode").takeIf { it.isNotBlank() },
+        )
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Confirm the six-digit code. Returns the refreshed user on success.
+     *
+     * Throws nothing on a wrong code - it returns null - because a mistyped
+     * code is an ordinary event, not an error worth crashing a screen over.
+     */
+    suspend fun confirmVerification(code: String): CurrentUserPayload? = try {
+        val r = call("/auth/verify/confirm", "POST", JSONObject().put("code", code))
+        CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject())
+    } catch (e: Exception) {
+        null
+    }
+
     suspend fun updateMe(
         displayName: String? = null,
         phone: String? = null,

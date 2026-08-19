@@ -33,12 +33,12 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
 | 7b | Android layout (edge-to-edge insets, overflow, brand artwork) | 46 | passing |
-| 7c | Compose API contract (@Composable context, imports, call sites) | 7 | passing |
+| 7c | Compose API contract (@Composable context, imports, call sites) | 14 | passing |
 | 4b | Web viewport audit (resolved CSS cascade, 6 widths) | 6 | passing |
 | 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**1,160 checks.** Every suite cleans up after itself; the database returns to 7
+**1,167 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -127,6 +127,7 @@ These were all found by running things, not by reading code:
 | An unreachable backend made the cart render "Your cart is empty" | `Promise.allSettled` swallowed the failure, so a buyer whose basket was safe on the server was told it had been emptied — the worst possible moment to lose trust |
 | Sign-up logged you in and reduced verification to a dismissible banner | An address that had never been proven got a working account — exactly what "no fake emails" was meant to prevent. Verification is now a route gate: every private page redirects to `/verify-email` until the address is confirmed |
 | The verification gate was client-side only | The route guards redirected, but the API did not care: with the token handed out at sign-up, an unverified account created a live product listing through curl. Enforcement now lives in `requireAuth`, the one choke point every authenticated route shares |
+| Android had no verification screen at all | Once the API started refusing unverified accounts, an Android user who signed up would have been dropped on a home screen that 403s on every call, with nothing on it to fix that. The app now has its own gate, and `navigateHome` routes there instead |
 
 ---
 
