@@ -43,6 +43,16 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Install the exact platform the app compiles against. Without this the
+      # build can fail during early configuration/metadata tasks before any
+      # source is compiled, which produces a failure with no compiler output.
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;34.0.0" "platform-tools"
+          echo "--- installed platforms ---"
+          ls "$ANDROID_SDK_ROOT/platforms" || true
+
       - name: Resolve the API base URL
         id: api
         env:
@@ -88,25 +98,57 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=${RUNNER_TEMP}/release.jks" >> "$GITHUB_ENV"
 
       - name: Build release APK
+        id: build
         working-directory: scottsx-android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        # --stacktrace so a configuration/resource failure names itself, and a
-        # trailing grep so the actual error survives log truncation: GitHub's
-        # web log view drops the middle of long output, which hid the real
-        # message behind 3 minutes of Gradle task lines.
+        # The previous two runs failed with the real message hidden: GitHub's web
+        # log view truncates long output, and the failing task printed past the
+        # cut. So the error is now captured three ways that CANNOT be truncated:
+        #   1. the full log is uploaded as a downloadable artifact (always),
+        #   2. the error lines are written to the job SUMMARY page,
+        #   3. the tail is echoed last so it survives at the bottom of the log.
         run: |
           set -o pipefail
           chmod +x ./gradlew
+          set +e
           ./gradlew --no-daemon --stacktrace assembleRelease \
-            -PapiBaseUrl="${{ steps.api.outputs.url }}" 2>&1 | tee /tmp/build.log || {
-              echo "=================== FAILURE SUMMARY ==================="
-              grep -E "^e: |error:|FAILURE:|What went wrong|Caused by:|> " /tmp/build.log | head -60
-              echo "======================================================="
-              exit 1
-            }
+            -PapiBaseUrl="${{ steps.api.outputs.url }}" 2>&1 | tee "${RUNNER_TEMP}/build.log"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "## Android build failed (exit $status)"
+              echo ""
+              echo "### Error lines"
+              echo '```'
+              grep -aE "^e: |error:|FAILURE:|What went wrong|Caused by:|Could not|Execution failed|^\* " \
+                "${RUNNER_TEMP}/build.log" | head -80
+              echo '```'
+              echo "### Last 80 lines"
+              echo '```'
+              tail -n 80 "${RUNNER_TEMP}/build.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "=================== FAILURE SUMMARY ==================="
+            grep -aE "^e: |error:|FAILURE:|What went wrong|Caused by:|Could not|Execution failed|^\* " \
+              "${RUNNER_TEMP}/build.log" | head -80
+            echo "=================== LAST 80 LINES ====================="
+            tail -n 80 "${RUNNER_TEMP}/build.log"
+            echo "======================================================="
+          fi
+          exit $status
+
+      - name: Upload full build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: warn
 
       - name: Report signing status
         run: |
