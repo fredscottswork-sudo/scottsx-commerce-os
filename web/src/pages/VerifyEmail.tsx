@@ -26,6 +26,7 @@ import { authService } from '../api/services';
 import { ApiError } from '../api/client';
 import { Btn, Input } from '../components/ui';
 import { BrandLockup } from '../components/BrandLogo';
+import GoogleButton from '../components/GoogleButton';
 import { useSeo } from '../hooks/useSeo';
 import { readDevCode, rememberDevCode, clearDevCode } from '../lib/devCode';
 
@@ -46,6 +47,7 @@ export default function VerifyEmail() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [devCode, setDevCode] = useState('');
+  const [undeliverable, setUndeliverable] = useState(false);
   const [done, setDone] = useState(false);
 
   // Guards the poll so a slow request cannot overlap the next tick, and so
@@ -189,7 +191,19 @@ export default function VerifyEmail() {
         rememberDevCode(res.devCode);
         setDevCode(res.devCode);
       }
-      setNote(res.sent ? 'Sent — check your inbox.' : 'A new code was generated.');
+      // The server now reports what actually happened. Telling someone to check
+      // an inbox that will never receive anything is worse than saying nothing.
+      if (res.undeliverable) {
+        setUndeliverable(true);
+        setNote('');
+        setError(
+          'This site cannot send verification emails yet, so no code could be delivered. ' +
+            'Signing in with Google below verifies the same address instantly and keeps ' +
+            'your account.'
+        );
+      } else {
+        setNote(res.sent ? 'Sent — check your inbox.' : 'A new code was generated.');
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not send a new code.');
     } finally {
@@ -299,6 +313,19 @@ export default function VerifyEmail() {
                   <span>Use a different account</span>
                 </Btn>
               </div>
+
+              {undeliverable && (
+                <div className="verify-rescue" data-testid="verify-rescue">
+                  <div className="verify-page-divider"><span>or verify instantly</span></div>
+                  {/* Google proves the address itself, so it needs no mailer.
+                      It adopts the existing account by email rather than making
+                      a second one, so orders and messages are kept. */}
+                  <GoogleButton />
+                  <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                    Use the same address you signed up with and your account stays as it is.
+                  </p>
+                </div>
+              )}
 
               <p className="muted mt-16" style={{ textAlign: 'center', fontSize: 13 }}>
                 Wrong address? Sign out and register again with the correct one.

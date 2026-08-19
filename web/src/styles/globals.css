@@ -1616,6 +1616,9 @@ tbody tr.row-click { cursor: pointer; }
 }
 .verify-page-form .btn { flex: none; }
 
+.verify-rescue { margin-top: 18px; }
+.verify-rescue .verify-page-divider { margin-top: 0; }
+
 .verify-page-actions {
   display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;
 }

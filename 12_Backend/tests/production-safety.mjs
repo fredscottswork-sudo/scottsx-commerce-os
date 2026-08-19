@@ -160,6 +160,57 @@ console.log('\n\x1b[1m2. With a mailer, production sign-up works and never retur
   stop(srv);
 }
 
+// ── 2b. An account stranded before this rule can still get out ──────────────
+console.log('\n\x1b[1m2b. A pre-existing unverified account is told the truth\x1b[0m');
+{
+  // Accounts created before verification was enforceable are unverified and,
+  // on a mailerless server, cannot be emailed. The API used to answer their
+  // resend request with a flat `sent: true`, so the user was told to check an
+  // inbox that would never receive anything - with no code shown either,
+  // because production does not leak codes. That is a dead end presented as
+  // progress.
+  //
+  // Create the stranded account while codes are permitted, then observe how a
+  // strict production server treats it.
+  const optIn = await boot({ ALLOW_DEV_VERIFICATION_CODES: 'true' }, 'seed-stranded');
+  const email = `stranded_${stamp}@example.test`;
+  const reg = await call('/auth/register', {
+    method: 'POST',
+    body: { email, password: 'Test123!', displayName: 'Stranded', role: 'buyer' },
+  });
+  const token = reg.data?.token;
+  const userId = reg.data?.user?.id;
+  if (userId) created.push({ id: userId, token });
+  check('a stranded account exists and is unverified',
+    reg.status === 201 && reg.data?.user?.emailVerified === false, `got ${reg.status}`);
+  stop(optIn);
+
+  const srv = await boot({}, 'production/stranded');
+
+  // It is gated, as it should be.
+  check('the stranded account is gated',
+    (await call('/me/cart', { token })).status === 403);
+
+  const resend = await call('/auth/verify/request', { method: 'POST', token });
+  check('resending is accepted', resend.status === 200, `got ${resend.status}`);
+  // The heart of it: do not claim an email is on its way when none is.
+  check('the server does NOT claim the email was sent',
+    resend.data?.sent === false, JSON.stringify(resend.data));
+  check('the server says plainly that it cannot deliver',
+    resend.data?.undeliverable === true, JSON.stringify(resend.data));
+  check('and still does not leak the code',
+    resend.data?.devCode === undefined && !JSON.stringify(resend.data).match(/\b\d{6}\b/),
+    JSON.stringify(resend.data));
+
+  // The way out is Google, which proves the address without any mailer. The
+  // adoption is by email, so the SAME account is upgraded rather than a second
+  // one created - orders, cart and messages survive.
+  check('Google sign-in remains available as the way out',
+    [400, 401].includes((await call('/auth/google', { method: 'POST', body: { idToken: 'bogus' } })).status));
+
+  stop(srv);
+}
+
 // ── 3. The escape hatch is opt-in and explicit ──────────────────────────────
 console.log('\n\x1b[1m3. ALLOW_DEV_VERIFICATION_CODES is an explicit opt-in\x1b[0m');
 {

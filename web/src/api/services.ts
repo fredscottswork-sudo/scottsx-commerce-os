@@ -56,8 +56,13 @@ export const authService = {
     }>('/auth/register', { method: 'POST', auth: false, body }),
   /** Re-send the six-digit email verification code. */
   requestVerification: () =>
-    api<{ alreadyVerified: boolean; sent: boolean; devCode?: string }>(
-      '/auth/verify/request', { method: 'POST' }),
+    api<{
+      alreadyVerified: boolean;
+      sent: boolean;
+      /** True when the server can neither email the code nor show it. */
+      undeliverable?: boolean;
+      devCode?: string;
+    }>('/auth/verify/request', { method: 'POST' }),
   /** Confirm the six-digit code and mark the address verified. */
   confirmVerification: (code: string) =>
     api<{ verified: boolean; user: any }>(

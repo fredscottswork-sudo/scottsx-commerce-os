@@ -92,7 +92,19 @@ export async function registerVerifyRoutes(app: FastifyInstance) {
     if (row.email_verified) return { alreadyVerified: true, sent: false };
 
     const out = await issueVerification(id, row.email ?? email, row.display_name ?? display_name);
-    return { alreadyVerified: false, sent: true, ...out };
+    // Report what actually happened, not what we attempted. `sent: true` used
+    // to be hardcoded, so a server with no mailer cheerfully told the user to
+    // check an inbox that would never receive anything - and on a production
+    // server, where no devCode is returned either, that left them stuck with
+    // no way forward and no explanation.
+    return {
+      alreadyVerified: false,
+      sent: out.delivered,
+      // When we could not deliver and cannot show the code, say so plainly so
+      // the client can offer a real alternative instead of "check your email".
+      undeliverable: !out.delivered && out.devCode === undefined,
+      ...out,
+    };
   });
 
   const confirmSchema = z.object({ code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code') });

@@ -2027,6 +2027,18 @@ section('33. An unverified account cannot reach the app');
       method: 'DELETE', headers: { authorization: `Bearer ${admin.token}` },
     });
   }
+
+  // A server that cannot send mail must not tell people to check their inbox,
+  // and it must offer a way out. Google proves the address with no mailer at
+  // all, and adopts the existing account by email rather than making a second.
+  check('the gate can report that delivery is impossible',
+    /undeliverable/.test(bundleJs));
+  check('it says so in plain language instead of "check your email"',
+    /cannot send verification emails yet/i.test(bundleJs));
+  check('and it offers Google as the way out',
+    /or verify instantly/i.test(bundleJs));
+  check('with a note that the existing account is kept',
+    /your account stays as it is/i.test(bundleJs));
 }
 
 // ── 34. The API base URL is resolved, never left empty in production ────────

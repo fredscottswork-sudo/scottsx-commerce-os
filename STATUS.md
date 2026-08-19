@@ -27,9 +27,9 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 1 | Backend end-to-end | 363 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 2b | Firebase Authentication (local JWKS, no egress) | 39 | passing |
-| 2c | Production-mode safety (NODE_ENV=production, no mailer) | 19 | passing |
+| 2c | Production-mode safety (NODE_ENV=production, no mailer) | 26 | passing |
 | 3 | Android ⇆ backend contract | 100 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 585 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 589 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
@@ -39,7 +39,7 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**1,189 checks.** Every suite cleans up after itself; the database returns to 7
+**1,200 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -130,6 +130,7 @@ These were all found by running things, not by reading code:
 | The verification gate was client-side only | The route guards redirected, but the API did not care: with the token handed out at sign-up, an unverified account created a live product listing through curl. Enforcement now lives in `requireAuth`, the one choke point every authenticated route shares |
 | Android had no verification screen at all | Once the API started refusing unverified accounts, an Android user who signed up would have been dropped on a home screen that 403s on every call, with nothing on it to fix that. The app now has its own gate, and `navigateHome` routes there instead |
 | With no mailer, the API returned the verification code in its own response | The condition was "no SMTP", not "no SMTP and not deployed" — and the deployed backend has no SMTP. Anyone could register a fake address, read the code out of the HTTP response and get a verified seller account. In production the code is now never returned; sign-up refuses with 503 instead |
+| `verify/request` answered `sent: true` even when delivery failed | Accounts stranded unverified were told to check an inbox that would never receive anything — and in production no code is shown either, so it was a dead end presented as progress. The endpoint now reports `sent: false, undeliverable: true`, and the gate offers Google, which proves the address with no mailer and adopts the existing account by email so orders and messages survive |
 
 ---
 
