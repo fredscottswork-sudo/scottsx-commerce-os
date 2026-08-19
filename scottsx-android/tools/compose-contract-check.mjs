@@ -455,13 +455,22 @@ if (fail) { console.log('\nFailures:'); failures.forEach((f) => console.log(`  -
 const diagBranch = (process.env.GITHUB_REF_NAME || '').startsWith('arena/');
 if (process.env.DIAG_COMPILE === '1' || diagBranch) {
   const { spawnSync } = await import('node:child_process');
-  console.log('\n=== DIAG_COMPILE: running ./gradlew compileDebugKotlin ===');
-  const r = spawnSync('./gradlew', ['--no-daemon', '-q', 'compileDebugKotlin'], {
+  console.log('\n=== DIAG_COMPILE: running ./gradlew assembleDebug ===');
+  const r = spawnSync('./gradlew', ['--no-daemon', 'assembleDebug'], {
     cwd: process.cwd(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   });
   const out = `${r.stdout || ''}\n${r.stderr || ''}`;
-  const errs = out.split('\n').filter((l) => /^e: |error:|What went wrong|Caused by:/.test(l));
-  console.log(errs.length ? errs.slice(0, 80).join('\n') : '(no compiler errors found)');
+  const lines = out.split('\n');
+  const idx = lines.findIndex((l) => /What went wrong/.test(l));
+  const errs = lines.filter((l) => /^e: |error:|ERROR:|FAILED|Caused by:|AAPT|Execution failed/.test(l));
+  console.log(errs.length ? errs.slice(0, 60).join('\n') : '(no error lines matched)');
+  if (idx >= 0) {
+    console.log('--- gradle failure block ---');
+    console.log(lines.slice(idx, idx + 25).join('\n'));
+  } else {
+    console.log('--- last 40 lines of gradle output ---');
+    console.log(lines.slice(-40).join('\n'));
+  }
   console.log(`=== DIAG_COMPILE: gradle exit ${r.status} ===`);
 }
 
