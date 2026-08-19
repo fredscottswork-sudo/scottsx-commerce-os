@@ -24,7 +24,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import { getPool } from '../../db.js';
-import { tokenForUser } from '../../auth.js';
+import { tokenForUser, markVerified } from '../../auth.js';
 import { publicUser } from './login.route.js';
 import { ConflictError, ServiceUnavailableError, UnauthorizedError } from '../../errors.js';
 
@@ -157,6 +157,9 @@ export default async function registerGoogleRoute(app: FastifyInstance) {
       user = rows[0];
     }
 
+    // Google has already proven the address, so both branches above set
+    // email_verified = true. Keep the gate's cache in step.
+    markVerified(user.id);
     const token = await tokenForUser(user);
     return { token, user: publicUser(user) };
   });

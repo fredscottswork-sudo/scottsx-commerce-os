@@ -20,7 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { createHash, randomInt } from 'node:crypto';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
-import { requireAuth } from '../../auth.js';
+import { requireAuth, markVerified } from '../../auth.js';
 import { publicUser } from './login.route.js';
 import { ValidationError } from '../../errors.js';
 import { sendMail, mailConfigured } from '../../mail.js';
@@ -122,6 +122,8 @@ export async function registerVerifyRoutes(app: FastifyInstance) {
       'UPDATE users SET email_verified = true WHERE id = $1 RETURNING *',
       [id]
     );
+    // Let the very next request through without waiting on a re-read.
+    markVerified(id);
     return { verified: true, user: publicUser(upd.rows[0]) };
   });
 }

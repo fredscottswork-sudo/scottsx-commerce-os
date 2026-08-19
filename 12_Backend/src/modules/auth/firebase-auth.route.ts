@@ -9,7 +9,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
-import { tokenForUser, requireAuth, authedUser } from '../../auth.js';
+import { tokenForUser, requireAuth, authedUser, markVerified } from '../../auth.js';
 import { verifyIdToken, sendVerificationEmailLink, firebaseEmailVerified } from '../../firebase/admin.js';
 import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../../errors.js';
 import { publicUser } from './login.route.js';
@@ -135,6 +135,9 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
       verificationError(err);
     }
     const user = await upsertFromFirebase(decoded, body);
+    // A user who verified via the emailed link arrives here with the claim
+    // already true; record it so the gate opens on the next request.
+    if (user.email_verified === true) markVerified(user.id);
     const token = await tokenForUser(user);
     return reply.code(200).send({
       token,

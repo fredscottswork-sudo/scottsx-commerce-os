@@ -91,6 +91,17 @@ export default function App() {
     return () => window.removeEventListener('stx:unauthorized', onUnauthorized);
   }, []);
 
+  // Backend refused an unverified account → send them to the gate. Belt and
+  // braces: the guards already redirect, but an API call can be refused from a
+  // page that was reached before the flag was corrected.
+  useEffect(() => {
+    const onUnverified = () => {
+      if (window.location.pathname !== '/verify-email') window.location.assign('/verify-email');
+    };
+    window.addEventListener('stx:email-unverified', onUnverified);
+    return () => window.removeEventListener('stx:email-unverified', onUnverified);
+  }, []);
+
   return (
     <AppShell>
       <Routes>

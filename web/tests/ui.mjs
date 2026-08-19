@@ -1995,6 +1995,38 @@ section('33. An unverified account cannot reach the app');
   check('an unverified user can still browse the public marketplace',
     !pub.$('[data-testid="verify-email-page"]') && pub.$$('.pcard').length > 0);
   pub.close();
+
+  // The client-side gate is only a convenience; the SERVER is the real one.
+  // Prove the bundle knows how to react when the API refuses, since a route
+  // guard cannot help a page that is already open.
+  check('the client recognises the EMAIL_NOT_VERIFIED refusal',
+    /EMAIL_NOT_VERIFIED/.test(bundleJs));
+  check('the client routes that refusal to the gate',
+    /stx:email-unverified/.test(bundleJs));
+
+  // And confirm the backend really does refuse — with a token minted by the
+  // same registration path a new user takes.
+  const fresh = await apiFetch('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: `uitest_gate_${Date.now()}@scottstechx.test`,
+      password: 'Test123!', displayName: 'UI Gate Probe', role: 'buyer',
+    }),
+  });
+  const freshToken = fresh.body?.token;
+  const refused = await apiFetch('/me/cart', {
+    headers: { authorization: `Bearer ${freshToken}` },
+  });
+  check('the API itself refuses an unverified account', refused.status === 403,
+    `got ${refused.status}`);
+  check('the API refusal names the reason',
+    refused.body?.code === 'EMAIL_NOT_VERIFIED', JSON.stringify(refused.body));
+  // Clean up the probe immediately.
+  if (fresh.body?.user?.id) {
+    await apiFetch(`/admin/users/${fresh.body.user.id}`, {
+      method: 'DELETE', headers: { authorization: `Bearer ${admin.token}` },
+    });
+  }
 }
 
 // ── 34. The API base URL is resolved, never left empty in production ────────

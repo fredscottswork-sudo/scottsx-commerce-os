@@ -16,6 +16,12 @@ async function call(path,{method='GET',token,body}={}){const h={'content-type':'
 const s=Date.now();
 const buyer=await call('/auth/register',{method:'POST',body:{email:`andro_${s}@t.test`,password:'Passw0rd!',displayName:'Android Buyer',role:'buyer'}});
 const bt=buyer.data.token;
+// The API refuses unverified accounts on private routes, so the Android
+// fixture verifies itself the way the app's own user would.
+{
+  const vr=await call('/auth/verify/request',{method:'POST',token:bt});
+  await call('/auth/verify/confirm',{method:'POST',token:bt,body:{code:vr.data?.devCode}});
+}
 const seller=await call('/auth/login',{method:'POST',body:{email:'techhub@scottstechx.ug',password:'Seller123!'}});
 const st=seller.data.token, sid=seller.data.user.id;
 
@@ -27,6 +33,16 @@ ck('user JSON has the fields CurrentUserPayload reads',
 const me=await call('/auth/me',{token:bt});
 ck('GET /auth/me -> {user}', me.status===200 && !!me.data.user);
 ck('PATCH /auth/me with city+photo', (await call('/auth/me',{method:'PATCH',token:bt,body:{displayName:'A',phone:'+256700000000',city:'Jinja',profilePhotoUrl:'https://x.io/a.jpg'}})).status===200);
+
+// The Android client must expect this refusal: a user who signs up in the app
+// and does not verify will receive it on every private call.
+let unverifiedId=null;
+{
+  const u=await call('/auth/register',{method:'POST',body:{email:`androgate_${s}@t.test`,password:'Passw0rd!',displayName:'Android Unverified',role:'buyer'}});
+  unverifiedId=u.data?.user?.id;
+  const r=await call('/me/cart',{token:u.data.token});
+  ck('unverified accounts get 403 EMAIL_NOT_VERIFIED', r.status===403 && r.data?.code==='EMAIL_NOT_VERIFIED', `${r.status} ${JSON.stringify(r.data)}`);
+}
 
 console.log('\n[products]');
 const list=await call('/products');
@@ -344,5 +360,23 @@ const admin=await call('/auth/login',{method:'POST',body:{email:'admin@scottstec
   }
 }
 
-await call(`/admin/users/${buyer.data.user.id}`,{method:'DELETE',token:admin.data.token});
+// Remove every account this run created. The contract buyer becomes a seller
+// partway through, and a seller with live listings cannot be deleted, so drop
+// its listings first. Reported rather than silent: a cleanup that quietly
+// fails silts up the database and makes later runs lie.
+{
+  const at = admin.data.token;
+  const ids = [buyer.data?.user?.id, unverifiedId].filter(Boolean);
+  let removed = 0;
+  for (const id of ids) {
+    const owned = await call(`/admin/products?search=&pageSize=100`, { token: at });
+    for (const pr of (owned.data?.products || []).filter((x) => x.sellerId === id)) {
+      await call(`/admin/products/${pr.id}`, { method: 'DELETE', token: at });
+    }
+    const r = await call(`/admin/users/${id}`, { method: 'DELETE', token: at });
+    if (r.status === 200) removed++;
+    else console.log(`  · cleanup: could not remove ${id} (${r.status} ${JSON.stringify(r.data)})`);
+  }
+  ck('contract test accounts cleaned up', removed === ids.length, `${removed}/${ids.length}`);
+}
 console.log(`\nResult: ${p} passed, ${f} failed`); process.exit(f?1:0);

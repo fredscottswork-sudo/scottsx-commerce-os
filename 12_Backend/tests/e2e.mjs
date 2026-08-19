@@ -96,6 +96,19 @@ async function main() {
     state.buyerToken = buyer.data?.token;
     state.buyerId = buyer.data?.user?.id;
 
+    // The API refuses unverified accounts, so take the fixture through the
+    // real verification flow. Forging the column would let the suite pass
+    // while the path users actually walk stayed untested — and it also keeps
+    // the role checks below honest, since an unverified 403 would otherwise
+    // masquerade as a role 403.
+    {
+      const vr = await call('/auth/verify/request', { method: 'POST', token: state.buyerToken });
+      const vc = await call('/auth/verify/confirm', {
+        method: 'POST', token: state.buyerToken, body: { code: vr.data?.devCode },
+      });
+      check('test buyer verifies its address', vc.status === 200, `got ${vc.status}`);
+    }
+
     const badLogin = await call('/auth/login', {
       method: 'POST',
       body: { email: 'admin@scottstechx.ug', password: 'wrong-password' },
@@ -107,9 +120,13 @@ async function main() {
 
     const buyerOnAdmin = await call('/admin/stats', { token: state.buyerToken });
     check('admin route rejects buyer (403)', buyerOnAdmin.status === 403, `got ${buyerOnAdmin.status}`);
+    check('…and rejects it for the ROLE, not for verification',
+      buyerOnAdmin.data?.code !== 'EMAIL_NOT_VERIFIED', JSON.stringify(buyerOnAdmin.data));
 
     const buyerOnSeller = await call('/seller/products', { token: state.buyerToken });
     check('seller route rejects buyer (403)', buyerOnSeller.status === 403, `got ${buyerOnSeller.status}`);
+    check('…and rejects it for the ROLE, not for verification',
+      buyerOnSeller.data?.code !== 'EMAIL_NOT_VERIFIED', JSON.stringify(buyerOnSeller.data));
   }
 
   // ── Catalog & search ──────────────────────────────────────────────────────
@@ -1107,8 +1124,19 @@ async function main() {
       method: 'POST',
       body: { email: `nosy_${uniq}@test.ug`, password: 'Nosy1234!', displayName: 'Nosy' },
     });
+    // Verify the outsider too. These checks are about THREAD ISOLATION: a 403
+    // for being unverified would hide whether the thread is actually private,
+    // which is the one thing they exist to prove.
+    {
+      const vr = await call('/auth/verify/request', { method: 'POST', token: outsider.data?.token });
+      await call('/auth/verify/confirm', {
+        method: 'POST', token: outsider.data?.token, body: { code: vr.data?.devCode },
+      });
+    }
     const peek = await call(`/conversations/${state.convId}/messages`, { token: outsider.data?.token });
     check('outsider cannot read the thread', peek.status === 404, `got ${peek.status}`);
+    check('…hidden because it is not their thread, not because of verification',
+      peek.data?.code !== 'EMAIL_NOT_VERIFIED', JSON.stringify(peek.data));
 
     const empty = await call(`/conversations/${state.convId}/messages`, {
       method: 'POST',
@@ -1664,6 +1692,81 @@ async function main() {
     state.verifyUserId = reg.data?.user?.id;
   }
 
+  // The gate must live on the SERVER. A client-side redirect is a suggestion:
+  // anyone with the token from sign-up can call the API directly. This group
+  // exists because that hole was real — an unverified account created a live
+  // product listing through curl.
+  group('Unverified accounts are refused by the API itself');
+  {
+    const email = `gate_${uniq}@test.ug`;
+    const reg = await call('/auth/register', {
+      method: 'POST',
+      body: { email, password: 'Gate123!', displayName: 'Gate User', role: 'seller', storeName: 'Gate Store' },
+    });
+    const token = reg.data?.token;
+    check('the gate fixture starts unverified', reg.data?.user?.emailVerified === false);
+
+    // The exact payload that previously succeeded.
+    const listing = await call('/seller/products', {
+      method: 'POST',
+      token,
+      body: {
+        title: `Gate Ghost ${uniq}`,
+        priceMinor: 9900000,
+        category: 'Electronics',
+        description: 'must never be creatable by an unverified account',
+        stockQuantity: 5,
+        imageUrl: 'https://example.com/x.jpg',
+      },
+    });
+    check('an unverified seller cannot create a listing', listing.status === 403,
+      `got ${listing.status}`);
+    check('the refusal carries a machine-readable code',
+      listing.data?.code === 'EMAIL_NOT_VERIFIED', JSON.stringify(listing.data));
+    // 401 would make clients bin the session the user needs in order to verify.
+    check('the refusal is 403, not 401 (the session is still valid)',
+      listing.status === 403);
+
+    for (const path of ['/me/cart', '/conversations', '/me/bookmarks', '/me/orders']) {
+      const res = await call(path, { token });
+      check(`unverified: ${path} is refused`, res.status === 403, `got ${res.status}`);
+    }
+
+    // …but the routes needed to BECOME verified, or to see who you are, stay
+    // open. Otherwise the account is bricked.
+    const req = await call('/auth/verify/request', { method: 'POST', token });
+    check('unverified: /auth/verify/request stays open', req.status === 200, `got ${req.status}`);
+    const who = await call('/auth/me', { token });
+    check('unverified: /auth/me stays open', who.status === 200, `got ${who.status}`);
+
+    // Verifying must take effect immediately, on the SAME token — a 24h JWT
+    // minted at sign-up would otherwise keep the user locked out all day.
+    const conf = await call('/auth/verify/confirm', {
+      method: 'POST', token, body: { code: req.data?.devCode },
+    });
+    check('the gate fixture verifies', conf.status === 200, `got ${conf.status}`);
+
+    const after = await call('/me/cart', { token });
+    check('the same token works the moment the address is verified',
+      after.status === 200, `got ${after.status}`);
+    const listingNow = await call('/seller/products', {
+      method: 'POST',
+      token,
+      body: {
+        title: `Gate Allowed ${uniq}`,
+        priceMinor: 100000,
+        category: 'Electronics',
+        description: 'a verified seller may list',
+        stockQuantity: 1,
+        imageUrl: 'https://example.com/y.jpg',
+      },
+    });
+    check('a verified seller can now create a listing', listingNow.status === 200,
+      `got ${listingNow.status}`);
+    state.gateProductId = listingNow.data?.product?.id;
+    state.gateUserId = reg.data?.user?.id;
+  }
+
   // ── Cleanup ───────────────────────────────────────────────────────────────
   group('Cleanup');
   {
@@ -1703,9 +1806,18 @@ async function main() {
       (stillThere.data?.products ?? []).every((p) => /^https?:\/\//.test(p.imageUrl || ''))
     );
 
+    // The gate group's seller left a listing behind; a seller with live
+    // listings cannot be deleted, so clear it first.
+    if (state.gateProductId) {
+      await call(`/admin/products/${state.gateProductId}`, {
+        method: 'DELETE', token: state.adminToken,
+      });
+    }
+
     // Throwaway accounts this run registered are removed so repeated runs do
     // not silt up the users table. The seller/admin are permanent seed rows.
-    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId].filter(Boolean);
+    const throwaway = [state.buyerId, state.outsiderId, state.verifyUserId, state.gateUserId]
+      .filter(Boolean);
     let purged = 0;
     for (const id of throwaway) {
       const r = await call(`/admin/users/${id}`, { method: 'DELETE', token: state.adminToken });

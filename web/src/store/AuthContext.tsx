@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { rememberDevCode } from '../lib/devCode';
 import { authService } from '../api/services';
 import { forgetGoogleSession } from '../lib/google';
-import { tokenStore, userStore, onUnauthorized, type StoredUser } from '../api/client';
+import { tokenStore, userStore, onUnauthorized, onEmailUnverified, type StoredUser } from '../api/client';
 
 interface AuthState {
   user: StoredUser | null;
@@ -154,4 +154,13 @@ onUnauthorized.current = () => {
   tokenStore.clear();
   userStore.set(null);
   window.dispatchEvent(new CustomEvent('stx:unauthorized'));
+};
+
+// Wire the global EMAIL_NOT_VERIFIED handler. The session stays — the user
+// needs it to verify — but the cached user is corrected so the route guards
+// agree with the backend and send them to the gate.
+onEmailUnverified.current = () => {
+  const current = userStore.get();
+  if (current && current.emailVerified) userStore.set({ ...current, emailVerified: false });
+  window.dispatchEvent(new CustomEvent('stx:email-unverified'));
 };

@@ -79,10 +79,18 @@ object V2Client {
         client.newCall(builder.build()).execute().use { response ->
             val text = response.body?.string() ?: ""
             if (!response.isSuccessful) {
-                val message = try {
-                    JSONObject(text).optString("error").ifBlank { "HTTP ${response.code}" }
-                } catch (_: Exception) {
-                    "HTTP ${response.code}"
+                val payload = try { JSONObject(text) } catch (_: Exception) { null }
+                val message = payload?.optString("error").orEmpty().ifBlank { "HTTP ${response.code}" }
+
+                // The backend refuses every private route until the address is
+                // verified. Surface that as its own type so the UI can send the
+                // user to the verification screen instead of showing a generic
+                // failure. The session is still valid, so it must NOT be cleared.
+                if (response.code == 403 && payload?.optString("code") == "EMAIL_NOT_VERIFIED") {
+                    throw EmailNotVerifiedException(
+                        message = message,
+                        email = payload.optString("email").takeIf { it.isNotBlank() },
+                    )
                 }
                 throw IOException(message)
             }

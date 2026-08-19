@@ -101,6 +101,13 @@ export interface StoredUser {
 /** Global handler so any 401 can redirect (wired in App.tsx). */
 export const onUnauthorized: { current: (() => void) | null } = { current: null };
 
+/**
+ * Global handler for the backend's EMAIL_NOT_VERIFIED refusal (wired in
+ * App.tsx). Distinct from onUnauthorized because the session is still good —
+ * discarding it would strand the user, since they need it to verify.
+ */
+export const onEmailUnverified: { current: (() => void) | null } = { current: null };
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -190,6 +197,11 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
 
   if (!res.ok) {
     if (res.status === 401 && auth) onUnauthorized.current?.();
+    // The account is real but has not proven its address. Keep the session and
+    // send the user to the gate instead of showing a bare error.
+    if (res.status === 403 && data?.code === 'EMAIL_NOT_VERIFIED') {
+      onEmailUnverified.current?.();
+    }
     const message =
       (data && (data.error as string)) ||
       (data && data.message as string) ||
@@ -208,6 +220,9 @@ export function multipart(path: string, form: FormData): Promise<unknown> {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401) onUnauthorized.current?.();
+      if (res.status === 403 && (data as any)?.code === 'EMAIL_NOT_VERIFIED') {
+        onEmailUnverified.current?.();
+      }
       throw new ApiError(res.status, (data as any)?.error || `Upload failed (${res.status})`);
     }
     return data;
