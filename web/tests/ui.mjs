@@ -9,7 +9,8 @@
  *
  * Env: API_BASE (default http://127.0.0.1:3001), WEB_DIST (default ./dist)
  */
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
@@ -2191,6 +2192,83 @@ section('33b. Search engines get XML, not the app shell');
     check('dashboards are disallowed', /Disallow:\s*\/admin/.test(robots));
     check('the verification gate is disallowed', /Disallow:\s*\/verify-email/.test(robots));
     check('the public catalogue is still allowed', /Allow:\s*\//.test(robots));
+  }
+}
+
+section('33c. The sitemap origin follows the host it is deployed on');
+{
+  // The bug this locks down: the origin was hardcoded to scottstechx.pages.dev.
+  // We moved the site to Render, that domain stopped resolving, and the live
+  // sitemap went on advertising 40 URLs on a dead host -- which Google rejects
+  // outright, because a sitemap may only list URLs on its own origin.
+  //
+  // The generator writes into dist/, the same dist/ the assertions above read,
+  // so every run here is sandwiched between a save and a restore.
+  const smPath = join(DIST, 'sitemap.xml');
+  const rbPath = join(DIST, 'robots.txt');
+  const savedSm = existsSync(smPath) ? readFileSync(smPath, 'utf8') : null;
+  const savedRb = existsSync(rbPath) ? readFileSync(rbPath, 'utf8') : null;
+
+  const gen = (env) => {
+    execFileSync(process.execPath, ['scripts/generate-sitemap.mjs'], {
+      cwd: join(DIST, '..'),
+      // Wipe the inherited deploy vars, otherwise the harness's own
+      // environment decides the answer instead of the case under test.
+      env: { ...process.env, SITE_URL: '', RENDER_EXTERNAL_URL: '',
+             CF_PAGES_URL: '', DEPLOY_PRIME_URL: '', VITE_API_URL: '', ...env },
+      stdio: 'pipe',
+    });
+    return {
+      xml: readFileSync(smPath, 'utf8'),
+      robots: readFileSync(rbPath, 'utf8'),
+    };
+  };
+  const origins = (xml) => [...xml.matchAll(/<loc>(https?:\/\/[^/<]+)/g)].map((m) => m[1]);
+
+  try {
+    const render = gen({ RENDER_EXTERNAL_URL: 'https://sx-render.onrender.com' });
+    const rOrigins = new Set(origins(render.xml));
+    check('on Render every url uses the Render origin',
+      rOrigins.size === 1 && rOrigins.has('https://sx-render.onrender.com'),
+      [...rOrigins].join(', '));
+    check('on Render robots.txt points at the same origin',
+      render.robots.includes('Sitemap: https://sx-render.onrender.com/sitemap.xml'),
+      render.robots.match(/^Sitemap:.*$/m)?.[0]);
+
+    const cf = gen({ CF_PAGES_URL: 'https://sx-cf.pages.dev' });
+    const cOrigins = new Set(origins(cf.xml));
+    check('on Cloudflare Pages every url uses the Pages origin',
+      cOrigins.size === 1 && cOrigins.has('https://sx-cf.pages.dev'),
+      [...cOrigins].join(', '));
+
+    const explicit = gen({
+      SITE_URL: 'https://www.scottstechx.com',
+      RENDER_EXTERNAL_URL: 'https://sx-render.onrender.com',
+    });
+    const eOrigins = new Set(origins(explicit.xml));
+    check('an explicit SITE_URL beats the platform variable',
+      eOrigins.size === 1 && eOrigins.has('https://www.scottstechx.com'),
+      [...eOrigins].join(', '));
+
+    const bare = gen({});
+    const bOrigins = new Set(origins(bare.xml));
+    check('with nothing set it falls back to a host that actually resolves',
+      bOrigins.size === 1 && [...bOrigins][0] === 'https://scottstechx-web.onrender.com',
+      [...bOrigins].join(', '));
+    // Only the executable lines matter -- the comment above the fallback
+    // names the dead domain on purpose, so nobody reintroduces it.
+    const genSrc = readFileSync(join(DIST, '..', 'scripts', 'generate-sitemap.mjs'), 'utf8')
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join('\n');
+    check('no code path can still emit the dead pages.dev domain',
+      !genSrc.includes('scottstechx.pages.dev'),
+      genSrc.split('\n').find((l) => l.includes('scottstechx.pages.dev')));
+    check('a sitemap never mixes origins',
+      origins(bare.xml).every((o) => o === origins(bare.xml)[0]));
+  } finally {
+    if (savedSm !== null) writeFileSync(smPath, savedSm, 'utf8');
+    if (savedRb !== null) writeFileSync(rbPath, savedRb, 'utf8');
   }
 }
 

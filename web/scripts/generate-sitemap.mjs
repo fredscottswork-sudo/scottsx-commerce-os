@@ -23,7 +23,10 @@
  *
  * Configuration
  * -------------
- *   SITE_URL       canonical public origin of the website (what Google indexes)
+ *   SITE_URL       canonical public origin of the website (what Google indexes).
+ *                  Falls back to the host platform's own variable
+ *                  (RENDER_EXTERNAL_URL / CF_PAGES_URL), so a moved deployment
+ *                  cannot keep advertising its old address.
  *   VITE_API_URL   API origin, used to enumerate approved products
  *
  * Both have sensible defaults for this project. SITE_URL matters most: <loc>
@@ -40,7 +43,26 @@ const OUT_DIR = resolve(HERE, '..', 'dist');
 /** Strip trailing slashes: `${base}/path` would otherwise produce `//path`. */
 const trimSlashes = (value) => String(value || '').trim().replace(/\/+$/, '');
 
-const SITE_URL = trimSlashes(process.env.SITE_URL || 'https://scottstechx.pages.dev');
+/**
+ * The canonical public origin of THIS site.
+ *
+ * Order matters. A hardcoded default was wrong the moment the site moved: the
+ * build ran on Render but every <loc> still said scottstechx.pages.dev, so the
+ * sitemap advertised a host that no longer resolved - and Google rejects a
+ * sitemap whose URLs live on a different host than the sitemap itself.
+ *
+ * RENDER_EXTERNAL_URL is injected by Render and is always the address the site
+ * is actually served from, so it is a far better guess than anything written
+ * here. SITE_URL still wins, because a custom domain is the one thing no
+ * platform variable can know.
+ */
+const SITE_URL = trimSlashes(
+  process.env.SITE_URL
+  || process.env.RENDER_EXTERNAL_URL
+  || process.env.CF_PAGES_URL
+  || process.env.DEPLOY_PRIME_URL
+  || 'https://scottstechx-web.onrender.com'
+);
 const API_URL = trimSlashes(process.env.VITE_API_URL || 'https://scottstechx-api.onrender.com');
 
 /** How long to let a cold backend think before giving up on product URLs. */

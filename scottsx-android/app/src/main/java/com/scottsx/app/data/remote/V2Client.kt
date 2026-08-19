@@ -285,6 +285,12 @@ object V2Client {
         val alreadyVerified: Boolean,
         /** Only present when the server has no mail transport configured. */
         val devCode: String?,
+        /**
+         * The verification link itself, also only present when the server
+         * cannot send mail. Verification is link-only, so this is what the
+         * screen shows - there is no code to type.
+         */
+        val devLink: String?,
     )
 
     /** Ask the backend to send a fresh verification code/link. */
@@ -294,23 +300,17 @@ object V2Client {
             sent = r.optBoolean("sent", false),
             alreadyVerified = r.optBoolean("alreadyVerified", false),
             devCode = r.optString("devCode").takeIf { it.isNotBlank() },
+            devLink = r.optString("devLink").takeIf { it.isNotBlank() },
         )
     } catch (e: Exception) {
         null
     }
 
-    /**
-     * Confirm the six-digit code. Returns the refreshed user on success.
-     *
-     * Throws nothing on a wrong code - it returns null - because a mistyped
-     * code is an ordinary event, not an error worth crashing a screen over.
-     */
-    suspend fun confirmVerification(code: String): CurrentUserPayload? = try {
-        val r = call("/auth/verify/confirm", "POST", JSONObject().put("code", code))
-        CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
+    // There is deliberately no confirmVerification() here. The server still
+    // exposes /auth/verify/confirm so the backend test fixtures can verify an
+    // account in one call, but the app must never offer code entry: the email
+    // carries a link and nothing else. Re-adding a method here would invite a
+    // screen to use it, which is how the code box came back the first time.
 
     suspend fun updateMe(
         displayName: String? = null,

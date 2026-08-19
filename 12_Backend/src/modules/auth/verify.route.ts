@@ -79,7 +79,7 @@ const hashToken = (token: string) => createHash('sha256').update(token).digest('
  *
  * Set PUBLIC_WEB_URL anyway: it is what makes links point at a custom domain.
  */
-const FALLBACK_WEB_URL = 'https://scottstechx.pages.dev';
+const FALLBACK_WEB_URL = 'https://scottstechx-web.onrender.com';
 
 function verifyLinkBase(): string {
   const raw = process.env.PUBLIC_WEB_URL?.trim();

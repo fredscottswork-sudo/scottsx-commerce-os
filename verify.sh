@@ -41,7 +41,11 @@ hr "3/9  Android ⇆ backend contract"
 (cd "$ROOT/12_Backend" && node tests/android-contract.mjs) || FAILED=1
 
 hr "4/9  Web UI (real bundle, real backend)"
-(cd "$ROOT/web" && npm run build >/dev/null 2>&1 && node tests/ui.mjs) || FAILED=1
+# Build against the running API, otherwise generate-sitemap.mjs cannot reach it
+# and dist/sitemap.xml silently degrades to the 6 static routes -- which still
+# passes every assertion, so the product URLs would go untested forever.
+(cd "$ROOT/web" && VITE_API_URL="$API" SITE_URL="${SITE_URL:-http://127.0.0.1:5173}" \
+   npm run build >/dev/null 2>&1 && node tests/ui.mjs) || FAILED=1
 
 hr "5/9  TypeScript"
 (cd "$ROOT/12_Backend" && npx tsc --noEmit && echo "backend: clean") || FAILED=1

@@ -28,18 +28,18 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 2b | Firebase Authentication (local JWKS, no egress) | 39 | passing |
 | 2c | Production-mode safety (NODE_ENV=production, no mailer) | 48 | passing |
-| 3 | Android ⇆ backend contract | 100 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 619 | passing |
+| 3 | Android ⇆ backend contract | 103 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 626 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Android wiring (routes, client calls, reachability) | — | clean |
 | 7 | Android resources (icons, colours, themes) | 12 | clean |
 | 7b | Android layout (edge-to-edge insets, overflow, brand artwork) | 46 | passing |
 | 7c | Compose API contract (@Composable context, imports, call sites) | 14 | passing |
-| 4b | Web viewport audit (resolved CSS cascade, 6 widths) | 6 | passing |
+| 4b | Web viewport audit (resolved CSS cascade, 8 widths incl. short screens) | 8 | passing |
 | 8 | Kotlin syntax (57 files) | — | clean |
 | 9 | Kotlin parsers vs real API JSON | — | passing |
 
-**1,291 checks.** Every suite cleans up after itself; the database returns to 7
+**1,301 checks** (gates 1-4 and 7b/7c; the resource and viewport audits report separately). Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -118,6 +118,9 @@ These were all found by running things, not by reading code:
 | Launch theme was `Material.Light` under a dark UI | White flash before the first frame; invisible status-bar icons |
 | `/sitemap.xml` did not exist on the web host | The SPA catch-all answered it with `index.html` at **200**, so Google Search Console reported "Sitemap is HTML". A 200 made it look healthy while indexing nothing |
 | The website still offered a six-digit code box | Verification is link-only by requirement. The code entry has been removed from the site entirely, and the email no longer prints a code |
+| The sitemap advertised a **dead domain** | Every `<loc>` said `scottstechx.pages.dev`, a host that no longer resolves, while the file itself was served from Render. Google rejects a sitemap whose URLs live on another origin, so all 40 URLs were unindexable. The origin now follows the platform (`RENDER_EXTERNAL_URL` / `CF_PAGES_URL`) instead of being hardcoded |
+| `PUBLIC_WEB_URL` was `sync: false` in `render.yaml` | Render prompts for those **only when the Blueprint is first created**, so on an existing Blueprint it stayed unset forever — which is why verification links fell back and `/sitemap.xml` returned 503. It is now wired with `fromService`, so it configures itself |
+| `verify.sh` built the web app without `VITE_API_URL` | The sitemap generator could not reach the API, so `dist/sitemap.xml` quietly fell back to 6 static routes — and still passed every assertion. The 34 product URLs were going untested on every run |
 | A missing `PUBLIC_WEB_URL` silently degraded the email to a code | One unset variable turned link verification back into the thing it replaced. The server now always emits a link, warning loudly and falling back to the deployed origin |
 | Verification was code-only in practice | The email sent a six-digit code to retype. A link is what users expect, and the one place it was attempted (Firebase) was unavailable on this deployment |
 | The `/verify-email` route bounced signed-out visitors to `/login` | A link is normally opened on a **different device** from the one that signed up. The redirect discarded the token, so the link looked broken to exactly the people it was for |

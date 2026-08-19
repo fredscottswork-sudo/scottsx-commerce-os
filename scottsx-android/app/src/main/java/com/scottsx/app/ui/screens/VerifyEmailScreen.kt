@@ -27,13 +27,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.SessionCache
 import com.scottsx.app.data.firebase.FirebaseAuthRepository
 import com.scottsx.app.data.remote.V2Client
-import com.scottsx.app.ui.components.InputField
 import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.components.SettingsRow
 import com.scottsx.app.ui.theme.ScottsTechXColors
@@ -47,9 +45,10 @@ import kotlinx.coroutines.launch
  * This screen exists to get it unstuck, and it is the only screen an unverified
  * account can usefully reach.
  *
- * Two proofs are accepted because two sign-up paths exist:
- *   - the Firebase link  (normal path - tap it in the mail app)
- *   - a six-digit code   (fallback when Firebase Auth is unavailable)
+ * Verification is by LINK only, matching the website and the server: the email
+ * contains a single-use link and no code, so there is nothing to type here.
+ * The user taps the link in their mail app, then comes back and presses
+ * "I've clicked the link" - which re-reads the account from the backend.
  *
  * Signing out stays available on purpose: a typo in the address would otherwise
  * trap the user on a screen they can never pass.
@@ -61,13 +60,11 @@ fun VerifyEmailScreen(
 ) {
     val email = SessionCache.user.value?.email.orEmpty()
 
-    var code by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var resending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
-    var devCode by remember { mutableStateOf<String?>(null) }
+    var devLink by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
 
@@ -135,10 +132,10 @@ fun VerifyEmailScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        devCode?.let {
+        devLink?.let {
             Text(
-                "Email delivery is not set up for this server yet, so no link " +
-                    "could be sent. Use this code instead: $it",
+                "Email delivery is not set up for this server yet, so the link " +
+                    "could not be sent. Open it directly: " + it,
                 color = ScottsTechXColors.WarningAmber,
                 fontSize = 13.sp,
             )
@@ -169,47 +166,6 @@ fun VerifyEmailScreen(
             },
         )
 
-        Spacer(Modifier.height(24.dp))
-        Text(
-            "Or enter the 6-digit code",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
-
-        InputField(
-            value = code,
-            onValueChange = { entered -> code = entered.filter { it.isDigit() }.take(6) },
-            label = "Verification code",
-            placeholder = "123456",
-            keyboardType = KeyboardType.Number,
-        )
-        Spacer(Modifier.height(10.dp))
-
-        PrimaryButton(
-            text = "Verify",
-            enabled = code.length == 6 && !busy,
-            loading = busy,
-            onClick = {
-                busy = true
-                error = null
-                info = null
-                scope.launch {
-                    val user = V2Client.confirmVerification(code)
-                    if (user != null && user.emailVerified) {
-                        SessionCache.user.value?.let {
-                            SessionCache.updateUser(it.copy(emailVerified = true))
-                        }
-                        onVerified(user.role)
-                    } else {
-                        error = "That code is not correct, or it has expired. " +
-                            "Ask for a new one below."
-                    }
-                    busy = false
-                }
-            },
-        )
-
         Spacer(Modifier.height(18.dp))
 
         Row(
@@ -234,11 +190,11 @@ fun VerifyEmailScreen(
                                 onVerified(SessionCache.user.value?.role)
                             }
                             else -> {
-                                devCode = res.devCode
+                                devLink = res.devLink
                                 info = if (res.sent) {
                                     "Sent - check your inbox, and your spam folder."
                                 } else {
-                                    "A new code was generated."
+                                    "A new link was generated."
                                 }
                             }
                         }

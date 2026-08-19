@@ -71,15 +71,22 @@ services:
       # /sitemap.xml also needs it to emit absolute <loc> URLs, and returns 503
       # without it rather than advertising links to a guessed domain.
       #
-      # This is prompted for on first sync instead of being wired with
-      # fromService: Render's fromService only exposes host/port/hostport for
-      # web services — there is no 'url' property — and a sitemap has to state
-      # the canonical origin anyway, which is your custom domain rather than
-      # the onrender.com hostname.
+      # Wired from the web service's own external URL rather than prompted.
+      # Leaving it unset broke verification links (they fell back to a
+      # hardcoded host) and made /sitemap.xml return 503, and "you must
+      # remember to set this" is exactly the kind of step that gets missed.
       #
-      # Format: https://yourdomain.com   (https, no trailing slash, no path)
+      # fromService has no 'url' property, but envVarKey can copy another
+      # service's RENDER_EXTERNAL_URL, which is the https origin Render serves
+      # that service from.
+      #
+      # Override it in the dashboard once you have a custom domain — that is
+      # the origin Google should index and the one users should see in email.
       - key: PUBLIC_WEB_URL
-        sync: false
+        fromService:
+          name: scottstechx-web
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
 
       # Render prompts for these on the first sync. If you leave ADMIN_PASSWORD
       # empty the code falls back to "Admin123!", which is published in this
@@ -155,6 +162,12 @@ services:
           name: scottstechx-api
           type: web
           envVarKey: RENDER_EXTERNAL_URL
+
+      # SITE_URL is deliberately NOT set here. The sitemap generator already
+      # falls back to RENDER_EXTERNAL_URL, which Render injects into this
+      # build, so the sitemap is correct with no configuration. Add SITE_URL in
+      # the dashboard when you attach a custom domain - that is the origin
+      # Google should index.
 
       # Optional: paste your Google OAuth client id to show the Google button.
       - key: VITE_GOOGLE_CLIENT_ID

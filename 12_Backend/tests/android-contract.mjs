@@ -47,6 +47,31 @@ let unverifiedId=null;
   ck('unverified accounts get 403 EMAIL_NOT_VERIFIED', r.status===403 && r.data?.code==='EMAIL_NOT_VERIFIED', `${r.status} ${JSON.stringify(r.data)}`);
 }
 
+const extraIds=[];
+
+// V2Client.VerificationRequest reads these exact keys off /auth/verify/request.
+// Kotlin has no compiler here to catch a rename, so assert the shape.
+{
+  const probe=await call('/auth/register',{method:'POST',body:{
+    email:`androverify_${s}@t.test`,password:'Passw0rd!',displayName:'Verify Shape',role:'buyer'}});
+  const v=probe.data?.verification||{};
+  ck('register returns the verification block Kotlin reads',
+    typeof v.sent==='boolean' && typeof v.linkSent==='boolean', JSON.stringify(v));
+  ck('verification is by link, so a link is present',
+    v.linkSent===true, JSON.stringify(v));
+
+  const again=await call('/auth/verify/request',{method:'POST',token:probe.data?.token});
+  // 429 is a correct answer here (resends are rate limited); either way the
+  // response must not omit the booleans the app switches on.
+  ck('verify/request answers 200 or 429', [200,429].includes(again.status), `${again.status}`);
+  if(again.status===200){
+    ck('the resend response carries sent + alreadyVerified',
+      typeof again.data?.sent==='boolean' && typeof again.data?.alreadyVerified==='boolean',
+      JSON.stringify(again.data));
+  }
+  if(probe.data?.user?.id) extraIds.push(probe.data.user.id);
+}
+
 console.log('\n[products]');
 const list=await call('/products');
 ck('GET /products -> {products}', Array.isArray(list.data.products));
@@ -369,7 +394,7 @@ const admin=await call('/auth/login',{method:'POST',body:{email:'admin@scottstec
 // fails silts up the database and makes later runs lie.
 {
   const at = admin.data.token;
-  const ids = [buyer.data?.user?.id, unverifiedId].filter(Boolean);
+  const ids = [buyer.data?.user?.id, unverifiedId, ...extraIds].filter(Boolean);
   let removed = 0;
   for (const id of ids) {
     const owned = await call(`/admin/products?search=&pageSize=100`, { token: at });
