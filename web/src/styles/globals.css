@@ -33,7 +33,7 @@
   --brand-800: #071233;
   --brand-700: #0a1f52;
   --brand-600: #0d2f7a;
-  --brand-500: #1447c4;
+  --brand-500: #124ca8;
   --brand-400: #1e6fff;   /* primary action */
   --brand-300: #5b9bff;
   --brand-200: #96c1ff;
@@ -90,6 +90,9 @@
   --primary-hover: #8ab6ff;
   --primary-soft: rgba(91, 155, 255, 0.16);
   --primary-contrast: #ffffff;
+  --brand-blue: #5b9bff;
+  --text-muted: #98a2b8;
+  --shadow-md: 0 8px 24px rgba(0,0,0,.38);
   --primary-2: #8ab6ff;
   --primary-dark: #1e6fff;
   --purple: #8b5cf6;
@@ -99,7 +102,7 @@
   --warning: #f59e0b;
 
   --gradient-brand: linear-gradient(135deg, #124ca8 0%, #1e6fff 55%, #5b9bff 100%);
-  --gradient-surface: linear-gradient(160deg, #0b1020 0%, #101a33 100%);
+  --gradient-surface: linear-gradient(160deg, #1a2233 0%, #24304a 100%);
   --gradient-hero: radial-gradient(1200px 500px at 15% -10%, rgba(30, 111, 255, 0.30), transparent 60%),
                    radial-gradient(900px 420px at 95% 0%, rgba(139, 92, 246, 0.20), transparent 55%);
 
@@ -132,6 +135,9 @@
   --primary-hover: #124ca8;
   --primary-soft: rgba(30, 111, 255, 0.10);
   --primary-contrast: #ffffff;
+  --brand-blue: #1e6fff;
+  --text-muted: #5a6478;
+  --shadow-md: 0 8px 24px rgba(18,24,38,.10);
   --primary-2: #5b9bff;
   --primary-dark: #124ca8;
   --purple: #8b5cf6;
@@ -148,7 +154,7 @@
   --shadow-sm: 0 1px 2px rgba(11, 22, 47, 0.07);
   --shadow: 0 4px 16px rgba(11, 22, 47, 0.09);
   --shadow-lg: 0 18px 50px rgba(11, 22, 47, 0.16);
-  --shadow-brand: 0 8px 28px rgba(20, 71, 196, 0.25);
+  --shadow-brand: 0 8px 28px rgba(18, 76, 168, 0.25);
 
   --skeleton-a: #eaf0f9;
   --skeleton-b: #f6f9fd;
@@ -357,7 +363,7 @@ img { max-width: 100%; }
 }
 /* The lockup artwork is built for dark surfaces; lift it on the light theme. */
 [data-theme='light'] .brand-lockup {
-  filter: drop-shadow(0 6px 18px rgba(20, 71, 196, 0.18));
+  filter: drop-shadow(0 6px 18px rgba(18, 76, 168, 0.18));
 }
 @media (prefers-reduced-motion: reduce) {
   .brand:hover .brand-logo { transform: none; }
@@ -1587,8 +1593,8 @@ tbody tr.row-click { cursor: pointer; }
 .verify-sent-icon {
   display: inline-flex; align-items: center; justify-content: center;
   width: 58px; height: 58px; border-radius: 50%;
-  background: color-mix(in srgb, var(--brand-blue, #2b7cff) 16%, transparent);
-  color: var(--brand-blue, #2b7cff);
+  background: color-mix(in srgb, var(--brand-blue, #1e6fff) 16%, transparent);
+  color: var(--brand-blue, #1e6fff);
   animation: verify-sent-pop .34s cubic-bezier(.2, .9, .3, 1.3) both;
 }
 @keyframes verify-sent-pop {
@@ -1598,8 +1604,8 @@ tbody tr.row-click { cursor: pointer; }
 /* Neutral inline note — not an error, so it must not read as one. */
 .field-note {
   padding: 9px 11px; border-radius: 9px;
-  background: color-mix(in srgb, var(--brand-blue, #2b7cff) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--brand-blue, #2b7cff) 34%, transparent);
+  background: color-mix(in srgb, var(--brand-blue, #1e6fff) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-blue, #1e6fff) 34%, transparent);
   color: var(--text); font-size: var(--fs-sm);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1663,9 +1669,9 @@ tbody tr.row-click { cursor: pointer; }
   gap: 18px;
   color: #fff;
   background:
-    radial-gradient(1100px 520px at 12% 8%, rgba(43, 124, 255, 0.42), transparent 62%),
+    radial-gradient(1100px 520px at 12% 8%, rgba(30, 111, 255, 0.42), transparent 62%),
     radial-gradient(760px 460px at 88% 92%, rgba(139, 92, 246, 0.34), transparent 60%),
-    linear-gradient(150deg, #060b18 0%, #0b1533 48%, #05070d 100%);
+    linear-gradient(150deg, #0e1420 0%, #142042 48%, #0e1420 100%);
   background-size: 180% 180%;
   animation: gradientShift 17s ease-in-out infinite;
 }
@@ -1763,7 +1769,7 @@ tbody tr.row-click { cursor: pointer; }
 }
 
 /* Neutral blue badge used by notifications / product detail / threads -------- */
-.badge-blue { background: rgba(43, 124, 255, 0.15); color: #6ea8ff; }
+.badge-blue { background: rgba(30, 111, 255, 0.15); color: #6ea8ff; }
 
 /* Centred empty state (NotFound) -------------------------------------------- */
 .center-box {
@@ -2179,9 +2185,9 @@ tbody tr.row-click { cursor: pointer; }
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
 }
-.theme-swatch-dark { background: linear-gradient(135deg, #05070d 0%, #0b1020 50%, #2b7cff 100%); }
-.theme-swatch-light { background: linear-gradient(135deg, #ffffff 0%, #f5f7fc 50%, #1447c4 100%); }
-.theme-swatch-system { background: linear-gradient(135deg, #05070d 0%, #0b1020 48%, #ffffff 52%, #f5f7fc 100%); }
+.theme-swatch-dark { background: linear-gradient(135deg, #0e1420 0%, #1a2233 50%, #5b9bff 100%); }
+.theme-swatch-light { background: linear-gradient(135deg, #ffffff 0%, #f4f6fb 50%, #124ca8 100%); }
+.theme-swatch-system { background: linear-gradient(135deg, #0e1420 0%, #1a2233 48%, #ffffff 52%, #f4f6fb 100%); }
 
 /* Device list -------------------------------------------------------------- */
 .device-row {
@@ -2446,7 +2452,7 @@ tbody tr.row-click { cursor: pointer; }
 }
 .google-btn:hover:not(:disabled) {
   background: var(--surface-3, var(--surface));
-  border-color: var(--brand-blue, #2b7cff);
+  border-color: var(--brand-blue, #1e6fff);
 }
 .google-btn:active:not(:disabled) { transform: translateY(1px); }
 .google-btn:disabled { opacity: .6; cursor: not-allowed; }
@@ -2509,18 +2515,18 @@ tbody tr.row-click { cursor: pointer; }
 .uploader-icon-btn {
   width: 30px; height: 30px; display: grid; place-items: center;
   border-radius: 9px; border: none; cursor: pointer;
-  background: rgba(5, 7, 13, 0.72); color: #fff;
+  background: rgba(14, 20, 32, 0.72); color: #fff;
   backdrop-filter: blur(4px);
   transition: background 0.18s ease, transform 0.18s ease;
 }
-.uploader-icon-btn:hover { background: rgba(5, 7, 13, 0.9); transform: translateY(-1px); }
+.uploader-icon-btn:hover { background: rgba(14, 20, 32, 0.9); transform: translateY(-1px); }
 .uploader-icon-btn.danger:hover { background: var(--danger, #e5484d); }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Touch devices: actions are always visible (there is no hover to reveal them). */
 @media (hover: none) {
-  .uploader-icon-btn { background: rgba(5, 7, 13, 0.8); }
+  .uploader-icon-btn { background: rgba(14, 20, 32, 0.8); }
 }
 
 /* ── Touch targets ───────────────────────────────────────────────────────────
