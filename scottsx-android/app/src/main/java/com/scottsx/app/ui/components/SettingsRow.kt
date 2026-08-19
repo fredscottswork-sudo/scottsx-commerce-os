@@ -74,6 +74,3 @@ fun SettingsRow(
         }
     }
 }
-
-private fun Modifier.background(color: Color, shape: androidx.compose.ui.graphics.Shape): Modifier =
-    this.then(androidx.compose.foundation.background(color, shape))

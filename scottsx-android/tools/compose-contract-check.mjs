@@ -265,6 +265,52 @@ console.log('\n\x1b[1m3. Imports exist for every symbol used\x1b[0m');
     missingFw.length === 0, [...new Set(missingFw)].slice(0, 8).join(' | '));
 }
 
+{
+  // A private `Modifier.foo` that calls androidx...foo() resolves to ITSELF:
+  // the local extension shadows the imported one, so the fully-qualified call
+  // is infinite recursion the compiler rejects as an unresolved reference.
+  // Two of these shipped (background in SettingsRow, clickable in LoginScreen)
+  // and both only surfaced on a real SDK build.
+  // A fully-qualified androidx call like `androidx.compose.foundation.clickable(...)`
+  // only resolves if that package is on the classpath AND nothing shadows it.
+  // Two of these shipped -- background in SettingsRow, clickable in LoginScreen --
+  // and both failed only on a real SDK build with "Unresolved reference".
+  // Importing the symbol and calling it plainly always works, so require that
+  // for the modifier functions, which are the ones that bit us.
+  const RISKY = ['clickable', 'background', 'widthIn', 'heightIn', 'size', 'padding'];
+  const shims = [];
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    for (const name of RISKY) {
+      const re = new RegExp(`androidx\\.compose\\.[\\w.]*\\.${name}\\s*\\(`, 'g');
+      for (const m of src.matchAll(re)) {
+        const line = src.slice(0, m.index).split('\n').length;
+        shims.push(`${rel(f)}:${line} ${name}`);
+      }
+    }
+  }
+  ok_if('modifier helpers are imported, not called fully-qualified',
+    shims.length === 0, shims.slice(0, 5).join(' | '));
+
+  const badOrder = [];
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    // Signatures can span lines; grab everything to the closing paren.
+    for (const m of src.matchAll(/fun (\w+)\(([\s\S]*?)\)\s*\{/g)) {
+      const [, fn, params] = m;
+      if (!/\bonClick\s*:/.test(params)) continue;
+      const list = params.split(',').map((x) => x.trim()).filter(Boolean);
+      const iClick = list.findIndex((x) => /^onClick\s*:/.test(x));
+      if (iClick === -1 || iClick === list.length - 1) continue;
+      const called = files.some((g) =>
+        new RegExp(`(?<![\\w.])${fn}\\([^()]*\\)\\s*\\{`).test(readFileSync(g, 'utf8')));
+      if (called) badOrder.push(`${rel(f)}: ${fn} (onClick at ${iClick + 1}/${list.length})`);
+    }
+  }
+  ok_if('every composable called with a trailing lambda declares onClick last',
+    badOrder.length === 0, badOrder.slice(0, 5).join(' | '));
+}
+
 console.log('\n\x1b[1m4. No dangling references to removed APIs\x1b[0m');
 {
   const pc = readFileSync(join(SRC, 'ui/components/ProductCard.kt'), 'utf8');

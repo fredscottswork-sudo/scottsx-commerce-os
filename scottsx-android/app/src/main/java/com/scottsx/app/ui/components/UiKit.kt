@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -172,7 +173,10 @@ fun ListDivider() {
 
 /** Quick reply chip used by AI screens and the thread composer. */
 @Composable
-fun QuickChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+// onClick is LAST so `QuickChip("hi") { … }` binds the trailing lambda to it.
+// With modifier last, the lambda bound to `modifier` instead and the compiler
+// reported "No value passed for parameter 'onClick'".
+fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
         color = ScottsTechXColors.BluePrimary.copy(alpha = 0.10f),
         shape = RoundedCornerShape(16.dp),

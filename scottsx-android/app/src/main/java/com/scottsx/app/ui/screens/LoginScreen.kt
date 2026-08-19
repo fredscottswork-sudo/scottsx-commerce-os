@@ -132,5 +132,8 @@ fun LoginScreen(
     }
 }
 
+// Named clickableNoRipple, but it never removed the ripple - and the
+// fully-qualified call could not resolve without the import. Use the real
+// modifier directly at the call site instead of wrapping it.
 private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
-    this.then(androidx.compose.foundation.clickable(onClick = onClick))
+    this.clickable(onClick = onClick)
