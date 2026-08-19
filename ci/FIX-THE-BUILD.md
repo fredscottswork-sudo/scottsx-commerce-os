@@ -1,81 +1,91 @@
-# Fix the APK build — one command
+# The APK builds. Now make it install.
 
-## Where things stand
+## The build is fixed
 
-Two separate bugs were stacked on top of each other. The first one hid the second.
+Run `32306996100` **succeeded** and produced a **16.5 MB APK**. The two build
+bugs (AGP 8.5.2 vs `compileSdk 35`, and the missing `ScreenScaffold.kt`) are
+already on `master`. Nothing further is needed for the build itself.
 
-**Bug 1 — AGP too old (FIXED, confirmed by your last run).**
-The build died at 46s right after `:app:preReleaseBuild` with no error message at
-all. `compileSdk 35` requires Android Gradle Plugin **8.6.0+**; the project pinned
-**8.5.2**. AGP 8.5.2 only *warns* about compileSdk 35 during configuration, then
-hard-fails in `:app:checkReleaseAarMetadata` — before Kotlin ever runs, which is
-why nothing was printed.
+## Why it says "There was a problem parsing the package"
 
-Your last run proves the fix worked. It sailed through `checkReleaseAarMetadata`,
-`processReleaseResources`, `mergeExtDexRelease` — **36 tasks, 2m19s** — instead of
-dying at 46s.
+There are two causes, and both are addressed below.
 
-**Bug 2 — a missing file (this is the remaining one).**
-With the build finally reaching Kotlin, exactly one error appeared:
+### 1. You are almost certainly installing the ZIP, not the APK
+
+GitHub **always** wraps artifacts in a zip. The download is:
 
 ```
-e: UiKit.kt:218:14 Unresolved reference: statusBarSpacer
+scottsx-release-apk.zip        <- this is what lands on your phone
+└── app-release.apk            <- this is the thing to install
 ```
 
-`UiKit.kt` line 218 calls `.statusBarSpacer()`, but that extension is declared in
-`ui/components/ScreenScaffold.kt` — **a file that was never copied to master.**
-The call site was there without the definition. That file also declares
-`topInset()`, `bottomInset()`, `navBarSpacer()` and `ScreenScaffold()`, which the
-edge-to-edge (targetSdk 35) layout work needs.
+Tapping the `.zip` gives *exactly* "There was a problem parsing the package,"
+because it is not a package. **Unzip it first, then install the `.apk` inside.**
+
+On a phone: use any file manager (Files, RAR, ZArchiver) to extract the zip, then
+tap the `.apk`. You will also need to allow "Install unknown apps" for whichever
+app you install from.
+
+### 2. minSdk was 30 — Android 11 and newer only
+
+The same error appears when an APK's `minSdk` is higher than the device's Android
+version: the package parser rejects it before installing. If your phone runs
+Android 10 or older, that alone would explain it.
+
+Nothing in the app actually needs API 30. I checked:
+
+- every version-sensitive call is already guarded — notification channels behind
+  API 26, `POST_NOTIFICATIONS` behind API 33
+- no `java.time` / `java.nio.file` usage, so no desugaring needed
+- no API-30-only calls (`windowInsetsController`, `setDecorFitsSystemWindows`,
+  `WindowMetrics`) anywhere in the source
+- dependency floor is 23 (firebase-bom 33.x)
+
+So `minSdk` is now **24** — Android 7.0 and newer, instead of Android 11+.
 
 ## Run this
-
-From a clone of the repo, on `master`:
 
 ```bash
 git fetch origin arena/01a01321-scottsx-commerce-os
 git show origin/arena/01a01321-scottsx-commerce-os:ci/apply-workflow-fixes.sh > ci/apply-workflow-fixes.sh
 bash ci/apply-workflow-fixes.sh
-git commit -m "Fix APK build: add missing ScreenScaffold.kt"
+git commit -m "Install fix: minSdk 24, verify APK in CI"
 git push
 ```
 
-Then: **Actions → "Android release APK" → Run workflow**.
+Then **Actions → "Android release APK" → Run workflow**, download the artifact,
+**unzip it**, and install the `.apk`.
 
-The APK appears in that run's **Artifacts** as `scottsx-release-apk`. Without
-keystore secrets it is debug-signed — fine for installing and testing, not
-acceptable for the Play Store.
+## The next run proves the APK is good before you download it
 
-## Why every existing check missed this
+New step, **"Verify the APK is installable"**, runs before upload and hard-fails
+on a bad package:
 
-- `kotlin-syntax-check.sh` has no Android SDK on its classpath, so an unresolved
-  reference is indistinguishable from the normal Compose noise.
-- The import checkers only read `import` lines. This call needed **no import** —
-  `UiKit.kt` and `ScreenScaffold.kt` are in the same package, so the reference is
-  resolved by package membership. The file just wasn't there.
+- `unzip -t` — the container is not corrupt
+- `aapt2 dump badging` — Android's own parser can read the manifest; prints the
+  package name, `minSdk` and `targetSdk`
+- `apksigner verify` — the APK is genuinely signed (an unsigned APK will not
+  install)
 
-New gate `scottsx-android/tools/orphan-symbol-check.mjs` closes that hole: it
-flags any chained `.foo(` call matching no declaration anywhere in the app source
-and not a known imported/framework symbol — the exact signature of "call site
-copied without its defining file."
+It also writes the package details, and the unzip-first instruction, to the run's
+Summary page.
 
 ## Verified before shipping
 
-- **Orphan gate falsified**: FAILS on master as-is (1 finding, correctly
-  `UiKit.kt:218 .statusBarSpacer()`), PASSES once `ScreenScaffold.kt` is added,
-  PASSES on the working branch. 56–59 files, zero false positives after
-  whitelisting genuine OkHttp/Coil/NotificationCompat builders.
-- **Script run against a real `master` clone**: adds `ScreenScaffold.kt`, AGP
-  already at 8.6.0, correct workflow installed, all 7 invoked tool files present.
-- **Run twice**: idempotent.
-- **Fixed tree compiled** against a real `android-35/android.jar`: exactly one
-  `statusBarSpacer` declaration, no duplicates, no syntax errors.
+- Script run against a real `master` clone: `minSdk 30 -> 24` applied, workflow
+  installed, `ScreenScaffold.kt` and AGP 8.6.0 confirmed already present.
+- Run twice — idempotent ("already minSdk 24 — nothing to do").
+- Orphan-symbol gate passes on the fixed tree (57 files).
+- The verify step's logic was tested locally, not assumed: `unzip -t` accepts a
+  valid zip and rejects a corrupt one, and the `sed` that reads `sdkVersion:'NN'`
+  parses real `aapt2 badging` output correctly (returns 24 and 30), with the
+  warning firing only above 30.
 
 ## Not verified
 
-I still cannot produce an APK in my sandbox — `maven.google.com`, `dl.google.com`
-and `services.gradle.org` are blocked, so the Compose/AndroidX artifacts can't be
-downloaded. Bug 1 was confirmed by your run; bug 2 is confirmed by the compiler's
-own message and by the gate reproducing and clearing it. If another error appears,
-the full log is now uploaded as the **`build-log`** artifact and the error lines
-are written to the run's **Summary** page — send me either one.
+I could not download and inspect your actual APK — GitHub serves artifacts from
+`blob.core.windows.net`, which is blocked from my sandbox. So I could not confirm
+first-hand *which* of the two causes hit you. If your phone runs Android 11+, it
+was the zip; if it runs Android 10 or older, it was `minSdk`. The `minSdk` change
+plus the CI verification covers both, and the next run will print the APK's real
+`minSdk` and signature status to the Summary page.
