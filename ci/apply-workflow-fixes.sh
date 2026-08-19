@@ -31,18 +31,36 @@ cd "$REPO_ROOT"
 BRANCH=arena/01a01321-scottsx-commerce-os
 WF_SRC=ci/github-workflows
 
-if [ ! -f "$WF_SRC/android-release.yml" ]; then
-  say "0. Fetching the corrected workflows from $BRANCH"
-  if git fetch -q origin "$BRANCH" 2>/dev/null; then
-    WF_SRC="$(mktemp -d)"
-    git show "origin/$BRANCH:ci/github-workflows/android-release.yml" > "$WF_SRC/android-release.yml"
-    git show "origin/$BRANCH:ci/github-workflows/ci.yml"             > "$WF_SRC/ci.yml"
-    echo "   fetched into $WF_SRC"
+# ALWAYS fetch the workflows from the maintaining branch, even if a copy of
+# ci/github-workflows/ already exists in this checkout. master carries an OLDER
+# snapshot of android-release.yml, and the previous version of this script saw
+# that file, decided it was good enough, and installed the STALE workflow --
+# silently discarding every fix made since. Fetch first; fall back to whatever
+# is on disk only when the network or the branch is unavailable.
+say "0. Fetching the corrected workflows from $BRANCH"
+if git fetch -q origin "$BRANCH" 2>/dev/null; then
+  TMP_WF="$(mktemp -d)"
+  got=0
+  for f in android-release.yml ci.yml; do
+    if git cat-file -e "origin/$BRANCH:ci/github-workflows/$f" 2>/dev/null; then
+      git show "origin/$BRANCH:ci/github-workflows/$f" > "$TMP_WF/$f"
+      echo "   fetched $f"
+      got=$((got + 1))
+    fi
+  done
+  if [ "$got" -gt 0 ]; then
+    WF_SRC="$TMP_WF"
   else
-    echo "   ! could not fetch $BRANCH - skipping the workflow copy."
-    echo "   ! The Kotlin import fixes below still apply."
-    WF_SRC=""
+    echo "   ! branch has no workflow files - falling back to this checkout"
   fi
+else
+  echo "   ! could not fetch $BRANCH - falling back to this checkout"
+fi
+
+if [ ! -f "$WF_SRC/android-release.yml" ]; then
+  echo "   ! no android-release.yml available - skipping the workflow copy."
+  echo "   ! The Kotlin and AGP fixes below still apply."
+  WF_SRC=""
 fi
 
 say "1. Making the Gradle wrapper executable in Git"
@@ -61,10 +79,12 @@ chmod +x scottsx-android/gradlew 2>/dev/null || true
 say "2. Installing the corrected workflows"
 if [ -n "$WF_SRC" ]; then
   mkdir -p .github/workflows
-  cp "$WF_SRC/android-release.yml" .github/workflows/android-release.yml
-  cp "$WF_SRC/ci.yml"              .github/workflows/ci.yml
-  echo "   .github/workflows/android-release.yml"
-  echo "   .github/workflows/ci.yml"
+  for f in android-release.yml ci.yml; do
+    if [ -f "$WF_SRC/$f" ]; then
+      cp "$WF_SRC/$f" ".github/workflows/$f"
+      echo "   .github/workflows/$f"
+    fi
+  done
 else
   echo "   skipped (workflows unavailable)"
 fi
@@ -151,6 +171,35 @@ add_import "$S/SellerAIAssistantScreen.kt" \
 add_import "$S/SupportScreen.kt" \
   "import androidx.compose.foundation.layout.Row" \
   "import androidx.compose.foundation.layout.Spacer"
+
+say "3b. Bumping AGP to 8.6.0 (the compileSdk 35 minimum)"
+# THE APK BUILD FAILURE.
+#
+# The release build died ~46s in, immediately after :app:preReleaseBuild, with
+# no compiler output at all. That is :app:checkReleaseAarMetadata: the AndroidX
+# artifacts this app depends on are built against API 35, and they refuse any
+# consumer whose Android Gradle Plugin is older than 8.6.0. AGP 8.5.2 only
+# WARNS about compileSdk 35 during configuration, then hard-fails in that
+# metadata check -- before Kotlin runs, which is why no error line ever
+# appeared in the log.
+#
+# AGP 8.6.0 requires Gradle >= 8.7 and the wrapper is already on 8.7, so this
+# is a one-line change with no wrapper upgrade.
+G=scottsx-android/build.gradle.kts
+if [ -f "$G" ]; then
+  if grep -q 'com.android.application") version "8.6.0"' "$G"; then
+    echo "   already on AGP 8.6.0 - nothing to do"
+  elif grep -q 'com.android.application") version "8.5.2"' "$G"; then
+    sed -i.bak 's|id("com.android.application") version "8.5.2"|id("com.android.application") version "8.6.0"|' "$G"
+    rm -f "$G.bak"
+    echo "   AGP 8.5.2 -> 8.6.0"
+  else
+    echo "   ! unexpected AGP pin; check $G by hand"
+    grep -n 'com.android.application' "$G" || true
+  fi
+else
+  echo "   ! missing: $G"
+fi
 
 say "4. Staging"
 git add -A scottsx-android 12_Backend/tests web/scripts
