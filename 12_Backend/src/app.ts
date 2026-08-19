@@ -95,14 +95,14 @@ export async function buildApp(): Promise<FastifyInstance> {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ScottsTechX API</title>
 <style>
- body{margin:0;min-height:100vh;display:grid;place-items:center;background:#05070d;
+ body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e1420;
       color:#eef2fb;font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
  .card{max-width:34rem;padding:2.5rem;text-align:center}
  h1{margin:0 0 .5rem;font-size:1.5rem}
  p{margin:.4rem 0;color:#9fb0cc}
  code{background:#121a2f;border:1px solid #1e2a45;border-radius:6px;padding:.15rem .45rem;
       font-size:.9em;color:#eef2fb}
- a{color:#2b7cff}
+ a{color:#5b9bff}
 </style></head><body><div class="card">
  <h1>ScottsTechX API</h1>
  <p>This is the backend. It has no pages to browse &mdash; the website runs separately.</p>
