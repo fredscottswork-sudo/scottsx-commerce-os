@@ -93,7 +93,20 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: chmod +x ./gradlew && ./gradlew --no-daemon assembleRelease -PapiBaseUrl="${{ steps.api.outputs.url }}"
+        # --stacktrace so a configuration/resource failure names itself, and a
+        # trailing grep so the actual error survives log truncation: GitHub's
+        # web log view drops the middle of long output, which hid the real
+        # message behind 3 minutes of Gradle task lines.
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease \
+            -PapiBaseUrl="${{ steps.api.outputs.url }}" 2>&1 | tee /tmp/build.log || {
+              echo "=================== FAILURE SUMMARY ==================="
+              grep -E "^e: |error:|FAILURE:|What went wrong|Caused by:|> " /tmp/build.log | head -60
+              echo "======================================================="
+              exit 1
+            }
 
       - name: Report signing status
         run: |
