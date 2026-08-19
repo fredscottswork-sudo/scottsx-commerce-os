@@ -1,4 +1,7 @@
 // ScottsTechX — app/build.gradle.kts
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -27,9 +30,9 @@ android {
     }
 
     val keystorePropertiesFile = rootProject.file("keystore.properties")
-    val keystoreProperties = java.util.Properties().apply {
+    val keystoreProperties = Properties().apply {
         if (keystorePropertiesFile.exists()) {
-            keystorePropertiesFile.inputStream().use { load(it) }
+            FileInputStream(keystorePropertiesFile).use { this.load(it) }
         }
     }
     val storeFilePath = keystoreProperties.getProperty("storeFile")
