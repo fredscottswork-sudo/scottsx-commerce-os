@@ -2,8 +2,9 @@ name: Android release APK
 
 # Builds an installable release APK pointed at your live API.
 #
-# Required repository secrets (Settings > Secrets and variables > Actions):
+# Optional repository secrets (Settings > Secrets and variables > Actions):
 #   API_BASE_URL            e.g. https://api.yourdomain.com/api/v1  (must end /api/v1)
+#                           Defaults to the deployed Render API when unset.
 #   ANDROID_KEYSTORE_BASE64 base64 of your .jks  (base64 -w0 release.jks)
 #   ANDROID_KEYSTORE_PASSWORD
 #   ANDROID_KEY_ALIAS
@@ -49,11 +50,22 @@ jobs:
           # script, so a value containing shell metacharacters cannot execute.
           INPUT_URL: ${{ inputs.apiBaseUrl }}
           SECRET_URL: ${{ secrets.API_BASE_URL }}
+          DEFAULT_URL: https://scottstechx-api.onrender.com/api/v1
         run: |
+          # Precedence: manual input > repository secret > the deployed API.
+          #
+          # This used to hard-fail when the secret was unset, so the very first
+          # run of the workflow could never succeed - you had to know to create
+          # a secret before pressing the button. The app's own Gradle default
+          # is the emulator loopback (10.0.2.2), which is worse than useless in
+          # a shipped APK, so falling through to THAT would be wrong. Falling
+          # through to the real deployed API matches what the web client
+          # already does, and is announced in the log so nobody ships against
+          # the wrong backend by accident.
           URL="${INPUT_URL:-$SECRET_URL}"
           if [ -z "$URL" ]; then
-            echo "::error::No API base URL. Set the API_BASE_URL secret or pass it to the workflow."
-            exit 1
+            URL="$DEFAULT_URL"
+            echo "::warning::API_BASE_URL is not set — building against the default: $URL"
           fi
           case "$URL" in
             https://*) ;;
@@ -63,6 +75,7 @@ jobs:
             */api/v1) ;;
             *) echo "::error::API_BASE_URL must end with /api/v1 (got: $URL)"; exit 1 ;;
           esac
+          echo "Building APK against: $URL"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Decode the signing keystore

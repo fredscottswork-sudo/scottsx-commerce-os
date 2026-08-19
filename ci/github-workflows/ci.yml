@@ -73,6 +73,11 @@ jobs:
 
       - name: Start the API
         working-directory: 12_Backend
+        env:
+          # Verification emails link to <PUBLIC_WEB_URL>/verify-email?token=...
+          # Set it so the suites exercise the configured path rather than the
+          # built-in fallback origin.
+          PUBLIC_WEB_URL: http://127.0.0.1:5173
         run: |
           node dist/server.js > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
@@ -83,6 +88,17 @@ jobs:
           done
           echo "API failed to start"; cat /tmp/api.log; exit 1
 
+      - name: Regenerate the sitemap against the live API
+        working-directory: web
+        # The web build runs before the API is up, so the sitemap it produced
+        # contains only the static routes. Regenerate now that /products is
+        # answering, so CI exercises the full path (products, storefronts, CMS)
+        # rather than only the offline fallback.
+        env:
+          VITE_API_URL: http://127.0.0.1:3001
+          SITE_URL: http://127.0.0.1:5173
+        run: node scripts/generate-sitemap.mjs
+
       - name: Backend end-to-end suite
         working-directory: 12_Backend
         run: node tests/e2e.mjs
@@ -90,6 +106,14 @@ jobs:
       - name: Google Sign-In suite
         working-directory: 12_Backend
         run: node tests/google-auth.mjs
+
+      - name: Firebase Authentication suite (local JWKS, no egress)
+        working-directory: 12_Backend
+        run: node tests/firebase-auth.mjs
+
+      - name: Production-mode safety suite
+        working-directory: 12_Backend
+        run: node tests/production-safety.mjs
 
       - name: Android/backend contract suite
         working-directory: 12_Backend

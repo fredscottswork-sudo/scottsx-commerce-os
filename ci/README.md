@@ -30,9 +30,41 @@ GitHub UI via **Actions > New workflow > set up a workflow yourself**.
 
 | File | Trigger | Purpose |
 |---|---|---|
-| `ci.yml` | every push + PR | Builds backend and web, runs all four suites (568 checks) against a real Postgres service container, and asserts the gazetteer asset reached `dist/`. Also builds a debug APK. |
-| `android-release.yml` | manual, or a `v*` tag | Builds a signed release APK against your live HTTPS API and uploads it as an artifact. |
+| `ci.yml` | every push + PR | Builds backend and web, runs all six suites against a real Postgres service container, and asserts the gazetteer asset reached `dist/`. Also builds a debug APK. |
+| `android-release.yml` | manual, or a `v*` tag | Builds a release APK against your live HTTPS API and uploads it as an artifact. |
 
-Both are valid YAML and were parsed and checked before committing. See
+## If the release APK build failed with "No API base URL"
+
+That was this error:
+
+```
+Error: No API base URL. Set the API_BASE_URL secret or pass it to the workflow.
+```
+
+The workflow refused to build unless an `API_BASE_URL` secret existed, so the
+very first run could never succeed — you had to know to create a secret before
+pressing the button. **Fixed:** it now falls back to the deployed API
+(`https://scottstechx-api.onrender.com/api/v1`) and prints a warning naming the
+URL it used.
+
+Copy the updated `android-release.yml` across (the `git mv` above) and re-run.
+No secret is required to get an APK.
+
+Set `API_BASE_URL` anyway once you have a custom API domain — the fallback is a
+convenience, not the right long-term answer. Two guards remain and still fail
+the build: the URL must be `https://` (a shipped app cannot use cleartext) and
+must end in `/api/v1`.
+
+### The APK will be debug-signed
+
+Without the four `ANDROID_KEYSTORE_*` secrets the build still succeeds, but the
+APK is debug-signed: installable for testing, **not** acceptable for the Play
+Store. The run logs a warning saying so.
+
+Both were structurally checked before committing (indentation, step depth,
+tabs, `run:` block nesting), and the URL-resolution logic in
+`android-release.yml` was executed directly against every case: no secret, a
+secret, a manual input overriding the secret, a cleartext URL, and one missing
+`/api/v1`. See
 `DEPLOYMENT.md` for the secrets `android-release.yml` expects, or
 `DEPLOY-STEPS.md` for the full click-by-click deployment walkthrough.
