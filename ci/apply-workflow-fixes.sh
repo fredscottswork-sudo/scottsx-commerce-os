@@ -172,6 +172,29 @@ add_import "$S/SupportScreen.kt" \
   "import androidx.compose.foundation.layout.Row" \
   "import androidx.compose.foundation.layout.Spacer"
 
+say "3a. Adding the missing ScreenScaffold.kt"
+# THE KOTLIN COMPILE FAILURE.
+#
+#   e: UiKit.kt:218:14 Unresolved reference: statusBarSpacer
+#
+# UiKit.kt line 218 calls .statusBarSpacer(), but that extension is declared in
+# ui/components/ScreenScaffold.kt -- a file that was never copied to master. So
+# master had the CALL SITE without the DEFINITION. ScreenScaffold.kt also
+# declares topInset(), bottomInset(), navBarSpacer() and the ScreenScaffold()
+# container, all of which the edge-to-edge (targetSdk 35) layout work depends on.
+SC=scottsx-android/app/src/main/java/com/scottsx/app/ui/components/ScreenScaffold.kt
+if [ -n "$WF_SRC" ] || git cat-file -e "origin/$BRANCH:$SC" 2>/dev/null; then
+  if git cat-file -e "origin/$BRANCH:$SC" 2>/dev/null; then
+    mkdir -p "$(dirname "$SC")"
+    git show "origin/$BRANCH:$SC" > "$SC"
+    echo "   + $SC"
+  else
+    echo "   ! $SC not found on $BRANCH"
+  fi
+else
+  echo "   ! branch unavailable - copy $SC by hand"
+fi
+
 say "3b. Bumping AGP to 8.6.0 (the compileSdk 35 minimum)"
 # THE APK BUILD FAILURE.
 #
