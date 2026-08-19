@@ -3,9 +3,9 @@
      the site render the same brand. -->
 <resources>
     <!-- web token: primary (dark theme) -->
-    <color name="brand_primary">#FF2B7CFF</color>
+    <color name="brand_primary">#FF1E6FFF</color>
     <!-- web token: bg (dark theme) -->
-    <color name="brand_background">#FF05070D</color>
+    <color name="brand_background">#FF0E1420</color>
     <!-- web token: surface -->
-    <color name="brand_surface">#FF0B1020</color>
+    <color name="brand_surface">#FF1A2233</color>
 </resources>
