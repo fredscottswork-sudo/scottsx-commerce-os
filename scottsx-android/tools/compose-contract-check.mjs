@@ -453,6 +453,7 @@ if (fail) { console.log('\nFailures:'); failures.forEach((f) => console.log(`  -
 // ---------------------------------------------------------------------------
 // Auto-enable on the arena working branch, where the log blackout applies.
 const diagBranch = (process.env.GITHUB_REF_NAME || '').startsWith('arena/');
+let diagFailure = '';
 if (process.env.DIAG_COMPILE === '1' || diagBranch) {
   const { spawnSync } = await import('node:child_process');
   console.log('\n=== DIAG_COMPILE: running ./gradlew assembleDebug ===');
@@ -472,6 +473,18 @@ if (process.env.DIAG_COMPILE === '1' || diagBranch) {
     console.log(lines.slice(-40).join('\n'));
   }
   console.log(`=== DIAG_COMPILE: gradle exit ${r.status} ===`);
+  if (r.status !== 0) {
+    const block = idx >= 0 ? lines.slice(idx, idx + 18) : lines.slice(-30);
+    diagFailure = [...errs.slice(0, 25), '---', ...block].join('\n');
+  }
+}
+
+// If the diagnostic build failed, emit the reason as a GitHub error
+// annotation. Annotation text IS readable over the REST API even when log and
+// artifact downloads are blocked, which is the only channel left here.
+if (typeof diagFailure === 'string' && diagFailure) {
+  const oneLine = diagFailure.replace(/\r?\n/g, '%0A').slice(0, 3500);
+  console.log(`::error title=ANDROID BUILD DIAG::${oneLine}`);
 }
 
 process.exit(fail ? 1 : 0);
