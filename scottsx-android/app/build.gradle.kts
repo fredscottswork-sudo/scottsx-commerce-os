@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.scottsx.app"
-        minSdk = 30
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "0.22.1"

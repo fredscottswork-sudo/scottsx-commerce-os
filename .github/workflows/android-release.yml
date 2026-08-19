@@ -150,6 +150,56 @@ jobs:
           path: ${{ runner.temp }}/build.log
           if-no-files-found: warn
 
+      # Prove the APK is a real, parseable, signed package BEFORE it ships.
+      # "There was a problem parsing the package" on the phone can mean a
+      # corrupt APK, a minSdk higher than the device, or (most often) that the
+      # ZIP was installed instead of the APK inside it. This step rules out the
+      # first two by inspecting the actual artifact.
+      - name: Verify the APK is installable
+        working-directory: scottsx-android
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          test -n "$APK" || { echo "::error::No APK was produced."; exit 1; }
+          echo "APK: $APK  ($(du -h "$APK" | cut -f1))"
+
+          BT=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+          echo "build-tools: $BT"
+
+          # 1. Is it a valid zip/APK container at all?
+          unzip -t "$APK" > /dev/null || { echo "::error::APK is corrupt."; exit 1; }
+          echo "container OK"
+
+          # 2. Read the manifest. If aapt cannot parse it, neither can Android.
+          "$BT/aapt2" dump badging "$APK" > /tmp/badging.txt \
+            || { echo "::error::aapt2 could not parse the APK manifest."; exit 1; }
+          grep -E "^package:|sdkVersion|targetSdkVersion" /tmp/badging.txt
+
+          MIN=$(sed -n "s/^sdkVersion:'\([0-9]*\)'/\1/p" /tmp/badging.txt)
+          echo "minSdk = $MIN"
+          if [ -n "$MIN" ] && [ "$MIN" -gt 30 ]; then
+            echo "::warning::minSdk $MIN excludes many devices."
+          fi
+
+          # 3. Is it actually signed? An unsigned APK will not install.
+          "$BT/apksigner" verify --print-certs "$APK" \
+            || { echo "::error::APK signature is invalid - it will not install."; exit 1; }
+          echo "signature OK"
+
+          {
+            echo "## APK ready"
+            echo ""
+            grep -E "^package:" /tmp/badging.txt || true
+            echo ""
+            echo "**minSdk $MIN** - installs on Android $( [ "$MIN" -le 24 ] && echo '7.0' || echo "API $MIN" ) and newer."
+            echo ""
+            echo "### Installing it"
+            echo "GitHub wraps every artifact in a ZIP. The download is"
+            echo "\`scottsx-release-apk.zip\` - **unzip it first** and install the"
+            echo "\`.apk\` inside. Installing the .zip itself gives"
+            echo "\"There was a problem parsing the package\"."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Report signing status
         run: |
           if [ "$HAS_KEYSTORE" = "yes" ]; then
