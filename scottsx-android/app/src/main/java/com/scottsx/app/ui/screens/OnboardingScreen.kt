@@ -199,10 +199,13 @@ private fun OnboardVideoPage(
 /** The four-picture page: a 2x2 grid that fades and rises into place. */
 @Composable
 private fun OnboardPicturesPage() {
+    // Real Ugandan market scenes rather than stock product categories: the
+    // produce stall, the fabric shop, the craft-and-art shop and the roadside
+    // stall. Resource names describe the artwork so they cannot drift.
     val tiles = listOf(
-        R.drawable.onb_electronics to "Electronics",
-        R.drawable.onb_fashion to "Fashion",
-        R.drawable.onb_home to "Home",
+        R.drawable.onb_produce to "Fresh produce",
+        R.drawable.onb_fabrics to "Fabrics",
+        R.drawable.onb_crafts to "Crafts & art",
         R.drawable.onb_market to "Local shops",
     )
 
@@ -238,7 +241,7 @@ private fun OnboardPicturesPage() {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Phones, fashion, home essentials and the shops down the road — all from sellers we have approved.",
+                "Produce, fabrics, crafts and the shops down the road — all from sellers we have approved.",
                 color = ScottsTechXColors.DarkOnSecondary,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
