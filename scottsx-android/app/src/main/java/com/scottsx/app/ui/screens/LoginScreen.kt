@@ -34,7 +34,6 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.InputField
 import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.components.SettingsRow
-import com.scottsx.app.ui.components.StatusChip
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -126,8 +125,6 @@ fun LoginScreen(
                     .padding(top = 4.dp)
                     .clickableNoRipple(onGoSignUp),
             )
-            Spacer(Modifier.height(12.dp))
-            StatusChip("demo: buyer1@example.com / secret123")
         }
     }
 }

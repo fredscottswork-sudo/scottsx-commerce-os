@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -176,6 +177,39 @@ fun SellerHomeScreen(
             // only time-sensitive thing on the screen. Rendered only when the
             // list is non-empty; the previous version drew its heading
             // unconditionally and left an empty strip underneath.
+            // The ORIGINAL full-width amber banner, restored. I had replaced it
+            // with the chip row below, but that dropped the at-a-glance warning
+            // you get before scrolling. Both are here now: the banner states the
+            // problem, the chips say which products.
+            if (stats?.lowStock != null && stats!!.lowStock > 0) {
+                item {
+                    Surface(
+                        color = ScottsTechXColors.WarningAmber.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.WarningAmber,
+                                contentDescription = null,
+                                tint = ScottsTechXColors.WarningAmber,
+                            )
+                            Text(
+                                "" + stats!!.lowStock + " product(s) low on stock \u2014 restock soon.",
+                                color = ScottsTechXColors.WarningAmber,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+
             val lowStockItems = products.filter { it.stockQuantity <= 5 }
             if (lowStockItems.isNotEmpty()) {
                 item {

@@ -291,6 +291,22 @@ console.log('\n\x1b[1m4. Seller dashboard stat tiles\x1b[0m');
     unfilled.length === 0, unfilled.join(', '));
 }
 
+console.log('\n\x1b[1m4b. Shipping hygiene\x1b[0m');
+{
+  // The app is being published. Credentials printed on the sign-in screen are
+  // a handed-out admin login, so this guards every screen, not just the one
+  // that had them.
+  const leaks = [];
+  for (const f of files) {
+    const src = read(f);
+    for (const pat of [/demo:\s*\S+@/i, /Demo admin/i, /Admin123!/, /Seller123!/, /secret123/]) {
+      if (pat.test(src)) leaks.push(`${rel(f).split('/').pop()} (${pat.source})`);
+    }
+  }
+  ok_if('no demo or seed credentials are printed in any screen',
+    leaks.length === 0, leaks.join(', '));
+}
+
 console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
 {
   // The welcome screen deliberately uses the ORIGINAL brand block - a
