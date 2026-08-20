@@ -33,6 +33,15 @@ const ROOT = join(__dirname, '..');
 const DIST = process.env.WEB_DIST || join(ROOT, 'dist');
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:3001';
 
+/** fetch that reports which URL failed — "fetch failed" alone is useless in CI. */
+async function fetchNamed(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    throw new TypeError(`fetch failed for ${url}: ${err && err.message}`);
+  }
+}
+
 let pass = 0;
 let fail = 0;
 const failures = [];
@@ -58,7 +67,7 @@ const bundleCss = cssMatch ? readFileSync(join(DIST, cssMatch[1]), 'utf8') : '';
 
 // ── Backend helpers ─────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
-  const res = await fetch(`${API_BASE}/api/v1${path}`, {
+  const res = await fetchNamed(`${API_BASE}/api/v1${path}`, {
     ...opts,
     headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
   });
@@ -111,7 +120,10 @@ async function mount(route, session = null, { settleMs = 1400, google = 'block',
     if (offline) return Promise.reject(new TypeError('Failed to fetch'));
     const url = typeof input === 'string' ? input : input.url;
     const absolute = url.startsWith('http') ? url : `${API_BASE}${url}`;
-    return fetch(absolute, init);
+    return fetch(absolute, init).catch((err) => {
+      // Name the URL: a bare "fetch failed" is undiagnosable in CI.
+      throw new TypeError(`fetch failed for ${absolute}: ${err && err.message}`);
+    });
   };
   window.Headers = Headers;
   window.Request = Request;
