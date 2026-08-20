@@ -1250,7 +1250,15 @@ section('18. Mobile readiness & photo upload');
   check('the viewport covers the notch', /viewport-fit=cover/.test(viewport), viewport);
 
   // Guards that keep a stray wide element from panning the whole page.
-  check('horizontal overflow is guarded', /overflow-x:\s*hidden/.test(bundleCss));
+  // MUST be `clip`, not `hidden`. overflow-x:hidden makes html/body a scroll
+  // container, which capped the document at the viewport height: measured in
+  // Chromium at 653px while the real content was 7451px, so the page could not
+  // be scrolled at all and everything below the first screen was unreachable.
+  // `clip` blocks the sideways pan without creating a scroll container.
+  check('horizontal overflow is guarded',
+    /html,\s*body\{[^}]*overflow-x:\s*clip/.test(bundleCss));
+  check('the overflow guard does not trap vertical scrolling',
+    !/html,\s*body\{[^}]*overflow-x:\s*hidden/.test(bundleCss));
   check('long words wrap instead of stretching the page', /overflow-wrap:\s*break-word/.test(bundleCss));
   // Photos/video are clamped; icons are deliberately exempt (see section 20 —
   // clamping them squashed icons in flex rows on phones).
@@ -1919,8 +1927,14 @@ section('30. AI pages: chat is full height and the helper copy is inside it');
     /\.ai-results\{[^}]*width:100%/.test(bundleCss));
   check('a turn stacks the bubble and its results',
     /\.ai-turn\{[^}]*flex-direction:column/.test(bundleCss));
+  // The full-bleed pull must track the real content gutter rather than repeat
+  // a literal: it was hardcoded to -13px, and when the narrow-phone rules cut
+  // the gutter to 10px the console over-pulled and hung 6px off a 280px
+  // screen. Assert it is driven by the variable.
   check('the AI console spans the full screen width on a phone',
-    /\.ai-console-full\{[^}]*margin-inline:-13px/.test(bundleCss));
+    /\.ai-console-full\{[^}]*margin-inline:calc\(var\(--content-pad\)\s*\*\s*-1\)/.test(bundleCss));
+  check('the full-bleed pull is tied to the content gutter, not a literal',
+    /--content-pad:/.test(bundleCss));
 }
 
 // ── 31. AI product results get the full chat width ─────────────────────────

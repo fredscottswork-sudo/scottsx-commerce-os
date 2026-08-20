@@ -171,8 +171,15 @@ html, body, #root { height: 100%; }
    page scroll sideways — the most common way a responsive layout still feels
    broken on a real handset. */
 html, body {
-  /* A stray wide child must not make the whole document pan horizontally. */
-  overflow-x: hidden;
+  /* A stray wide child must not make the whole document pan horizontally.
+     `clip`, NOT `hidden`: overflow-x:hidden makes the element a scroll
+     container, which capped the document at exactly the viewport height -
+     measured in Chromium as scrollHeight 653px on a 653px screen while the
+     real content was 7451px tall. The page simply could not be scrolled: the
+     bottom nav sat on the last card and everything below the first screenful
+     was unreachable. `clip` suppresses the sideways pan without creating a
+     scroll container, so vertical scrolling works normally. */
+  overflow-x: clip;
   /* Stop iOS Safari inflating text in landscape and breaking the layout. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -1301,10 +1308,14 @@ tbody tr.row-click { cursor: pointer; }
      26px the conversation and its product grid could be using. Cancel it for
      this layout only and put the padding back on the parts that need it. */
   .ai-console-full {
-    margin-inline: -13px;
-    width: calc(100% + 26px);
+    /* Full-bleed by cancelling the content gutter. This MUST track the real
+       gutter: it was hardcoded to 13px, and when the narrow-phone rules
+       reduced the gutter to 10px the console over-pulled and hung 6px off the
+       right edge of a 280px screen. --content-pad is the single source. */
+    margin-inline: calc(var(--content-pad) * -1);
+    width: calc(100% + var(--content-pad) * 2);
   }
-  .ai-console-full .ai-agents .col { padding-inline: 13px; }
+  .ai-console-full .ai-agents .col { padding-inline: var(--content-pad); }
 
   .ai-console-full .ai-chat {
     border-radius: 0;
@@ -2645,7 +2656,10 @@ tbody tr.row-click { cursor: pointer; }
   }
   .stat-icon { width: 32px; height: 32px; border-radius: 10px; }
   .stat-label {
-    font-size: 10px; letter-spacing: 0.04em;
+    /* 10px is below the legibility floor. This rule sits AFTER the earlier
+       fix and was silently overriding it. Line clamping (below) already keeps
+       every card the same height, so the tiny size buys nothing. */
+    font-size: 11.5px; letter-spacing: 0.04em;
     /* Two lines maximum, so every card in a row keeps the same height. */
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
     overflow: hidden;
@@ -2712,4 +2726,156 @@ tbody tr.row-click { cursor: pointer; }
      category) and sit at 36-38px. Round them up too. */
   .btn-sm { min-height: 44px; }
   .chip { min-height: 44px; }
+
+  /* Measured in headless Chromium at 280-430px, not inferred from the
+     stylesheet - these were all still short of 44px on a real render. */
+  .searchbar { min-height: 44px; }          /* the padded wrapper IS the target */
+  .mainnav-link { min-height: 44px; }       /* Market / Deals secondary nav */
+  .mainnav-cats { min-height: 44px; }       /* "All categories" */
+  .brand { min-height: 44px; }              /* the logo is a link home */
+  .top-link { min-height: 44px; }
+  .bottomnav-item { min-height: 44px; }
+  .tab { min-height: 44px; }
+  .pill { min-height: 44px; }
+  /* Keep the label centred now that the box is taller. */
+  .mainnav-link, .mainnav-cats, .tab, .pill {
+    display: inline-flex; align-items: center;
+  }
+
+  /* The favourite (heart) on a product card was 33px and, being the control
+     that saves an item, is one of the most-tapped things in the app. */
+  .pcard-fav { width: 44px; height: 44px; }
+  /* Always visible on touch: it was opacity:0 until :hover, which never
+     happens on a phone - the button existed but could not be discovered. */
+  .pcard-fav { opacity: 1; transform: none; }
+
+  /* AI agent pickers were 37px tall. */
+  .agent-card { min-height: 44px; }
+
+  /* Footer/legal links sat at ~22px. They are standalone targets in a row,
+     not prose links, so give them a real height. */
+  .public-footer a, .footer-links a, a.muted {
+    min-height: 44px; display: inline-flex; align-items: center;
+  }
+
+  /* An icon button inside a crowded flex row was being squeezed to 29px wide
+     even though it was 44px tall. Stop it shrinking below the floor. */
+  .btn-icon, .icon-btn { flex-shrink: 0; min-width: 44px; }
+
+  /* A .btn-sm with one short label ("Buy", "View") measured 39px wide. The
+     height floor was already set; the width needs the same. */
+  .btn-sm { min-width: 44px; }
+
+  /* "See all" arrows were 21.7px tall - standalone navigation, not prose. */
+  .link-arrow { min-height: 44px; }
+
+  /* Footer links measured 41px wide, just under the floor. */
+  .public-footer a, .footer-links a, a.muted {
+    min-width: 44px; justify-content: center;
+  }
+
+  /* Dashboard alert chips ("1 low on stock") were 39.7px tall. They are links
+     to the thing that needs attention, so they must be easy to hit. */
+  .alert-chip { min-height: 44px; }
+
+  /* AI starter prompts are nowrap chips in a wrapping row. On a narrow phone
+     one chip was wider than the row, so it spilled over the message box and
+     the Send button underneath it - tapping "Send" could hit the chip instead.
+     Let them wrap their own text and stay inside the container. */
+  .ai-welcome .chip, .ai-chat .chip {
+    max-width: 100%; white-space: normal; height: auto;
+    text-align: left; line-height: 1.35;
+  }
+
+  /* The welcome panel is `margin:auto` inside a flex column, which centres it
+     but also stops it shrinking: at 280px it grew to 483px inside a 250px
+     scroll area and simply overflowed, laying its starter prompts on top of
+     the message box and the Send button. Let it shrink and let the transcript
+     scroll, which is what the scroll area is for. */
+  .ai-chat-body > .ai-welcome {
+    margin: 0 auto; min-height: 0; flex: 0 0 auto; width: 100%;
+  }
+  .ai-chat-body { min-height: 0; }
+
+  /* The email-verification panel (auth-brand / auth-form) kept its roomy
+     44px and 24px side padding, so at 280px the block measured 337px and hung
+     57px off the right edge - the heading and the logo were cut in half.
+     Padding is the only thing that has to give; the text stays full size. */
+  .auth-brand { padding: 26px 14px; }
+  .auth-form { padding: 20px 10px; }
+  .auth-brand, .auth-form, .auth-card { max-width: 100%; min-width: 0; }
+  .auth-card { padding: 18px 14px 20px; }
+}
+
+/* The secondary nav ("Market / Deals / Nearby / AI") is a nowrap flex row.
+   With no overflow rule its links spilled past the right edge and dragged the
+   whole document wider than the screen, so every page could be dragged
+   sideways. Make it a scrolling strip: links stay full-size and readable,
+   and the page stops overflowing. */
+@media (max-width: 960px) {
+  .mainnav-inner {
+    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .mainnav-links {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; flex: 1 1 auto; min-width: 0;
+  }
+  .mainnav-links::-webkit-scrollbar,
+  .mainnav-inner::-webkit-scrollbar { display: none; }
+}
+
+/* ═══ VERY NARROW PHONES (≤ 340px) ════════════════════════════════════════
+   Measured in a real browser at 280px (Galaxy Fold cover screen, and the
+   floor for cheap Android Go handsets). The ≤620px rules above are written
+   for ~360px and fall apart below ~330px:
+
+     - the top bar tried to fit brand + theme + "Sign in" + "Join" on one
+       row, so the buttons were squeezed to 20-22px wide and their labels
+       were clipped to "gn" and "oir";
+     - .grid-4 stayed two columns, leaving ~120px per card, which wrapped
+       card titles to ONE WORD PER LINE.
+
+   Per the standing rule, none of this is fixed by shrinking text: the grids
+   drop to a single column and the page grows taller instead. */
+@media (max-width: 340px) {
+  /* One column everywhere. Two columns inside 280px is unreadable. */
+  .grid-2, .grid-3, .grid-4, .grid-5 { grid-template-columns: 1fr; }
+
+  /* Let the top bar use a third row rather than crushing the buttons. */
+  .public-topbar-row { flex-wrap: wrap; row-gap: 8px; }
+  .public-topbar-main { width: 100%; }
+  /* Brand takes the row it needs; the actions sit together underneath. */
+  .public-topbar .brand { flex: 1 1 100%; }
+  .public-topbar .row,
+  .public-topbar-main > .row { width: 100%; justify-content: flex-end; }
+  /* Buttons size to their label instead of being squeezed to 20px. */
+  .public-topbar .btn,
+  .public-topbar .public-cta { flex: 0 0 auto; white-space: nowrap; }
+  .brand-name { max-width: none; }
+
+  /* Product cards and stat tiles get the full width too. */
+  .pcard-grid, .product-grid { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr; }
+
+  /* The AI welcome panel had no width ceiling, so its suggestion chips - which
+     are nowrap - pushed it to 338px inside a 280px screen and the starter
+     prompts sat half off-frame, overlapping the message box. */
+  .ai-welcome { max-width: 100%; }
+  .ai-welcome .row.wrap { max-width: 100%; }
+  .ai-welcome .chip {
+    max-width: 100%; white-space: normal; height: auto; padding: 9px 12px;
+    text-align: left;
+  }
+
+  /* The agent rail scrolls sideways, which is fine - but at 280px the first
+     chip filled the whole width, so there was no visual clue that more agents
+     exist. Narrow them and show a sliver of the next one. */
+  .ai-console-full .ai-agents .agent-card { max-width: 78%; }
+  .ai-console-full .ai-agents .agent-name { white-space: nowrap; }
+
+  /* Tighter gutters buy back real estate without touching type size.
+     Set the variable too, so full-bleed layouts cancel the RIGHT amount. */
+  :root { --content-pad: 10px; }
+  .public-content, .content { padding-left: 10px; padding-right: 10px; }
+  .card-pad { padding: 14px; }
 }
