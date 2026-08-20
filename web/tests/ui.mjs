@@ -19,8 +19,19 @@ import { JSDOM, VirtualConsole } from 'jsdom';
 // before the summary block leaves nothing readable in CI, where log downloads
 // are blocked.
 if (process.env.GITHUB_ACTIONS) {
-  const report = (kind) => (err) => {
-    const text = `${kind}: ${err && err.stack ? err.stack : err}`;
+  const report = (kind) => async (err) => {
+    let extra = '';
+    // A bare "fetch failed" does not say whether the API died or a single
+    // request was refused. Probe it, and report how far the suite got.
+    try {
+      const r = await fetch(`${API_BASE}/api/v1/geo/status`);
+      extra = `\nAPI probe after crash: HTTP ${r.status} (server still up)`;
+    } catch (e) {
+      extra = `\nAPI probe after crash: unreachable (${e && e.message}) -> the API process died`;
+    }
+    extra += `\nProgress when it died: ${pass} passed, ${fail} failed`;
+    extra += `\nLast section: ${currentSection || '(none)'}`;
+    const text = `${kind}: ${err && err.stack ? err.stack : err}${extra}`;
     console.log(`::error title=WEB UI SUITE CRASH::${text.slice(0, 3500).replace(/\r?\n/g, '%0A')}`);
     process.exit(1);
   };
@@ -51,7 +62,8 @@ function check(name, cond, detail = '') {
   else { fail++; failures.push(`${name}${detail ? ` — ${detail}` : ''}`); console.log(`  ✗ ${name}${detail ? ` — ${detail}` : ''}`); }
 }
 
-function section(t) { console.log(`\n\x1b[1m${t}\x1b[0m`); }
+let currentSection = '';
+function section(t) { currentSection = t; console.log(`\n\x1b[1m${t}\x1b[0m`); }
 
 // ── Locate the built bundle ─────────────────────────────────────────────────
 if (!existsSync(join(DIST, 'index.html'))) {
