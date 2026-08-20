@@ -377,6 +377,54 @@ img { max-width: 100%; }
 .feature-card[data-anim='ai']     .stat-icon { animation: iconSparkle 5.5s var(--ease-out) infinite; animation-delay: 1.2s; }
 .feature-card[data-anim='trust']  .stat-icon { animation: iconBagSwing 7.5s var(--ease-out) infinite; animation-delay: 1.8s; transform-origin: 50% 12%; }
 
+/* ── Site-wide motion ──────────────────────────────────────────────────────
+   Applied to the shared primitives rather than page by page, so every screen
+   inherits the same behaviour and no page can be forgotten. Three rules:
+
+     1. Anything that arrives should arrive, not appear.
+     2. Anything you can press should answer the press.
+     3. Nothing should move while you are trying to read it.
+
+   All transform/opacity, all GPU-composited, all off under
+   prefers-reduced-motion (see the block at the end of this section). */
+
+/* Cards fade up as the page composes itself. `both` holds the start frame so
+   there is no flash of the finished state before the animation begins. */
+.card { animation: fadeInUp 380ms var(--ease-out) both; }
+/* Cards inside a .stagger already get their own delayed animation; do not
+   run two at once. */
+.stagger .card, .stagger-fast .card, .stagger-item.card { animation: none; }
+
+/* Press feedback. A button that does not acknowledge a tap feels broken on a
+   phone, where there is no hover to fall back on. */
+.btn:active:not(:disabled) { transform: scale(0.97); }
+/* .chip and .tab define their own transitions further down the file, which
+   would override anything set here — the press feedback lives with those
+   rules instead. Only the :active transforms belong here, since nothing else
+   declares them. */
+.chip:active, .tab:active { transform: scale(0.96); }
+
+/* Rows in a list highlight and nudge toward the pointer. Only classes that
+   actually exist are listed here — .thread-row and .pill were guesses and did
+   not appear anywhere in the app. */
+.cart-line, .store-card, .chat-list-item, .order-row {
+  transition: transform var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+.cart-line:hover, .store-card:hover, .chat-list-item:hover, .order-row:hover {
+  transform: translateX(2px);
+}
+
+/* Modals, the backdrop, toasts and skeletons are ALREADY animated further
+   down this file (.modal scaleIn, .toast slideInRight, .skeleton shimmer).
+   Duplicating them here achieved nothing — the later rules simply won — and
+   left two competing definitions to drift apart. Deliberately not repeated.
+
+   Empty states arrive with their icon popping, so a blank screen still feels
+   deliberate rather than broken. */
+.empty-icon { animation: popIn 460ms var(--ease-spring) both; animation-delay: 90ms; }
+
 /* Cascading list reveal — set style="--i:{index}" on children */
 .stagger > * { animation: fadeInUp var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); }
 .stagger-fast > * { animation: fadeInUp 260ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 26ms); }
@@ -719,7 +767,16 @@ textarea.input { resize: vertical; min-height: 90px; }
   padding: 7px 14px; border-radius: var(--radius-full);
   border: 1px solid var(--border); background: var(--surface);
   font-size: var(--fs-sm); font-weight: 600; cursor: pointer; color: var(--text-2);
-  transition: all var(--dur-fast) var(--ease-out); white-space: nowrap;
+  /* Was `transition: all`, which also animates layout properties (padding,
+     width, font-size) and forces a re-layout on every hover — visibly janky
+     in a long chip row on a cheap phone. Name only the compositor-friendly
+     properties; `transform` is here so the :active press feedback animates. */
+  transition: transform var(--dur-fast) var(--ease-spring),
+              background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+  white-space: nowrap;
 }
 .chip:hover { border-color: var(--primary); color: var(--text); transform: translateY(-1px); }
 .chip.active { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: var(--shadow-brand); }
@@ -891,7 +948,14 @@ textarea.input { resize: vertical; min-height: 90px; }
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   backdrop-filter: blur(8px); color: var(--text-2);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-spring); opacity: 0; transform: scale(0.85);
+  /* Named properties rather than `all`: this control sits on every product
+     card in a grid, so animating layout properties here multiplies the cost
+     across the whole page. */
+  transition: opacity var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-spring),
+              background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+  opacity: 0; transform: scale(0.85);
 }
 .pcard:hover .pcard-fav { opacity: 1; transform: scale(1); }
 .pcard-fav:hover { background: var(--danger); color: #fff; transform: scale(1.12); }
