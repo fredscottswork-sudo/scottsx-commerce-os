@@ -1683,6 +1683,58 @@ tbody tr.row-click { cursor: pointer; }
   margin-bottom: 4px;
   animation: fadeInUp 0.6s var(--ease-out) both;
 }
+/* The company logo as an animated watermark behind the sign-in copy.
+   A ::before layer rather than an <img> so it can never be selected, tabbed
+   to, or read out by a screen reader - it is decoration, and the tagline
+   underneath already names the brand.
+   The parent is position:relative with overflow:hidden, so the oversized mark
+   is clipped to the panel. z-index 0 here and z-index 1 on .auth-brand > *
+   keeps every word above it.
+
+   Rendered this before shipping it, which changed two decisions:
+
+   1. The logo's own colours do not work here. Its visible pixels average 119
+      luminance against a 25-luminance panel, so at watermark opacity the
+      difference is about 11/255 - invisible. brightness(0) invert(1) turns it
+      into a flat white silhouette, which reads against the dark panel at a
+      genuinely low opacity.
+   2. The full lockup includes the wordmark and tagline, which at this size
+      became unreadable grey mush behind live text saying something else.
+      A 900/355 box with background-position:center top crops that band
+      away, so only the STX monogram shows - the part that still reads as the
+      brand when it is faint. */
+.auth-brand-logo::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(760px, 118%);
+  aspect-ratio: 900 / 355;
+  transform: translate(-50%, -50%);
+  background: url('/brand/scottstechx-logo-transparent.png') no-repeat;
+  background-size: 100% auto;
+  background-position: center top;
+  filter: brightness(0) invert(1);
+  opacity: 0.3;
+  z-index: 0;
+  pointer-events: none;
+  animation: brandDrift 26s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Slow breathing drift. Deliberately understated: this sits under live text,
+   so anything faster or stronger would fight the words for attention. */
+@keyframes brandDrift {
+  0%, 100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 0.24; }
+  50%      { transform: translate(-50%, -52%) scale(1.06) rotate(-1.2deg); opacity: 0.34; }
+}
+
+/* Motion is decorative, so honour the OS setting: keep the watermark, drop
+   the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .auth-brand-logo::before { animation: none; opacity: 0.3; }
+}
+
 .auth-tagline {
   font-family: var(--font-display);
   font-size: clamp(26px, 3.2vw, 38px);
@@ -1740,6 +1792,17 @@ tbody tr.row-click { cursor: pointer; }
     align-items: center;
   }
   .auth-brand p, .auth-brand h1, .auth-tagline { max-width: 100%; }
+  /* The panel is a short banner here, so a 760px watermark would show only a
+     cropped slice of the wordmark. Fit it to the panel instead. */
+  /* On the short mobile banner the monogram sits almost entirely behind the
+     two lines of text, so at desktop opacity it read as noise rather than a
+     logo. Larger and stronger here, and the drift is dropped: there is not
+     enough clear space for movement to look deliberate. */
+  .auth-brand-logo::before {
+    width: min(300px, 82%);
+    opacity: 0.4;
+    animation: none;
+  }
   /* The marketing paragraph was hidden when these screens still carried the
      full marketplace chrome and every pixel above the form was contested.
      With the dedicated auth shell there is ~200px of headroom, so it can come

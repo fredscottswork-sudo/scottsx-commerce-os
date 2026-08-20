@@ -5,7 +5,6 @@ import { useToast } from '../store/ToastContext';
 import { Btn, Field, Input } from '../components/ui';
 import { ApiError } from '../api/client';
 import GoogleButton from '../components/GoogleButton';
-import { BrandLockup } from '../components/BrandLogo';
 import { useSeo } from '../hooks/useSeo';
 
 export default function Login() {
@@ -60,8 +59,10 @@ export default function Login() {
 
   return (
     <div className="auth-wrap">
-      <div className="auth-brand">
-        <BrandLockup width={300} className="auth-lockup" />
+      {/* auth-brand-logo paints the company logo as a large, slowly drifting
+          watermark BEHIND this panel's text. Login only - register keeps its
+          own lockup above the words. */}
+      <div className="auth-brand auth-brand-logo">
         <h1 className="auth-tagline">Uganda's marketplace, everywhere you are.</h1>
         <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
           Same account, same data on mobile and web — buy from local sellers, pay with

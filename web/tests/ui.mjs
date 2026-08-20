@@ -1110,13 +1110,30 @@ section('16. Brand identity (logo parity with the app)');
 }
 {
   const app = await mount('/login');
-  const lockup = app.$('.brand-lockup');
-  check('the sign-in page shows the full brand lockup',
-    !!lockup && lockup.getAttribute('src') === '/brand/scottstechx-logo-transparent.png',
-    lockup?.getAttribute('src') || 'missing');
-  check('the lockup carries an accessible name',
-    !!lockup && (lockup.getAttribute('alt') || '').includes('ScottsTechX'));
+  // The logo is now an animated CSS watermark behind the copy, not an <img>,
+  // so assert the hook the stylesheet paints it through.
+  const brandPanel = app.$('.auth-brand');
+  check('the sign-in brand panel carries the animated logo watermark',
+    !!brandPanel && brandPanel.className.includes('auth-brand-logo'),
+    brandPanel?.className || 'missing');
+  check('the watermark is decorative, not a focusable or labelled image',
+    !app.$('.auth-brand img'));
   check('the shopping-bag emoji placeholder is gone', !app.text().includes('\u{1F6CD}'));
+  // The class alone proves nothing if the stylesheet does not paint it, so
+  // assert the rule itself: the logo file, the animation, and the white-out
+  // filter that makes it legible on the dark panel.
+  {
+    const css = readFileSync(new URL('../src/styles/globals.css', import.meta.url), 'utf8');
+    const rule = css.slice(css.indexOf('.auth-brand-logo::before'), css.indexOf('@keyframes brandDrift'));
+    check('the watermark rule loads the company logo',
+      rule.includes('/brand/scottstechx-logo-transparent.png'));
+    check('the watermark is animated', /animation:\s*brandDrift/.test(rule));
+    check('the watermark is whitened so it reads on the dark panel',
+      /filter:\s*brightness\(0\)\s*invert\(1\)/.test(rule));
+    check('the watermark sits behind the words', /z-index:\s*0/.test(rule));
+    check('the animation is disabled under prefers-reduced-motion',
+      /prefers-reduced-motion[\s\S]{0,220}auth-brand-logo::before\s*\{[^}]*animation:\s*none/.test(css));
+  }
   app.close();
 }
 {
@@ -1698,7 +1715,7 @@ section('26. Login, sign-up and AI fit a small screen');
   // (e) And the pages must still render and work.
   const login = await mount('/login');
   check('login renders its form', !!login.$('input[type="email"]') && !!login.$('input[type="password"]'));
-  check('login shows the brand lockup', !!login.$('.auth-lockup'));
+  check('login shows the brand watermark', !!login.$('.auth-brand-logo'));
   check('login logs no console errors', login.consoleErrors.length === 0, login.consoleErrors[0]);
   login.close();
 
