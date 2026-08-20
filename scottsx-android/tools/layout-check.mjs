@@ -332,6 +332,23 @@ console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
   }
 }
 
+console.log('\n\x1b[1m5b. Seller dashboard hero\x1b[0m');
+{
+  const f = files.find((x) => rel(x).endsWith('screens/SellerHomeScreen.kt'));
+  const s = read(f);
+  // The hero stats keep the ORIGINAL styling: plain figures straight on the
+  // gradient at 18sp, label at 0.8 alpha. They were briefly boxed in
+  // translucent panels at 17sp, which changed the look of the whole card.
+  ok_if('stat figures use the original 18sp', /fontSize = 18\.sp/.test(s));
+  ok_if('stat labels keep the original 0.8 alpha',
+    /Color\.White\.copy\(alpha = 0\.8f\)/.test(s));
+  ok_if('stat tiles are not boxed in a translucent panel',
+    !/Color\.White\.copy\(alpha = 0\.14f\)/.test(s));
+  // A tile is ~72.5dp wide on a 360dp phone; "UGX 2.4M" needs ~81dp at 18sp.
+  ok_if('the currency is on the label so the figure cannot ellipsise',
+    !/value = "UGX /.test(s) && /label = "Revenue UGX"/.test(s));
+}
+
 // ── 6. Product tiles ────────────────────────────────────────────────────────
 console.log('\n\x1b[1m6. Product card\x1b[0m');
 {

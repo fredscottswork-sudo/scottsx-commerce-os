@@ -130,8 +130,15 @@ fun SellerHomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             StatBox(
-                                value = "UGX " + formatUgxCompact(stats?.revenueUgx ?: 0L),
-                                label = "Revenue",
+                                // The currency lives on the label, not the
+                                // figure. A stat tile is 72.5dp on a 360dp
+                                // phone and "UGX 2.4M" needs ~81dp at 18sp, so
+                                // keeping UGX on the value line ellipsised the
+                                // revenue on every single phone. "2.4M" needs
+                                // ~40dp and fits with room to spare, at the
+                                // original 18sp with no shrinking.
+                                value = formatUgxCompact(stats?.revenueUgx ?: 0L),
+                                label = "Revenue UGX",
                                 modifier = Modifier.weight(1f),
                             )
                             StatBox(
@@ -331,16 +338,13 @@ fun SellerHomeScreen(
 @Composable
 private fun StatBox(value: String, label: String, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.14f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+        modifier = modifier,
         horizontalAlignment = Alignment.Start,
     ) {
         Text(
             text = value,
             color = Color.White,
-            fontSize = 17.sp,
+            fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             softWrap = false,
@@ -348,7 +352,7 @@ private fun StatBox(value: String, label: String, modifier: Modifier = Modifier)
         )
         Text(
             label,
-            color = Color.White.copy(alpha = 0.85f),
+            color = Color.White.copy(alpha = 0.8f),
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -356,7 +360,6 @@ private fun StatBox(value: String, label: String, modifier: Modifier = Modifier)
     }
 }
 
-/** One-line moderation notice on the seller dashboard. */
 @Composable
 private fun ModerationBanner(
     emoji: String,
