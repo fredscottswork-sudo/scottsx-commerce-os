@@ -5,6 +5,7 @@ import { useToast } from '../store/ToastContext';
 import { Btn, Field, Input } from '../components/ui';
 import { ApiError } from '../api/client';
 import GoogleButton from '../components/GoogleButton';
+import { BrandLockup } from '../components/BrandLogo';
 import { useSeo } from '../hooks/useSeo';
 
 export default function Login() {
@@ -60,15 +61,11 @@ export default function Login() {
   return (
     <div className="auth-wrap">
       <div className="auth-brand">
-        {/* ORIGINAL brand block, restored: the shopping emoji over the
-            ScottsTechX wordmark and the original two-sentence blurb. This had
-            been swapped for the lockup image and a different tagline; the user
-            asked for the styling they gave me. maxWidth keeps the phone fix. */}
-        <div style={{ fontSize: 40, marginBottom: 12 }}>🛍️</div>
-        <h1 style={{ fontSize: 34, margin: 0 }}>ScottsTechX</h1>
+        <BrandLockup width={300} className="auth-lockup" />
+        <h1 className="auth-tagline">Uganda's marketplace, everywhere you are.</h1>
         <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
-          Uganda's marketplace. Same account, same data on mobile and web — buy from local
-          sellers, pay with Mobile Money, and chat in real time.
+          Same account, same data on mobile and web — buy from local sellers, pay with
+          Mobile Money, and chat in real time.
         </p>
       </div>
       <div className="auth-form">

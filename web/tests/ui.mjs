@@ -1110,15 +1110,13 @@ section('16. Brand identity (logo parity with the app)');
 }
 {
   const app = await mount('/login');
-  // Restored to the original brand block the user supplied: the shopping-bag
-  // emoji above the ScottsTechX wordmark.
-  check('the sign-in page shows the original emoji brand mark',
-    app.text().includes('\u{1F6CD}'));
-  check('the sign-in page shows the ScottsTechX wordmark',
-    (app.$('.auth-brand h1')?.textContent || '').includes('ScottsTechX'),
-    app.$('.auth-brand h1')?.textContent || 'missing');
-  check('the original blurb is intact',
-    app.text().includes('Same account, same data on mobile and web'));
+  const lockup = app.$('.brand-lockup');
+  check('the sign-in page shows the full brand lockup',
+    !!lockup && lockup.getAttribute('src') === '/brand/scottstechx-logo-transparent.png',
+    lockup?.getAttribute('src') || 'missing');
+  check('the lockup carries an accessible name',
+    !!lockup && (lockup.getAttribute('alt') || '').includes('ScottsTechX'));
+  check('the shopping-bag emoji placeholder is gone', !app.text().includes('\u{1F6CD}'));
   app.close();
 }
 {
@@ -1700,9 +1698,7 @@ section('26. Login, sign-up and AI fit a small screen');
   // (e) And the pages must still render and work.
   const login = await mount('/login');
   check('login renders its form', !!login.$('input[type="email"]') && !!login.$('input[type="password"]'));
-  check('login shows the original brand block',
-    login.text().includes('\u{1F6CD}') &&
-    (login.$('.auth-brand h1')?.textContent || '').includes('ScottsTechX'));
+  check('login shows the brand lockup', !!login.$('.auth-lockup'));
   check('login logs no console errors', login.consoleErrors.length === 0, login.consoleErrors[0]);
   login.close();
 
