@@ -25,11 +25,13 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -85,6 +87,9 @@ fun NearbyScreen(onBack: () -> Unit) {
     var category by remember { mutableStateOf(ProductCategory.All) }
     var sortMode by remember { mutableStateOf(SortMode.Nearest) }
     var verifiedOnly by remember { mutableStateOf(false) }
+    // Restored: the original radius control. 100f means "no limit" so the
+    // default behaviour (whole marketplace, nearest first) is unchanged.
+    var radiusKm by remember { mutableFloatStateOf(100f) }
     /** Total matches server-side, which can exceed the page we render. */
     var total by remember { mutableStateOf(0) }
     /** The buyer's position, named by the backend gazetteer. */
@@ -107,7 +112,9 @@ fun NearbyScreen(onBack: () -> Unit) {
             val result = V2Client.fetchNearby(
                 lat = originLat,
                 lng = originLng,
-                // No radiusKm: search the whole marketplace, nearest first.
+                // 100 km is the slider maximum and means "no limit" here, so
+                // the default still searches the whole marketplace.
+                radiusKm = if (radiusKm >= 100f) null else radiusKm.toInt(),
                 category = if (category == ProductCategory.All) null else category.displayName,
                 verifiedOnly = verifiedOnly,
                 sort = when (sortMode) {
@@ -137,7 +144,7 @@ fun NearbyScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { refresh() }
-    LaunchedEffect(category, verifiedOnly, sortMode) { refresh() }
+    LaunchedEffect(category, verifiedOnly, sortMode, radiusKm.toInt()) { refresh() }
     LaunchedEffect(myLat, myLng) { if (myLat != null) refresh() }
 
     // Re-sort locally against the freshest fix so the order updates instantly
@@ -153,6 +160,7 @@ fun NearbyScreen(onBack: () -> Unit) {
             }
         }
         .filter { if (verifiedOnly) it.verified else true }
+        .filter { radiusKm >= 100f || it.distanceKm <= radiusKm.toDouble() }
         .sortedWith(
             when (sortMode) {
                 SortMode.TopRated -> compareByDescending { it.rating }
@@ -366,7 +374,25 @@ fun NearbyScreen(onBack: () -> Unit) {
                         )
                     }
                 }
-                Spacer(Modifier.weight(1f))
+                // Radius slider - restored from the original. I had dropped it
+                // when the API gained unlimited search; that removed a control
+                // you had, so it is back, with 100 km meaning no limit.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        if (radiusKm >= 100f) "Any" else "" + radiusKm.toInt() + " km",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ScottsTechXColors.BluePrimary,
+                    )
+                    Slider(
+                        value = radiusKm,
+                        onValueChange = { radiusKm = it },
+                        valueRange = 1f..100f,
+                    )
+                }
             }
         }
 
@@ -377,7 +403,7 @@ fun NearbyScreen(onBack: () -> Unit) {
                 "📍",
                 "No stores found",
                 if (verifiedOnly || category != ProductCategory.All) {
-                    "No stores match these filters. Try clearing them."
+                    "No stores match these filters. Try a bigger radius or clear them."
                 } else {
                     "No stores have been listed yet."
                 },
