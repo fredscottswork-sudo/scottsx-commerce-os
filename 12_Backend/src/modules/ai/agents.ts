@@ -253,6 +253,56 @@ export async function buildContext(
  * This is NOT a canned string — it reads the retrieved rows and composes a
  * real answer, so the assistant is genuinely useful with zero configuration.
  */
+/** What each agent actually does, in its own words. */
+function capabilityBlurb(id: AgentId): string {
+  switch (id) {
+    case 'shopping':
+      return [
+        'I search the whole catalogue for you and explain the trade-offs:',
+        '• Find products by need, budget, brand or category',
+        '• Compare two or three options side by side',
+        '• Show what is in stock, and which seller has it',
+      ].join('\n');
+    case 'negotiator':
+      return [
+        'I watch prices so you do not overpay:',
+        '• Spot the live flash deals and genuine discounts',
+        '• Tell you whether a price is fair for that item',
+        '• Suggest how to open a negotiation with the seller',
+      ].join('\n');
+    case 'support':
+      return [
+        'I handle everything after the "buy" button:',
+        '• Order status, delivery and tracking',
+        '• Refunds, returns and cancellations',
+        '• Payments — MoMo, card and cash on delivery',
+        '• Account, login and verification problems',
+      ].join('\n');
+    case 'listing':
+      return [
+        'I help you publish products that actually sell:',
+        '• Write the title, description and specs from a few details',
+        '• Suggest a competitive price using what similar items sell for here',
+        '• Point out what buyers ask for that your listing is missing',
+      ].join('\n');
+    case 'growth':
+      return [
+        'I look at the market and tell you where the money is:',
+        '• Which categories are busy and which are crowded',
+        '• What to stock next, and at what price',
+        '• How your range compares with other sellers',
+      ].join('\n');
+    case 'store':
+    default:
+      return [
+        'I know the marketplace as a whole:',
+        '• What is on sale, from whom, and where they are',
+        '• How buying, delivery and payment work here',
+        '• Which sellers are verified, and what they specialise in',
+      ].join('\n');
+  }
+}
+
 export function composeOfflineAnswer(
   agent: AgentDef,
   prompt: string,
@@ -260,6 +310,28 @@ export function composeOfflineAnswer(
 ): string {
   const { products, intent, overview } = ctx;
   const lines: string[] = [];
+
+  // "What can you do?" is the single most likely opening message, and it is a
+  // question about the assistant rather than a product search. Answering it
+  // with "I couldn't find anything matching 'what can you help me with?'" made
+  // every agent look broken. Each agent introduces its own job and offers real
+  // examples drawn from the live catalogue.
+  if (intent.isCapabilityQuestion) {
+    const starters = agent.starters.slice(0, 3).map((s) => `• "${s.toLowerCase()}"`);
+    return [
+      `**${agent.name}** — ${agent.tagline.toLowerCase()}.`,
+      ``,
+      capabilityBlurb(agent.id),
+      ``,
+      `I can see the whole store: **${overview.productCount} products** from ` +
+        `**${overview.sellerCount} sellers**, priced ` +
+        `${fmtUgx(overview.minPrice)}–${fmtUgx(overview.maxPrice)}` +
+        `${overview.dealCount ? `, with **${overview.dealCount}** flash deals on` : ''}.`,
+      ``,
+      `Try asking:`,
+      ...starters,
+    ].join('\n');
+  }
 
   if (agent.id === 'store') {
     lines.push(
@@ -441,10 +513,36 @@ function supportAnswer(prompt: string): string {
 }
 
 function listingAnswer(prompt: string, products: RetrievedProduct[]): string {
+  // Strip the instruction wrapper to leave the product itself. This MUST be
+  // word-bounded: the old pattern had bare alternatives like `a ` and `for`,
+  // so "what can you help me with" lost the "an" inside "can" and became
+  // "What Cyou Help Me With? - Quality Guaranteed" — a title generated from a
+  // question. \b prevents matching inside a word.
   const subject = prompt
-    .replace(/write|create|make|a |an |the |listing|description|for|title|please/gi, '')
+    .replace(
+      /\b(please|write|create|make|generate|draft|suggest|a|an|the|listing|description|title|copy|for|me|my)\b/gi,
+      ' '
+    )
+    .replace(/\s+/g, ' ')
     .trim();
-  const name = subject || 'your product';
+
+  // If nothing recognisable is left, the user has not named a product yet.
+  // Inventing a listing out of their question is worse than asking.
+  if (subject.length < 3) {
+    return [
+      `**Listing Copilot** — tell me what you are selling and I'll write it.`,
+      ``,
+      `Give me any of these and I'll turn it into a full listing:`,
+      `• the item and its condition — "iPhone 13, 128GB, used, clean"`,
+      `• a brand and model — "Samsung A55 5G"`,
+      `• even a rough note — "gaming laptop, 16gb ram, needs a fast sale"`,
+      ``,
+      `You'll get a title, a description, pricing guidance from comparable ` +
+        `listings already on ScottsTechX, and the details buyers usually ask for.`,
+    ].join('\n');
+  }
+
+  const name = subject;
   const lines: string[] = [];
 
   lines.push(`**Suggested title**`, `${titleCase(name)} — Quality Guaranteed, Fast Delivery`, ``);

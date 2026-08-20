@@ -31,6 +31,24 @@ function AgentIcon({ name }: { name?: string }) {
   return <Icon size={17} aria-hidden />;
 }
 
+/**
+ * True on phone-width screens. Used to swap in shorter copy where the long
+ * form would wrap past the space available and be clipped.
+ */
+function useNarrowScreen(maxWidth = 480): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(`(max-width: ${maxWidth}px)`).matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [maxWidth]);
+  return narrow;
+}
+
 interface Turn {
   role: 'user' | 'assistant';
   content: string;
@@ -72,6 +90,7 @@ export function AiConsole({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const narrow = useNarrowScreen();
 
   useEffect(() => {
     aiService.agents()
@@ -87,6 +106,57 @@ export function AiConsole({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns]);
+
+  /**
+   * On the dedicated AI routes the conversation is the whole app surface, the
+   * way it is on Alibaba's or ChatGPT's assistant pages: the page itself must
+   * not scroll, only the transcript inside it. A class on <body> is the only
+   * place that can express that, because the scrolling document is an
+   * ancestor of this component. Removed on unmount so every other route
+   * scrolls normally again.
+   */
+  useEffect(() => {
+    if (!fullHeight) return;
+    document.body.classList.add('ai-immersive');
+
+    // How much chrome sits above the surface cannot be hardcoded: the public
+    // layout stacks a header AND a 45px category bar (158px measured), while
+    // the signed-in layout differs again. --topbar-h is only 62px, and using
+    // it pushed the composer 40px below the fold on a 360px phone. So measure
+    // the real offset and re-measure whenever the chrome can change.
+    const root = document.documentElement;
+    const surface =
+      (document.querySelector('.public-content') as HTMLElement | null) ??
+      (document.querySelector('.content') as HTMLElement | null);
+
+    const measure = () => {
+      if (!surface) return;
+      // Distance from the top of the viewport to the top of the surface.
+      const top = Math.max(0, Math.round(surface.getBoundingClientRect().top));
+      root.style.setProperty('--ai-surface-top', `${top}px`);
+
+      const nav = document.querySelector('.bottomnav') as HTMLElement | null;
+      const navVisible = nav && getComputedStyle(nav).display !== 'none';
+      root.style.setProperty(
+        '--bottom-chrome',
+        navVisible ? `${Math.round(nav!.getBoundingClientRect().height)}px` : '0px'
+      );
+    };
+
+    measure();
+    // Orientation changes, the URL bar collapsing, and the breakpoint that
+    // shows/hides the bottom nav all move these numbers.
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+      document.body.classList.remove('ai-immersive');
+      root.style.removeProperty('--ai-surface-top');
+      root.style.removeProperty('--bottom-chrome');
+    };
+  }, [fullHeight]);
 
   const activeAgent = agents.find((a) => a.id === agentId);
 
@@ -281,9 +351,14 @@ export function AiConsole({
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input); }
             }}
             placeholder={
-              audience === 'buyer'
-                ? 'Ask anything — “cheapest phones under 2M”, “compare these two”…'
-                : 'Ask about pricing, listings, buyers — “what should I stock next?”'
+              /* The long examples wrap to five lines in a 320px composer and
+                 get clipped, so the hint is unreadable exactly where space is
+                 tightest. Show the short form on narrow screens. */
+              narrow
+                ? (audience === 'buyer' ? 'Ask anything…' : 'Ask about your store…')
+                : audience === 'buyer'
+                  ? 'Ask anything — “cheapest phones under 2M”, “compare these two”…'
+                  : 'Ask about pricing, listings, buyers — “what should I stock next?”'
             }
             aria-label="Message the assistant"
           />

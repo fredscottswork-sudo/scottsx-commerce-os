@@ -38,8 +38,22 @@ const REFETCH_METRES = 250;
  */
 const GOOD_ACCURACY_M = 100;
 
-/** How long to keep waiting for a sharper fix after a coarse first reading. */
-const REFINE_MS = 12000;
+/**
+ * Stop refining early only at this radius. A true GNSS lock outdoors reaches
+ * 5-20 m; 100 m is merely "good enough to show something" and can still sit in
+ * the wrong suburb, which is exactly the complaint. So we keep listening past
+ * GOOD_ACCURACY_M and only cut the watch short once the fix is genuinely
+ * precise — the watch is cheap and stops on its own at REFINE_MS.
+ */
+const EXCELLENT_ACCURACY_M = 25;
+
+/**
+ * How long to keep waiting for a sharper fix after a coarse first reading.
+ * A cold GPS chip indoors or under cloud routinely needs 20-30 s to go from a
+ * Wi-Fi estimate to a satellite lock; cutting off at 12 s often left the buyer
+ * pinned to the network fix, in the wrong village.
+ */
+const REFINE_MS = 30000;
 
 function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371000;
@@ -149,7 +163,10 @@ export default function Nearby() {
           savedOnce.current = false; // a better fix is worth persisting
           applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, acc);
         }
-        if (acc <= GOOD_ACCURACY_M) navigator.geolocation.clearWatch(id);
+        // Only stop early on a genuinely precise lock. Stopping at 100 m used
+        // to freeze the buyer on a coarse network fix that named the wrong
+        // suburb, even though a satellite fix was seconds away.
+        if (acc <= EXCELLENT_ACCURACY_M) navigator.geolocation.clearWatch(id);
       },
       () => undefined,
       { enableHighAccuracy: true, maximumAge: 0, timeout: REFINE_MS }
@@ -196,7 +213,10 @@ export default function Nearby() {
         if (cancelled) return;
         bestAccuracy.current = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
         applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy);
-        if (bestAccuracy.current > GOOD_ACCURACY_M) refineFix();
+        // Refine unless the very first reading is already precise. The old
+        // threshold (100 m) accepted a coarse Wi-Fi fix as final, which is how
+        // a buyer ended up being shown a village they were not in.
+        if (bestAccuracy.current > EXCELLENT_ACCURACY_M) refineFix();
       },
       (err) => {
         void fallbackToSavedLocation(

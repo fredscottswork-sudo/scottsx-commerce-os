@@ -159,22 +159,51 @@ export interface NeighbourhoodHit {
   name: string;
   city: string;
   distanceKm: number;
+  /**
+   * True when the fix was not inside the area's radius but was the closest
+   * mapped suburb within NEAR_MISS_KM. Still far better than the packed
+   * gazetteer's answer, but the caller should present it as "near X".
+   */
+  approximate: boolean;
 }
 
 /**
  * The neighbourhood containing this fix, or null when it is outside every
  * known area. Where areas overlap the nearest centre wins.
  */
+/**
+ * How far outside every mapped radius a fix may still be named after the
+ * closest suburb. The radii are centroid estimates, so adjacent areas leave
+ * small uncovered gaps — a fix in one of those gaps used to fall through to
+ * the packed gazetteer and be labelled with a town up to 10 km away. Naming
+ * the suburb 2.5 km away is strictly more accurate than that, and the caller
+ * still receives the true distance so it can decide how to phrase it.
+ */
+const NEAR_MISS_KM = 3;
+
 export function findNeighbourhood(lat: number, lng: number): NeighbourhoodHit | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  let best: NeighbourhoodHit | null = null;
+  let inside: NeighbourhoodHit | null = null;
+  let nearest: NeighbourhoodHit | null = null;
+
   for (const n of NEIGHBOURHOODS) {
     // Skip anything obviously far before doing the trig (~0.9 deg lat = 100 km).
     if (Math.abs(n.lat - lat) > 0.09 || Math.abs(n.lng - lng) > 0.09) continue;
     const km = haversineKm(lat, lng, n.lat, n.lng);
-    if (km <= n.radiusKm && (best === null || km < best.distanceKm)) {
-      best = { name: n.name, city: n.city, distanceKm: Math.round(km * 100) / 100 };
+    const hit: NeighbourhoodHit = {
+      name: n.name,
+      city: n.city,
+      distanceKm: Math.round(km * 100) / 100,
+      approximate: false,
+    };
+    // A containing area always beats a merely close one.
+    if (km <= n.radiusKm) {
+      if (inside === null || km < inside.distanceKm) inside = hit;
+    }
+    if (km <= NEAR_MISS_KM && (nearest === null || km < nearest.distanceKm)) {
+      nearest = { ...hit, approximate: true };
     }
   }
-  return best;
+
+  return inside ?? nearest;
 }

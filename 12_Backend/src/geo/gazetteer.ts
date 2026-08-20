@@ -149,7 +149,13 @@ export interface ReverseResult {
   label: string;
   /** Short two-part form for dense UI: "Kabalagala, Central Region". */
   shortLabel: string;
-  source: 'offline-gazetteer';
+  /**
+   * Which engine produced this answer. 'google' knows real administrative
+   * boundaries; 'offline-gazetteer' returns the nearest known settlement and
+   * is therefore an approximation inside a city. The UI shows the distinction
+   * so nobody mistakes a 10 km guess for a precise fix.
+   */
+  source: 'offline-gazetteer' | 'google';
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -316,6 +322,9 @@ export function reverseGeocode(lat: number, lng: number): ReverseResult | null {
     // Trust the layer's parent city only when the gazetteer agreed we are in a
     // built-up area; otherwise keep whatever the binary resolved.
     if (hood.city) city = hood.city;
+    // An approximate hit is the nearest mapped suburb rather than a containing
+    // one, so keep its real distance instead of collapsing it to zero — the
+    // caller decides whether to say "Ntinda" or "near Ntinda".
     nearestKm = Math.min(nearestKm, hood.distanceKm);
   }
 

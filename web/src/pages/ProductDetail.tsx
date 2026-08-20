@@ -8,6 +8,7 @@ import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { Btn, Card, ErrorBox, Loading, Modal } from '../components/ui';
 import { useSeo } from '../hooks/useSeo';
+import { IMAGE_FALLBACK } from '../components/ProductCard';
 import { resolveMediaUrl } from '../api/client';
 
 export default function ProductDetail() {
@@ -81,24 +82,43 @@ export default function ProductDetail() {
   return (
     <>
       <Link to="/" className="muted">← Back to marketplace</Link>
-      <div className="grid grid-2 mt-16" style={{ gridTemplateColumns: 'minmax(0, 420px) 1fr' }}>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <img src={p.imageUrl} alt={p.title} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', display: 'block' }} />
+      {/* The columns MUST come from the stylesheet, not an inline style. This
+          was `style={{gridTemplateColumns:'minmax(0,420px) 1fr'}}`, and an
+          inline declaration outranks a media query, so the phone rule that
+          stacks .grid-2 into one column could never apply. The image track
+          collapsed to 31px at 360px wide and the title wrapped one letter per
+          line — the "weird vertical page". .product-detail stacks below 900px
+          and only becomes two columns above it. */}
+      <div className="product-detail mt-16">
+        <div className="card product-gallery">
+          <img
+            className="product-hero-img"
+            src={p.imageUrl || IMAGE_FALLBACK}
+            alt={p.title}
+            /* A blocked or dead image host otherwise leaves a large empty
+               panel at the top of the page. */
+            onError={(e) => { (e.currentTarget as HTMLImageElement).src = IMAGE_FALLBACK; }}
+          />
         </div>
-        <div>
+        <div className="product-info">
           <div className="row wrap">
             {p.isFlashDeal && <span className="badge badge-red">FLASH -{p.discountPercent}%</span>}
             <span className="badge badge-blue">{p.category}</span>
             {p.stockQuantity > 5 ? <span className="badge badge-green">In stock ({p.stockQuantity})</span> : <span className="badge badge-amber">Only {p.stockQuantity} left</span>}
           </div>
-          <h1 style={{ margin: '10px 0 6px', fontSize: 26 }}>{p.title}</h1>
+          <h1 className="product-title" style={{ margin: '10px 0 6px', fontSize: 26 }}>{p.title}</h1>
           <div className="row muted mb-16">
             <Star size={15} style={{ color: 'var(--warning)' }} /> {p.rating} · {p.ratingCount} ratings · {p.brand}
           </div>
-          <div style={{ fontSize: 30, fontWeight: 800, color: 'var(--primary)' }}>
-            {formatUgx(p.priceMinor)}
+          {/* Each amount is its own inline-block so "UGX 4,800,000" can never
+              be split across two lines — the old price used to break after
+              "UGX", leaving a stray strikethrough hanging beside the new one. */}
+          <div className="product-price-row">
+            <span className="product-price" style={{ fontSize: 30, fontWeight: 800, color: 'var(--primary)' }}>
+              {formatUgx(p.priceMinor)}
+            </span>
             {p.oldPriceMinor && p.oldPriceMinor > p.priceMinor && (
-              <span style={{ fontSize: 16, color: 'var(--text-2)', textDecoration: 'line-through', fontWeight: 400, marginLeft: 10 }}>{formatUgx(p.oldPriceMinor)}</span>
+              <span className="product-price-old">{formatUgx(p.oldPriceMinor)}</span>
             )}
           </div>
           <p className="muted mt-16">{p.description}</p>
@@ -124,7 +144,7 @@ export default function ProductDetail() {
             </select>
           </div>
 
-          <div className="row mt-16 wrap">
+          <div className="row mt-16 wrap product-actions">
             <Btn variant="primary" size="lg" onClick={buy} disabled={buying} style={{ flex: 1, minWidth: 180 }}>
               {buying ? 'Creating payment…' : `Buy now · ${formatUgx(p.priceMinor * quantity)}`}
             </Btn>

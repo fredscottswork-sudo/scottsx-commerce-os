@@ -44,18 +44,27 @@ export default function Home() {
   );
   const flash = products.filter((p) => p.isFlashDeal).slice(0, 6);
 
+  // `anim` selects the card's idle gesture in globals.css: the wallet flips
+  // like a tapped card, the pin drops onto the map, the AI spark twinkles and
+  // the bag swings. Each one mimes what the card is about rather than being
+  // generic motion.
   const benefits = [
-    { icon: <CreditCard size={20} />, title: 'Mobile Money & Cards', sub: 'MTN MoMo, Airtel Money, Nylon Pay' },
-    { icon: <MapPin size={20} />, title: 'Nearby sellers', sub: 'Kampala · Entebbe · Jinja · Mbarara · Gulu · Mbale' },
-    { icon: <Sparkles size={20} />, title: 'AI assistant', sub: 'Answers from the live catalog' },
-    { icon: <ShoppingBag size={20} />, title: 'Local & genuine', sub: 'Every item inspected before listing' },
+    { anim: 'pay', icon: <CreditCard size={20} />, title: 'Mobile Money & Cards', sub: 'MTN MoMo, Airtel Money, Nylon Pay' },
+    { anim: 'nearby', icon: <MapPin size={20} />, title: 'Nearby sellers', sub: 'Kampala · Entebbe · Jinja · Mbarara · Gulu · Mbale' },
+    { anim: 'ai', icon: <Sparkles size={20} />, title: 'AI assistant', sub: 'Answers from the live catalog' },
+    { anim: 'trust', icon: <ShoppingBag size={20} />, title: 'Local & genuine', sub: 'Every item inspected before listing' },
   ];
 
   return (
     <>
       <div className="grid grid-4 mb-16">
-        {benefits.map((b) => (
-          <div className="card card-pad" key={b.title}>
+        {benefits.map((b, i) => (
+          <div
+            className="card card-pad feature-card"
+            key={b.title}
+            data-anim={b.anim}
+            style={{ '--i': i } as React.CSSProperties}
+          >
             <div className="row">
               <span className="stat-icon" style={{ background: 'linear-gradient(135deg, var(--primary), var(--purple))' }}>{b.icon}</span>
               <div>

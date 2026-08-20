@@ -14,7 +14,24 @@ import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { requireAuth, authedUser } from '../../auth.js';
 import { reverseGeocode, geocoderReady } from '../../geo/gazetteer.js';
+import type { ReverseResult } from '../../geo/gazetteer.js';
+import { googleReverseGeocode, googleGeocoderConfigured } from '../../geo/google-geocoder.js';
 import { ServiceUnavailableError } from '../../errors.js';
+
+/**
+ * Name a coordinate as precisely as this deployment allows.
+ *
+ * Google first when a key is configured: it resolves the area that CONTAINS
+ * the point, so it returns the real neighbourhood instead of the nearest
+ * settlement in a table. The offline gazetteer answers whenever Google is not
+ * configured, is unreachable, or has nothing for the point — so the endpoint
+ * degrades instead of failing, and works with no key at all.
+ */
+async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | null> {
+  const viaGoogle = await googleReverseGeocode(lat, lng);
+  if (viaGoogle) return viaGoogle;
+  return reverseGeocode(lat, lng);
+}
 
 const coordSchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
@@ -34,7 +51,7 @@ export default async function registerGeoRoute(app: FastifyInstance) {
   /** Public: anyone (even logged out) can name their own position. */
   app.get('/api/v1/geo/reverse', async (request) => {
     const { lat, lng } = coordSchema.parse(request.query);
-    const place = reverseGeocode(lat, lng);
+    const place = await resolvePlace(lat, lng);
     if (!place) {
       throw new ServiceUnavailableError('Reverse geocoding is unavailable on this server');
     }
@@ -43,7 +60,11 @@ export default async function registerGeoRoute(app: FastifyInstance) {
 
   app.get('/api/v1/geo/status', async () => ({
     ready: geocoderReady(),
-    source: 'offline-gazetteer',
+    // The precise provider is used when a key is present; the offline
+    // gazetteer is always available underneath it.
+    source: googleGeocoderConfigured() ? 'google' : 'offline-gazetteer',
+    precise: googleGeocoderConfigured(),
+    fallback: 'offline-gazetteer',
     coverage: 'global',
   }));
 
@@ -54,7 +75,7 @@ export default async function registerGeoRoute(app: FastifyInstance) {
   app.post('/api/v1/me/location', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     const { lat, lng, accuracyM } = saveSchema.parse(request.body);
-    const place = reverseGeocode(lat, lng);
+    const place = await resolvePlace(lat, lng);
 
     await pool.query(
       `UPDATE users
@@ -100,7 +121,10 @@ export default async function registerGeoRoute(app: FastifyInstance) {
         label: r.place_label ?? '',
         shortLabel: [r.village || r.city, r.region || r.country].filter(Boolean).join(', '),
         accuracyKm: 0,
-        source: 'offline-gazetteer' as const,
+        // This is a stored label, not a fresh lookup; report the engine that
+        // is currently configured rather than asserting the offline one.
+        source: (googleGeocoderConfigured() ? 'google' : 'offline-gazetteer') as
+          'google' | 'offline-gazetteer',
       },
       updatedAt: r.location_updated_at,
     };

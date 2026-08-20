@@ -491,6 +491,51 @@ section('2. Search page');
 }
 
 // ── 3. Product detail ───────────────────────────────────────────────────────
+section('2b. Home feature cards are animated');
+{
+  const app = await mount('/');
+  const cards = app.$$('.feature-card');
+  check('the four feature cards render', cards.length === 4, `${cards.length} cards`);
+  // Each card mimes what it is about rather than sharing one generic motion.
+  const kinds = cards.map((c) => c.getAttribute('data-anim'));
+  check('each card declares its own shopping gesture',
+    new Set(kinds).size === 4 && kinds.every(Boolean), kinds.join(','));
+  check('cards are staggered so the row does not pulse in unison',
+    cards.every((c) => (c.getAttribute('style') || '').includes('--i')),
+    cards.map((c) => c.getAttribute('style')).join(' | '));
+  check('the entrance deals the card onto the page',
+    /@keyframes featureDeal/.test(bundleCss));
+  check('a highlight sweeps the card like light over a product photo',
+    /@keyframes featureSheen/.test(bundleCss));
+  for (const kf of ['iconTapFlip', 'iconPinDrop', 'iconSparkle', 'iconBagSwing']) {
+    check(`the ${kf} gesture exists`, new RegExp(`@keyframes ${kf}`).test(bundleCss));
+  }
+  // Decorative motion must not eat taps or fight the OS accessibility setting.
+  // The minifier rewrites ::after to :after, so accept either spelling.
+  check('the sweep never intercepts a tap',
+    /\.feature-card::?after\{[^}]*pointer-events:none/.test(bundleCss));
+  check('feature-card motion is disabled under prefers-reduced-motion',
+    /prefers-reduced-motion[^}]*\}[\s\S]{0,600}?\.feature-card/.test(bundleCss));
+  check('no runtime errors on the animated home page', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+
+section('2c. The sign-in hero is alive, not a static picture');
+{
+  const app = await mount('/login');
+  check('the hero panel renders', !!app.$('.auth-brand'));
+  check('an ambient layer drifts behind the copy',
+    /@keyframes authAuroraSweep/.test(bundleCss));
+  check('the aurora layer cannot be clicked',
+    /\.auth-brand::?after\{[^}]*pointer-events:none/.test(bundleCss));
+  check('the panel gradient keeps moving',
+    /\.auth-brand\{[^}]*animation:gradientShift/.test(bundleCss));
+  check('hero children arrive in sequence rather than all at once',
+    /\.auth-brand>\*\{[^}]*animation-delay:calc\(var\(--i/.test(bundleCss));
+  check('no runtime errors on the animated login page', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+
 section('3. Product detail');
 {
   const app = await mount(`/product/${sampleProduct.id}`);
@@ -499,6 +544,32 @@ section('3. Product detail');
   check('renders the price', t.includes(sampleProduct.priceMinor.toLocaleString('en-UG')) || /UGX/.test(t));
   check('shows the seller', t.includes(sampleProduct.seller.name), `seller ${sampleProduct.seller.name}`);
   check('no runtime errors on product detail', app.consoleErrors.length === 0, app.consoleErrors[0]);
+
+  // The two-column split MUST come from the stylesheet. It used to be an
+  // inline `gridTemplateColumns: minmax(0,420px) 1fr`, and an inline style
+  // outranks a media query, so the phone rule that stacks the layout could
+  // never apply: at 360px the image track computed to 31.6px and the title
+  // wrapped one character per line - the "weird vertical page".
+  const detail = app.$('.product-detail');
+  check('product detail uses a class-based responsive layout', !!detail);
+  check('the column track is not pinned by an inline style',
+    !!detail && !/grid-template-columns/i.test(detail.getAttribute('style') || ''),
+    detail?.getAttribute('style') || '');
+  check('the gallery image can shrink with its column',
+    !!app.$('.product-hero-img'));
+  // A grid child defaults to min-width:auto and refuses to shrink below its
+  // content, which is how a long title forces the page sideways.
+  check('the info column is allowed to shrink below its content',
+    /\.product-info\{[^}]*min-width:0/.test(bundleCss));
+  check('the stacked layout is the default, two columns only when wide',
+    /\.product-detail\{[^}]*grid-template-columns:1fr/.test(bundleCss));
+  // A blocked or dead image host left a large empty panel at the top of the
+  // page; the grid already had a placeholder, so share it.
+  const heroImg = app.$('.product-hero-img');
+  check('the hero image declares an error fallback',
+    !!heroImg && (heroImg.getAttribute('src') || '').length > 0);
+  check('the placeholder is inlined, so it cannot itself fail to load',
+    /data:image\/svg\+xml/.test(bundleJs));
   app.close();
 }
 
@@ -1949,6 +2020,24 @@ section('30. AI pages: chat is full height and the helper copy is inside it');
     /\.ai-console-full\{[^}]*margin-inline:calc\(var\(--content-pad\)\s*\*\s*-1\)/.test(bundleCss));
   check('the full-bleed pull is tied to the content gutter, not a literal',
     /--content-pad:/.test(bundleCss));
+
+  // ── Immersive AI surface ────────────────────────────────────────────────
+  // The assistant pages are an app surface, not a document: the page itself
+  // must not scroll, only the transcript. Before this the console was a card
+  // inside a scrolling page, so the whole layout slid under the fixed chrome.
+  check('the AI routes lock the page so only the transcript scrolls',
+    /body\.ai-immersive\{overflow:hidden/.test(bundleCss));
+  check('the shells are pinned to the viewport on AI routes',
+    /body\.ai-immersive \.public-shell[^{]*\{[^}]*height:100dvh/.test(bundleCss));
+  // flex-basis beats `height` on a flex child, which silently defeated the
+  // first attempt at sizing the surface.
+  check('the surface controls its own flex basis',
+    /body\.ai-immersive \.public-content[^{]*\{[^}]*flex:1 1 auto/.test(bundleCss));
+  // The offset above the surface is measured at runtime: --topbar-h is 62px
+  // but the real public offset is 158px (header + category bar), and using the
+  // variable put the composer 40px below the fold.
+  check('the surface height is driven by a measured offset, not --topbar-h',
+    /--bottom-chrome/.test(bundleCss));
 }
 
 // ── 31. AI product results get the full chat width ─────────────────────────

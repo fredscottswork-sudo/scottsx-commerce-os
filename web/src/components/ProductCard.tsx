@@ -5,7 +5,9 @@ import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { StatusBadge } from './ui';
 
-const FALLBACK =
+/** Exported so the product detail page shows the same placeholder as the grid
+ *  when an image host is unreachable, instead of a large empty box. */
+export const IMAGE_FALLBACK =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#121a2f"/><text x="50%" y="50%" fill="#5a6a8c" font-family="sans-serif" font-size="20" text-anchor="middle">No image</text></svg>`
@@ -41,11 +43,11 @@ export function ProductCard({
       <div className="pcard-media">
         <img
           className="pcard-img"
-          src={product.imageUrl || FALLBACK}
+          src={product.imageUrl || IMAGE_FALLBACK}
           alt={product.title}
           loading="lazy"
           decoding="async"
-          onError={(e) => { (e.currentTarget as HTMLImageElement).src = FALLBACK; }}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).src = IMAGE_FALLBACK; }}
         />
 
         <div className="pcard-tags">

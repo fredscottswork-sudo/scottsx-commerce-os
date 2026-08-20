@@ -126,6 +126,60 @@ console.log(B('\n8. Approval gate: unapproved products stay invisible'));
   check('no pending or rejected products surface', bad.length === 0, bad.map((p) => p.title).join(', '));
 }
 
+console.log(B('\n9. Every agent can explain its own job'));
+{
+  // "What can you do?" is the most likely opening message and it is a question
+  // ABOUT the assistant, not a product search. Four of six agents used to
+  // answer "I couldn't find anything matching 'what can you help me with?' in
+  // the live catalog", and Listing Copilot generated a product titled
+  // "What Cyou Help Me With? - Quality Guaranteed" from it.
+  const AGENTS = ['shopping', 'negotiator', 'support', 'listing', 'growth', 'store'];
+  for (const agent of AGENTS) {
+    const r = await ask('what can you help me with?', { agent });
+    const text = r.text || '';
+    check(`${agent} answers the capability question`,
+      !/couldn't find anything matching/i.test(text), text.slice(0, 90));
+    check(`${agent} names itself and what it does`,
+      text.length > 80 && /\*\*/.test(text), text.slice(0, 70));
+  }
+
+  // The bug that produced the mangled title: a bare `a|an|the` alternation
+  // stripped letters from inside words ("can" -> "c").
+  const listing = await ask('what can you help me with?', { agent: 'listing' });
+  check('listing copilot does not invent a product from a question',
+    !/Quality Guaranteed/i.test(listing.text || ''), (listing.text || '').slice(0, 90));
+  check('listing copilot does not mangle words into non-words',
+    !/\bCyou\b/i.test(listing.text || ''), (listing.text || '').slice(0, 90));
+
+  // ...but a real listing request must still produce a listing.
+  const real = await ask('write a listing for an iPhone 13 128GB used clean', { agent: 'listing' });
+  check('a real listing request still produces a title',
+    /Suggested title/i.test(real.text || ''), (real.text || '').slice(0, 90));
+  check('the generated title keeps the product name intact',
+    /iphone 13/i.test(real.text || ''), (real.text || '').slice(0, 120));
+
+  // A question that merely contains "can you" must still search the catalogue.
+  const stillSearch = await ask('what laptops can you show me');
+  check('a product question containing "can you" is still a search',
+    (stillSearch.products || []).length > 0, `${(stillSearch.products || []).length} products`);
+}
+
+console.log(B('\n10. Short plurals match their singular'));
+{
+  // expandTerm's `length > 3` guard excluded three-letter plurals, so "TVs"
+  // expanded to nothing and found no television while "TV" found one.
+  const plural = await ask('best rated TVs');
+  const singular = await ask('best rated TV');
+  check('"TVs" finds the same product as "TV"',
+    (plural.products || []).length === (singular.products || []).length &&
+    (plural.products || []).length > 0,
+    `TVs=${(plural.products || []).length} TV=${(singular.products || []).length}`);
+  for (const q of ['phones', 'laptops']) {
+    const r = await ask(q);
+    check(`"${q}" still matches`, (r.products || []).length > 0);
+  }
+}
+
 console.log(B('\nSummary'));
 console.log(`  ${G(`${passed} passed`)}${failures.length ? `, ${R(`${failures.length} failed`)}` : ''}`);
 if (failures.length) {

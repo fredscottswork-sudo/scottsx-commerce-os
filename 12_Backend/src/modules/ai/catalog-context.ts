@@ -43,6 +43,14 @@ export interface Intent {
   keywords: string[];
   /** A greeting or chit-chat with no shopping request in it. */
   isGreeting: boolean;
+  /**
+   * "What can you do?" / "how can you help me?" — a question ABOUT the
+   * assistant, not a product search. Without this it was treated as a query
+   * and every agent answered "I couldn't find anything matching 'what can you
+   * help me with?' in the live catalog", which is the worst possible reply to
+   * the most obvious opening question.
+   */
+  isCapabilityQuestion: boolean;
   category?: string;
   maxPriceMinor?: number;
   minPriceMinor?: number;
@@ -112,10 +120,15 @@ export function expandTerm(word: string): string[] {
   const w = word.toLowerCase();
   const out = new Set<string>([w]);
 
-  // Plural → singular
+  // Plural → singular.
+  // The length guards keep "as"/"is"/"us" from being stripped to a single
+  // letter, but `> 3` was one too strict: it excluded three-letter plurals of
+  // two-letter nouns, so "tvs" never expanded to "tv" and "best rated TVs"
+  // returned nothing while "best rated TV" found the television. Three is the
+  // shortest plural that still leaves a real word behind.
   if (w.endsWith('ies') && w.length > 4) out.add(`${w.slice(0, -3)}y`);
   if (w.endsWith('es') && w.length > 3) out.add(w.slice(0, -2));
-  if (w.endsWith('s') && !w.endsWith('ss') && w.length > 3) out.add(w.slice(0, -1));
+  if (w.endsWith('s') && !w.endsWith('ss') && w.length >= 3) out.add(w.slice(0, -1));
   // Singular → plural
   out.add(`${w}s`);
 
@@ -162,9 +175,19 @@ export function parseIntent(prompt: string, knownCategories: string[] = []): Int
   const greeting = /^\s*(hi|hey|hello|yo|hola|howdy|good\s+(morning|afternoon|evening)|habari|oli otya|thanks|thank you|ok|okay)\b[\s!.,]*$/i.test(prompt.trim());
   const isGreeting = greeting && keywords.length === 0;
 
+  // Questions about the assistant itself. Deliberately matched on the whole
+  // phrase rather than loose keywords, so "what laptops can you show me" stays
+  // a product search.
+  const isCapabilityQuestion =
+    /\b(what|which|how)\b.{0,24}\b(can|could|do|does|are)\b.{0,16}\b(you|u)\b.{0,24}\b(do|help|assist|offer|support|good at|capable)\b/i.test(prompt) ||
+    /\b(who|what)\s+are\s+you\b/i.test(prompt) ||
+    /\b(help|assist)\s+me\s+with\s+what\b/i.test(prompt) ||
+    /^\s*(help|capabilities|features|commands|options)\s*[?!.]*\s*$/i.test(prompt);
+
   return {
     keywords,
     isGreeting,
+    isCapabilityQuestion,
     category,
     maxPriceMinor,
     minPriceMinor,
