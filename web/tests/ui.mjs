@@ -15,6 +15,19 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM, VirtualConsole } from 'jsdom';
 
+// Surface an unhandled crash as a CI annotation too. Without this, a throw
+// before the summary block leaves nothing readable in CI, where log downloads
+// are blocked.
+if (process.env.GITHUB_ACTIONS) {
+  const report = (kind) => (err) => {
+    const text = `${kind}: ${err && err.stack ? err.stack : err}`;
+    console.log(`::error title=WEB UI SUITE CRASH::${text.slice(0, 3500).replace(/\r?\n/g, '%0A')}`);
+    process.exit(1);
+  };
+  process.on('uncaughtException', report('uncaughtException'));
+  process.on('unhandledRejection', report('unhandledRejection'));
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const DIST = process.env.WEB_DIST || join(ROOT, 'dist');
