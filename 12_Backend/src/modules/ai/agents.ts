@@ -160,8 +160,21 @@ export function agentSystemPrompt(agent: AgentDef, role: string): string {
 export interface GroundedContext {
   intent: Intent;
   products: RetrievedProduct[];
+  /** Near-misses shown when the strict search finds nothing. */
+  fallbackProducts: RetrievedProduct[];
   contextText: string;
   overview: Awaited<ReturnType<typeof storeOverview>>;
+}
+
+/** One catalog row rendered as a chat bullet. */
+function productLine(p: RetrievedProduct): string {
+  const deal = p.isFlashDeal ? ` · 🔥 **-${p.discountPercent}%**` : '';
+  const stock = p.stockQuantity > 0 ? `${p.stockQuantity} in stock` : '**out of stock**';
+  return (
+    `• **${p.title}** — ${fmtUgx(p.priceMinor)}${deal}\n` +
+    `  ${p.rating}/5 (${p.ratingCount} reviews) · ${stock} · ${p.sellerName}` +
+    `${p.verified ? ' ✓' : ''}${p.city ? ` · ${p.city}` : ''}`
+  );
 }
 
 /** Retrieve everything the agent needs to answer this prompt. */
@@ -175,7 +188,34 @@ export async function buildContext(
   const intent = parseIntent(prompt, categories);
 
   const limit = agent.id === 'growth' || agent.id === 'store' ? 12 : 8;
-  const products = await retrieveProducts(db, intent, limit);
+  // A greeting is not a search. Running one returned eight arbitrary products
+  // to somebody who just said "hi".
+  const products = intent.isGreeting ? [] : await retrieveProducts(db, intent, limit);
+
+  // When the strict search finds nothing, work out what IS available instead of
+  // replying with a dead end. Drop the price cap first (the usual cause - the
+  // budget is simply below anything in stock), then drop keywords to the single
+  // strongest one.
+  let fallbackProducts: RetrievedProduct[] = [];
+  if (!intent.isGreeting && products.length === 0) {
+    if (intent.maxPriceMinor || intent.minPriceMinor) {
+      fallbackProducts = await retrieveProducts(
+        db, { ...intent, maxPriceMinor: undefined, minPriceMinor: undefined }, 5
+      );
+    }
+    if (!fallbackProducts.length && intent.keywords.length > 1) {
+      fallbackProducts = await retrieveProducts(
+        db,
+        { ...intent, keywords: [intent.keywords[intent.keywords.length - 1]], maxPriceMinor: undefined },
+        5
+      );
+    }
+    if (!fallbackProducts.length && intent.category) {
+      fallbackProducts = await retrieveProducts(
+        db, { ...intent, keywords: [], maxPriceMinor: undefined }, 5
+      );
+    }
+  }
 
   const parts: string[] = [];
   parts.push(
@@ -205,7 +245,7 @@ export async function buildContext(
     }
   }
 
-  return { intent, products, contextText: parts.join('\n\n'), overview };
+  return { intent, products, fallbackProducts, contextText: parts.join('\n\n'), overview };
 }
 
 /**
@@ -245,7 +285,44 @@ export function composeOfflineAnswer(
     return listingAnswer(prompt, products);
   }
 
+  // Greet back and offer a way in, rather than apologising for finding no
+  // products in response to "hello".
+  if (intent.isGreeting) {
+    const topCats = (overview.categories ?? []).slice(0, 4).map((c: any) => c.category);
+    return [
+      `Hi! I'm ${agent.name} — I can see everything in the ScottsTechX store.`,
+      ``,
+      `Right now there are **${overview.productCount} products** from **${overview.sellerCount} sellers**, ` +
+        `priced ${fmtUgx(overview.minPrice)}–${fmtUgx(overview.maxPrice)}` +
+        `${overview.dealCount ? `, with **${overview.dealCount}** flash deals running` : ''}.`,
+      ``,
+      `Ask me things like:`,
+      `• "show me phones under 2m"`,
+      `• "cheapest laptop you have"`,
+      `• "best rated ${topCats[0] ? topCats[0].toLowerCase() : 'electronics'}"`,
+      `• "what deals are on today?"`,
+    ].join('\n');
+  }
+
   if (!products.length) {
+    // Say what IS available near the request instead of a dead end. The
+    // fallbacks are attached by buildContext when the strict search misses.
+    const near = ctx.fallbackProducts;
+    if (near && near.length) {
+      const relaxed = [
+        `Nothing matched **${prompt.trim()}** exactly, but here's the closest I have:`,
+        ``,
+        ...near.slice(0, 5).map((p) => productLine(p)),
+      ];
+      if (intent.maxPriceMinor) {
+        relaxed.push(
+          ``,
+          `*Everything above your ${fmtUgx(intent.maxPriceMinor)} budget has been left out where possible — ` +
+            `the closest options are listed by price.*`
+        );
+      }
+      return relaxed.join('\n');
+    }
     lines.push(
       `I couldn't find anything matching **${prompt.trim()}** in the live catalog right now.`,
       ``,
@@ -277,15 +354,7 @@ export function composeOfflineAnswer(
     lines.push(`Here's what I found for "${prompt.trim()}":`, ``);
   }
 
-  for (const p of products.slice(0, 5)) {
-    const deal = p.isFlashDeal ? ` · 🔥 **-${p.discountPercent}%**` : '';
-    const stock = p.stockQuantity > 0 ? `${p.stockQuantity} in stock` : '**out of stock**';
-    lines.push(
-      `• **${p.title}** — ${fmtUgx(p.priceMinor)}${deal}`,
-      `  ${p.rating}/5 (${p.ratingCount} reviews) · ${stock} · ${p.sellerName}` +
-        `${p.verified ? ' ✓' : ''}${p.city ? ` · ${p.city}` : ''}`
-    );
-  }
+  for (const p of products.slice(0, 5)) lines.push(productLine(p));
 
   const cheapest = [...products].sort((a, b) => a.priceMinor - b.priceMinor)[0];
   const best = [...products].sort((a, b) => b.rating - a.rating)[0];

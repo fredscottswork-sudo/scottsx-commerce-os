@@ -41,6 +41,8 @@ export interface RetrievedSeller {
 export interface Intent {
   /** Free-text keywords, stop-words stripped. */
   keywords: string[];
+  /** A greeting or chit-chat with no shopping request in it. */
+  isGreeting: boolean;
   category?: string;
   maxPriceMinor?: number;
   minPriceMinor?: number;
@@ -50,6 +52,21 @@ export interface Intent {
   wantsDeals: boolean;
   city?: string;
 }
+
+/**
+ * Words that describe HOW to search rather than WHAT to find. They are already
+ * captured as structured intent (wantsDeals, wantsCheapest, ...) so they must
+ * not also be matched against product titles - "what deals are on today" was
+ * searching for the literal words "deals" and "today", matching nothing, and
+ * reporting an empty catalogue while six flash deals were live.
+ */
+const INTENT_WORDS = new Set([
+  'deal','deals','discount','discounts','offer','offers','sale','sales','flash','promo','promos',
+  'bargain','bargains','today','now','currently','available','stock','new','latest','trending',
+  'popular','recommend','recommendation','recommendations','suggest','suggestion','options','option',
+  'sell','sells','selling','have','got','carry','stocked','anything','everything','all','show','see',
+  'rated','rating','ratings','review','reviews','star','stars','deal',
+]);
 
 const STOP_WORDS = new Set([
   'a','an','the','is','are','am','do','does','did','i','you','me','my','we','us','it','of','for','to','in','on','at','and','or','but','with','without','what','which','who','whom','how','can','could','would','should','will','shall','have','has','had','want','need','looking','look','find','show','get','buy','purchase','please','some','any','best','good','cheap','cheapest','near','nearby','me','there','here','from','under','below','above','over','than','then','that','this','these','those','be','been','being','was','were','about','tell','give','list','something','anything','thing','things','product','products','item','items','store','stores','seller','sellers','shop','shops','ugx','shillings','shilling','money','price','prices','cost','costs',
@@ -134,12 +151,20 @@ export function parseIntent(prompt: string, knownCategories: string[] = []): Int
       (w) =>
         (w.length > 2 || SHORT_PRODUCT_WORDS.has(w)) &&
         !STOP_WORDS.has(w) &&
+        !INTENT_WORDS.has(w) &&
         !/^\d+$/.test(w)
     )
     .slice(0, 8);
 
+  // "hi" / "hello" used to fall through to an unfiltered query and dump eight
+  // random products at somebody who had only said hello. A greeting with no
+  // product words in it should be answered, not searched.
+  const greeting = /^\s*(hi|hey|hello|yo|hola|howdy|good\s+(morning|afternoon|evening)|habari|oli otya|thanks|thank you|ok|okay)\b[\s!.,]*$/i.test(prompt.trim());
+  const isGreeting = greeting && keywords.length === 0;
+
   return {
     keywords,
+    isGreeting,
     category,
     maxPriceMinor,
     minPriceMinor,
@@ -171,13 +196,18 @@ export async function retrieveProducts(
   if (intent.keywords.length) {
     // Each keyword matches any of its expansions (plural/singular/synonym), so
     // "cheapest phones" also finds "iPhone 15 Pro" and "Samsung Galaxy A55".
+    // Match whole words, not substrings. A plain %car% also matches "SkinCARE",
+    // which is why "do you sell cars" answered with cleansing bars; %phone%
+    // likewise matches "headphones". Postgres \m and \M are word boundaries.
+    // Plurals and synonyms are already covered by expandTerm, so recall does
+    // not suffer: "headphone" still finds "Wireless Headphones".
     const ors: string[] = [];
     for (const kw of intent.keywords) {
       for (const variant of expandTerm(kw)) {
-        values.push(`%${variant}%`);
+        values.push(`\\m${escapeRegex(variant)}\\M`);
         const i = values.length;
         ors.push(
-          `(p.title ILIKE $${i} OR p.brand ILIKE $${i} OR p.category ILIKE $${i} OR p.description ILIKE $${i})`
+          `(p.title ~* $${i} OR p.brand ~* $${i} OR p.category ~* $${i} OR p.description ~* $${i})`
         );
       }
     }
@@ -235,7 +265,32 @@ export async function retrieveProducts(
   }
 
   let order = `relevance DESC, p.rating DESC, p.rating_count DESC`;
-  if (intent.wantsCheapest) order = 'p.price_minor ASC, relevance DESC';
+  if (intent.wantsCheapest) {
+    // "cheapest phone" must be the cheapest PHONE, not the cheapest thing that
+    // merely mentions phones somewhere. Sorting on price alone returned a pair
+    // of headphones ahead of every actual handset, so keep only rows that
+    // genuinely matched the keywords and sort those by price.
+    // Rank true matches first, then by price - so "cheapest phone" is the
+    // cheapest actual phone, not the cheapest thing that merely mentions
+    // phones. Only title/brand/category count as "is this kind of thing":
+    // a headphone description saying "pairs with your phone" is not a phone,
+    // and including the description let it win every cheapest-X query.
+    // Built HERE, not earlier, because a parameter that is pushed but never
+    // referenced makes Postgres fail with "could not determine data type".
+    const kindScores: string[] = [];
+    for (const kw of intent.keywords) {
+      for (const variant of expandTerm(kw)) {
+        values.push(`\\m${escapeRegex(variant)}\\M`);
+        const i = values.length;
+        kindScores.push(
+          `(CASE WHEN p.title ~* $${i} OR p.brand ~* $${i} OR p.category ~* $${i} THEN 1 ELSE 0 END)`
+        );
+      }
+    }
+    order = kindScores.length
+      ? `(CASE WHEN (${kindScores.join(' + ')}) > 0 THEN 0 ELSE 1 END) ASC, p.price_minor ASC`
+      : 'p.price_minor ASC';
+  }
   else if (intent.wantsDeals) order = 'p.discount_percent DESC, p.price_minor ASC';
   else if (intent.wantsBest) order = 'p.rating DESC, p.rating_count DESC, relevance DESC';
 
