@@ -5,7 +5,6 @@ import { useToast } from '../store/ToastContext';
 import { Btn, Field, Input, Select } from '../components/ui';
 import { ApiError } from '../api/client';
 import GoogleButton from '../components/GoogleButton';
-import { BrandLockup } from '../components/BrandLogo';
 import { useSeo } from '../hooks/useSeo';
 
 /** Signals "Firebase could not be used" so the catch can fall back. */
@@ -153,8 +152,9 @@ export default function Register() {
   return (
     <div className="auth-wrap">
       <div className="auth-brand">
-        <BrandLockup width={300} className="auth-lockup" />
-        <h1 className="auth-tagline">Join the marketplace built for Uganda.</h1>
+        {/* ORIGINAL brand block, restored to match the login page. */}
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🛍️</div>
+        <h1 style={{ fontSize: 34, margin: 0 }}>Join ScottsTechX</h1>
         <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
           One account for web and mobile. Buy from local sellers or open your own store —
           the same backend powers every screen.

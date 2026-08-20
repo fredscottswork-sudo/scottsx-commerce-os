@@ -293,40 +293,42 @@ console.log('\n\x1b[1m4. Seller dashboard stat tiles\x1b[0m');
 
 console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
 {
+  // The welcome screen deliberately uses the ORIGINAL brand block - a
+  // translucent circle holding the shopping emoji with the ScottsTechX
+  // wordmark under it. Four checks here previously asserted the opposite
+  // (that the welcome screen must render brand_lockup instead); that was my
+  // redesign and the user reversed it, so asserting it would lock in a
+  // decision that has been overturned. The lockup checks now follow the
+  // lockup to the splash screen, which is where it actually lives.
   const w = files.find((x) => rel(x).endsWith('screens/WelcomeScreen.kt'));
   const s = read(w);
-  ok_if('welcome screen uses the dedicated lockup asset, not the raw square logo',
-    /R\.drawable\.brand_lockup/.test(s) && !/R\.drawable\.logo\b/.test(s));
-  ok_if('the lockup declares an aspect ratio so it cannot be squashed',
-    /aspectRatio\(/.test(s));
-  ok_if('the lockup is not forced into a fixed square',
-    !/painterResource\(id = R\.drawable\.brand_lockup\)[\s\S]{0,300}?\.size\(\d+\.dp\)/.test(s));
-  ok_if('the wordmark is not also printed as text under the lockup',
-    !/"ScottsTechX",\s*\n\s*color = Color\.White,\s*\n\s*fontSize = 34\.sp/.test(s));
+  ok_if('welcome screen keeps the original emoji brand circle',
+    /CircleShape/.test(s) && /fontSize = 44\.sp/.test(s));
+  ok_if('welcome screen keeps the original 34sp wordmark',
+    /"ScottsTechX",[\s\S]{0,120}?fontSize = 34\.sp/.test(s));
 
-  // The PNG must actually match the ratio the Kotlin declares.
-  //
-  // Guard the read: this tool is also run against branches that predate the
-  // brand artwork, and an ENOENT here crashed the whole check with a bare
-  // stack trace instead of reporting the 45 results it had already gathered.
+  const sp = files.find((x) => rel(x).endsWith('screens/SplashScreen.kt'));
+  if (sp) {
+    const ss = read(sp);
+    ok_if('splash uses the transparent lockup, not the raw square logo',
+      /R\.drawable\.brand_lockup/.test(ss) && !/R\.drawable\.logo\b/.test(ss));
+    ok_if('splash does not force the lockup into a fixed square',
+      !/painterResource\(R\.drawable\.brand_lockup\)[\s\S]{0,300}?\.size\(\d+\.dp\)/.test(ss));
+    ok_if('splash does not print the wordmark twice',
+      !/"ScottsTechX",\s*\n\s*color = Color\.White,\s*\n\s*fontSize = 3\d\.sp/.test(ss));
+    ok_if('splash hands off to the next destination',
+      /onFinished\(\)/.test(ss));
+  }
+
   const lockupPath = join(ROOT, 'app/src/main/res/drawable-nodpi/brand_lockup.png');
   if (!existsSync(lockupPath)) {
     console.log('  \x1b[33m-\x1b[0m brand_lockup.png not present — skipping artwork checks');
   } else {
-  const png = readFileSync(lockupPath);
-  const pw = png.readUInt32BE(16), ph = png.readUInt32BE(20);
-  const declared = /aspectRatio\((\d+)f\s*\/\s*(\d+)f\)/.exec(s);
-  ok_if('brand_lockup.png exists and is a PNG', png.slice(1, 4).toString() === 'PNG');
-  if (declared) {
-    const want = Number(declared[1]) / Number(declared[2]);
-    const got = pw / ph;
-    ok_if(`declared aspect ${want.toFixed(3)} matches the file ${got.toFixed(3)} (${pw}x${ph})`,
-      Math.abs(want - got) < 0.01);
-  } else bad('welcome screen declares a numeric aspect ratio');
-
-  // colour type 6 = RGBA. An opaque logo would show a black box on the gradient.
-  ok_if('the lockup has an alpha channel so it sits on the gradient cleanly',
-    png[25] === 6, `colour type ${png[25]}`);
+    const png = readFileSync(lockupPath);
+    ok_if('brand_lockup.png exists and is a PNG', png.slice(1, 4).toString() === 'PNG');
+    // colour type 6 = RGBA. An opaque logo shows a black box on any backdrop.
+    ok_if('the lockup has an alpha channel so it sits on the backdrop cleanly',
+      png[25] === 6, `colour type ${png[25]}`);
   }
 }
 
