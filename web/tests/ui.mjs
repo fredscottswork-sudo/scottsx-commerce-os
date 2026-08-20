@@ -131,6 +131,31 @@ async function mount(route, session = null, { settleMs = 1400, google = 'block',
   window.fetch = (input, init) => {
     if (offline) return Promise.reject(new TypeError('Failed to fetch'));
     const url = typeof input === 'string' ? input : input.url;
+
+    // Lazily-imported chunks (e.g. the Firebase SDK) are requested as
+    // absolute http://localhost:5173/assets/... URLs, because that is the
+    // jsdom document's origin. There is no server on that port: the suite
+    // deliberately reads the built bundle off disk. Serve those requests from
+    // dist/ instead of hitting the network -- otherwise the run depends on a
+    // dev server happening to be up, which is why this passed locally and
+    // failed in CI.
+    const assetPath = url.startsWith('/assets/')
+      ? url
+      : (url.startsWith('http') && new URL(url).pathname.startsWith('/assets/')
+          ? new URL(url).pathname
+          : null);
+    if (assetPath) {
+      try {
+        const body = readFileSync(join(DIST, assetPath), 'utf8');
+        const type = assetPath.endsWith('.css') ? 'text/css' : 'text/javascript';
+        return Promise.resolve(new Response(body, {
+          status: 200, headers: { 'content-type': type },
+        }));
+      } catch {
+        return Promise.resolve(new Response('not found', { status: 404 }));
+      }
+    }
+
     const absolute = url.startsWith('http') ? url : `${API_BASE}${url}`;
     return fetch(absolute, init).catch((err) => {
       // Name the URL: a bare "fetch failed" is undiagnosable in CI.
