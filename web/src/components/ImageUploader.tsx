@@ -158,6 +158,7 @@ export function ImageUploader({
         accept="image/jpeg,image/png,image/webp,image/gif"
         multiple
         hidden
+        aria-label="Choose product images"
         data-testid="image-file-input"
         onChange={(e) => void addFiles(e.target.files)}
       />

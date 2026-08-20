@@ -342,7 +342,15 @@ img { max-width: 100%; }
   word-break: keep-all;
   text-decoration: none;
 }
-.brand-name { white-space: nowrap; }
+.brand-name {
+  white-space: nowrap;
+  /* nowrap with nothing to stop it: a long store name widened the header and
+     gave the entire page a horizontal scrollbar. Cap and ellipsise instead. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 42vw;
+  min-width: 0;
+}
 .cta-long { display: inline; }
 .cta-short { display: none; }
 /* Official STX mark, shared with the Android app (see BrandLogo.tsx). */
@@ -418,7 +426,7 @@ img { max-width: 100%; }
 .icon-badge {
   position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px;
   padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff;
-  font-size: 10.5px; font-weight: 800; line-height: 17px; text-align: center;
+  font-size: 11px; font-weight: 800; line-height: 17px; text-align: center;
   border: 2px solid var(--surface); animation: popIn var(--dur) var(--ease-spring);
 }
 
@@ -2471,7 +2479,9 @@ tbody tr.row-click { cursor: pointer; }
   .bottomnav-item.active { color: var(--primary); }
   .bottomnav-item.active .bottomnav-ico { animation: popIn var(--dur) var(--ease-spring); }
   .bottomnav-label {
-    font-size: 10.5px; letter-spacing: 0.01em;
+    /* 10.5px is under the legibility floor and this is the app's primary
+       navigation - it has to be readable at arm's length. */
+    font-size: 11.5px; letter-spacing: 0.01em;
     max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* Keep the last row of content clear of the fixed bar. */
@@ -2569,7 +2579,7 @@ tbody tr.row-click { cursor: pointer; }
 .uploader-cover-tag {
   position: absolute; left: 6px; bottom: 6px;
   background: var(--primary); color: #fff;
-  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
   padding: 2px 7px; border-radius: 999px;
 }
 .uploader-thumb-actions {
@@ -2643,7 +2653,7 @@ tbody tr.row-click { cursor: pointer; }
   /* 15px keeps the widest realistic figure (UGX 12,450,000 ~ 130px) inside the
      136px of usable card width. */
   .stat-value { font-size: 15px; margin-top: 3px; letter-spacing: -0.02em; }
-  .stat-card .tiny { font-size: 10px; line-height: 1.3; }
+  .stat-card .tiny { font-size: 11px; line-height: 1.35; }
 
   /* — Tables become cards — */
   .table-wrap { border: 0; background: transparent; overflow-x: visible; }
@@ -2679,4 +2689,27 @@ tbody tr.row-click { cursor: pointer; }
   .table tbody td:not([data-label])::before { content: none; }
   /* The hover tint reads as a stuck highlight once rows are cards. */
   .table tbody tr:hover { background: var(--surface); }
+}
+
+/* ═══ TOUCH TARGETS ═══════════════════════════════════════════════════════
+   On a phone these controls have to be hittable with a thumb, not a mouse
+   pointer. The compact desktop sizes (34-36px icon buttons, a 30x32 quantity
+   stepper) are all under the 44px minimum and were the easiest things in the
+   UI to mis-tap - worst of all on the cart stepper, where a mis-tap changes
+   what somebody buys.
+
+   An absolutely-positioned ::before overlay is the usual trick, but it does
+   not work here: `.btn` and `.qty-stepper` both set overflow:hidden, which
+   clips the overlay and silently leaves the target small. So grow the real
+   boxes instead, and only where the pointer is actually coarse - desktop
+   keeps its tighter styling. */
+@media (max-width: 960px), (pointer: coarse) {
+  .btn-icon { width: 44px; height: 44px; padding: 10px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .qty-stepper button { width: 44px; height: 44px; }
+  .qty-stepper span { min-width: 40px; }
+  /* Small buttons and filter chips are tapped constantly (sort, filter,
+     category) and sit at 36-38px. Round them up too. */
+  .btn-sm { min-height: 44px; }
+  .chip { min-height: 44px; }
 }

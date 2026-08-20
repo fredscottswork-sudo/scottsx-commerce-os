@@ -372,7 +372,7 @@ export default function Nearby() {
             <SearchInput value={q} onChange={setQ} placeholder="Filter stores or products…" />
           </div>
 
-          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
+          <Select aria-label="Sort stores" value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
             <option value="distance">Nearest first</option>
             <option value="rating">Top rated</option>
             <option value="products">Most products</option>

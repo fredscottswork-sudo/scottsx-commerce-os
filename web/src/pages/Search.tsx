@@ -349,7 +349,7 @@ export default function Search() {
           ))}
         </div>
         <div className="row" style={{ gap: 8 }}>
-          <Select value={sort} onChange={(e) => patch({ sort: e.target.value })} style={{ width: 'auto' }}>
+          <Select aria-label="Sort results" value={sort} onChange={(e) => patch({ sort: e.target.value })} style={{ width: 'auto' }}>
             {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </Select>
           <Btn className="filters-btn" icon={<SlidersHorizontal size={15} />} onClick={() => setFiltersOpen(true)}>
