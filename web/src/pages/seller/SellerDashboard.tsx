@@ -147,14 +147,14 @@ export default function SellerDashboard() {
       {/* ── Headline stats ──────────────────────────────────────────── */}
       <div className="grid grid-4 stagger">
         <StatCard index={0} label="Revenue (all time)" value={formatUgx(stats.revenueUgx)}
-          icon={<TrendingUp size={18} />} color="var(--accent-emerald)"
+          icon={<TrendingUp size={18} />} color="linear-gradient(135deg, var(--success), var(--primary))"
           hint={`${formatUgx(stats.revenue30Ugx)} in last 30 days`} />
         <StatCard index={1} label="Orders" value={<CountUp value={stats.orders} />}
-          icon={<ShoppingBag size={18} />} hint={`${stats.orders30} in last 30 days`} />
+          icon={<ShoppingBag size={18} />} color="linear-gradient(135deg, var(--primary), var(--purple))" hint={`${stats.orders30} in last 30 days`} />
         <StatCard index={2} label="Avg order value" value={formatUgx(stats.avgOrderValueUgx)}
-          icon={<Package size={18} />} color="var(--accent-violet)" hint={`${stats.totalProducts} products listed`} />
+          icon={<Package size={18} />} color="linear-gradient(135deg, var(--purple), var(--pink))" hint={`${stats.totalProducts} products listed`} />
         <StatCard index={3} label="Followers" value={<CountUp value={stats.followers} />}
-          icon={<Users size={18} />} color="var(--accent-pink)"
+          icon={<Users size={18} />} color="linear-gradient(135deg, var(--pink), var(--warning))"
           hint={`${stats.totalViews.toLocaleString()} product views`} />
       </div>
 

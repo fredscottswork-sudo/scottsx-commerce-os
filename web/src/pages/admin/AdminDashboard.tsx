@@ -78,16 +78,16 @@ export default function AdminDashboard() {
       {/* ── Headline stats ──────────────────────────────────────────── */}
       <div className="grid grid-4 stagger">
         <StatCard index={0} label="Total users" value={<CountUp value={stats.users.total} />}
-          icon={<Users size={18} />}
+          icon={<Users size={18} />} color="linear-gradient(135deg, var(--primary), var(--purple))"
           hint={`${stats.users.buyers} buyers · ${stats.users.sellers} sellers`} />
         <StatCard index={1} label="Live products" value={<CountUp value={stats.products.approved} />}
-          icon={<Package size={18} />} color="var(--accent-emerald)"
+          icon={<Package size={18} />} color="linear-gradient(135deg, var(--success), var(--primary))"
           hint={`${stats.products.pending} pending · ${stats.products.rejected} rejected`} />
         <StatCard index={2} label="Revenue" value={formatUgx(stats.orders.revenue_ugx)}
-          icon={<TrendingUp size={18} />} color="var(--accent-violet)"
+          icon={<TrendingUp size={18} />} color="linear-gradient(135deg, var(--purple), var(--pink))"
           hint={`${stats.orders.paid} paid of ${stats.orders.total} orders`} />
         <StatCard index={3} label="New this week" value={<CountUp value={stats.users.newThisWeek} />}
-          icon={<UserPlus size={18} />} color="var(--accent-pink)"
+          icon={<UserPlus size={18} />} color="linear-gradient(135deg, var(--pink), var(--warning))"
           hint={`${stats.conversations} conversations`} />
       </div>
 

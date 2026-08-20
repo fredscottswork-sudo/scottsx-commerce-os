@@ -152,13 +152,13 @@ export default function BuyerDashboard() {
       ) : (
         <div className="grid grid-4 stagger">
           <StatCard index={0} label="Active orders" value={<CountUp value={activeOrders.length} />}
-            icon={<ShoppingBag size={18} />} hint={`${orders.length} lifetime`} />
+            icon={<ShoppingBag size={18} />} color="linear-gradient(135deg, var(--primary), var(--purple))" hint={`${orders.length} lifetime`} />
           <StatCard index={1} label="Total spent" value={formatUgx(totalSpent)}
-            icon={<TrendingUp size={18} />} color="var(--accent-emerald)" hint="Paid orders" />
+            icon={<TrendingUp size={18} />} color="linear-gradient(135deg, var(--success), var(--primary))" hint="Paid orders" />
           <StatCard index={2} label="Saved items" value={<CountUp value={savedIds.size} />}
-            icon={<Heart size={18} />} color="var(--accent-pink)" hint="In your wishlist" />
+            icon={<Heart size={18} />} color="linear-gradient(135deg, var(--pink), var(--warning))" hint="In your wishlist" />
           <StatCard index={3} label="Following" value={<CountUp value={following.length} />}
-            icon={<Store size={18} />} color="var(--accent-violet)"
+            icon={<Store size={18} />} color="linear-gradient(135deg, var(--purple), var(--pink))"
             hint={newFromFollows > 0 ? `${newFromFollows} new this week` : 'Sellers you follow'} />
         </div>
       )}

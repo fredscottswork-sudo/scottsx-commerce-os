@@ -52,14 +52,14 @@
 
   /* Geometry */
   --radius-xs: 8px;
-  --radius-sm: 11px;
-  --radius: 15px;
+  --radius-sm: 10px;
+  --radius: 14px;
   --radius-lg: 20px;
   --radius-xl: 26px;
   --radius-full: 999px;
 
-  --sidebar-w: 252px;
-  --topbar-h: 62px;
+  --sidebar-w: 248px;
+  --topbar-h: 60px;
 
   /* Motion — one source of truth so the whole app feels consistent */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -494,13 +494,13 @@ img { max-width: 100%; }
   pointer-events: none;
 }
 .stat-card:hover::after { opacity: 1; }
-.stat-label { color: var(--text-2); font-size: var(--fs-sm); font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-label { color: var(--text-2); font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .stat-value {
-  font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: 800;
-  margin-top: 5px; letter-spacing: -0.03em; animation: countUp var(--dur-slow) var(--ease-out) both;
+  font-family: var(--font-display); font-size: 26px; font-weight: 700;
+  margin-top: 4px; letter-spacing: -0.02em; animation: countUp var(--dur-slow) var(--ease-out) both;
 }
 .stat-icon {
-  width: 40px; height: 40px; border-radius: 12px;
+  width: 38px; height: 38px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center; color: #fff;
   box-shadow: var(--shadow-sm); flex-shrink: 0;
 }
