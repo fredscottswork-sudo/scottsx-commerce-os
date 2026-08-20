@@ -41,10 +41,12 @@ import com.scottsx.app.ui.screens.SupportScreen
 import com.scottsx.app.ui.screens.ThemeScreen
 import com.scottsx.app.ui.screens.VerifyEmailScreen
 import com.scottsx.app.ui.screens.OnboardingScreen
+import com.scottsx.app.ui.screens.SplashScreen
 import com.scottsx.app.ui.screens.WelcomeScreen
 
 /** All navigation routes — kebab-case strings, matching the master doc. */
 object Routes {
+    const val SPLASH = "splash"
     const val ONBOARDING = "onboarding"
     const val WELCOME = "welcome"
     const val LOGIN = "login"
@@ -95,11 +97,23 @@ object Routes {
 fun AppNavigation() {
     val navController = rememberNavController()
 
-    // First run shows the three intro screens; every run after that goes
-    // straight to the login section.
-    val start = if (UserPrefs.onboardingSeenSafe()) Routes.WELCOME else Routes.ONBOARDING
+    // Every launch opens on the brand splash, the way other apps do. What
+    // comes after it depends on whether the intro has been seen before: first
+    // run continues to the three intro screens, later runs go straight to the
+    // login section.
+    val afterSplash = if (UserPrefs.onboardingSeenSafe()) Routes.WELCOME else Routes.ONBOARDING
 
-    NavHost(navController = navController, startDestination = start) {
+    NavHost(navController = navController, startDestination = Routes.SPLASH) {
+        composable(Routes.SPLASH) {
+            SplashScreen(
+                onFinished = {
+                    navController.navigate(afterSplash) {
+                        // The splash must not be reachable with Back.
+                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
+                },
+            )
+        }
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
                 onFinished = {
