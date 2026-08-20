@@ -1901,6 +1901,20 @@ section('30. AI pages: chat is full height and the helper copy is inside it');
     check(`${route} welcome copy sits inside the chat body`,
       !!welcome && !!welcome.closest('.ai-chat-body'));
 
+    // The API describes agents with lucide icon NAMES ('shopping-bag', 'tag',
+    // 'life-buoy'...). Rendering that field directly printed the slug as
+    // visible text, so the chips read "shopping-bag Shopping Assistant" and
+    // the chat subtitle read "tag Deal Finder". Every icon slot must hold an
+    // <svg>, and no slug may appear anywhere in the rendered text.
+    const emojis = app.$$('.agent-emoji');
+    check(`${route} every agent chip renders an icon, not a slug`,
+      emojis.length > 0 && emojis.every((e) => !!e.querySelector('svg')),
+      `${emojis.length} slots, ${emojis.filter((e) => !e.querySelector('svg')).length} without an svg`);
+    const shown = app.$('.ai-console')?.textContent || '';
+    const leaked = ['shopping-bag', 'life-buoy', 'trending-up'].filter((s) => shown.includes(s));
+    check(`${route} shows no raw icon names in the text`,
+      leaked.length === 0, leaked.join(', '));
+
     app.close();
   }
 

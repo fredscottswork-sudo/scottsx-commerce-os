@@ -1,11 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Send, RotateCcw, Zap, AlertCircle } from 'lucide-react';
+import {
+  Sparkles, Send, RotateCcw, Zap, AlertCircle,
+  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot,
+} from 'lucide-react';
 import { aiService } from '../api/services';
 import type { AiAgent, Product } from '../api/types';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
 import { ProductGrid } from './ProductCard';
 import { Btn, RichText, Badge, Empty } from './ui';
+
+/**
+ * The API describes each agent with a lucide icon NAME ('shopping-bag',
+ * 'tag', ...). Rendering `a.icon` directly printed those slugs as visible
+ * text, so the agent chips on /ai literally read "shopping-bag Shopping".
+ * Map the names to components, and fall back to a generic bot for any agent
+ * the backend adds later so a new id degrades to an icon, never to a slug.
+ */
+const AGENT_ICONS: Record<string, typeof ShoppingBag> = {
+  'shopping-bag': ShoppingBag,
+  tag: Tag,
+  'life-buoy': LifeBuoy,
+  sparkles: Sparkles,
+  'trending-up': TrendingUp,
+  compass: Compass,
+};
+
+function AgentIcon({ name }: { name?: string }) {
+  const Icon = (name && AGENT_ICONS[name]) || Bot;
+  return <Icon size={17} aria-hidden />;
+}
 
 interface Turn {
   role: 'user' | 'assistant';
@@ -134,7 +158,7 @@ export function AiConsole({
               className={`agent-card ${agentId === a.id ? 'active' : ''}`}
               onClick={() => setAgentId(a.id)}
             >
-              <span className="agent-emoji">{a.icon || '🤖'}</span>
+              <span className="agent-emoji"><AgentIcon name={a.icon} /></span>
               <span style={{ minWidth: 0 }}>
                 <span className="agent-name">{a.name}</span>
                 <span className="agent-tag">{a.tagline}</span>
@@ -160,7 +184,15 @@ export function AiConsole({
                 nothing that used to be shown above the chat is lost. */}
             <h2 className="card-title ellipsis">{title}</h2>
             <p className="tiny muted ellipsis">
-              {activeAgent ? `${activeAgent.icon ?? '🤖'} ${activeAgent.name}` : subtitle}
+              {activeAgent ? (
+                /* Same slug leak as the agent list: interpolating the icon
+                   name into the template string printed "shopping-bag
+                   Shopping Assistant" under the chat title. */
+                <span className="row" style={{ gap: 5 }}>
+                  <AgentIcon name={activeAgent.icon} />
+                  {activeAgent.name}
+                </span>
+              ) : subtitle}
             </p>
           </div>
           {turns.length > 0 && (
