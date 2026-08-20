@@ -9,6 +9,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.viewinterop.AndroidView
 
 /**
@@ -42,8 +45,25 @@ fun LoopingVideo(
         Uri.parse("android.resource://" + context.packageName + "/" + resId)
     }
 
-    // Hold the view so the DisposableEffect can stop it on the way out.
+    // Hold the view so the lifecycle observer and DisposableEffect can reach it.
     val holder = remember { arrayOfNulls<VideoView>(1) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Pause while the app is backgrounded. A VideoView left playing keeps a
+    // hardware decoder open and drains battery behind the lock screen; it also
+    // resumes mid-clip on return, which looks like a glitch.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            val v = holder[0]
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> runCatching { if (v?.isPlaying == true) v.pause() }
+                Lifecycle.Event.ON_RESUME -> runCatching { if (v?.isPlaying == false) v.start() }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Box(modifier = modifier) {
         AndroidView(
