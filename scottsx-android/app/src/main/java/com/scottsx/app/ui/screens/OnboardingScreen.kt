@@ -11,6 +11,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -214,13 +216,19 @@ private fun OnboardPicturesPage() {
             .fillMaxSize()
             .background(ScottsTechXColors.DarkBackground),
     ) {
+        // Scrolls rather than compresses: on a 360x640dp phone the 2x2 grid at
+        // its natural aspect ratio is ~162dp taller than the space left once
+        // the heading, body and the controls block are accounted for, which
+        // put the bottom row underneath the Next button. Readability wins over
+        // fitting everything in one viewport, so the page scrolls and the type
+        // stays at full size.
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(top = 28.dp, bottom = 150.dp),
-            verticalArrangement = Arrangement.Center,
+                .padding(top = 28.dp, bottom = 190.dp),
         ) {
             Text(
                 "Everything, in one place",
@@ -273,7 +281,7 @@ private fun PictureTile(drawable: Int, label: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.82f)
+            .aspectRatio(1.05f)
             .clip(RoundedCornerShape(16.dp))
             .background(ScottsTechXColors.DarkPanel),
     ) {
