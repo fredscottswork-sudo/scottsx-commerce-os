@@ -63,6 +63,36 @@ const llm = http.createServer((req, res) => {
     }
     if (mode === 'hang') { await sleep(30_000); res.end('{}'); return; }
 
+    // Reasoning models (GLM, DeepSeek-R1, QwQ) either split thinking into
+    // `reasoning_content`, or inline it in <think> tags. Both shapes are
+    // common enough that the client has to handle them.
+    if (mode === 'reasoningSplit') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ choices: [{ message: {
+        reasoning_content: 'SECRET_THOUGHTS weighing the options',
+        content: 'LLM_REPLY_MARKER the assistant answered.' } }] }));
+      return;
+    }
+    if (mode === 'reasoningOnly') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ choices: [{ message: {
+        reasoning_content: 'LLM_REPLY_MARKER the assistant answered.',
+        content: '' } }] }));
+      return;
+    }
+    if (mode === 'thinkTags') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ choices: [{ message: {
+        content: '<think>SECRET_THOUGHTS weighing the options</think>LLM_REPLY_MARKER the assistant answered.' } }] }));
+      return;
+    }
+    if (mode === 'unclosedThink') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ choices: [{ message: {
+        content: 'LLM_REPLY_MARKER the assistant answered.<think>SECRET_THOUGHTS truncated mid' } }] }));
+      return;
+    }
+
     // Echo back something identifiable, so we can prove the reply is the
     // model's words and not the offline composer's.
     res.setHeader('content-type', 'application/json');
@@ -76,7 +106,19 @@ const LLM_PORT = llm.address().port;
 const LLM_URL = `http://127.0.0.1:${LLM_PORT}/v1/chat/completions`;
 
 // ── The API, pointed at the fake LLM ───────────────────────────────────────
+
 const API_PORT = 3199;
+
+// Refuse to run against a server we didn't start. A leftover API from an
+// earlier run answers on this port with a stale LLM_BASE_URL, so every
+// assertion fails for a reason that has nothing to do with the code.
+try {
+  await fetch(`http://127.0.0.1:${API_PORT}/api/v1/ai/status`, { signal: AbortSignal.timeout(1500) });
+  console.error(`\n  Port ${API_PORT} is already in use by another server.\n` +
+    `  Stop it first:  ss -ltnp | grep ':${API_PORT}'  then  kill -9 <pid>\n`);
+  llm.close();
+  process.exit(1);
+} catch { /* nothing listening — good, carry on */ }
 const API = `http://127.0.0.1:${API_PORT}`;
 
 const api = spawn('npx', ['tsx', 'src/server.ts'], {
@@ -234,6 +276,40 @@ try {
     const ok = await ask('cheapest phone you have');
     check('the assistant recovers once the provider is healthy again',
       /LLM_REPLY_MARKER/.test(ok.body.text || ''), (ok.body.text || '').slice(0, 60));
+  }
+
+  // ── Reasoning models must not leak their thinking, or be mistaken for
+  //    failures when they answer in `reasoning_content`. ────────────────────
+  {
+    console.log(B('\nReasoning models (GLM, DeepSeek-R1, QwQ)'));
+
+    mode = 'reasoningSplit';
+    const split = await ask('cheapest phone you have');
+    check('an answer alongside separate reasoning is used as-is',
+      /LLM_REPLY_MARKER/.test(split.body.text || ''), (split.body.text || '').slice(0, 70));
+    check('private reasoning is never shown to the shopper',
+      !/SECRET_THOUGHTS/.test(split.body.text || ''), (split.body.text || '').slice(0, 70));
+
+    mode = 'reasoningOnly';
+    const only = await ask('cheapest phone you have');
+    check('an answer that arrives only in reasoning_content is still used',
+      /LLM_REPLY_MARKER/.test(only.body.text || ''), (only.body.text || '').slice(0, 70));
+    check('...and is not misreported as an offline fallback',
+      !/local/i.test(only.body.provider || ''), `provider ${only.body.provider}`);
+
+    mode = 'thinkTags';
+    const tagged = await ask('cheapest phone you have');
+    check('inline <think> blocks are stripped from the reply',
+      !/<think>|SECRET_THOUGHTS/i.test(tagged.body.text || ''), (tagged.body.text || '').slice(0, 70));
+    check('...leaving the real answer intact',
+      /LLM_REPLY_MARKER/.test(tagged.body.text || ''), (tagged.body.text || '').slice(0, 70));
+
+    mode = 'unclosedThink';
+    const unclosed = await ask('cheapest phone you have');
+    check('a truncated, never-closed <think> block is still stripped',
+      !/<think>|SECRET_THOUGHTS/i.test(unclosed.body.text || ''), (unclosed.body.text || '').slice(0, 70));
+
+    mode = 'ok';
   }
 
   console.log(B('\nSummary'));

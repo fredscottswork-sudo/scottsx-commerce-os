@@ -124,6 +124,53 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
   }
 }
 
+/**
+ * Pull the user-facing answer out of an OpenAI-style message.
+ *
+ * Reasoning models (GLM, DeepSeek-R1, QwQ, o1-style endpoints) don't behave
+ * like plain chat models: they either put their thinking in a separate
+ * `reasoning_content` field and the answer in `content`, or they inline the
+ * thinking in `content` wrapped in <think> tags. Two things go wrong if we
+ * just read `content`:
+ *
+ *   1. The private chain-of-thought gets shown to the shopper.
+ *   2. When a model puts everything in `reasoning_content` and leaves
+ *      `content` empty, we treat a perfectly good answer as a failure and
+ *      fall back offline.
+ *
+ * So: strip the thinking, and only use `reasoning_content` as a last resort
+ * when there's no real content — a partial answer beats no answer.
+ */
+export function extractReply(message: unknown): string {
+  const msg = (message ?? {}) as Record<string, unknown>;
+
+  // `content` is usually a string but the spec allows an array of parts.
+  const raw = Array.isArray(msg.content)
+    ? msg.content
+        .map((part) =>
+          typeof part === 'string' ? part : String((part as Record<string, unknown>)?.text ?? '')
+        )
+        .join('')
+    : String(msg.content ?? '');
+
+  const cleaned = stripThinking(raw);
+  if (cleaned) return cleaned;
+
+  // Nothing usable in `content` — salvage the reasoning field rather than
+  // throwing away a response the provider already charged us for.
+  return stripThinking(String(msg.reasoning_content ?? msg.reasoning ?? ''));
+}
+
+/** Remove <think>/<reasoning> blocks, including an unclosed trailing one. */
+function stripThinking(input: string): string {
+  return input
+    .replace(/<(think|thinking|reasoning)>[\s\S]*?<\/\1>/gi, '')
+    // A truncated response can open a think block and never close it; drop
+    // everything after it so we never surface half a thought.
+    .replace(/<(think|thinking|reasoning)>[\s\S]*$/i, '')
+    .trim();
+}
+
 async function askOpenRouter(
   system: string,
   userContent: string,
@@ -158,7 +205,7 @@ async function askOpenRouter(
       throw new ServiceUnavailableError(`OpenRouter error ${res.status}: ${text.slice(0, 200)}`);
     }
     const data = await res.json();
-    const text = String(data?.choices?.[0]?.message?.content ?? '').trim();
+    const text = extractReply(data?.choices?.[0]?.message);
     if (!text) throw new ServiceUnavailableError('OpenRouter returned an empty response');
     return { text, provider: 'openrouter', model };
   } finally {
@@ -196,9 +243,11 @@ async function askApiFreeLlm(
     throw new ServiceUnavailableError(`apifreellm error ${res.status}: ${msg.slice(0, 200)}`);
   }
 
-  const text = String(
-    data.message ?? data.data?.message ?? data.choices?.[0]?.message?.content ?? data.text ?? ''
-  ).trim();
+  const text = stripThinking(
+    String(
+      data.message ?? data.data?.message ?? data.choices?.[0]?.message?.content ?? data.text ?? ''
+    )
+  );
   if (!text) throw new ServiceUnavailableError('apifreellm returned an empty response');
   return { text, provider: 'apifreellm', model: String(data.model ?? 'apifreellm') };
 }
@@ -319,7 +368,8 @@ async function describeImage(imageUrl: string): Promise<string> {
   });
   if (!res.ok) return '';
   const data = await res.json();
-  return String(data?.choices?.[0]?.message?.content ?? '').trim().slice(0, 80);
+  // Vision models reason too — strip the thinking or it becomes the caption.
+  return extractReply(data?.choices?.[0]?.message).slice(0, 80);
 }
 
 // ── Seller listing generation ───────────────────────────────────────────────
