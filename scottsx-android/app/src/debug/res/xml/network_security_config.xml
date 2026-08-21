@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG ONLY. Replaces the release config of the same name for debug builds.
+
+  A test APK on a real handset usually points at a backend on your laptop over
+  the LAN (e.g. http://192.168.1.20:3001/api/v1). Android matches <domain>
+  entries by hostname suffix, not by CIDR, so private IP ranges cannot be
+  enumerated here; permitting cleartext for debug builds is the supported way
+  to allow it.
+
+  This file is in src/debug and is never merged into a release build, so
+  shipped APKs remain HTTPS-only.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

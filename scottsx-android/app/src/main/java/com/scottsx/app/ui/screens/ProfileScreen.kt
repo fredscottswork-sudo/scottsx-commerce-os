@@ -54,6 +54,7 @@ import com.scottsx.app.SessionCache
 import com.scottsx.app.navigation.Routes
 import com.scottsx.app.ui.components.SectionHeader
 import com.scottsx.app.ui.components.SettingsRow
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
 /**
@@ -73,9 +74,10 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        Brush.horizontalGradient(ScottsTechXColors.BlueHeroColors),
+                        Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
                         RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                     )
+                    .statusBarSpacer()
                     .padding(20.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {

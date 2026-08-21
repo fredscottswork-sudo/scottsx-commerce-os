@@ -25,11 +25,13 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,6 +52,8 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
 import com.scottsx.app.ui.components.ListDivider
 import com.scottsx.app.ui.components.LoadingRow
+import com.scottsx.app.ui.components.bottomInset
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -83,6 +87,9 @@ fun NearbyScreen(onBack: () -> Unit) {
     var category by remember { mutableStateOf(ProductCategory.All) }
     var sortMode by remember { mutableStateOf(SortMode.Nearest) }
     var verifiedOnly by remember { mutableStateOf(false) }
+    // Restored: the original radius control. 100f means "no limit" so the
+    // default behaviour (whole marketplace, nearest first) is unchanged.
+    var radiusKm by remember { mutableFloatStateOf(100f) }
     /** Total matches server-side, which can exceed the page we render. */
     var total by remember { mutableStateOf(0) }
     /** The buyer's position, named by the backend gazetteer. */
@@ -105,7 +112,9 @@ fun NearbyScreen(onBack: () -> Unit) {
             val result = V2Client.fetchNearby(
                 lat = originLat,
                 lng = originLng,
-                // No radiusKm: search the whole marketplace, nearest first.
+                // 100 km is the slider maximum and means "no limit" here, so
+                // the default still searches the whole marketplace.
+                radiusKm = if (radiusKm >= 100f) null else radiusKm.toInt(),
                 category = if (category == ProductCategory.All) null else category.displayName,
                 verifiedOnly = verifiedOnly,
                 sort = when (sortMode) {
@@ -135,7 +144,7 @@ fun NearbyScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { refresh() }
-    LaunchedEffect(category, verifiedOnly, sortMode) { refresh() }
+    LaunchedEffect(category, verifiedOnly, sortMode, radiusKm.toInt()) { refresh() }
     LaunchedEffect(myLat, myLng) { if (myLat != null) refresh() }
 
     // Re-sort locally against the freshest fix so the order updates instantly
@@ -151,6 +160,7 @@ fun NearbyScreen(onBack: () -> Unit) {
             }
         }
         .filter { if (verifiedOnly) it.verified else true }
+        .filter { radiusKm >= 100f || it.distanceKm <= radiusKm.toDouble() }
         .sortedWith(
             when (sortMode) {
                 SortMode.TopRated -> compareByDescending { it.rating }
@@ -166,9 +176,10 @@ fun NearbyScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.horizontalGradient(ScottsTechXColors.BlueHeroColors),
+                    Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
                     RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                 )
+                .statusBarSpacer()
                 .padding(16.dp),
         ) {
             Column {
@@ -181,8 +192,8 @@ fun NearbyScreen(onBack: () -> Unit) {
                             .clip(CircleShape)
                             .background(Color.White.copy(alpha = 0.15f))
                             .clickable(onClick = onBack)
-                            .padding(4.dp)
-                            .size(32.dp),
+                            .size(40.dp)
+                            .padding(4.dp),
                     )
                     Spacer(Modifier.size(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -220,8 +231,8 @@ fun NearbyScreen(onBack: () -> Unit) {
                                     }
                                 }
                             }
-                            .padding(7.dp)
-                            .size(22.dp),
+                            .size(36.dp)
+                            .padding(7.dp),
                     )
                 }
                 Spacer(Modifier.height(8.dp))
@@ -363,7 +374,25 @@ fun NearbyScreen(onBack: () -> Unit) {
                         )
                     }
                 }
-                Spacer(Modifier.weight(1f))
+                // Radius slider - restored from the original. I had dropped it
+                // when the API gained unlimited search; that removed a control
+                // you had, so it is back, with 100 km meaning no limit.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        if (radiusKm >= 100f) "Any" else "" + radiusKm.toInt() + " km",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ScottsTechXColors.BluePrimary,
+                    )
+                    Slider(
+                        value = radiusKm,
+                        onValueChange = { radiusKm = it },
+                        valueRange = 1f..100f,
+                    )
+                }
             }
         }
 
@@ -374,7 +403,7 @@ fun NearbyScreen(onBack: () -> Unit) {
                 "📍",
                 "No stores found",
                 if (verifiedOnly || category != ProductCategory.All) {
-                    "No stores match these filters. Try clearing them."
+                    "No stores match these filters. Try a bigger radius or clear them."
                 } else {
                     "No stores have been listed yet."
                 },
@@ -382,7 +411,7 @@ fun NearbyScreen(onBack: () -> Unit) {
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp),
+                contentPadding = PaddingValues(bottom = 16.dp + bottomInset()),
             ) {
                 items(filtered, key = { it.id }) { seller ->
                     SellerRow(seller)
@@ -406,7 +435,7 @@ private fun SellerRow(seller: NearbySeller) {
             modifier = Modifier
                 .size(50.dp)
                 .background(
-                    Brush.linearGradient(ScottsTechXColors.BlueHeroColors),
+                    Brush.linearGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
                     CircleShape,
                 ),
             contentAlignment = Alignment.Center,

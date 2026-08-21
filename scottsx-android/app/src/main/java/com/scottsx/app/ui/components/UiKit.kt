@@ -200,7 +200,7 @@ fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) 
 fun GradientHeader(
     title: String,
     subtitle: String,
-    colors: List<Color> = ScottsTechXColors.BrandGradientColors,
+    colors: List<Color> = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent, ScottsTechXColors.PinkAccent),
     onBack: (() -> Unit)? = null,
 ) {
     Box(

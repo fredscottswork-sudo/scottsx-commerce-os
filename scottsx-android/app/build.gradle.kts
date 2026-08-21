@@ -14,10 +14,23 @@ android {
 
     defaultConfig {
         applicationId = "com.scottsx.app"
+        // minSdk 24, not 30.
+        //
+        // "There was a problem parsing the package" is what an Android device
+        // shows when the APK's minSdk is HIGHER than the device's API level --
+        // the package parser rejects it before installing. Nothing in this app
+        // actually needs API 30: every version-sensitive call is already
+        // guarded (POST_NOTIFICATIONS behind API 33, notification channels
+        // behind API 26), and no java.time / java.nio.file API is used, so no
+        // desugaring is required.
+        //
+        // Floor imposed by the dependencies: Compose + Material3 need 21,
+        // firebase-bom 33.x needs 23. 24 clears all of them and covers
+        // Android 7.0 and up (~99% of active devices) instead of Android 11+.
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.23.0"
+        versionCode = 3
+        versionName = "0.24.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -123,6 +136,11 @@ dependencies {
     // Push notifications: the backend already fans out to device tokens.
     implementation("com.google.firebase:firebase-messaging-ktx")
     implementation("com.google.android.gms:play-services-base:18.4.0")
+
+    // Google Sign-In via Credential Manager (One Tap successor).
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // Coil image loading (2.x, global ImageLoader in ScottsTechXApp)
     implementation("io.coil-kt:coil-compose:2.6.0")

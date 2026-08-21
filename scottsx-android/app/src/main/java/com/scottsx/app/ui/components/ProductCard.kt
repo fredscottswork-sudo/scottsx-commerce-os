@@ -50,26 +50,32 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
- * Buyer product card — the Compose mirror of the web `.pcard`.
+ * Product tile — the Compose mirror of the web `.pcard`.
  *
  * Same information hierarchy as the website: media with FLASH / discount /
- * sold-out badges, wishlist heart (wired to the real bookmark API), title,
- * rating + verified seller + views, price row, location, and an optional
- * add-to-cart action.
+ * sold-out badges, wishlist heart (state hoisted so the parent wires it to
+ * the real bookmark API), title, rating + verified seller + views, price row,
+ * location, and an optional add-to-cart action.
+ *
+ * `showWishlist` exists because the seller dashboard reuses this card for the
+ * seller's OWN listings, where a "save to wishlist" heart is meaningless.
+ * Sellers get a status pill instead, which is information they actually need.
  */
 @Composable
 fun ProductCard(
     product: Product,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    showWishlist: Boolean = true,
+    wished: Boolean = false,
+    onWishToggle: (() -> Unit)? = null,
+    statusLabel: String? = null,
     /** Show an "Add to cart" button; the card reports success via [onAddedToCart]. */
     withCartButton: Boolean = false,
     onAddedToCart: (() -> Unit)? = null,
-    /** Start state of the wishlist heart (from /me/bookmarks). */
-    initiallySaved: Boolean = false,
+    /** Tighter layout for horizontal rails and the seller inventory grid. */
     compact: Boolean = false,
 ) {
-    var wished by remember(product.id, initiallySaved) { mutableStateOf(initiallySaved) }
     var adding by remember(product.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -114,34 +120,43 @@ fun ProductCard(
                 }
             }
 
-            // Wishlist heart — real bookmark toggle, same as the web.
-            if (SessionCache.isLoggedIn()) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.35f),
-                    shape = CircleShape,
+            if (showWishlist && statusLabel == null) {
+                // A soft scrim disc, not an opaque white puck: it has to work on
+                // both a bright product photo and a dark placeholder without
+                // stamping a hard circle across the artwork.
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp),
+                        .padding(6.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.28f))
+                        .clickable(enabled = onWishToggle != null) { onWishToggle?.invoke() },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clickable {
-                                wished = !wished // optimistic
-                                scope.launch {
-                                    // Server returns the authoritative state.
-                                    wished = V2Client.toggleBookmark(product.id)
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = if (wished) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            contentDescription = if (wished) "Saved" else "Save",
-                            tint = if (wished) ScottsTechXColors.ErrorRed else Color.White,
-                            modifier = Modifier.size(17.dp),
-                        )
-                    }
+                    Icon(
+                        imageVector = if (wished) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = if (wished) "Saved" else "Save",
+                        tint = if (wished) ScottsTechXColors.ErrorRed else Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            if (statusLabel != null) {
+                Surface(
+                    color = statusPillColor(statusLabel).copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                ) {
+                    Text(
+                        text = statusLabel.replaceFirstChar { it.uppercase() },
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                    )
                 }
             }
         }
@@ -201,6 +216,14 @@ fun ProductCard(
                         )
                     }
                 }
+            } else {
+                Text(
+                    text = product.seller.name,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
 
             Spacer(Modifier.height(4.dp))
@@ -268,44 +291,43 @@ fun ProductCard(
                             }
                         },
                 ) {
-                    Row(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            if (adding) {
-                                CircularProgressIndicator(
-                                    color = Color.White,
-                                    strokeWidth = 2.dp,
-                                    modifier = Modifier.size(16.dp),
+                        if (adding) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.ShoppingCart,
+                                    contentDescription = null,
+                                    tint = if (soldOut) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        Color.White
+                                    },
+                                    modifier = Modifier.size(14.dp),
                                 )
-                            } else {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Icon(
-                                        Icons.Filled.ShoppingCart,
-                                        contentDescription = null,
-                                        tint = if (soldOut) {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        } else {
-                                            Color.White
-                                        },
-                                        modifier = Modifier.size(14.dp),
-                                    )
-                                    Text(
-                                        if (soldOut) "Sold out" else "Add to cart",
-                                        color = if (soldOut) {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        } else {
-                                            Color.White
-                                        },
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
+                                Text(
+                                    if (soldOut) "Sold out" else "Add to cart",
+                                    color = if (soldOut) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        Color.White
+                                    },
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
                             }
                         }
                     }
@@ -326,4 +348,10 @@ private fun CardBadge(text: String, color: Color) {
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
         )
     }
+}
+
+private fun statusPillColor(status: String): Color = when (status.lowercase()) {
+    "approved" -> ScottsTechXColors.SuccessGreen
+    "pending" -> ScottsTechXColors.WarningAmber
+    else -> ScottsTechXColors.ErrorRed
 }

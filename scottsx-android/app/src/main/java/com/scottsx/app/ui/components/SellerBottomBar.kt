@@ -81,8 +81,14 @@ fun SellerBottomBar(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
+                // The Surface keeps painting all the way to the bottom edge,
+                // but the tab row must clear the gesture pill / 3-button bar,
+                // or the labels sit under it on an edge-to-edge phone.
+                // navBarSpacer() adds exactly the nav-bar height and nothing
+                // on a device that has no bar.
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navBarSpacer()
                     .height(64.dp)
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,

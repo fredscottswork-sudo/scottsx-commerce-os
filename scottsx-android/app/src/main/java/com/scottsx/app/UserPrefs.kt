@@ -44,4 +44,24 @@ object UserPrefs {
     var aiPersonalisationOn: Boolean
         get() { ensure(); return prefs.getBoolean("ai_personalisation_on", true) }
         set(value) { ensure(); prefs.edit().putBoolean("ai_personalisation_on", value).apply() }
+
+    /**
+     * True once the three intro screens have been seen. The intro is a
+     * first-run experience, so it must not replay on every cold start.
+     *
+     * Read defensively via [onboardingSeenSafe] from navigation, which runs
+     * before anything guarantees [init] has been called.
+     */
+    var onboardingSeen: Boolean
+        get() { ensure(); return prefs.getBoolean("onboarding_seen", false) }
+        set(value) { ensure(); prefs.edit().putBoolean("onboarding_seen", value).apply() }
+
+    /** [onboardingSeen] without throwing if prefs are not initialised yet. */
+    fun onboardingSeenSafe(): Boolean =
+        if (::prefs.isInitialized) prefs.getBoolean("onboarding_seen", false) else false
+
+    /** [onboardingSeen] setter that is a no-op before init rather than a crash. */
+    fun markOnboardingSeen() {
+        if (::prefs.isInitialized) prefs.edit().putBoolean("onboarding_seen", true).apply()
+    }
 }

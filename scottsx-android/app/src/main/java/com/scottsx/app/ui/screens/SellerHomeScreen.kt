@@ -72,6 +72,7 @@ import com.scottsx.app.ui.components.SellerBottomBar
 import com.scottsx.app.ui.components.SellerBottomTab
 import com.scottsx.app.ui.components.StatCard
 import com.scottsx.app.ui.components.StatusChip
+import com.scottsx.app.ui.components.bottomInset
 import com.scottsx.app.ui.components.formatUgx
 import com.scottsx.app.ui.components.formatUgxCompact
 import com.scottsx.app.ui.components.statusBarSpacer
@@ -142,7 +143,8 @@ fun SellerHomeScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 96.dp),
+            // Clear the floating bottom bar AND the gesture pill.
+            contentPadding = PaddingValues(bottom = 96.dp + bottomInset()),
         ) {
             // ── Hero: brand-blue gradient, store identity + quick stats ─────
             item {
@@ -258,7 +260,7 @@ fun SellerHomeScreen(
             }
 
             dash?.let { d ->
-                // ── KPI grid — same 8 numbers as the web stat cards ────────
+                // ── KPI grid — same numbers as the web stat cards ──────────
                 item {
                     Column(
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -424,7 +426,7 @@ fun SellerHomeScreen(
                 }
             }
 
-            // ── Moderation status (kept: sellers must see review outcomes) ──
+            // ── Moderation status (sellers must see review outcomes) ────────
             val inReview = products.filter { it.status == "pending" }
             val rejected = products.filter { it.status == "rejected" }
             val suspended = products.filter { it.status == "suspended" }
@@ -502,9 +504,18 @@ fun SellerHomeScreen(
                                     product = product,
                                     onClick = { onProductClick(product.id) },
                                     modifier = Modifier.weight(1f),
+                                    // A seller cannot wishlist their own stock;
+                                    // what they need at a glance is whether the
+                                    // listing is live, waiting on an admin, or
+                                    // was rejected.
+                                    showWishlist = false,
+                                    statusLabel = product.status,
                                     compact = true,
                                 )
                             }
+                            // chunked(2) leaves the last row with a single item
+                            // when the count is odd; a weighted spacer holds
+                            // the missing cell so the card keeps half width.
                             if (rowItems.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }

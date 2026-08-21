@@ -1,15 +1,33 @@
 package com.scottsx.app.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role as SemanticsRole
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -21,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -36,8 +53,13 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
 @Composable
 fun WelcomeScreen(
     onLogin: () -> Unit,
-    onSignUp: () -> Unit,
+    onSignUp: (role: String) -> Unit,
 ) {
+    // Buyer or seller, chosen here and carried into registration. Defaults to
+    // buyer because that is the overwhelming majority of new accounts; a
+    // seller taps once to switch. The backend still constrains the value to
+    // buyer/seller, so this can never be used to self-register as an admin.
+    var role by remember { mutableStateOf("buyer") }
     // If we already have a session, jump straight to the role home.
     LaunchedEffect(Unit) {
         SessionCache.user.value?.let {
@@ -59,10 +81,17 @@ fun WelcomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // Full-bleed gradient, but the buttons must not sit under the
+                // status bar or the gesture pill.
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .verticalScroll(rememberScrollState())
                 .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            // ORIGINAL brand block, restored exactly as it was: a 96dp
+            // translucent white circle holding the shopping emoji, with the
+            // ScottsTechX wordmark beneath it at 34sp.
             Box(
                 modifier = Modifier
                     .size(96.dp)
@@ -70,7 +99,7 @@ fun WelcomeScreen(
                     .background(Color.White.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("🛍️", fontSize = 44.sp)
+                Text("\uD83D\uDECD\uFE0F", fontSize = 44.sp)
             }
             Spacer(Modifier.height(20.dp))
             Text(
@@ -86,17 +115,54 @@ fun WelcomeScreen(
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.padding(top = 10.dp),
             )
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(28.dp))
+
+            // ---- Buyer / seller choice ----------------------------------
+            Text(
+                "I want to",
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                RoleChoiceCard(
+                    emoji = "🛍️",
+                    title = "Buy",
+                    subtitle = "Shop from local sellers",
+                    selected = role == "buyer",
+                    onClick = { role = "buyer" },
+                    modifier = Modifier.weight(1f),
+                )
+                RoleChoiceCard(
+                    emoji = "🏪",
+                    title = "Sell",
+                    subtitle = "Open my own store",
+                    selected = role == "seller",
+                    onClick = { role = "seller" },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(20.dp))
 
             Button(
-                onClick = onSignUp,
+                onClick = { onSignUp(role) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = ScottsTechXColors.BluePrimary),
             ) {
-                Text("Create account", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(
+                    if (role == "seller") "Create seller account" else "Create account",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                )
             }
             Spacer(Modifier.height(12.dp))
             OutlinedButton(
@@ -127,6 +193,75 @@ fun WelcomeScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * One of the two buyer/seller tiles.
+ *
+ * Selection is shown three ways at once — fill, border and a check — because
+ * on the gradient a colour-only cue is easy to miss, and colour alone is not
+ * an accessible signal.
+ */
+@Composable
+private fun RoleChoiceCard(
+    emoji: String,
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bg by animateColorAsState(
+        targetValue = if (selected) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f),
+        animationSpec = tween(200),
+        label = "roleBg",
+    )
+    val borderAlpha by animateFloatAsState(
+        targetValue = if (selected) 0.95f else 0.28f,
+        animationSpec = tween(200),
+        label = "roleBorder",
+    )
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(bg)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = Color.White.copy(alpha = borderAlpha),
+                shape = RoundedCornerShape(14.dp),
+            )
+            .selectable(
+                selected = selected,
+                role = SemanticsRole.RadioButton,
+                onClick = onClick,
+            )
+            .padding(vertical = 14.dp, horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(emoji, fontSize = 22.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            if (selected) {
+                Spacer(Modifier.width(4.dp))
+                Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            subtitle,
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+            lineHeight = 15.sp,
+        )
     }
 }
 

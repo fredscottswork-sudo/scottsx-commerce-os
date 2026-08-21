@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.scottsx.app.SessionCache
 import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.Product
@@ -59,16 +61,14 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.navigation.Routes
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.SectionHeader
+import com.scottsx.app.ui.components.bottomInset
+import com.scottsx.app.ui.components.navBarSpacer
+import com.scottsx.app.ui.components.topInset
 import com.scottsx.app.ui.theme.ScottsTechXColors
-import java.util.Calendar
 
 /**
- * Buyer home — the Android mirror of the web buyer dashboard.
- *
- * Greeting hero, feed tabs (For you / Flash / Trending / Following — the
- * exact feeds the website serves), working category filters and the
- * redesigned product grid. Bottom nav unchanged:
- * Home / Nearby / [AI FAB] / Wishlist / Profile.
+ * Buyer home — hero carousel, categories, flash deals, recommended grid,
+ * and the buyer bottom nav: Home / Nearby / [AI FAB] / Wishlist / Profile.
  */
 @Composable
 fun BuyerHomeScreen(
@@ -81,7 +81,11 @@ fun BuyerHomeScreen(
     var unread by remember { mutableIntStateOf(0) }
     var feed by remember { mutableStateOf("for-you") }
     var category by remember { mutableStateOf(ProductCategory.All) }
+    // Real wishlist state. The heart used to be a local `var wished` inside the
+    // card, so it reset on every recomposition and never reached the backend —
+    // tapping it looked like it worked and saved nothing.
     var savedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val scope = rememberCoroutineScope()
     val currentUser by SessionCache.user.collectAsState()
 
     // Feed loader — same endpoints/params as the web buyer dashboard tabs.
@@ -98,7 +102,8 @@ fun BuyerHomeScreen(
         loading = false
     }
 
-    // Cart badge + unread notifications + wishlist state.
+    // Refresh the badge whenever this screen is shown again — the buyer may
+    // have just added something, or emptied the cart by checking out.
     LaunchedEffect(currentUser?.id) {
         if (currentUser != null) {
             V2Client.fetchCart().onSuccess { cartCount = it.itemCount }
@@ -127,10 +132,14 @@ fun BuyerHomeScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp),
+            contentPadding = PaddingValues(
+                // Edge-to-edge: the first row would otherwise sit under the clock.
+                top = topInset(),
+                bottom = padding.calculateBottomPadding() + 16.dp,
+            ),
         ) {
             item {
-                // Top bar: menu / location chip / bell / cart / avatar
+                // Top bar: menu / location chip / avatar
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -141,31 +150,28 @@ fun BuyerHomeScreen(
                         Icons.Filled.Menu,
                         contentDescription = "Menu",
                         tint = MaterialTheme.colorScheme.onSurface,
+                        // Size first, then clip, then the ripple, then inset
+                        // the glyph. The old order (.clip.clickable.padding
+                        // .size) sized the GLYPH to 28dp and let the padding
+                        // inflate the circle to 40dp, so the ripple disc was
+                        // bigger than it looked and clipped at the wrong bounds.
                         modifier = Modifier
+                            .size(40.dp)
                             .clip(CircleShape)
                             .clickable { onNavigate(Routes.PROFILE) }
-                            .padding(6.dp)
-                            .size(28.dp),
+                            .padding(6.dp),
                     )
                     Spacer(Modifier.width(8.dp))
                     Surface(
                         color = ScottsTechXColors.BluePrimary.copy(alpha = 0.10f),
                         shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { onNavigate(Routes.NEARBY) },
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Icon(
-                                Icons.Filled.LocationOn,
-                                contentDescription = null,
-                                tint = ScottsTechXColors.BluePrimary,
-                                modifier = Modifier.size(16.dp),
-                            )
+                            Icon(Icons.Filled.LocationOn, contentDescription = null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(16.dp))
                             Text(
                                 currentUser?.city?.ifBlank { "Kampala" } ?: "Kampala",
                                 color = ScottsTechXColors.BluePrimary,
@@ -175,13 +181,14 @@ fun BuyerHomeScreen(
                         }
                     }
                     Spacer(Modifier.weight(1f))
-
                     // Notifications bell with unread badge.
                     Box(
                         modifier = Modifier
+                            .size(40.dp)
                             .clip(CircleShape)
                             .clickable { onNavigate(Routes.NOTIFICATIONS) }
                             .padding(6.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             Icons.Filled.Notifications,
@@ -206,13 +213,17 @@ fun BuyerHomeScreen(
                         }
                     }
                     Spacer(Modifier.width(4.dp))
-
-                    // Cart with live count.
+                    // Cart, with a live count so the buyer can see they have
+                    // something waiting without opening the screen.
                     Box(
+                        // Give the ripple a fixed round target instead of
+                        // letting it take the icon's size plus padding.
                         modifier = Modifier
+                            .size(40.dp)
                             .clip(CircleShape)
                             .clickable { onNavigate(Routes.CART) }
                             .padding(6.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             Icons.Filled.ShoppingCart,
@@ -260,7 +271,7 @@ fun BuyerHomeScreen(
                 // Greeting — mirrors the web hero ("Good morning, Hi X 👋").
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Text(
-                        greeting(),
+                        homeGreeting(),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = ScottsTechXColors.BluePrimary,
@@ -271,11 +282,11 @@ fun BuyerHomeScreen(
                         fontWeight = FontWeight.Bold,
                     )
                 }
+                Spacer(Modifier.height(10.dp))
             }
 
             item {
                 // Hero carousel — brand blue gradients (web --gradient-brand).
-                Spacer(Modifier.height(10.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -369,8 +380,14 @@ fun BuyerHomeScreen(
                                 product = product,
                                 onClick = { onProductClick(product.id) },
                                 modifier = Modifier.width(160.dp),
-                                initiallySaved = product.id in savedIds,
                                 compact = true,
+                                wished = savedIds.contains(product.id),
+                                onWishToggle = {
+                                    scope.launch {
+                                        val on = V2Client.toggleBookmark(product.id)
+                                        savedIds = if (on) savedIds + product.id else savedIds - product.id
+                                    }
+                                },
                             )
                         }
                     }
@@ -427,9 +444,18 @@ fun BuyerHomeScreen(
                                     modifier = Modifier.weight(1f),
                                     withCartButton = true,
                                     onAddedToCart = { cartCount += 1 },
-                                    initiallySaved = product.id in savedIds,
+                                    wished = savedIds.contains(product.id),
+                                    onWishToggle = {
+                                        scope.launch {
+                                            val on = V2Client.toggleBookmark(product.id)
+                                            savedIds = if (on) savedIds + product.id else savedIds - product.id
+                                        }
+                                    },
                                 )
                             }
+                            // chunked(2) leaves the last row holding a single
+                            // item when the count is odd; without a filler the
+                            // lone card takes the full row width.
                             if (rowItems.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
@@ -439,37 +465,9 @@ fun BuyerHomeScreen(
     }
 }
 
-private fun greeting(): String {
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    return when {
-        hour < 12 -> "Good morning"
-        hour < 17 -> "Good afternoon"
-        else -> "Good evening"
-    }
-}
-
-@Composable
-private fun FeedTab(label: String, active: Boolean, onClick: () -> Unit) {
-    Surface(
-        color = if (active) ScottsTechXColors.BluePrimary else MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(99.dp),
-        modifier = Modifier
-            .clip(RoundedCornerShape(99.dp))
-            .clickable(onClick = onClick),
-    ) {
-        Text(
-            label,
-            color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
-        )
-    }
-}
-
 /**
  * Buyer bottom bar: Home / Nearby / [AI FAB] / Wishlist / Profile.
- * The AI button is the large centre FAB (brand-blue gradient).
+ * The AI button is the large centre FAB.
  */
 @Composable
 private fun ScaffoldWithBottomBar(
@@ -479,7 +477,9 @@ private fun ScaffoldWithBottomBar(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        content(PaddingValues(bottom = 76.dp))
+        // 76dp of bar + whatever the gesture pill / nav bar occupies, so the
+        // last product row can always be scrolled fully into view.
+        content(PaddingValues(bottom = 76.dp + bottomInset()))
 
         Column(
             modifier = Modifier
@@ -491,24 +491,22 @@ private fun ScaffoldWithBottomBar(
                     modifier = Modifier
                         .size(58.dp)
                         .background(
-                            Brush.horizontalGradient(ScottsTechXColors.BrandGradientColors),
+                            Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
                             CircleShape,
                         )
                         .clickable(onClick = onAiClick),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        Icons.Filled.AutoAwesome,
-                        contentDescription = "AI Assistant",
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp),
-                    )
+                    Icon(Icons.Filled.AutoAwesome, contentDescription = "AI Assistant", tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
             Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 12.dp) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        // The surface keeps painting to the screen edge; only the
+                        // tappable row is lifted above the navigation bar.
+                        .navBarSpacer()
                         .height(60.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -550,6 +548,34 @@ private fun BuyerNavItem(
             fontSize = 10.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
             color = if (isSelected) ScottsTechXColors.BluePrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun homeGreeting(): String {
+    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    return when {
+        hour < 12 -> "Good morning"
+        hour < 17 -> "Good afternoon"
+        else -> "Good evening"
+    }
+}
+
+@Composable
+private fun FeedTab(label: String, active: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (active) ScottsTechXColors.BluePrimary else MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(99.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(99.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Text(
+            label,
+            color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
         )
     }
 }

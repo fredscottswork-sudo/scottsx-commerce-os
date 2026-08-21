@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.scottsx.app.SessionCache
+import com.scottsx.app.UserPrefs
 import com.scottsx.app.ui.screens.AccountSettingsScreen
 import com.scottsx.app.ui.screens.AddProductScreen
 import com.scottsx.app.ui.screens.AddressesScreen
@@ -39,13 +40,21 @@ import com.scottsx.app.ui.screens.StoreSettingsDetailScreen
 import com.scottsx.app.ui.screens.SupportScreen
 import com.scottsx.app.ui.screens.ThemeScreen
 import com.scottsx.app.ui.screens.VerifyEmailScreen
+import com.scottsx.app.ui.screens.OnboardingScreen
+import com.scottsx.app.ui.screens.SplashScreen
 import com.scottsx.app.ui.screens.WelcomeScreen
 
 /** All navigation routes — kebab-case strings, matching the master doc. */
 object Routes {
+    const val SPLASH = "splash"
+    const val ONBOARDING = "onboarding"
     const val WELCOME = "welcome"
     const val LOGIN = "login"
-    const val SIGNUP = "signup"
+    const val SIGNUP = "signup?role={role}"
+
+    /** Sign-up with the buyer/seller choice already made. */
+    fun signup(role: String): String = "signup?role=" + role
+    const val VERIFY_EMAIL = "verify-email"
     const val BUYER_HOME = "buyer/home"
     const val SELLER_HOME = "seller/home"
     const val PRODUCT = "product/{id}"
@@ -73,7 +82,6 @@ object Routes {
     const val SAVED_PRODUCTS = "saved-products"
     const val REFUNDS = "refunds"
     const val SUPPORT = "support"
-    const val VERIFY_EMAIL = "verify-email"
 
     fun product(id: String) = "product/$id"
     fun thread(conversationId: String) = "thread/$conversationId"
@@ -89,24 +97,78 @@ object Routes {
 fun AppNavigation() {
     val navController = rememberNavController()
 
-    NavHost(navController = navController, startDestination = Routes.WELCOME) {
+    // Every launch opens on the brand splash, the way other apps do. What
+    // comes after it depends on whether the intro has been seen before: first
+    // run continues to the three intro screens, later runs go straight to the
+    // login section.
+    val afterSplash = if (UserPrefs.onboardingSeenSafe()) Routes.WELCOME else Routes.ONBOARDING
+
+    NavHost(navController = navController, startDestination = Routes.SPLASH) {
+        composable(Routes.SPLASH) {
+            SplashScreen(
+                onFinished = {
+                    navController.navigate(afterSplash) {
+                        // The splash must not be reachable with Back.
+                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(Routes.ONBOARDING) {
+            OnboardingScreen(
+                onFinished = {
+                    UserPrefs.markOnboardingSeen()
+                    navController.navigate(Routes.WELCOME) {
+                        // The intro must not be reachable with Back.
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                },
+            )
+        }
         composable(Routes.WELCOME) {
             WelcomeScreen(
                 onLogin = { navController.navigate(Routes.LOGIN) },
-                onSignUp = { navController.navigate(Routes.SIGNUP) },
+                onSignUp = { role -> navController.navigate(Routes.signup(role)) },
             )
         }
         composable(Routes.LOGIN) {
             LoginScreen(
                 onBack = { navController.popBackStack() },
                 onLoggedIn = { role -> navigateHome(navController, role) },
-                onGoSignUp = { navController.navigate(Routes.SIGNUP) },
+                onGoSignUp = { navController.navigate(Routes.signup("buyer")) },
             )
         }
-        composable(Routes.SIGNUP) {
+        composable(
+            Routes.SIGNUP,
+            arguments = listOf(
+                navArgument("role") {
+                    type = NavType.StringType
+                    defaultValue = "buyer"
+                },
+            ),
+        ) { entry ->
+            // Only buyer/seller are accepted; anything else falls back to
+            // buyer so a hand-crafted deep link cannot pick a role the
+            // backend would reject.
+            val requested = entry.arguments?.getString("role")
+            val signupRole = if (requested == "seller") "seller" else "buyer"
             SignUpScreen(
                 onBack = { navController.popBackStack() },
                 onLoggedIn = { role -> navigateHome(navController, role) },
+                initialRole = signupRole,
+            )
+        }
+        composable(Routes.VERIFY_EMAIL) {
+            VerifyEmailScreen(
+                onVerified = { role ->
+                    navController.navigate(Routes.homeForRole(role)) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onSignOut = {
+                    SessionCache.clear()
+                    navController.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } }
+                },
             )
         }
         composable(Routes.BUYER_HOME) {
@@ -220,27 +282,24 @@ fun AppNavigation() {
         composable(Routes.SAVED_PRODUCTS) { SavedProductsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.REFUNDS) { RefundsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.SUPPORT) { SupportScreen(onBack = { navController.popBackStack() }) }
-        composable(Routes.VERIFY_EMAIL) {
-            VerifyEmailScreen(
-                onVerified = { role -> navigateHome(navController, role) },
-                onSignOut = {
-                    SessionCache.clear()
-                    com.scottsx.app.data.firebase.FirebaseBridge.signOut()
-                    navController.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } }
-                },
-            )
-        }
     }
 }
 
+/**
+ * Send a freshly-authenticated user to the right place.
+ *
+ * The backend refuses every private route with 403 EMAIL_NOT_VERIFIED until the
+ * address is proven, so dropping an unverified account on a home screen would
+ * show it a wall of errors it has no way to clear. Route it to the gate
+ * instead. This is the single funnel both sign-in and sign-up use, so the check
+ * belongs here rather than duplicated in each screen.
+ */
 private fun navigateHome(navController: NavHostController, role: String?) {
-    // The backend gates every private route behind email verification, so an
-    // unverified account is parked on the verify screen instead of a home
-    // full of 403s. Google sign-ins arrive already verified and skip this.
-    val user = SessionCache.user.value
-    val destination =
-        if (user != null && !user.emailVerified) Routes.VERIFY_EMAIL
-        else Routes.homeForRole(role)
+    val destination = if (SessionCache.user.value?.emailVerified == false) {
+        Routes.VERIFY_EMAIL
+    } else {
+        Routes.homeForRole(role)
+    }
     navController.navigate(destination) {
         popUpTo(0) { inclusive = true }
     }

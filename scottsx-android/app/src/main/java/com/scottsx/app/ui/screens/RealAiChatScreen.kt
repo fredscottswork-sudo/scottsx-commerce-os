@@ -87,7 +87,7 @@ fun RealAiChatScreen(onBack: () -> Unit) {
         GradientHeader(
             title = "ScottsTechX AI",
             subtitle = "Buyer assistant · live catalog answers",
-            colors = ScottsTechXColors.BlueHeroColors,
+            colors = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent),
             onBack = onBack,
         )
 
@@ -142,7 +142,7 @@ fun RealAiChatScreen(onBack: () -> Unit) {
                     modifier = Modifier
                         .size(46.dp)
                         .background(
-                            Brush.horizontalGradient(ScottsTechXColors.BlueHeroColors),
+                            Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
                             RoundedCornerShape(23.dp),
                         )
                         .clickable(enabled = input.isNotBlank() && !thinking) { send(input) },

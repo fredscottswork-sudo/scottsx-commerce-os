@@ -4,6 +4,9 @@ import android.util.Patterns
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,8 +30,11 @@ import androidx.compose.ui.unit.sp
 import com.scottsx.app.SessionCache
 import com.scottsx.app.data.firebase.FirebaseAuthRepository
 import com.scottsx.app.data.remote.V2Client
+import com.scottsx.app.ui.components.GoogleAuthButton
 import com.scottsx.app.ui.components.InputField
+import com.scottsx.app.ui.components.OrDivider
 import com.scottsx.app.ui.components.PrimaryButton
+import com.scottsx.app.ui.components.StatusChip
 import com.scottsx.app.ui.components.SettingsRow
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
@@ -45,7 +51,13 @@ import kotlinx.coroutines.launch
 fun SignUpScreen(
     onBack: () -> Unit,
     onLoggedIn: (role: String?) -> Unit,
+    /** Buyer or seller, as chosen on the welcome screen. */
+    initialRole: String = "buyer",
 ) {
+    // The role is fixed by the choice already made; it is shown here as a
+    // confirmation banner rather than a second set of controls, so the user
+    // is not asked the same question twice.
+    val signupRole = if (initialRole == "seller") "seller" else "buyer"
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -64,17 +76,32 @@ fun SignUpScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // Scrolling form: needs the status bar AND the gesture pill kept
+            // clear, otherwise the back arrow hides under the clock and the
+            // submit button under the navigation bar.
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
     ) {
         SettingsRow(title = "", icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft, onClick = onBack)
-        Text("Create your account", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text(
+            if (signupRole == "seller") "Create your seller account" else "Create your buyer account",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+        )
         Text(
             "Real email verification — check your inbox for the link.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(10.dp))
+        // Confirms the choice made on the welcome screen, so nobody reaches
+        // the end of the form and discovers they signed up as the wrong role.
+        StatusChip(
+            if (signupRole == "seller") "Seller account — you can list products once approved"
+            else "Buyer account — you can start shopping right away",
+        )
+        Spacer(Modifier.height(14.dp))
 
         InputField(value = name, onValueChange = { name = it }, label = "Full name", placeholder = "Kato Fred")
         Spacer(Modifier.height(12.dp))
@@ -145,10 +172,18 @@ fun SignUpScreen(
                     }
                     verified = true
                     // Exchange Firebase identity for a ScottsTechX JWT + create profile.
-                    val exchanged = FirebaseAuthRepository.exchangeForJwt()
+                    val exchanged = FirebaseAuthRepository.exchangeForJwt(
+                        displayName = name.trim(),
+                        phone = phone.trim(),
+                        role = signupRole,
+                    )
                     if (!exchanged) {
                         // Fall back to local register so the demo keeps working offline.
-                        val local = V2Client.register(email.trim(), password, name, phone, "buyer")
+                        // The account this creates is unverified as far as our own
+                        // backend is concerned, so navigation routes it to the
+                        // verification gate rather than a home screen that would
+                        // 403 on every request.
+                        val local = V2Client.register(email.trim(), password, name, phone, signupRole)
                         if (local != null) {
                             SessionCache.save(
                                 local.token,
@@ -166,5 +201,15 @@ fun SignUpScreen(
                 }
             },
         )
+
+        Spacer(Modifier.height(16.dp))
+        OrDivider()
+        Spacer(Modifier.height(16.dp))
+        GoogleAuthButton(
+            label = "Sign up with Google",
+            onSuccess = { onLoggedIn(SessionCache.user.value?.role) },
+            onError = { error = it },
+        )
+        Spacer(Modifier.height(12.dp))
     }
 }

@@ -74,6 +74,8 @@ import com.scottsx.app.data.remote.MessageStream
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.QuickChip
 import com.scottsx.app.ui.components.formatUgx
+import com.scottsx.app.ui.components.navBarSpacer
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -184,9 +186,10 @@ fun MessageThreadScreen(
                 .fillMaxWidth()
                 .background(
                     Brush.horizontalGradient(
-                        ScottsTechXColors.BlueHeroColors,
+                        listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent),
                     ),
                 )
+                .statusBarSpacer()
                 .padding(horizontal = 8.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -198,8 +201,8 @@ fun MessageThreadScreen(
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.15f))
                     .clickable(onClick = onBack)
-                    .padding(4.dp)
-                    .size(34.dp),
+                    .size(42.dp)
+                    .padding(4.dp),
             )
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -246,8 +249,8 @@ fun MessageThreadScreen(
                             reload()
                         }
                     }
-                    .padding(6.dp)
-                    .size(22.dp),
+                    .size(34.dp)
+                    .padding(6.dp),
             )
             // Pin
             Icon(
@@ -263,8 +266,8 @@ fun MessageThreadScreen(
                             reload()
                         }
                     }
-                    .padding(6.dp)
-                    .size(22.dp),
+                    .size(34.dp)
+                    .padding(6.dp),
             )
         }
 
@@ -395,6 +398,10 @@ fun MessageThreadScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // imePadding lifts the composer above the keyboard;
+                    // navBarSpacer keeps it above the gesture pill when the
+                    // keyboard is closed.
+                    .navBarSpacer()
                     .imePadding()
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,

@@ -31,10 +31,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.SessionCache
 import com.scottsx.app.data.remote.V2Client
+import com.scottsx.app.ui.components.GoogleAuthButton
 import com.scottsx.app.ui.components.InputField
+import com.scottsx.app.ui.components.OrDivider
 import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.components.SettingsRow
-import com.scottsx.app.ui.components.StatusChip
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -109,6 +110,13 @@ fun LoginScreen(
             },
         )
         Spacer(Modifier.height(16.dp))
+        OrDivider()
+        Spacer(Modifier.height(16.dp))
+        GoogleAuthButton(
+            onSuccess = { onLoggedIn(SessionCache.user.value?.role) },
+            onError = { error = it },
+        )
+        Spacer(Modifier.height(16.dp))
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.Center,
@@ -126,8 +134,6 @@ fun LoginScreen(
                     .padding(top = 4.dp)
                     .clickableNoRipple(onGoSignUp),
             )
-            Spacer(Modifier.height(12.dp))
-            StatusChip("demo: buyer1@example.com / secret123")
         }
     }
 }

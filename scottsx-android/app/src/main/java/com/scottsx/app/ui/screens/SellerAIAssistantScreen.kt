@@ -107,7 +107,7 @@ fun SellerAIAssistantScreen(onBack: () -> Unit) {
         GradientHeader(
             title = "Seller AI Assistant",
             subtitle = "Analytics · stock · pricing · marketing",
-            colors = ScottsTechXColors.BrandGradientColors,
+            colors = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent, ScottsTechXColors.PinkAccent),
             onBack = onBack,
         )
 
@@ -175,7 +175,7 @@ fun SellerAIAssistantScreen(onBack: () -> Unit) {
                     modifier = Modifier
                         .size(46.dp)
                         .background(
-                            Brush.horizontalGradient(ScottsTechXColors.BrandGradientColors),
+                            Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent, ScottsTechXColors.PinkAccent)),
                             RoundedCornerShape(23.dp),
                         )
                         .clickable(enabled = input.isNotBlank() && !thinking) { sendFreeform(input) },
@@ -206,7 +206,7 @@ private fun ToolCard(
         AiTools.SellerTool.MarketingIdeas -> Icons.Filled.Campaign
     }
     val gradient = when (tool) {
-        AiTools.SellerTool.SalesAnalytics -> ScottsTechXColors.BlueHeroColors
+        AiTools.SellerTool.SalesAnalytics -> listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)
         AiTools.SellerTool.LowStock -> listOf(ScottsTechXColors.PurpleAccent, ScottsTechXColors.PinkAccent)
         AiTools.SellerTool.PricingTips -> listOf(ScottsTechXColors.PinkAccent, ScottsTechXColors.WarningAmber)
         AiTools.SellerTool.MarketingIdeas -> listOf(ScottsTechXColors.BluePrimaryLight, ScottsTechXColors.BluePrimaryDark)

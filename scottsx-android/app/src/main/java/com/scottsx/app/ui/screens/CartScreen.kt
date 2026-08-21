@@ -52,6 +52,8 @@ import com.scottsx.app.ui.components.LoadingRow
 import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.components.ProductImage
 import com.scottsx.app.ui.components.formatUgx
+import com.scottsx.app.ui.components.bottomInset
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -110,10 +112,11 @@ fun CartScreen(
                 .fillMaxWidth()
                 .background(
                     Brush.horizontalGradient(
-                        ScottsTechXColors.BlueHeroColors,
+                        listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent),
                     ),
                     RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                 )
+                .statusBarSpacer()
                 .padding(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -125,8 +128,8 @@ fun CartScreen(
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .clickable(onClick = onBack)
-                        .padding(4.dp)
-                        .size(32.dp),
+                        .size(40.dp)
+                        .padding(4.dp),
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -185,7 +188,7 @@ fun CartScreen(
             else -> Column(modifier = Modifier.weight(1f)) {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 12.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp + bottomInset()),
                 ) {
                     items(cart.items, key = { it.productId }) { item ->
                         CartRow(
@@ -391,8 +394,8 @@ private fun CartRow(
                     modifier = Modifier
                         .clip(CircleShape)
                         .clickable(enabled = !busy, onClick = onRemove)
-                        .padding(6.dp)
-                        .size(18.dp),
+                        .size(30.dp)
+                        .padding(6.dp),
                 )
             }
         }

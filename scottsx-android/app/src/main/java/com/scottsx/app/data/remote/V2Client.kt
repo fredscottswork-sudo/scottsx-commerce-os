@@ -2,6 +2,7 @@ package com.scottsx.app.data.remote
 
 import com.scottsx.app.SessionCache
 import com.scottsx.app.data.domain.Address
+import com.scottsx.app.data.domain.optStringSafe
 import com.scottsx.app.data.domain.AiReply
 import com.scottsx.app.data.domain.AppNotification
 import com.scottsx.app.data.domain.AuthResult
@@ -37,6 +38,7 @@ import com.scottsx.app.data.domain.UserSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -80,10 +82,18 @@ object V2Client {
         client.newCall(builder.build()).execute().use { response ->
             val text = response.body?.string() ?: ""
             if (!response.isSuccessful) {
-                val message = try {
-                    JSONObject(text).optString("error").ifBlank { "HTTP ${response.code}" }
-                } catch (_: Exception) {
-                    "HTTP ${response.code}"
+                val payload = try { JSONObject(text) } catch (_: Exception) { null }
+                val message = payload?.optString("error").orEmpty().ifBlank { "HTTP ${response.code}" }
+
+                // The backend refuses every private route until the address is
+                // verified. Surface that as its own type so the UI can send the
+                // user to the verification screen instead of showing a generic
+                // failure. The session is still valid, so it must NOT be cleared.
+                if (response.code == 403 && payload?.optString("code") == "EMAIL_NOT_VERIFIED") {
+                    throw EmailNotVerifiedException(
+                        message = message,
+                        email = payload.optString("email").takeIf { it.isNotBlank() },
+                    )
                 }
                 throw IOException(message)
             }
@@ -102,6 +112,71 @@ object V2Client {
         body: JSONObject? = null,
         auth: Boolean = true,
     ): JSONObject = withContext(Dispatchers.IO) { raw(path, method, body, auth) }
+
+    // ── Image upload ──────────────────────────────────────────────────────────
+
+    /**
+     * Upload product photo bytes and return the URL to store on the listing.
+     *
+     * Sellers work from a phone: the photo comes from the camera or the gallery,
+     * so there is no public URL to paste. The backend stores the bytes (Firebase
+     * Storage when configured, Postgres otherwise) and hands back a URL that
+     * works for signed-out buyers too.
+     *
+     * The returned URL may be API-relative ("/api/v1/uploads/images/..."), so
+     * use [absoluteMediaUrl] before handing it to an image loader.
+     */
+    suspend fun uploadImage(
+        bytes: ByteArray,
+        fileName: String = "photo.jpg",
+        mimeType: String = "image/jpeg",
+    ): String? = withContext(Dispatchers.IO) {
+        var uploadedUrl: String? = null
+        try {
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    "image",
+                    fileName,
+                    bytes.toRequestBody(mimeType.toMediaType(), 0, bytes.size),
+                )
+                .build()
+
+            val builder = Request.Builder()
+                .url("$BASE_URL/uploads/images")
+                .post(body)
+            SessionCache.authToken()?.let { builder.header("Authorization", "Bearer $it") }
+
+            client.newCall(builder.build()).execute().use { response ->
+                val text = response.body?.string() ?: ""
+                if (!response.isSuccessful) {
+                    val message = try {
+                        JSONObject(text).optString("error").ifBlank { "HTTP ${response.code}" }
+                    } catch (_: Exception) {
+                        "HTTP ${response.code}"
+                    }
+                    throw IOException(message)
+                }
+                val parsed = JSONObject(text).optStringSafe("url")
+                if (parsed.isNotBlank()) uploadedUrl = parsed
+            }
+        } catch (_: Exception) {
+            uploadedUrl = null
+        }
+        uploadedUrl
+    }
+
+    /**
+     * Product images may be stored as API-relative paths so the same row works
+     * against localhost, a preview host and production. Coil needs an absolute
+     * URL, so prefix anything that is not already one.
+     */
+    fun absoluteMediaUrl(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        if (url.startsWith("http://") || url.startsWith("https://")) return url
+        if (url.startsWith("/api/v1/")) return BASE_URL.removeSuffix("/api/v1") + url
+        return url
+    }
 
     // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -139,43 +214,22 @@ object V2Client {
         null
     }
 
-    suspend fun signInWithFirebase(idToken: String): AuthResult? = try {
-        val r = call("/auth/firebase/sign-in", "POST", JSONObject().put("idToken", idToken), auth = false)
+    suspend fun signInWithFirebase(
+        idToken: String,
+        displayName: String = "",
+        phone: String = "",
+        role: String = "buyer",
+    ): AuthResult? = try {
+        // The profile fields are applied by the backend only when the row is
+        // first created, so re-sending them on a later sign-in is harmless.
+        val body = JSONObject().put("idToken", idToken)
+        if (displayName.isNotBlank()) body.put("displayName", displayName)
+        if (phone.isNotBlank()) body.put("phone", phone)
+        if (role == "seller") body.put("role", "seller")
+        val r = call("/auth/firebase/sign-in", "POST", body, auth = false)
         AuthResult(
             token = r.optString("token"),
             user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
-        )
-    } catch (e: Exception) {
-        null
-    }
-
-    // ── Email verification (gate) ────────────────────────────────────────────
-    // The backend refuses every private route until the address is proven, so
-    // an account that skips this is unusable. Both of these stay reachable
-    // while unverified - they are on the server's allowlist.
-
-    /** Result of asking for a verification email. */
-    data class VerificationRequest(
-        val sent: Boolean,
-        val alreadyVerified: Boolean,
-        /** Only present when the server has no mail transport configured. */
-        val devCode: String?,
-        /**
-         * The verification link itself, also only present when the server
-         * cannot send mail. Verification is link-only, so this is what the
-         * screen shows - there is no code to type.
-         */
-        val devLink: String?,
-    )
-
-    /** Ask the backend to send a fresh verification code/link. */
-    suspend fun requestVerification(): VerificationRequest? = try {
-        val r = call("/auth/verify/request", "POST")
-        VerificationRequest(
-            sent = r.optBoolean("sent", false),
-            alreadyVerified = r.optBoolean("alreadyVerified", false),
-            devCode = r.optString("devCode").takeIf { it.isNotBlank() },
-            devLink = r.optString("devLink").takeIf { it.isNotBlank() },
         )
     } catch (e: Exception) {
         null
@@ -232,6 +286,45 @@ object V2Client {
     } catch (e: Exception) {
         null
     }
+
+    // ── Email verification ────────────────────────────────────────────────────
+    //
+    // The backend refuses every private route until the address is proven, so
+    // an account that skips this is unusable. Both of these stay reachable
+    // while unverified - they are on the server's allowlist.
+
+    /** Result of asking for a verification email. */
+    data class VerificationRequest(
+        val sent: Boolean,
+        val alreadyVerified: Boolean,
+        /** Only present when the server has no mail transport configured. */
+        val devCode: String?,
+        /**
+         * The verification link itself, also only present when the server
+         * cannot send mail. Verification is link-only, so this is what the
+         * screen shows - there is no code to type.
+         */
+        val devLink: String?,
+    )
+
+    /** Ask the backend to send a fresh verification code/link. */
+    suspend fun requestVerification(): VerificationRequest? = try {
+        val r = call("/auth/verify/request", "POST")
+        VerificationRequest(
+            sent = r.optBoolean("sent", false),
+            alreadyVerified = r.optBoolean("alreadyVerified", false),
+            devCode = r.optString("devCode").takeIf { it.isNotBlank() },
+            devLink = r.optString("devLink").takeIf { it.isNotBlank() },
+        )
+    } catch (e: Exception) {
+        null
+    }
+
+    // There is deliberately no confirmVerification() here. The server still
+    // exposes /auth/verify/confirm so the backend test fixtures can verify an
+    // account in one call, but the app must never offer code entry: the email
+    // carries a link and nothing else. Re-adding a method here would invite a
+    // screen to use it, which is how the code box came back the first time.
 
     suspend fun updateMe(
         displayName: String? = null,
@@ -292,7 +385,6 @@ object V2Client {
     } catch (e: Exception) {
         emptyList()
     }
-
 
     suspend fun fetchProductById(id: String): Product? = try {
         val r = call("/products/$id", auth = false)
@@ -743,7 +835,6 @@ object V2Client {
     } catch (e: Exception) {
         0
     }
-
 
     suspend fun fetchSupportTickets(): List<SupportTicket> = try {
         val arr = call("/me/support/tickets").optJSONArray("tickets") ?: JSONArray()

@@ -31,9 +31,13 @@ object FirebaseAuthRepository {
     }
 
     /** Exchange the Firebase idToken for a ScottsTechX JWT and cache the session. */
-    suspend fun exchangeForJwt(): Boolean {
+    suspend fun exchangeForJwt(
+        displayName: String = "",
+        phone: String = "",
+        role: String = "buyer",
+    ): Boolean {
         val idToken = FirebaseBridge.idToken() ?: return false
-        val result = V2Client.signInWithFirebase(idToken) ?: return false
+        val result = V2Client.signInWithFirebase(idToken, displayName, phone, role) ?: return false
         SessionCache.save(result.token, toCurrentUser(result.user))
         return true
     }
