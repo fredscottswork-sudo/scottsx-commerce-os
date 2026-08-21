@@ -16,6 +16,15 @@ async function call(path,{method='GET',token,body}={}){const h={'content-type':'
 const s=Date.now();
 const buyer=await call('/auth/register',{method:'POST',body:{email:`andro_${s}@t.test`,password:'Passw0rd!',displayName:'Android Buyer',role:'buyer'}});
 const bt=buyer.data.token;
+{
+  // Registration now issues an unverified account (the backend gates every
+  // private route until the address is proven). In dev the code comes back in
+  // the response, so the fixture verifies itself the same way the app's
+  // VerifyEmailScreen does.
+  const code=buyer.data?.verification?.devCode;
+  const cf=await call('/auth/verify/confirm',{method:'POST',token:bt,body:{code}});
+  if(cf.status!==200) throw new Error(`fixture could not verify buyer: ${cf.status} ${JSON.stringify(cf.data)}`);
+}
 const seller=await call('/auth/login',{method:'POST',body:{email:'techhub@scottstechx.ug',password:'Seller123!'}});
 const st=seller.data.token, sid=seller.data.user.id;
 

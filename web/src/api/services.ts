@@ -48,13 +48,66 @@ export const authService = {
   login: (email: string, password: string) =>
     api<{ token: string; user: any }>('/auth/login', { method: 'POST', auth: false, body: { email, password } }),
   register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string }) =>
-    api<{ token: string; user: any }>('/auth/register', { method: 'POST', auth: false, body }),
+    api<{
+      token: string;
+      user: any;
+      /** Accounts start unverified; a code is emailed on registration. */
+      verification?: {
+        required: boolean;
+        sent: boolean;
+        /** Whether the email actually contained a clickable link. */
+        linkSent?: boolean;
+        devCode?: string;
+        devLink?: string;
+      };
+    }>('/auth/register', { method: 'POST', auth: false, body }),
+  /** Re-send the six-digit email verification code. */
+  requestVerification: () =>
+    api<{
+      alreadyVerified: boolean;
+      sent: boolean;
+      /** True when the server can neither email the code nor show it. */
+      undeliverable?: boolean;
+      /** Whether the email actually contained a clickable link. */
+      linkSent?: boolean;
+      devCode?: string;
+      devLink?: string;
+    }>('/auth/verify/request', { method: 'POST' }),
+  /** Confirm the six-digit code and mark the address verified. */
+  confirmVerification: (code: string) =>
+    api<{ verified: boolean; user: any }>(
+      '/auth/verify/confirm', { method: 'POST', body: { code } }),
+  /**
+   * Confirm the address from a link the user clicked in their email.
+   *
+   * Sent without auth on purpose: the link is routinely opened on a different
+   * device from the one that signed up, where there is no session at all. The
+   * token in the URL is the proof, and the server returns a session so the
+   * click lands the user straight in the app.
+   */
+  confirmVerificationLink: (token: string) =>
+    api<{ verified: boolean; token: string; user: any }>(
+      '/auth/verify/link', { method: 'POST', auth: false, body: { token } }),
   me: () => api<{ user: any }>('/auth/me'),
   updateMe: (body: { displayName?: string; phone?: string; profilePhotoUrl?: string | null; city?: string }) =>
     api<{ user: any }>('/auth/me', { method: 'PATCH', body }),
   /** Exchange a Google id_token for a ScottsTechX session. */
   google: (idToken: string) =>
     api<{ token: string; user: any }>('/auth/google', { method: 'POST', auth: false, body: { idToken } }),
+  /**
+   * Exchange a *Firebase* ID token for a ScottsTechX session.
+   *
+   * Distinct from `google` above: Firebase issues its own token with a
+   * different issuer and audience, so the backend verifies it against a
+   * different key set. The email_verified claim inside is attested by Google.
+   */
+  firebase: (
+    idToken: string,
+    profile?: { displayName?: string; phone?: string; role?: string; storeName?: string }
+  ) =>
+    api<{ token: string; user: any; emailVerified?: boolean }>('/auth/firebase/sign-in', {
+      method: 'POST', auth: false, body: { idToken, ...(profile ?? {}) },
+    }),
   upgradeToSeller: () => api<{ token: string; user: any }>('/auth/upgrade-to-seller', { method: 'POST' }),
   uploadPhoto: (file: File) => {
     const form = new FormData();

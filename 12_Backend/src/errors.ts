@@ -36,6 +36,21 @@ export class ServiceUnavailableError extends Error {
   }
 }
 
+/**
+ * 429 — the caller is asking too often.
+ *
+ * `retryAfterSec` is surfaced as a Retry-After header so clients can show a
+ * real countdown instead of guessing.
+ */
+export class TooManyRequestsError extends Error {
+  retryAfterSec: number;
+  constructor(message = 'Too many requests', retryAfterSec = 60) {
+    super(message);
+    this.name = 'TooManyRequestsError';
+    this.retryAfterSec = retryAfterSec;
+  }
+}
+
 /** 400 — request understood but the payload fails a business rule. */
 export class ValidationError extends Error {
   constructor(message = 'Validation error') {

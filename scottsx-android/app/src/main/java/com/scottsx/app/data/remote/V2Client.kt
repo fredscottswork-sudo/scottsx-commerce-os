@@ -149,6 +149,38 @@ object V2Client {
         null
     }
 
+    // ── Email verification (gate) ────────────────────────────────────────────
+    // The backend refuses every private route until the address is proven, so
+    // an account that skips this is unusable. Both of these stay reachable
+    // while unverified - they are on the server's allowlist.
+
+    /** Result of asking for a verification email. */
+    data class VerificationRequest(
+        val sent: Boolean,
+        val alreadyVerified: Boolean,
+        /** Only present when the server has no mail transport configured. */
+        val devCode: String?,
+        /**
+         * The verification link itself, also only present when the server
+         * cannot send mail. Verification is link-only, so this is what the
+         * screen shows - there is no code to type.
+         */
+        val devLink: String?,
+    )
+
+    /** Ask the backend to send a fresh verification code/link. */
+    suspend fun requestVerification(): VerificationRequest? = try {
+        val r = call("/auth/verify/request", "POST")
+        VerificationRequest(
+            sent = r.optBoolean("sent", false),
+            alreadyVerified = r.optBoolean("alreadyVerified", false),
+            devCode = r.optString("devCode").takeIf { it.isNotBlank() },
+            devLink = r.optString("devLink").takeIf { it.isNotBlank() },
+        )
+    } catch (e: Exception) {
+        null
+    }
+
     suspend fun signInWithGoogle(idToken: String): AuthResult? = try {
         val r = call("/auth/google", "POST", JSONObject().put("idToken", idToken), auth = false)
         AuthResult(

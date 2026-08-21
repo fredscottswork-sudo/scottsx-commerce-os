@@ -5,14 +5,47 @@ import { useToast } from '../store/ToastContext';
 import { Btn, Field, Input, Select } from '../components/ui';
 import { ApiError } from '../api/client';
 import GoogleButton from '../components/GoogleButton';
+import { BrandLockup } from '../components/BrandLogo';
+import { useSeo } from '../hooks/useSeo';
+
+/** Signals "Firebase could not be used" so the catch can fall back. */
+class FirebaseFallback extends Error {
+  constructor(public reason: string) {
+    super(reason);
+  }
+}
+
+/**
+ * Firebase codes that mean the project is not finished being set up. These get
+ * an explicit instruction rather than a vague apology, because the fix is a
+ * console toggle and only the site owner can do it.
+ */
+const SETUP_INCOMPLETE: Record<string, string> = {
+  'auth/operation-not-allowed':
+    'Email sign-up is not enabled for this site yet. Enable Email/Password in Firebase Console → Authentication → Sign-in method.',
+  'auth/configuration-not-found':
+    'Sign-in is not configured for this site yet. Open Firebase Console → Authentication and enable Email/Password.',
+  'auth/unauthorized-domain':
+    'This website is not authorised for sign-in yet. Add it in Firebase Console → Authentication → Settings → Authorised domains.',
+  'auth/invalid-api-key':
+    'The sign-in configuration for this site is invalid. Check VITE_FIREBASE_API_KEY.',
+  'auth/api-key-not-valid':
+    'The sign-in configuration for this site is invalid. Check VITE_FIREBASE_API_KEY.',
+};
 
 export default function Register() {
-  const { register } = useAuth();
+  useSeo({
+    title: 'Create an account',
+    description: 'Join ScottsTechX as a buyer or open a store as a seller. Free to sign up.',
+  });
+
+  const { register, loginWithFirebase } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [form, setForm] = useState({ displayName: '', email: '', phone: '', password: '', confirm: '', role: 'buyer', storeName: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Set once Firebase has emailed a verification link. */
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -23,19 +56,95 @@ export default function Register() {
     if (form.password.length < 6) return setError('Password must be at least 6 characters');
     if (form.password !== form.confirm) return setError('Passwords do not match');
     setBusy(true);
+    const email = form.email.trim();
+    const profile = {
+      displayName: form.displayName,
+      phone: form.phone,
+      role: form.role,
+      storeName: form.storeName,
+    };
+
+    try {
+      // Preferred path: create the account in Firebase, which emails the
+      // verification link itself. email_verified rides inside the signed token,
+      // so the address is proven by Google rather than asserted by us.
+      const { registerWithEmail, friendlyAuthError } = await import('../lib/firebase');
+      let idToken: string;
+      try {
+        ({ idToken } = await registerWithEmail(email, form.password, form.displayName));
+      } catch (fbErr) {
+        const code = (fbErr as { code?: string })?.code || '';
+        // An address already in Firebase is a real, actionable error — do NOT
+        // fall through and quietly make a second, unverified local account.
+        if (code === 'auth/email-already-in-use') {
+          setError('An account already exists with that email. Try signing in instead.');
+          setBusy(false);
+          return;
+        }
+        if (code === 'auth/invalid-email' || code === 'auth/weak-password') {
+          setError(friendlyAuthError(fbErr));
+          setBusy(false);
+          return;
+        }
+        // Anything else is an infrastructure problem, not the user's fault.
+        // We still fall back so sign-up never becomes impossible — but we
+        // record WHY, because silently handing someone a six-digit code when
+        // they were promised an email link is indistinguishable from the
+        // feature being broken. It is the reason this bug went unnoticed.
+        // eslint-disable-next-line no-console
+        console.error('[signup] Firebase unavailable, using fallback:', code || fbErr);
+        throw new FirebaseFallback(code || (fbErr as Error)?.message || 'unknown');
+      }
+
+      await loginWithFirebase(idToken, profile);
+      toast('Account created — verify your email to continue', 'success');
+      navigate('/verify-email', { replace: true });
+      return;
+    } catch (err) {
+      if (!(err instanceof FirebaseFallback)) {
+        setError(err instanceof ApiError ? err.message : 'Registration failed');
+        setBusy(false);
+        return;
+      }
+      // A misconfigured project is not a transient glitch: say exactly what to
+      // fix rather than quietly downgrading to the code and looking broken.
+      const setupMsg = SETUP_INCOMPLETE[err.reason];
+      if (setupMsg) {
+        setError(setupMsg);
+        setBusy(false);
+        return;
+      }
+    }
+
+    // Fallback: our own account, verified by our own emailed link. Used when
+    // Firebase Auth is unavailable, so sign-up never becomes impossible - and
+    // the user still gets a link, not a code.
     try {
       await register({
-        email: form.email.trim(),
+        email,
         password: form.password,
         displayName: form.displayName,
         phone: form.phone,
         role: form.role as 'buyer' | 'seller',
         storeName: form.storeName,
       } as any);
-      toast('Account created', 'success');
-      navigate('/');
+      // Both paths email a link now, so the message is the same either way.
+      toast('Account created — check your email for the verification link', 'success');
+      // The fallback path is unverified too, so it goes through the same gate.
+      navigate('/verify-email', { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Registration failed');
+      // 503 means the backend has no way to send a verification email, so it
+      // refuses to create an account it could never verify. Say that plainly
+      // and point at the route that still works, rather than leaving someone
+      // retyping a password that was never the problem.
+      if (err instanceof ApiError && err.status === 503) {
+        setError(
+          'Email sign-up is temporarily unavailable on this site — the server cannot ' +
+            'send verification emails yet. You can continue with Google instead.'
+        );
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Registration failed');
+      }
     } finally {
       setBusy(false);
     }
@@ -44,9 +153,9 @@ export default function Register() {
   return (
     <div className="auth-wrap">
       <div className="auth-brand">
-        <div style={{ fontSize: 40, marginBottom: 12 }}>🛍️</div>
-        <h1 style={{ fontSize: 34, margin: 0 }}>Join ScottsTechX</h1>
-        <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 420 }}>
+        <BrandLockup width={300} className="auth-lockup" />
+        <h1 className="auth-tagline">Join the marketplace built for Uganda.</h1>
+        <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
           One account for web and mobile. Buy from local sellers or open your own store —
           the same backend powers every screen.
         </p>

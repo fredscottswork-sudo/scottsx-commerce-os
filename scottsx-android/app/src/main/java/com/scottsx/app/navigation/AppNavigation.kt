@@ -38,6 +38,7 @@ import com.scottsx.app.ui.screens.SignUpScreen
 import com.scottsx.app.ui.screens.StoreSettingsDetailScreen
 import com.scottsx.app.ui.screens.SupportScreen
 import com.scottsx.app.ui.screens.ThemeScreen
+import com.scottsx.app.ui.screens.VerifyEmailScreen
 import com.scottsx.app.ui.screens.WelcomeScreen
 
 /** All navigation routes — kebab-case strings, matching the master doc. */
@@ -72,6 +73,7 @@ object Routes {
     const val SAVED_PRODUCTS = "saved-products"
     const val REFUNDS = "refunds"
     const val SUPPORT = "support"
+    const val VERIFY_EMAIL = "verify-email"
 
     fun product(id: String) = "product/$id"
     fun thread(conversationId: String) = "thread/$conversationId"
@@ -218,11 +220,28 @@ fun AppNavigation() {
         composable(Routes.SAVED_PRODUCTS) { SavedProductsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.REFUNDS) { RefundsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.SUPPORT) { SupportScreen(onBack = { navController.popBackStack() }) }
+        composable(Routes.VERIFY_EMAIL) {
+            VerifyEmailScreen(
+                onVerified = { role -> navigateHome(navController, role) },
+                onSignOut = {
+                    SessionCache.clear()
+                    com.scottsx.app.data.firebase.FirebaseBridge.signOut()
+                    navController.navigate(Routes.WELCOME) { popUpTo(0) { inclusive = true } }
+                },
+            )
+        }
     }
 }
 
 private fun navigateHome(navController: NavHostController, role: String?) {
-    navController.navigate(Routes.homeForRole(role)) {
+    // The backend gates every private route behind email verification, so an
+    // unverified account is parked on the verify screen instead of a home
+    // full of 403s. Google sign-ins arrive already verified and skip this.
+    val user = SessionCache.user.value
+    val destination =
+        if (user != null && !user.emailVerified) Routes.VERIFY_EMAIL
+        else Routes.homeForRole(role)
+    navController.navigate(destination) {
         popUpTo(0) { inclusive = true }
     }
 }

@@ -96,6 +96,18 @@ async function main() {
     state.buyerToken = buyer.data?.token;
     state.buyerId = buyer.data?.user?.id;
 
+    // Registration now issues an UNVERIFIED account and the backend gates all
+    // private routes until the address is proven. In dev the code comes back
+    // in the response, so the fixture verifies itself before continuing.
+    {
+      const vc = await call('/auth/verify/confirm', {
+        method: 'POST',
+        token: state.buyerToken,
+        body: { code: buyer.data?.verification?.devCode },
+      });
+      check('buyer verifies email with the dev code', vc.status === 200, JSON.stringify(vc.data).slice(0, 120));
+    }
+
     const badLogin = await call('/auth/login', {
       method: 'POST',
       body: { email: 'admin@scottstechx.ug', password: 'wrong-password' },
@@ -804,6 +816,14 @@ async function main() {
     const outsider = await call('/auth/register', {
       method: 'POST',
       body: { email: `nosy_${uniq}@test.ug`, password: 'Nosy1234!', displayName: 'Nosy' },
+    });
+    // Verify the outsider too — an unverified account would be refused with
+    // 403 (the gate) before the ownership check could answer 404, and this
+    // test is about ownership, not verification.
+    await call('/auth/verify/confirm', {
+      method: 'POST',
+      token: outsider.data?.token,
+      body: { code: outsider.data?.verification?.devCode },
     });
     const peek = await call(`/conversations/${state.convId}/messages`, { token: outsider.data?.token });
     check('outsider cannot read the thread', peek.status === 404, `got ${peek.status}`);
