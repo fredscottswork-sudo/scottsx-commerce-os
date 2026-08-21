@@ -41,6 +41,7 @@ function check(name, condition, detail) {
 // Records what it was asked, and can be told to misbehave.
 const seen = [];
 let mode = 'ok';
+let hangMs = 30_000;
 
 const llm = http.createServer((req, res) => {
   let body = '';
@@ -61,7 +62,7 @@ const llm = http.createServer((req, res) => {
       res.end('{"not_what_we_expect":true}');
       return;
     }
-    if (mode === 'hang') { await sleep(30_000); res.end('{}'); return; }
+    if (mode === 'hang') { await sleep(hangMs); res.end('{}'); return; }
 
     // Reasoning models (GLM, DeepSeek-R1, QwQ) either split thinking into
     // `reasoning_content`, or inline it in <think> tags. Both shapes are
@@ -129,6 +130,7 @@ const api = spawn('npx', ['tsx', 'src/server.ts'], {
     LLM_API_KEY: 'test-key-12345',
     LLM_BASE_URL: LLM_URL,
     AI_MODEL: 'test/model-x',
+    LLM_TIMEOUT_MS: '5000',
     AI_PROVIDER: 'openrouter',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -310,6 +312,29 @@ try {
       !/<think>|SECRET_THOUGHTS/i.test(unclosed.body.text || ''), (unclosed.body.text || '').slice(0, 70));
 
     mode = 'ok';
+  }
+
+  // ── A slow model must time out into the catalogue answer, not hang the
+  //    request forever. Reasoning models need a longer leash than chat ones. ─
+  {
+    console.log(B('\nSlow models'));
+
+    mode = 'hang';
+    hangMs = 30_000;
+    const started = Date.now();
+    const slow = await ask('cheapest phone you have');
+    const elapsed = Date.now() - started;
+
+    check('a stalled provider does not hang the request',
+      slow.status === 200, `HTTP ${slow.status} after ${elapsed}ms`);
+    check('...it gives up near the configured LLM_TIMEOUT_MS, not the default 25s',
+      elapsed < 15_000, `took ${elapsed}ms with LLM_TIMEOUT_MS=5000`);
+    check('...and still answers from the catalogue',
+      (slow.body.text || '').length > 40 && /local/i.test(slow.body.provider || ''),
+      `provider ${slow.body.provider}`);
+
+    mode = 'ok';
+    hangMs = 30_000;
   }
 
   console.log(B('\nSummary'));

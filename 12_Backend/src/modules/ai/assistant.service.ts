@@ -41,6 +41,22 @@ import { parseIntent, retrieveProducts, fmtUgx } from './catalog-context.js';
 function openRouterUrl(): string {
   return process.env.LLM_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions';
 }
+
+/**
+ * How long to wait for the model before giving up and answering from the
+ * catalogue instead.
+ *
+ * 25s suits a fast chat model, but reasoning models (GLM, DeepSeek-R1, QwQ)
+ * think before they answer and can legitimately take longer — with a fixed
+ * 25s cap they'd get cut off mid-thought and every reply would silently come
+ * from the offline composer. Clamped to 5–120s so a typo can't hang a request
+ * or disable the timeout entirely.
+ */
+function llmTimeoutMs(): number {
+  const raw = Number(process.env.LLM_TIMEOUT_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return 25_000;
+  return Math.min(Math.max(raw, 5_000), 120_000);
+}
 const APIFREELLM_URL = 'https://apifreellm.com/api/v1/chat';
 
 export { AGENTS };
@@ -187,7 +203,7 @@ async function askOpenRouter(
   ];
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+  const timeout = setTimeout(() => controller.abort(), llmTimeoutMs());
   try {
     const res = await fetch(openRouterUrl(), {
       method: 'POST',

@@ -115,6 +115,18 @@ services:
         sync: false
       - key: LLM_API_KEY
         sync: false
+      # Point at any OpenAI-compatible endpoint to use a provider other than
+      # OpenRouter. For NVIDIA NIM running GLM-5.2:
+      #   LLM_BASE_URL=https://integrate.api.nvidia.com/v1/chat/completions
+      #   AI_MODEL=z-ai/glm-5.2
+      # Reasoning models think before answering, so give them a longer
+      # timeout or replies get cut off and fall back to the catalogue.
+      - key: LLM_BASE_URL
+        sync: false
+      - key: AI_MODEL
+        sync: false
+      - key: LLM_TIMEOUT_MS
+        sync: false
       - key: NYLON_PAY_API_KEY
         sync: false
       - key: NYLON_PAY_API_SECRET
