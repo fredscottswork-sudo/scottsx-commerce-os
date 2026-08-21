@@ -166,7 +166,7 @@ fun NearbyScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
+                    Brush.horizontalGradient(ScottsTechXColors.BlueHeroColors),
                     RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                 )
                 .padding(16.dp),
@@ -406,7 +406,7 @@ private fun SellerRow(seller: NearbySeller) {
             modifier = Modifier
                 .size(50.dp)
                 .background(
-                    Brush.linearGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
+                    Brush.linearGradient(ScottsTechXColors.BlueHeroColors),
                     CircleShape,
                 ),
             contentAlignment = Alignment.Center,

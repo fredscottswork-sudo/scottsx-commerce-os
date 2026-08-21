@@ -181,7 +181,7 @@ internal fun ScreenHeader(title: String, onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
+                Brush.horizontalGradient(ScottsTechXColors.BlueHeroColors),
                 RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
             )
             .padding(horizontal = 8.dp, vertical = 12.dp),

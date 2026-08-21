@@ -16,8 +16,8 @@ android {
         applicationId = "com.scottsx.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.22.1"
+        versionCode = 2
+        versionName = "0.23.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -28,6 +28,12 @@ android {
             ?: "http://10.0.2.2:3001/api/v1"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
+
+    // The live deployed backend — the SAME API the web app talks to.
+    // Release builds default to it so an installed APK works out of the box;
+    // -PapiBaseUrl still overrides for staging builds.
+    val liveApiBaseUrl = (project.findProperty("apiBaseUrl") as String?)
+        ?: "https://scottstechx-api.onrender.com/api/v1"
 
     val keystorePropertiesFile = rootProject.file("keystore.properties")
     val keystoreProperties = Properties().apply {
@@ -58,6 +64,9 @@ android {
             // otherwise the build still succeeds (debug-signed).
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = false
+            // Release APKs talk to the live backend by default — the same
+            // Fastify + Postgres API the website uses.
+            buildConfigField("String", "API_BASE_URL", "\"$liveApiBaseUrl\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

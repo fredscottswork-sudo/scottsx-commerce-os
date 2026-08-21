@@ -191,7 +191,7 @@ fun ProductDetailScreen(
                     Box(
                         modifier = Modifier
                             .size(46.dp)
-                            .background(Brush.linearGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)), CircleShape),
+                            .background(Brush.linearGradient(ScottsTechXColors.BlueHeroColors), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(p.seller.name.firstOrNull()?.uppercase() ?: "S", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)

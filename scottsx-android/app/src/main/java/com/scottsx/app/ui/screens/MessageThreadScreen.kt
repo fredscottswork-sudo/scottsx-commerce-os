@@ -184,7 +184,7 @@ fun MessageThreadScreen(
                 .fillMaxWidth()
                 .background(
                     Brush.horizontalGradient(
-                        listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent),
+                        ScottsTechXColors.BlueHeroColors,
                     ),
                 )
                 .padding(horizontal = 8.dp, vertical = 12.dp),

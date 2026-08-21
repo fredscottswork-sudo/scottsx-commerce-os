@@ -26,7 +26,9 @@ import com.scottsx.app.data.domain.Place
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.QuickReplyItem
 import com.scottsx.app.data.domain.Refund
+import com.scottsx.app.data.domain.SellerDashboard
 import com.scottsx.app.data.domain.SellerDashboardStats
+import com.scottsx.app.data.domain.SellerLocationState
 import com.scottsx.app.data.domain.SellerProfile
 import com.scottsx.app.data.domain.StoreSettings
 import com.scottsx.app.data.domain.SupportTicket
@@ -224,6 +226,42 @@ object V2Client {
         emptyList()
     }
 
+    /**
+     * Filtered/sorted product feed — the same query params the web catalogue
+     * uses (`GET /products?sort=…&flashOnly=…&inStock=…&category=…`), so the
+     * app's "For you / Flash / Trending" tabs show exactly what the website
+     * shows.
+     *
+     * @param sort relevance | newest | price_asc | price_desc | rating | popular
+     */
+    suspend fun fetchProductsFeed(
+        sort: String = "newest",
+        flashOnly: Boolean = false,
+        inStock: Boolean = false,
+        category: String? = null,
+        pageSize: Int = 24,
+    ): List<Product> = try {
+        val params = StringBuilder("?sort=$sort&pageSize=$pageSize")
+        if (flashOnly) params.append("&flashOnly=true")
+        if (inStock) params.append("&inStock=true")
+        category?.takeIf { it.isNotBlank() && it != "All" }?.let {
+            params.append("&category=").append(java.net.URLEncoder.encode(it, "UTF-8"))
+        }
+        val r = call("/products$params", auth = false)
+        Product.fromJsonArray(r.optJSONArray("products") ?: JSONArray())
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /** New products from sellers the buyer follows (web "Following" feed). */
+    suspend fun fetchFavoritesFeed(limit: Int = 24): List<Product> = try {
+        val r = call("/me/favorites/feed?limit=$limit")
+        Product.fromJsonArray(r.optJSONArray("products") ?: JSONArray())
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+
     suspend fun fetchProductById(id: String): Product? = try {
         val r = call("/products/$id", auth = false)
         Product.fromJson(r.optJSONObject("product") ?: JSONObject())
@@ -337,6 +375,63 @@ object V2Client {
         SellerDashboardStats.fromJson(r.optJSONObject("stats") ?: JSONObject())
     } catch (e: Exception) {
         null
+    }
+
+    /**
+     * The FULL seller dashboard — stats, 14-day sales series, top products
+     * and recent orders. Same payload the web seller dashboard renders.
+     */
+    suspend fun fetchSellerDashboard(): SellerDashboard? = try {
+        SellerDashboard.fromJson(call("/seller/dashboard/stats"))
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Seller-side order list (mirror of the buyer's /me/orders). */
+    suspend fun fetchSellerOrders(): List<Order> = try {
+        val arr = call("/seller/orders").optJSONArray("orders") ?: JSONArray()
+        (0 until arr.length()).map { Order.fromJson(arr.getJSONObject(it)) }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    // ── Seller live location + open state (powers the buyer's Nearby map) ────
+
+    suspend fun fetchSellerLocation(): SellerLocationState? = try {
+        SellerLocationState.fromJson(call("/seller/location").optJSONObject("location"))
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Publish a live fix — buyers see the store move in real time. */
+    suspend fun publishSellerLocation(lat: Double, lng: Double, city: String? = null): Boolean = try {
+        val body = JSONObject().put("lat", lat).put("lng", lng).put("sharing", true)
+        city?.takeIf { it.isNotBlank() }?.let { body.put("city", it) }
+        call("/seller/location", "POST", body).has("location")
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Live sharing off — the pin stays at the last known position. */
+    suspend fun stopSellerLocation(): Boolean = try {
+        call("/seller/location", "DELETE").has("location")
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Open/closed toggle shown on the Nearby cards. */
+    suspend fun setStoreOpen(isOpen: Boolean): Boolean = try {
+        call("/seller/open-state", "PATCH", JSONObject().put("isOpen", isOpen))
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Move a draft/rejected listing back into the admin review queue. */
+    suspend fun submitProductForReview(id: String): Boolean = try {
+        call("/seller/products/$id/submit", "POST").has("product")
+    } catch (e: Exception) {
+        false
     }
 
     /** Convenience wrapper. Null [radiusKm] searches the whole marketplace. */
@@ -604,6 +699,19 @@ object V2Client {
     } catch (e: Exception) {
         false
     }
+
+    suspend fun markAllNotificationsRead(): Boolean = try {
+        call("/me/notifications/read-all", "POST").optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
+    }
+
+    suspend fun fetchUnreadNotificationCount(): Int = try {
+        call("/me/notifications/unread-count").optInt("unread", 0)
+    } catch (e: Exception) {
+        0
+    }
+
 
     suspend fun fetchSupportTickets(): List<SupportTicket> = try {
         val arr = call("/me/support/tickets").optJSONArray("tickets") ?: JSONArray()

@@ -110,7 +110,7 @@ fun CartScreen(
                 .fillMaxWidth()
                 .background(
                     Brush.horizontalGradient(
-                        listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent),
+                        ScottsTechXColors.BlueHeroColors,
                     ),
                     RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                 )

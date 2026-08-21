@@ -155,7 +155,7 @@ fun ConversationListScreen(
                 .fillMaxWidth()
                 .background(
                     Brush.horizontalGradient(
-                        listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent),
+                        ScottsTechXColors.BlueHeroColors,
                     ),
                     RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
                 )
@@ -353,7 +353,7 @@ private fun ConversationRow(
                 .size(48.dp)
                 .background(
                     Brush.linearGradient(
-                        listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent),
+                        ScottsTechXColors.BlueHeroColors,
                     ),
                     CircleShape,
                 ),

@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -16,7 +18,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,26 +31,50 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.scottsx.app.SessionCache
 import com.scottsx.app.data.domain.Product
+import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
-/** Pure UI product card. Wishlist toggling is in-memory for now. */
+/**
+ * Buyer product card — the Compose mirror of the web `.pcard`.
+ *
+ * Same information hierarchy as the website: media with FLASH / discount /
+ * sold-out badges, wishlist heart (wired to the real bookmark API), title,
+ * rating + verified seller + views, price row, location, and an optional
+ * add-to-cart action.
+ */
 @Composable
 fun ProductCard(
     product: Product,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Show an "Add to cart" button; the card reports success via [onAddedToCart]. */
+    withCartButton: Boolean = false,
+    onAddedToCart: (() -> Unit)? = null,
+    /** Start state of the wishlist heart (from /me/bookmarks). */
+    initiallySaved: Boolean = false,
+    compact: Boolean = false,
 ) {
-    var wished by remember(product.id) { mutableStateOf(false) }
+    var wished by remember(product.id, initiallySaved) { mutableStateOf(initiallySaved) }
+    var adding by remember(product.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    val discounted = product.oldPriceMinor != null && product.oldPriceMinor > product.priceMinor
+    val soldOut = product.stockQuantity <= 0
 
     Column(
         modifier = modifier
@@ -63,40 +93,55 @@ fun ProductCard(
                 imageUrl = product.imageUrl,
                 modifier = Modifier.fillMaxSize(),
             )
-            if (product.isFlashDeal) {
-                Surface(
-                    color = ScottsTechXColors.ErrorRed,
-                    shape = RoundedCornerShape(bottomEnd = 12.dp),
-                    modifier = Modifier.align(Alignment.TopStart),
-                ) {
-                    Text(
-                        text = "-${product.discountPercent}%",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
+
+            // Badges — top-left column, exactly like the web `.pcard-tags`.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (product.isFlashDeal) {
+                    CardBadge("FLASH −${product.discountPercent}%", ScottsTechXColors.ErrorRed)
+                } else if (discounted) {
+                    val pct =
+                        ((product.oldPriceMinor!! - product.priceMinor) * 100.0 / product.oldPriceMinor)
+                            .roundToInt()
+                    CardBadge("−$pct%", ScottsTechXColors.WarningAmber)
+                }
+                if (soldOut) {
+                    CardBadge("Sold out", Color(0xFF64748B))
                 }
             }
-            Surface(
-                color = Color.White.copy(alpha = 0.92f),
-                shape = CircleShape,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp),
-            ) {
-                Box(
+
+            // Wishlist heart — real bookmark toggle, same as the web.
+            if (SessionCache.isLoggedIn()) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.35f),
+                    shape = CircleShape,
                     modifier = Modifier
-                        .size(32.dp)
-                        .clickable { wished = !wished },
-                    contentAlignment = Alignment.Center,
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp),
                 ) {
-                    Icon(
-                        imageVector = if (wished) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = if (wished) "Saved" else "Save",
-                        tint = if (wished) ScottsTechXColors.ErrorRed else ScottsTechXColors.OnLightSecondary,
-                        modifier = Modifier.size(18.dp),
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clickable {
+                                wished = !wished // optimistic
+                                scope.launch {
+                                    // Server returns the authoritative state.
+                                    wished = V2Client.toggleBookmark(product.id)
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = if (wished) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            contentDescription = if (wished) "Saved" else "Save",
+                            tint = if (wished) ScottsTechXColors.ErrorRed else Color.White,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
                 }
             }
         }
@@ -104,42 +149,181 @@ fun ProductCard(
         Column(modifier = Modifier.padding(10.dp)) {
             Text(
                 text = product.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = if (compact) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = product.seller.name,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer4()
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+
+            if (!compact) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.padding(top = 2.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = "rating",
+                        tint = ScottsTechXColors.WarningAmber,
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Text(
+                        String.format(java.util.Locale.US, "%.1f", product.rating),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "(${product.ratingCount})",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (product.seller.verified) {
+                        Text(
+                            "· ✓",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ScottsTechXColors.SuccessGreen,
+                        )
+                    }
+                    if (product.viewCount > 0) {
+                        Icon(
+                            Icons.Filled.Visibility,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .padding(start = 3.dp)
+                                .size(11.dp),
+                        )
+                        Text(
+                            "${product.viewCount}",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Text(
                     text = formatUgx(product.priceMinor),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = ScottsTechXColors.BluePrimary,
+                    maxLines = 1,
                 )
-                if (product.oldPriceMinor != null && product.oldPriceMinor > product.priceMinor) {
+                if (discounted) {
                     Text(
-                        text = formatUgx(product.oldPriceMinor),
+                        text = formatUgx(product.oldPriceMinor!!),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                        textDecoration = TextDecoration.LineThrough,
+                        maxLines = 1,
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                Icon(Icons.Filled.Star, contentDescription = "rating", tint = ScottsTechXColors.WarningAmber, modifier = Modifier.size(14.dp))
-                Text("${product.rating}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                Text("(${product.ratingCount})", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            if (!compact) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 2.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.LocationOn,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Text(
+                        product.location.ifBlank { product.seller.location.ifBlank { "Uganda" } },
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            if (withCartButton && SessionCache.isLoggedIn()) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = if (soldOut) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        ScottsTechXColors.BluePrimary
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(enabled = !soldOut && !adding) {
+                            adding = true
+                            scope.launch {
+                                V2Client.addToCart(product.id, 1)
+                                    .onSuccess { onAddedToCart?.invoke() }
+                                adding = false
+                            }
+                        },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            if (adding) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            } else {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.ShoppingCart,
+                                        contentDescription = null,
+                                        tint = if (soldOut) {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        } else {
+                                            Color.White
+                                        },
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                    Text(
+                                        if (soldOut) "Sold out" else "Add to cart",
+                                        color = if (soldOut) {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        } else {
+                                            Color.White
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun Spacer4() = androidx.compose.foundation.layout.Spacer(Modifier.size(4.dp))
+private fun CardBadge(text: String, color: Color) {
+    Surface(color = color, shape = RoundedCornerShape(7.dp)) {
+        Text(
+            text = text,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.5.sp,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+        )
+    }
+}

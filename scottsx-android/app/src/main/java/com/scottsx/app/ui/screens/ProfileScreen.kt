@@ -73,7 +73,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent)),
+                        Brush.horizontalGradient(ScottsTechXColors.BlueHeroColors),
                         RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
                     )
                     .padding(20.dp),

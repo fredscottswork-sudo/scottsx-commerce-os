@@ -57,9 +57,12 @@ object ScottsTechXColors {
     val White = Color.White
 
     /** Matches the web `--gradient-brand`. */
-    val BrandGradient = Brush.linearGradient(
-        listOf(BlueDeep, Color(0xFF1E6FFF), CyanAccent)
-    )
+    val BrandGradientColors = listOf(BlueDeep, Color(0xFF1E6FFF), CyanAccent)
+    val BrandGradient = Brush.linearGradient(BrandGradientColors)
+
+    /** Blue-only hero gradient (deep -> action blue) for large surfaces. */
+    val BlueHeroColors = listOf(BlueDeep, Color(0xFF1E6FFF), BluePrimaryLight)
+
 }
 
 private val LightScheme = lightColorScheme(
