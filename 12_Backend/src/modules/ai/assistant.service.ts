@@ -25,7 +25,22 @@ import {
 } from './agents.js';
 import { parseIntent, retrieveProducts, fmtUgx } from './catalog-context.js';
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+/**
+ * The chat-completions endpoint.
+ *
+ * OpenRouter by default, but every major provider (OpenAI, Groq, Together,
+ * DeepInfra, a self-hosted vLLM or Ollama) speaks the same
+ * /chat/completions shape, so pointing LLM_BASE_URL at one of them is enough
+ * to switch — no code change. This was hardcoded, which meant the only way to
+ * use a different provider was to edit the source.
+ *
+ * Set the full endpoint, e.g.
+ *   LLM_BASE_URL=https://api.openai.com/v1/chat/completions
+ *   LLM_BASE_URL=https://api.groq.com/openai/v1/chat/completions
+ */
+function openRouterUrl(): string {
+  return process.env.LLM_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions';
+}
 const APIFREELLM_URL = 'https://apifreellm.com/api/v1/chat';
 
 export { AGENTS };
@@ -72,7 +87,10 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
   const meta = {
     screen,
     agent: { id: agent.id, name: agent.name, tagline: agent.tagline },
-    products: ctx.products,
+    // When the strict search misses we still talk about the relaxed matches in
+    // the answer text, so ship those same products as cards — otherwise the
+    // reply names items the shopper has no way to tap through to.
+    products: ctx.products.length ? ctx.products : ctx.fallbackProducts,
     grounded: true,
   };
 
@@ -124,7 +142,7 @@ async function askOpenRouter(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25_000);
   try {
-    const res = await fetch(OPENROUTER_URL, {
+    const res = await fetch(openRouterUrl(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
@@ -274,7 +292,7 @@ async function describeImage(imageUrl: string): Promise<string> {
   if (!key) return '';
   const model = process.env.AI_VISION_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct';
 
-  const res = await fetch(OPENROUTER_URL, {
+  const res = await fetch(openRouterUrl(), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,

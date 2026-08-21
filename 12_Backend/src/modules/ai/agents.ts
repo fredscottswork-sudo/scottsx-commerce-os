@@ -381,10 +381,16 @@ export function composeOfflineAnswer(
     // fallbacks are attached by buildContext when the strict search misses.
     const near = ctx.fallbackProducts;
     if (near && near.length) {
+      // When the shopper named a budget we promise these are "listed by
+      // price", so actually sort them cheapest-first — the nearest thing to
+      // what they asked for should lead, not whatever the search ranked top.
+      const ordered = intent.maxPriceMinor
+        ? [...near].sort((a, b) => a.priceMinor - b.priceMinor)
+        : near;
       const relaxed = [
         `Nothing matched **${prompt.trim()}** exactly, but here's the closest I have:`,
         ``,
-        ...near.slice(0, 5).map((p) => productLine(p)),
+        ...ordered.slice(0, 5).map((p) => productLine(p)),
       ];
       if (intent.maxPriceMinor) {
         relaxed.push(
