@@ -35,7 +35,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.SemanticsRole
+// The aliased import (not the modern SemanticsRole, which only exists in
+// newer compose-ui) matches the role property type in compose 1.6.x.
+import androidx.compose.ui.semantics.Role as SemanticsRole
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight

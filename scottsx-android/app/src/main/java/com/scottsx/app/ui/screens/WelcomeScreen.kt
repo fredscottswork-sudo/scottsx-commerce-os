@@ -1,7 +1,7 @@
 package com.scottsx.app.ui.screens
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,11 +40,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.SemanticsRole
+import androidx.compose.ui.semantics.Role as SemanticsRole
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.annotation.StringAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -248,7 +247,7 @@ private fun RoleCard(
         ) {
             TextButton(
                 onClick = onLogin,
-                contentColor = Color.White,
+                colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
             ) {
                 Text("Log in", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
@@ -292,8 +291,9 @@ private fun LegalLinks(onTerms: () -> Unit, onPrivacy: () -> Unit) {
             }
             val p1 = length
             append(".")
-            addStringAnnotation(StringAnnotation("terms"), "", t0, t1)
-            addStringAnnotation(StringAnnotation("privacy"), "", p0, p1)
+            // compose-ui 1.6.x string-annotation API: plain tag strings.
+            addStringAnnotation(tag = "terms", annotation = "", start = t0, end = t1)
+            addStringAnnotation(tag = "privacy", annotation = "", start = p0, end = p1)
         }
     }
     Text(
@@ -310,8 +310,9 @@ private fun LegalLinks(onTerms: () -> Unit, onPrivacy: () -> Unit) {
                 detectTapGestures { tap ->
                     val res = layoutResult ?: return@detectTapGestures
                     val textOffset = res.getOffsetForPosition(tap)
-                    legal.getStringAnnotations(StringAnnotation, 0, legal.length)
-                        .firstOrNull { textOffset in it.start until it.end }
+                    val hit = legal.getStringAnnotations("terms", 0, legal.length) +
+                        legal.getStringAnnotations("privacy", 0, legal.length)
+                    hit.firstOrNull { textOffset in it.start until it.end }
                         ?.let { ann ->
                             if (ann.tag == "terms") onTerms() else onPrivacy()
                         }
