@@ -35,7 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role as SemanticsRole
+import androidx.compose.ui.semantics.SemanticsRole
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -76,7 +76,9 @@ fun LoginScreen(
     /** Buyer or seller as chosen on the welcome screen. */
     initialRole: String = "buyer",
 ) {
-    val role = if (initialRole == "seller") "seller" else "buyer"
+    // Named accountRole (not "role"): a bare `role` would shadow the
+    // SemanticsPropertyReceiver.role inside the .semantics { } blocks below.
+    val accountRole = if (initialRole == "seller") "seller" else "buyer"
     var identifier by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -167,7 +169,7 @@ fun LoginScreen(
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                     ) {
                         Text(
-                            if (role == "seller") "Seller" else "Buyer",
+                            if (accountRole == "seller") "Seller" else "Buyer",
                             color = ScottsTechXColors.BlueDeep,
                             fontSize = 13.5.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -292,7 +294,7 @@ fun LoginScreen(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .clickable { onGoSignUp(role) }
+                            .clickable { onGoSignUp(accountRole) }
                             .semantics { role = SemanticsRole.Button },
                     )
                 }

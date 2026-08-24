@@ -264,18 +264,19 @@ fun AuthFilledField(
                         }
                     }
                 },
+                // Only parameters proven to exist in material3 1.2.1 (the
+                // BOM's version): the same set the messaging screens use.
+                // The cursor defaults to the theme primary (BluePrimary),
+                // and the placeholder's grey comes from the explicit Text
+                // colour above, so nothing visible is lost by omitting the
+                // rest — disabled/error states are never used on this form.
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = ScottsTechXColors.PanelInputLight,
                     unfocusedContainerColor = ScottsTechXColors.PanelInputLight,
-                    disabledContainerColor = ScottsTechXColors.PanelInputLight,
                     focusedTextColor = ScottsTechXColors.OnLight,
                     unfocusedTextColor = ScottsTechXColors.OnLight,
-                    disabledTextColor = ScottsTechXColors.OnLightSecondary,
-                    placeholderColor = Color(0xFF8A94A8),
-                    cursorColor = ScottsTechXColors.BluePrimary,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
-                    errorIndicatorColor = Color.Transparent,
                 ),
                 shape = RoundedCornerShape(25.dp),
             )

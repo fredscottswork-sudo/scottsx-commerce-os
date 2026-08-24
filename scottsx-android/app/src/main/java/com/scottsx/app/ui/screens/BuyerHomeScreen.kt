@@ -336,7 +336,7 @@ fun BuyerHomeScreen(
                                     )
                                     Spacer(Modifier.weight(1f))
                                     Text(
-                                        formatUgx(deal.price),
+                                        formatUgx(deal.priceMinor),
                                         color = Color.White,
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,

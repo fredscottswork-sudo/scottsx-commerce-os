@@ -131,9 +131,9 @@ fun ForgotPasswordScreen(
                         if (identError != null) {
                             error = identError
                             info = null
-                            return@onClick
+                            return@AuthGradientButton
                         }
-                        if (busy) return@onClick
+                        if (busy) return@AuthGradientButton
                         busy = true
                         error = null
                         info = null
