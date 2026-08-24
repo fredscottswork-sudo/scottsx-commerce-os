@@ -1394,6 +1394,24 @@ async function main() {
 
     // Leave the fixture approved for the rest of the suite.
     await call(`/admin/products/${state.newProductId}/approve`, { method: 'POST', token: state.adminToken });
+
+    // Full-form clients (Android edit, web inventory) send the UNCHANGED
+    // gallery on every save — that must not unpublish a live listing.
+    const noChange = await call(`/seller/products/${state.newProductId}`, {
+      method: 'PATCH',
+      token: state.sellerToken,
+      body: { mediaUrls: [imgB], stockQuantity: 3 },
+    });
+    check(
+      'unchanged gallery keeps an approved listing live',
+      noChange.data?.product?.status === 'approved',
+      `status=${noChange.data?.product?.status}`,
+    );
+    check(
+      'the stock change from that same save applied',
+      noChange.data?.product?.stockQuantity === 3,
+      `${noChange.data?.product?.stockQuantity}`,
+    );
   }
 
   group('Image upload & serving');

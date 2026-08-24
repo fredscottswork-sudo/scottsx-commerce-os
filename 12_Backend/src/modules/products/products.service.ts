@@ -399,13 +399,26 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
   const prev = existing.rows[0];
 
   // Price/stock-only edits stay live; content edits need a fresh review.
-  // Any explicit gallery edit counts as content: the photos ARE the listing.
+  // Gallery edits count as content only when the gallery ACTUALLY changed:
+  // full-form clients (Android edit, web inventory) send the unchanged
+  // gallery on every save, and those must not knock a live listing back
+  // into the review queue.
+  let galleryChanged = false;
+  if (Array.isArray(input.mediaUrls)) {
+    const prevMedia = await db.query(
+      'SELECT url FROM product_media WHERE product_id = $1 ORDER BY sort_order',
+      [id],
+    );
+    galleryChanged =
+      prevMedia.rows.map((r) => r.url).join('\u0000') !==
+      input.mediaUrls.join('\u0000');
+  }
   const contentChanged =
     (input.title !== undefined && input.title !== prev.title) ||
     (input.description !== undefined && input.description !== prev.description) ||
     (input.category !== undefined && input.category !== prev.category) ||
     (input.imageUrl !== undefined && input.imageUrl !== prev.image_url) ||
-    input.mediaUrls !== undefined;
+    galleryChanged;
 
   const nextStatus =
     prev.status === 'approved' && contentChanged ? 'pending' : prev.status === 'rejected' ? 'pending' : prev.status;
