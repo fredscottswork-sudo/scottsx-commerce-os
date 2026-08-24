@@ -29,8 +29,8 @@ android {
         // Android 7.0 and up (~99% of active devices) instead of Android 11+.
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.24.0"
+        versionCode = 4
+        versionName = "0.25.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

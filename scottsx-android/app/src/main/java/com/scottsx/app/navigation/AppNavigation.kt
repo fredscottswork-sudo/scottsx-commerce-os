@@ -18,6 +18,7 @@ import com.scottsx.app.ui.screens.BecomeSellerScreen
 import com.scottsx.app.ui.screens.BuyerHomeScreen
 import com.scottsx.app.ui.screens.CartScreen
 import com.scottsx.app.ui.screens.CmsScreen
+import com.scottsx.app.ui.screens.ForgotPasswordScreen
 import com.scottsx.app.ui.screens.LoginScreen
 import com.scottsx.app.ui.screens.MessageThreadScreen
 import com.scottsx.app.ui.screens.MessagesScreen
@@ -49,11 +50,15 @@ object Routes {
     const val SPLASH = "splash"
     const val ONBOARDING = "onboarding"
     const val WELCOME = "welcome"
-    const val LOGIN = "login"
+    const val LOGIN = "login?role={role}"
+    const val FORGOT_PASSWORD = "forgot-password"
     const val SIGNUP = "signup?role={role}"
 
     /** Sign-up with the buyer/seller choice already made. */
     fun signup(role: String): String = "signup?role=" + role
+
+    /** Login carrying the buyer/seller choice from the welcome screen. */
+    fun login(role: String): String = "login?role=" + role
     const val VERIFY_EMAIL = "verify-email"
     const val BUYER_HOME = "buyer/home"
     const val SELLER_HOME = "seller/home"
@@ -127,16 +132,35 @@ fun AppNavigation() {
         }
         composable(Routes.WELCOME) {
             WelcomeScreen(
-                onLogin = { navController.navigate(Routes.LOGIN) },
+                onLogin = { role -> navController.navigate(Routes.login(role)) },
                 onSignUp = { role -> navController.navigate(Routes.signup(role)) },
+                onOpenLegal = { slug -> navController.navigate(Routes.cms(slug)) },
             )
         }
-        composable(Routes.LOGIN) {
+        composable(
+            Routes.LOGIN,
+            arguments = listOf(
+                navArgument("role") {
+                    type = NavType.StringType
+                    defaultValue = "buyer"
+                },
+            ),
+        ) { entry ->
+            // Only buyer/seller are accepted; anything else falls back to
+            // buyer so a hand-crafted deep link cannot pick a role the
+            // backend would reject.
+            val requested = entry.arguments?.getString("role")
+            val loginRole = if (requested == "seller") "seller" else "buyer"
             LoginScreen(
                 onBack = { navController.popBackStack() },
                 onLoggedIn = { role -> navigateHome(navController, role) },
-                onGoSignUp = { navController.navigate(Routes.signup("buyer")) },
+                onGoSignUp = { navController.navigate(Routes.signup(loginRole)) },
+                onForgotPassword = { navController.navigate(Routes.FORGOT_PASSWORD) },
+                initialRole = loginRole,
             )
+        }
+        composable(Routes.FORGOT_PASSWORD) {
+            ForgotPasswordScreen(onBack = { navController.popBackStack() })
         }
         composable(
             Routes.SIGNUP,

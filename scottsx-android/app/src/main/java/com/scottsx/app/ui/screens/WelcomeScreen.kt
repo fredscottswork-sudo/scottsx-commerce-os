@@ -1,24 +1,14 @@
 package com.scottsx.app.ui.screens
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role as SemanticsRole
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -26,246 +16,312 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role as SemanticsRole
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.annotation.StringAnnotation
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.SessionCache
-import com.scottsx.app.navigation.Routes
+import androidx.compose.foundation.layout.PaddingValues
+import com.scottsx.app.ui.components.FuturisticBackdrop
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
-/** Landing screen — auto-forwards to the role home when a session exists. */
+/**
+ * Role selection — the first screen of the auth flow, recreated from the
+ * reference design:
+ *
+ *   - near-black futuristic backdrop with a low-opacity technical glow,
+ *   - a "WELCOME" eyebrow, the large "How will you use ScottsTechX?"
+ *     heading and a one-line hint,
+ *   - two glassmorphic role cards (Buyer / Seller) with circular letter
+ *     avatars; each card carries its own Log in / Sign up actions so the
+ *     role flows into both destinations,
+ *   - the legal fine print with tappable Terms/Privacy links at the bottom.
+ */
 @Composable
 fun WelcomeScreen(
-    onLogin: () -> Unit,
+    onLogin: (role: String) -> Unit,
     onSignUp: (role: String) -> Unit,
+    onOpenLegal: (slug: String) -> Unit,
 ) {
-    // Buyer or seller, chosen here and carried into registration. Defaults to
-    // buyer because that is the overwhelming majority of new accounts; a
-    // seller taps once to switch. The backend still constrains the value to
-    // buyer/seller, so this can never be used to self-register as an admin.
+    // Buyer or seller, chosen here and carried into both login and
+    // registration. Defaults to buyer because that is the overwhelming
+    // majority of new accounts; a seller taps once to switch. The backend
+    // still constrains the value to buyer/seller, so this can never be used
+    // to self-register as an admin.
     var role by remember { mutableStateOf("buyer") }
-    // If we already have a session, jump straight to the role home.
-    LaunchedEffect(Unit) {
-        SessionCache.user.value?.let {
-            if (SessionCache.isLoggedIn()) {
-                // navigation handled by the NavHost-level effect in AppNavigation
-            }
-        }
-    }
 
-    val gradient = Brush.verticalGradient(
-        listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.PurpleAccent, ScottsTechXColors.PinkAccent),
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(gradient),
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF04060C))) {
+        FuturisticBackdrop(modifier = Modifier.matchParentSize())
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // Full-bleed gradient, but the buttons must not sit under the
+                // Full-bleed backdrop, but content must not sit under the
                 // status bar or the gesture pill.
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .verticalScroll(rememberScrollState())
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+                .padding(horizontal = 22.dp, vertical = 16.dp),
         ) {
-            // ORIGINAL brand block, restored exactly as it was: a 96dp
-            // translucent white circle holding the shopping emoji, with the
-            // ScottsTechX wordmark beneath it at 34sp.
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("\uD83D\uDECD\uFE0F", fontSize = 44.sp)
-            }
-            Spacer(Modifier.height(20.dp))
             Text(
-                "ScottsTechX",
+                "WELCOME",
+                color = ScottsTechXColors.BluePrimaryLight,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 3.2.sp,
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "How will you use\nScottsTechX?",
                 color = Color.White,
                 fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                "Uganda's marketplace. Buy from real local sellers with Mobile Money, cash on delivery, and an AI assistant that knows the live catalog.",
-                color = Color.White.copy(alpha = 0.9f),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 10.dp),
-            )
-            Spacer(Modifier.height(28.dp))
-
-            // ---- Buyer / seller choice ----------------------------------
-            Text(
-                "I want to",
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
+                fontWeight = FontWeight.Black,
+                lineHeight = 41.sp,
             )
             Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                RoleChoiceCard(
-                    emoji = "🛍️",
-                    title = "Buy",
-                    subtitle = "Shop from local sellers",
-                    selected = role == "buyer",
-                    onClick = { role = "buyer" },
-                    modifier = Modifier.weight(1f),
-                )
-                RoleChoiceCard(
-                    emoji = "🏪",
-                    title = "Sell",
-                    subtitle = "Open my own store",
-                    selected = role == "seller",
-                    onClick = { role = "seller" },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Spacer(Modifier.height(20.dp))
-
-            Button(
-                onClick = { onSignUp(role) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = ScottsTechXColors.BluePrimary),
-            ) {
-                Text(
-                    if (role == "seller") "Create seller account" else "Create account",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp,
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = onLogin,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.7f)),
-            ) {
-                Text("I already have an account", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-            }
-
-            Spacer(Modifier.height(24.dp))
             Text(
-                "🇺🇬 Kampala • Entebbe • Jinja • Mbarara • Gulu • Mbale",
-                color = Color.White.copy(alpha = 0.75f),
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
+                "Pick the role that fits you best — you can always switch later.",
+                color = ScottsTechXColors.DarkOnSecondary,
+                fontSize = 14.5.sp,
+                lineHeight = 21.sp,
             )
-            if (SessionCache.isLoggedIn()) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Session active — sign in as ${SessionCache.user.value?.displayName ?: "you"}",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 12.sp,
+            Spacer(Modifier.height(22.dp))
+
+            // The cards take whatever vertical space is left and scroll on
+            // small screens instead of being clipped.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                RoleCard(
+                    letter = "B",
+                    title = "I am a Buyer",
+                    description = "Discover products and connect with sellers across Uganda.",
+                    selected = role == "buyer",
+                    onSelect = { role = "buyer" },
+                    onLogin = { onLogin("buyer") },
+                    onSignUp = { onSignUp("buyer") },
                 )
+                Spacer(Modifier.height(14.dp))
+                RoleCard(
+                    letter = "S",
+                    title = "I am a Seller",
+                    description = "List your products, reach more customers, and grow your business.",
+                    selected = role == "seller",
+                    onSelect = { role = "seller" },
+                    onLogin = { onLogin("seller") },
+                    onSignUp = { onSignUp("seller") },
+                )
+            }
+
+            Spacer(Modifier.height(18.dp))
+            LegalLinks(
+                onTerms = { onOpenLegal("terms") },
+                onPrivacy = { onOpenLegal("privacy") },
+            )
+        }
+    }
+}
+
+/**
+ * One of the two role cards. Selected state is expressed three ways at once
+ * — fill, border/glow and a subtle scale — because on a dark surface a
+ * colour-only cue is easy to miss, and colour alone is not an accessible
+ * signal.
+ */
+@Composable
+private fun RoleCard(
+    letter: String,
+    title: String,
+    description: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onLogin: () -> Unit,
+    onSignUp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(30.dp)
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.985f,
+        animationSpec = tween(durationMillis = 220),
+        label = "roleScale",
+    )
+    val fill by animateColorAsState(
+        targetValue = if (selected) Color(0x331E6FFF) else Color(0x0DFFFFFF),
+        animationSpec = tween(durationMillis = 220),
+        label = "roleFill",
+    )
+    val edge by animateColorAsState(
+        targetValue = if (selected) ScottsTechXColors.BluePrimaryLight.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f),
+        animationSpec = tween(durationMillis = 220),
+        label = "roleEdge",
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .scale(scale)
+            .shadow(
+                elevation = 18.dp,
+                shape = shape,
+                spotColor = edge.copy(alpha = if (selected) 0.35f else 0f),
+                ambientColor = Color.Transparent,
+            )
+            .clip(shape)
+            .background(fill)
+            .border(width = 1.5.dp, color = edge, shape = shape)
+            .selectable(
+                selected = selected,
+                role = SemanticsRole.RadioButton,
+                onClick = onSelect,
+            )
+            .padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE9EDF5)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    letter,
+                    color = ScottsTechXColors.BlueDeep,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(
+                    title,
+                    color = Color.White,
+                    fontSize = 17.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    description,
+                    color = ScottsTechXColors.DarkOnSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onLogin,
+                contentColor = Color.White,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+            ) {
+                Text("Log in", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = onSignUp,
+                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White,
+                    contentColor = ScottsTechXColors.BlueDeep,
+                ),
+                contentPadding = PaddingValues(horizontal = 26.dp, vertical = 10.dp),
+            ) {
+                Text("Sign up", fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
 /**
- * One of the two buyer/seller tiles.
- *
- * Selection is shown three ways at once — fill, border and a check — because
- * on the gradient a colour-only cue is easy to miss, and colour alone is not
- * an accessible signal.
+ * "By continuing you agree to ScottsTechX's Terms of Service and Privacy
+ * Policy." — a single wrapping Text with two tappable spans, so the line
+ * reflows on narrow phones instead of overflowing a Row.
  */
 @Composable
-private fun RoleChoiceCard(
-    emoji: String,
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val bg by animateColorAsState(
-        targetValue = if (selected) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f),
-        animationSpec = tween(200),
-        label = "roleBg",
-    )
-    val borderAlpha by animateFloatAsState(
-        targetValue = if (selected) 0.95f else 0.28f,
-        animationSpec = tween(200),
-        label = "roleBorder",
-    )
-
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(bg)
-            .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = Color.White.copy(alpha = borderAlpha),
-                shape = RoundedCornerShape(14.dp),
-            )
-            .selectable(
-                selected = selected,
-                role = SemanticsRole.RadioButton,
-                onClick = onClick,
-            )
-            .padding(vertical = 14.dp, horizontal = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(emoji, fontSize = 22.sp)
-        Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                title,
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            if (selected) {
-                Spacer(Modifier.width(4.dp))
-                Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+private fun LegalLinks(onTerms: () -> Unit, onPrivacy: () -> Unit) {
+    var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val legal: AnnotatedString = remember {
+        buildAnnotatedString {
+            append("By continuing you agree to ScottsTechX's ")
+            val t0 = length
+            withStyle(SpanStyle(color = ScottsTechXColors.BluePrimaryLight, textDecoration = TextDecoration.None)) {
+                append("Terms of Service")
             }
+            val t1 = length
+            append(" and ")
+            val p0 = length
+            withStyle(SpanStyle(color = ScottsTechXColors.BluePrimaryLight, textDecoration = TextDecoration.None)) {
+                append("Privacy Policy")
+            }
+            val p1 = length
+            append(".")
+            addStringAnnotation(StringAnnotation("terms"), "", t0, t1)
+            addStringAnnotation(StringAnnotation("privacy"), "", p0, p1)
         }
-        Spacer(Modifier.height(2.dp))
-        Text(
-            subtitle,
-            color = Color.White.copy(alpha = 0.8f),
-            fontSize = 11.sp,
-            textAlign = TextAlign.Center,
-            lineHeight = 15.sp,
-        )
     }
+    Text(
+        text = legal,
+        onTextLayout = { layoutResult = it },
+        color = Color(0xFF6F7A90),
+        fontSize = 11.5.sp,
+        lineHeight = 16.sp,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .pointerInput(legal) {
+                detectTapGestures { tap ->
+                    val res = layoutResult ?: return@detectTapGestures
+                    val textOffset = res.getOffsetForPosition(tap)
+                    legal.getStringAnnotations(StringAnnotation, 0, legal.length)
+                        .firstOrNull { textOffset in it.start until it.end }
+                        ?.let { ann ->
+                            if (ann.tag == "terms") onTerms() else onPrivacy()
+                        }
+                }
+            }
+            .semantics { role = SemanticsRole.Button },
+    )
 }
 
 // Kept for parity with the master doc's route list.
 object WelcomeRouteHolder {
-    const val ROUTE = Routes.WELCOME
+    const val ROUTE = com.scottsx.app.navigation.Routes.WELCOME
 }

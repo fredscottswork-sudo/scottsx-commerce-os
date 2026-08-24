@@ -204,14 +204,35 @@ object V2Client {
         null
     }
 
-    suspend fun login(email: String, password: String): AuthResult? = try {
-        val r = call("/auth/login", "POST", JSONObject().put("email", email).put("password", password), auth = false)
+    /**
+     * Email/password login. [identifier] is whatever the user typed in the
+     * single "Email or Phone Number" field: the backend resolves an
+     * email address or a registered phone number to the same account.
+     */
+    suspend fun login(identifier: String, password: String): AuthResult? = try {
+        val r = call("/auth/login", "POST", JSONObject().put("email", identifier).put("password", password), auth = false)
         AuthResult(
             token = r.optString("token"),
             user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
         )
     } catch (e: Exception) {
         null
+    }
+
+    /**
+     * Request a password-reset link.
+     *
+     * The API endpoint (`POST /auth/forgot-password`) is not deployed yet;
+     * until it is, this returns false and the screen shows its
+     * "not live yet" note instead of faking a success. Once the backend
+     * ships the route (responding `{ "ok": true }`), this method works
+     * unchanged.
+     */
+    suspend fun requestPasswordReset(identifier: String): Boolean = try {
+        val r = call("/auth/forgot-password", "POST", JSONObject().put("identifier", identifier), auth = false)
+        r.optBoolean("ok", false)
+    } catch (e: Exception) {
+        false
     }
 
     suspend fun signInWithFirebase(

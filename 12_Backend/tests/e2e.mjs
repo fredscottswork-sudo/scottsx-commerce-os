@@ -114,6 +114,25 @@ async function main() {
     });
     check('wrong password rejected', badLogin.status === 401, `got ${badLogin.status}`);
 
+    // The app's single identifier field accepts a phone number too: the
+    // buyer above registered one, so login by phone must reach the same
+    // account — and a phone nobody registered must fail with the same
+    // generic 401 as a wrong password.
+    const phoneLogin = await call('/auth/login', {
+      method: 'POST',
+      body: { email: '+256 700 000 000', password: 'Buyer123!' },
+    });
+    check(
+      'login by registered phone number',
+      phoneLogin.status === 200 && phoneLogin.data?.user?.id === state.buyerId,
+      `got ${phoneLogin.status}`,
+    );
+    const unknownPhone = await call('/auth/login', {
+      method: 'POST',
+      body: { email: '+256 999 888 777', password: 'Buyer123!' },
+    });
+    check('login by unknown phone number rejected (401)', unknownPhone.status === 401, `got ${unknownPhone.status}`);
+
     const noAuth = await call('/admin/stats');
     check('admin route rejects anonymous', noAuth.status === 401, `got ${noAuth.status}`);
 

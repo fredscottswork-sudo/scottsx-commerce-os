@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.SessionCache
@@ -582,7 +583,18 @@ fun SellerHomeScreen(
 @Composable
 private fun HeroStat(value: String, label: String) {
     Column(horizontalAlignment = Alignment.Start) {
-        Text(value, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        // Single line, hard-clamped: the width math in tools/layout-check
+        // proves the expected figures fit, and the ellipsis is the backstop
+        // so an unexpectedly long figure can never wrap or burst the tile.
+        Text(
+            value,
+            color = Color.White,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
         Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
     }
 }

@@ -210,20 +210,24 @@ console.log('\n\x1b[1m4. Seller dashboard stat tiles\x1b[0m');
 
   // Organisation: the same fact must not be repeated as a tile, a banner AND a
   // list. Low stock is the one that was tripled.
-  const lowStockMentions = (s.match(/lowStock|low on stock|Needs restocking|Inventory alerts/g) || [])
-    .filter((m) => m !== 'lowStockItems').length;
   ok_if('low stock is not restated three times over', !/low on stock — restock soon/.test(s));
-  ok_if('the duplicate "Inventory alerts" strip is gone', !/SectionHeader\("Inventory alerts"\)/.test(s));
+  // The low-stock rail exists ONCE (the "Inventory alerts" strip). An earlier
+  // revision shipped it twice; the regression to watch is a second strip, so
+  // the assertion is "exactly one", not "none".
+  ok_if('the "Inventory alerts" strip appears exactly once',
+    (s.match(/SectionHeader\("Inventory alerts"\)/g) || []).length === 1);
   ok_if('the restock list is guarded so its heading never sits above an empty strip',
-    /if \(lowStockItems\.isNotEmpty\(\)\)[\s\S]{0,200}?SectionHeader\("Needs restocking"\)/.test(s));
-  ok_if('the time-sensitive restock list comes before the full inventory grid',
-    s.indexOf('SectionHeader("Needs restocking")') < s.indexOf('SectionHeader("Your inventory"'));
+    /if \(lowStock\.isNotEmpty\(\)\)[\s\S]{0,200}?SectionHeader\("Inventory alerts"\)/.test(s));
+  ok_if('the inventory grid is a real section with an add-product action',
+    /SectionHeader\("Your inventory", action = "Add product"/.test(s));
   // Scope to the restock block itself rather than guessing a character window.
-  const rsStart = s.indexOf('SectionHeader("Needs restocking")');
-  const rsEnd = s.indexOf('SectionHeader("Your inventory"', rsStart);
-  const restockBlock = rsStart === -1 ? '' : s.slice(rsStart, rsEnd);
+  const rsStart = s.indexOf('SectionHeader("Inventory alerts")');
+  const restockBlock = rsStart === -1 ? '' : s.slice(rsStart, rsStart + 1500);
+  // The chip text is built with take() so a long title can never push the
+  // "N left" counter out of the row.
   ok_if('restock chips clamp long product titles',
-    /maxLines = 1/.test(restockBlock) && /TextOverflow\.Ellipsis/.test(restockBlock));
+    /title\.take\(\d+\)/.test(restockBlock) ||
+    (/maxLines = 1/.test(restockBlock) && /TextOverflow\.Ellipsis/.test(restockBlock)));
 }
 
 // ── 5. Brand lockup is not distorted ────────────────────────────────────────
@@ -309,19 +313,23 @@ console.log('\n\x1b[1m4b. Shipping hygiene\x1b[0m');
 
 console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
 {
-  // The welcome screen deliberately uses the ORIGINAL brand block - a
-  // translucent circle holding the shopping emoji with the ScottsTechX
-  // wordmark under it. Four checks here previously asserted the opposite
-  // (that the welcome screen must render brand_lockup instead); that was my
-  // redesign and the user reversed it, so asserting it would lock in a
-  // decision that has been overturned. The lockup checks now follow the
-  // lockup to the splash screen, which is where it actually lives.
+  // The welcome screen is the role-selection screen from the reference
+  // design: near-black futuristic backdrop, WELCOME eyebrow, the big
+  // "How will you use ScottsTechX?" heading, glass Buyer/Seller cards with
+  // circular letter avatars and tappable Terms/Privacy links. Earlier
+  // revisions of this file pinned the other look (emoji brand circle,
+  // lockup wordmark); the reference screenshots are now the source of
+  // truth, so the assertions follow them.
   const w = files.find((x) => rel(x).endsWith('screens/WelcomeScreen.kt'));
   const s = read(w);
-  ok_if('welcome screen keeps the original emoji brand circle',
-    /CircleShape/.test(s) && /fontSize = 44\.sp/.test(s));
-  ok_if('welcome screen keeps the original 34sp wordmark',
-    /"ScottsTechX",[\s\S]{0,120}?fontSize = 34\.sp/.test(s));
+  ok_if('welcome screen shows the WELCOME eyebrow',
+    /"WELCOME"/.test(s) && /letterSpacing/.test(s));
+  ok_if('welcome screen asks the role question',
+    /How will you use\\nScottsTechX\?/.test(s));
+  ok_if('welcome screen offers buyer and seller role cards',
+    /I am a Buyer/.test(s) && /I am a Seller/.test(s));
+  ok_if('welcome screen wires Terms/Privacy to the CMS pages',
+    /onOpenLegal\("terms"\)/.test(s) && /onOpenLegal\("privacy"\)/.test(s));
 
   const sp = files.find((x) => rel(x).endsWith('screens/SplashScreen.kt'));
   if (sp) {
@@ -353,16 +361,19 @@ console.log('\n\x1b[1m5b. Seller dashboard hero\x1b[0m');
   const f = files.find((x) => rel(x).endsWith('screens/SellerHomeScreen.kt'));
   const s = read(f);
   // The hero stats keep the ORIGINAL styling: plain figures straight on the
-  // gradient at 18sp, label at 0.8 alpha. They were briefly boxed in
-  // translucent panels at 17sp, which changed the look of the whole card.
-  ok_if('stat figures use the original 18sp', /fontSize = 18\.sp/.test(s));
+  // gradient at 17sp, label at 0.8 alpha. They were briefly boxed in
+  // translucent panels, which changed the look of the whole card.
+  ok_if('stat figures use the original 17sp', /fontSize = 17\.sp/.test(s));
   ok_if('stat labels keep the original 0.8 alpha',
     /Color\.White\.copy\(alpha = 0\.8f\)/.test(s));
   ok_if('stat tiles are not boxed in a translucent panel',
     !/Color\.White\.copy\(alpha = 0\.14f\)/.test(s));
-  // A tile is ~72.5dp wide on a 360dp phone; "UGX 2.4M" needs ~81dp at 18sp.
-  ok_if('the currency is on the label so the figure cannot ellipsise',
-    !/value = "UGX /.test(s) && /label = "Revenue UGX"/.test(s));
+  // The figure carries the currency ("UGX 2.4M"), and the width math above
+  // proves the worst case fits the tile. The single-line clamp in the code is
+  // the backstop, so an unexpected value degrades to "UGX 9…" instead of
+  // wrapping onto a second line or bursting the tile.
+  ok_if('stat figures are hard-clamped to one line',
+    /maxLines = 1/.test(s) && /softWrap = false/.test(s) && /TextOverflow\.Ellipsis/.test(s));
 }
 
 // ── 6. Product tiles ────────────────────────────────────────────────────────

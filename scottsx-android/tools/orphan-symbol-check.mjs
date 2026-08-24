@@ -98,6 +98,9 @@ endsWith contains isNullOrBlank isNullOrEmpty orEmpty toIntOrNull toDoubleOrNull
 plus minus also let run apply with use close flush await launch collect emit value
 copy toString hashCode equals compareTo rangeTo coerceIn coerceAtLeast coerceAtMost
 roundToInt toFloat toDouble toInt toLong format
+// Credential Manager / Google ID library builders (androidx.credentials,
+// com.google.android.libraries.identity.googleid):
+setServerClientId setFilterByAuthorizedAccounts addCredentialOption
 `.trim().split(/\s+/));
 
 const orphans = [];

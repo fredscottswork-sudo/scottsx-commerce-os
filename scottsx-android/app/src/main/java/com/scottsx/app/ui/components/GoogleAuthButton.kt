@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,12 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,10 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.GoogleSignInHelper
+import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
 /**
- * "Continue with Google" — one shared button for the login and sign-up
+ * "Login with Google" — one shared button for the login and sign-up
  * screens, so both flows behave identically.
  *
  * The button owns the whole flow: it launches the system account sheet,
@@ -56,15 +53,15 @@ fun GoogleAuthButton(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(27.dp)
 
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .height(54.dp)
+            .clip(shape)
+            .background(Color(0xFFF4F6FA))
+            .border(width = 1.dp, color = Color(0xFFE1E6EF), shape = shape)
             .clickable(enabled = !busy) {
                 busy = true
                 scope.launch {
@@ -79,57 +76,46 @@ fun GoogleAuthButton(
             },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (busy) {
                 CircularProgressIndicator(
                     strokeWidth = 2.dp,
-                    modifier = Modifier.size(18.dp),
+                    color = ScottsTechXColors.BluePrimary,
+                    modifier = Modifier.size(20.dp),
                 )
             } else {
-                // The Google "G" — drawn, not an asset, so it needs no extra
-                // dependency and inherits nothing from the theme.
-                Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .background(Color.White, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "G",
-                        color = Color(0xFF4285F4),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                GoogleG(modifier = Modifier.size(22.dp))
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
             Text(
                 label,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = Color(0xFF101828),
             )
         }
     }
 }
 
-/** "──── or ────" divider between the form and the Google button. */
+/** "──── or continue with ────" divider between the form and social buttons. */
 @Composable
-fun OrDivider(modifier: Modifier = Modifier) {
+fun OrDivider(modifier: Modifier = Modifier, label: String = "or") {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(modifier = Modifier.weight(1f), color = ScottsTechXColors.Divider)
         Text(
-            "or",
+            label,
             modifier = Modifier.padding(horizontal = 12.dp),
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.5.sp,
+            color = ScottsTechXColors.OnLightTertiary,
         )
-        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(modifier = Modifier.weight(1f), color = ScottsTechXColors.Divider)
     }
 }

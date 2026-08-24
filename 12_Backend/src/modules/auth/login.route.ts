@@ -38,8 +38,12 @@ const registerSchema = z.object({
   city: z.string().optional().default(''),
 });
 
+// The identifier field doubles as the app's single "Email or Phone Number"
+// input: an address is looked up as an email, anything else is treated as a
+// phone number and matched against users who registered one. The field is
+// kept named `email` so existing clients (and the web) keep working.
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().min(1).max(254),
   password: z.string().min(1),
 });
 
@@ -140,8 +144,31 @@ export default async function registerAuthRoute(app: FastifyInstance) {
 
   app.post('/api/v1/auth/login', async (request, reply) => {
     const body = loginSchema.parse(request.body);
-    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [body.email]);
-    const user = rows[0];
+    const identifier = body.email;
+
+    // Resolve the identifier to a user without ever echoing which one
+    // failed: both paths end in the same generic 401, so the endpoint does
+    // not become an account/phone enumeration oracle.
+    let user: any = null;
+    if (identifier.includes('@')) {
+      const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [identifier]);
+      user = rows[0];
+    } else {
+      const digits = identifier.replace(/\D/g, '');
+      if (digits.length >= 7 && digits.length <= 15) {
+        // Phones are stored however the user typed them ("+256 77x...",
+        // "077x..."), so compare digits only on both sides.
+        const { rows } = await pool.query(
+          `SELECT * FROM users
+           WHERE phone IS NOT NULL
+             AND regexp_replace(phone, '[^0-9]', '', 'g') = $1
+           LIMIT 1`,
+          [digits],
+        );
+        user = rows[0];
+      }
+    }
+
     if (!user || !user.password_hash) throw new UnauthorizedError('Invalid email or password');
     const ok = await comparePassword(body.password, user.password_hash);
     if (!ok) throw new UnauthorizedError('Invalid email or password');
