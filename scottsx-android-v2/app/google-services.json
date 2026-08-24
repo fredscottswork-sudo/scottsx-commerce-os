@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "911393008938",
+    "project_id": "scottstechx-52bab",
+    "storage_bucket": "scottstechx-52bab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:911393008938:android:6cd6962f0a7a85eb9f0253",
+        "android_client_info": {
+          "package_name": "com.scottsx.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "911393008938-391gln1bdhc8bhte02gmoegr6vgkicsm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.scottsx.app",
+            "certificate_hash": "a69520289b3deb99cd87ef61140eca3ea037e88a"
+          }
+        },
+        {
+          "client_id": "911393008938-f0an8p59rlkhimcnn9rdqbtbi1aa9hbk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDwOGoMIRVRwVeC_yNNCbxUtVipHa_UHCA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "911393008938-f0an8p59rlkhimcnn9rdqbtbi1aa9hbk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
