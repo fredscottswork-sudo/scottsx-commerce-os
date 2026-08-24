@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,9 +40,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Stroke
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -156,12 +158,11 @@ fun AuthSheet(
         ) {
             IconButton(
                 onClick = onBack,
-                contentDescription = "Go back",
                 modifier = Modifier.size(44.dp),
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = null,
+                    contentDescription = "Go back",
                     tint = Color.White,
                     modifier = Modifier.size(24.dp),
                 )
@@ -202,7 +203,7 @@ fun AuthSheet(
                     .fillMaxSize()
                     .imePadding()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, bottom = 24.dp),
+                    .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             ) {
                 content()
             }
@@ -252,12 +253,11 @@ fun AuthFilledField(
                     if (isPassword) {
                         IconButton(
                             onClick = { visible = !visible },
-                            contentDescription = if (visible) "Hide password" else "Show password",
                             modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
                                 if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                contentDescription = null,
+                                contentDescription = if (visible) "Hide password" else "Show password",
                                 tint = Color(0xFF5A6478),
                                 modifier = Modifier.size(22.dp),
                             )
