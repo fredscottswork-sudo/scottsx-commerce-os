@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -30,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,6 +51,7 @@ import androidx.compose.material3.TextButton
 import coil.compose.AsyncImage
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.remote.V2Client
+import com.scottsx.app.ui.components.OfflineBanner
 import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.components.RatingRow
 import com.scottsx.app.ui.components.formatUgx
@@ -66,6 +69,8 @@ fun ProductDetailScreen(
     onViewCart: () -> Unit = {},
 ) {
     var product by remember { mutableStateOf<Product?>(null) }
+    var loadError by remember { mutableStateOf(false) }
+    var refresh by remember { mutableIntStateOf(0) }
     var wished by remember { mutableStateOf(false) }
     var messaging by remember { mutableStateOf(false) }
     var buying by remember { mutableStateOf(false) }
@@ -73,14 +78,45 @@ fun ProductDetailScreen(
     var addedToCart by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(productId) {
-        product = V2Client.fetchProductById(productId)
+    LaunchedEffect(productId, refresh) {
+        val (loaded, failed) = V2Client.fetchProductByIdOutcome(productId)
+        product = loaded
+        loadError = failed
+        // The heart must reflect the REAL saved state, not a local guess:
+        // open a saved product and the heart starts filled.
+        wished = V2Client.fetchBookmarks().any { it.id == productId }
+    }
+
+    if (loadError) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("We couldn't load this product", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Check your connection and try again.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(14.dp))
+                Button(onClick = { refresh += 1 }) { Text("Retry") }
+            }
+        }
+        return
     }
 
     val p = product
     if (p == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            if (loadError) CircularProgressIndicator()
+            else {
+                // The request succeeded but the product is gone (delisted or
+                // removed) — say so instead of spinning forever.
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("This product is no longer available", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(14.dp))
+                    Button(onClick = onBack) { Text("Go back") }
+                }
+            }
         }
         return
     }
@@ -123,8 +159,15 @@ fun ProductDetailScreen(
                     // dark circle.
                     .background(Color.Black.copy(alpha = 0.35f))
                     .clickable {
-                        wished = !wished
-                        scope.launch { V2Client.toggleBookmark(p.id) }
+                        // Optimistic flip, corrected by the server's answer:
+                        // if the backend refuses (offline, unauthenticated)
+                        // the heart flips back instead of lying.
+                        val next = !wished
+                        wished = next
+                        scope.launch {
+                            val saved = V2Client.toggleBookmark(p.id)
+                            if (saved != next) wished = saved
+                        }
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -150,6 +193,10 @@ fun ProductDetailScreen(
                 }
             }
         }
+
+        // A stale product page is a silent trap for a buyer about to pay:
+        // show the connection state above the scrolling content.
+        OfflineBanner()
 
         Column(
             modifier = Modifier

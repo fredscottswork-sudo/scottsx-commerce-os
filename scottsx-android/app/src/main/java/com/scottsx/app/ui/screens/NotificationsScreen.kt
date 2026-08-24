@@ -39,6 +39,7 @@ import com.scottsx.app.data.domain.AppNotification
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
 import com.scottsx.app.ui.components.LoadingRow
+import com.scottsx.app.ui.components.OfflineBanner
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
@@ -59,6 +60,9 @@ fun NotificationsScreen(onBack: () -> Unit) {
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "Notifications", onBack = onBack)
+        // FCM pushes land in real time, but the inbox itself is a network
+        // fetch — surface a dropped connection instead of a stale list.
+        OfflineBanner()
         if (loading) {
             LoadingRow()
         } else if (notifications.isEmpty()) {

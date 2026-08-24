@@ -386,7 +386,20 @@ object V2Client {
         inStock: Boolean = false,
         category: String? = null,
         pageSize: Int = 24,
-    ): List<Product> = try {
+    ): List<Product> = fetchProductsFeedOrNull(sort, flashOnly, inStock, category, pageSize) ?: emptyList()
+
+    /**
+     * Like [fetchProductsFeed], but returns null when the request failed so
+     * the UI can show a real error state with retry instead of treating a
+     * network failure as "the marketplace is empty".
+     */
+    suspend fun fetchProductsFeedOrNull(
+        sort: String = "newest",
+        flashOnly: Boolean = false,
+        inStock: Boolean = false,
+        category: String? = null,
+        pageSize: Int = 24,
+    ): List<Product>? = try {
         val params = StringBuilder("?sort=$sort&pageSize=$pageSize")
         if (flashOnly) params.append("&flashOnly=true")
         if (inStock) params.append("&inStock=true")
@@ -396,22 +409,35 @@ object V2Client {
         val r = call("/products$params", auth = false)
         Product.fromJsonArray(r.optJSONArray("products") ?: JSONArray())
     } catch (e: Exception) {
-        emptyList()
+        null
     }
 
     /** New products from sellers the buyer follows (web "Following" feed). */
-    suspend fun fetchFavoritesFeed(limit: Int = 24): List<Product> = try {
+    suspend fun fetchFavoritesFeed(limit: Int = 24): List<Product> =
+        fetchFavoritesFeedOrNull(limit) ?: emptyList()
+
+    /** Null on network failure, so the UI can offer a retry. */
+    suspend fun fetchFavoritesFeedOrNull(limit: Int = 24): List<Product>? = try {
         val r = call("/me/favorites/feed?limit=$limit")
         Product.fromJsonArray(r.optJSONArray("products") ?: JSONArray())
     } catch (e: Exception) {
-        emptyList()
+        null
     }
 
-    suspend fun fetchProductById(id: String): Product? = try {
+    suspend fun fetchProductById(id: String): Product? = fetchProductByIdOutcome(id).first
+
+    /**
+     * Product plus a flag for whether the REQUEST failed (network/backend
+     * down) rather than the product simply not existing — the UI needs a
+     * retry button for the first case and an "unavailable" notice for the
+     * second, and must never spin forever on a dead network.
+     */
+    suspend fun fetchProductByIdOutcome(id: String): Pair<Product?, Boolean> = try {
         val r = call("/products/$id", auth = false)
-        Product.fromJson(r.optJSONObject("product") ?: JSONObject())
+        val obj = r.optJSONObject("product")
+        (if (obj == null) null else Product.fromJson(obj)) to false
     } catch (e: Exception) {
-        null
+        null to true
     }
 
     /** The signed-in seller's own inventory (requires seller JWT). */

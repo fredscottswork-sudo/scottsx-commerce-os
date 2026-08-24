@@ -178,7 +178,8 @@ fun SignUpScreen(
                         role = signupRole,
                     )
                     if (!exchanged) {
-                        // Fall back to local register so the demo keeps working offline.
+                        // Fall back to the local register on the same backend when the Firebase
+                        // exchange is unavailable, e.g. before Firebase is configured.
                         // The account this creates is unverified as far as our own
                         // backend is concerned, so navigation routes it to the
                         // verification gate rather than a home screen that would

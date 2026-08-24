@@ -58,6 +58,7 @@ import com.scottsx.app.data.domain.InboxCounts
 import com.scottsx.app.data.remote.MessageStream
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
+import com.scottsx.app.ui.components.OfflineBanner
 import com.scottsx.app.ui.components.ListDivider
 import com.scottsx.app.ui.components.LoadingRow
 import com.scottsx.app.ui.components.statusBarSpacer
@@ -233,6 +234,10 @@ fun ConversationListScreen(
                 }
             }
         }
+
+        // Inbox list is a network fetch: show the connection state rather
+        // than an un-updating conversation list.
+        OfflineBanner()
 
         // ── Filter chips with counts ────────────────────────────────────────
         Row(

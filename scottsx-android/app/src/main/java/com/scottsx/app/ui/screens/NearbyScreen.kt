@@ -51,6 +51,7 @@ import com.scottsx.app.data.domain.ProductCategory
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
 import com.scottsx.app.ui.components.ListDivider
+import com.scottsx.app.ui.components.OfflineBanner
 import com.scottsx.app.ui.components.LoadingRow
 import com.scottsx.app.ui.components.bottomInset
 import com.scottsx.app.ui.components.statusBarSpacer
@@ -295,6 +296,10 @@ fun NearbyScreen(onBack: () -> Unit) {
                 }
             }
         }
+
+        // Offline strip: the seller list is live network data, so a dropped
+        // connection must be visible, not just an un-updating list.
+        OfflineBanner()
 
         // FilterSortBar
         Column(

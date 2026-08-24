@@ -6,6 +6,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.scottsx.app.data.ConnectionWatcher
 import com.scottsx.app.data.push.ScottsMessagingService
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -27,6 +28,10 @@ class ScottsTechXApp : Application(), ImageLoaderFactory {
         super.onCreate()
         UserPrefs.init(this)
         ScottsMessagingService.ensureChannels(this)
+        // One process-wide connectivity watcher feeds every screen's
+        // offline banner — a lost connection must never masquerade as an
+        // empty list.
+        ConnectionWatcher.start(this)
 
         // Register this device's push token on every sign-in path (password,
         // Firebase, Google, seller upgrade) from one place, so no screen can

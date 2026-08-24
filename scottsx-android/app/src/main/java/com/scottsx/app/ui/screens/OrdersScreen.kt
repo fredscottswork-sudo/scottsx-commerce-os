@@ -34,6 +34,7 @@ import com.scottsx.app.data.domain.Order
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.EmptyState
 import com.scottsx.app.ui.components.LoadingRow
+import com.scottsx.app.ui.components.OfflineBanner
 import com.scottsx.app.ui.components.StatusChip
 import com.scottsx.app.ui.components.formatUgx
 import com.scottsx.app.ui.theme.ScottsTechXColors
@@ -51,6 +52,9 @@ fun OrdersScreen(onBack: () -> Unit) {
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = "My orders", onBack = onBack)
+        // Orders are server data: if the list looks empty while offline,
+        // this banner is the reason — not that the buyer has no orders.
+        OfflineBanner()
         if (loading) {
             LoadingRow()
         } else if (orders.isEmpty()) {

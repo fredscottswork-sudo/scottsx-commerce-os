@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,13 +55,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import com.scottsx.app.SessionCache
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.ProductCategory
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.navigation.Routes
+import com.scottsx.app.ui.components.OfflineBanner
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.SectionHeader
+import com.scottsx.app.ui.components.formatUgx
 import com.scottsx.app.ui.components.bottomInset
 import com.scottsx.app.ui.components.navBarSpacer
 import com.scottsx.app.ui.components.topInset
@@ -77,6 +79,12 @@ fun BuyerHomeScreen(
 ) {
     var products by remember { mutableStateOf<List<Product>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    // True when the feed request FAILED. That is shown with a retry button —
+    // a network failure must never masquerade as an empty marketplace, and
+    // no local/demo catalog is substituted.
+    var loadError by remember { mutableStateOf(false) }
+    // Bumped by the Retry button to re-run the loader.
+    var refresh by remember { mutableIntStateOf(0) }
     var cartCount by remember { mutableIntStateOf(0) }
     var unread by remember { mutableIntStateOf(0) }
     var feed by remember { mutableStateOf("for-you") }
@@ -89,16 +97,18 @@ fun BuyerHomeScreen(
     val currentUser by SessionCache.user.collectAsState()
 
     // Feed loader — same endpoints/params as the web buyer dashboard tabs.
-    LaunchedEffect(feed, category) {
+    LaunchedEffect(feed, category, refresh) {
         loading = true
+        loadError = false
         val cat = if (category == ProductCategory.All) null else category.displayName
         val live = when (feed) {
-            "flash" -> V2Client.fetchProductsFeed(sort = "newest", flashOnly = true, category = cat)
-            "trending" -> V2Client.fetchProductsFeed(sort = "popular", category = cat)
-            "following" -> V2Client.fetchFavoritesFeed()
-            else -> V2Client.fetchProductsFeed(sort = "newest", inStock = true, category = cat)
+            "flash" -> V2Client.fetchProductsFeedOrNull(sort = "newest", flashOnly = true, category = cat)
+            "trending" -> V2Client.fetchProductsFeedOrNull(sort = "popular", category = cat)
+            "following" -> V2Client.fetchFavoritesFeedOrNull()
+            else -> V2Client.fetchProductsFeedOrNull(sort = "newest", inStock = true, category = cat)
         }
-        products = if (live.isNotEmpty() || feed == "following") live else MarketplaceDataSource.products
+        loadError = live == null
+        products = live ?: products // keep the last good list visible while retrying
         loading = false
     }
 
@@ -138,6 +148,10 @@ fun BuyerHomeScreen(
                 bottom = padding.calculateBottomPadding() + 16.dp,
             ),
         ) {
+            // Offline strip: draws nothing while connected, so it is free
+            // space; when the connection drops it announces it here instead
+            // of letting the feed pretend everything is fine.
+            item { OfflineBanner() }
             item {
                 // Top bar: menu / location chip / avatar
                 Row(
@@ -285,31 +299,49 @@ fun BuyerHomeScreen(
                 Spacer(Modifier.height(10.dp))
             }
 
-            item {
-                // Hero carousel — brand blue gradients (web --gradient-brand).
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(MarketplaceDataSource.heroBanners) { banner ->
-                        val gradients = listOf(
-                            ScottsTechXColors.BrandGradientColors,
-                            ScottsTechXColors.BlueHeroColors,
-                            listOf(ScottsTechXColors.BluePrimaryDark, ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
-                        )
-                        val g = gradients[(banner.hashCode() and 0x7fffffff) % gradients.size]
-                        Box(
-                            modifier = Modifier
-                                .width(300.dp)
-                                .height(120.dp)
-                                .background(Brush.horizontalGradient(g), RoundedCornerShape(18.dp))
-                                .padding(16.dp),
-                        ) {
-                            Column {
-                                Text(banner.emoji, fontSize = 26.sp)
-                                Spacer(Modifier.height(6.dp))
-                                Text(banner.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                                Text(banner.subtitle, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+            // Hero carousel — real flash deals from the live catalog, on the
+            // brand blue gradients (web --gradient-brand). Hidden entirely
+            // when there are no live flash deals: no fake promo filler.
+            if (!loading && !loadError && flashDeals.isNotEmpty()) {
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(flashDeals.take(3)) { deal ->
+                            val gradients = listOf(
+                                ScottsTechXColors.BrandGradientColors,
+                                ScottsTechXColors.BlueHeroColors,
+                                listOf(ScottsTechXColors.BluePrimaryDark, ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
+                            )
+                            val g = gradients[(deal.id.hashCode() and 0x7fffffff) % gradients.size]
+                            Box(
+                                modifier = Modifier
+                                    .width(300.dp)
+                                    .height(120.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(Brush.horizontalGradient(g))
+                                    .clickable { onProductClick(deal.id) }
+                                    .padding(16.dp),
+                            ) {
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    Text("⚡ Flash deal", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        deal.title,
+                                        color = Color.White,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 2,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        formatUgx(deal.price),
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
                             }
                         }
                     }
@@ -409,6 +441,34 @@ fun BuyerHomeScreen(
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(modifier = Modifier.padding(24.dp))
+                    }
+                }
+            } else if (loadError) {
+                item {
+                    // Real error state: the feed request failed. A retry
+                    // re-runs the same request; nothing is faked or cached.
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text("📡", fontSize = 40.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "We couldn't reach the marketplace",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Check your connection, then try again.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Button(onClick = { refresh += 1 }) {
+                            Text("Retry")
+                        }
                     }
                 }
             } else if (products.isEmpty()) {

@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.scottsx.app.data.domain.NewProductPayload
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.InputField
@@ -99,12 +101,23 @@ fun AddProductScreen(onBack: () -> Unit) {
                 }
                 if (bytes == null || bytes.isEmpty()) {
                     uploadError = "Could not read that photo"
-                } else if (bytes.size > 3 * 1024 * 1024) {
-                    uploadError = "That photo is larger than 3 MB — pick a smaller one"
                 } else {
-                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
-                    val url = V2Client.uploadImage(bytes, "product.jpg", mime)
-                    if (url != null) imageUrl = url else uploadError = "Upload failed — check your connection"
+                    // Phones capture 8–15 MB photos that no one needs at full
+                    // resolution in a product grid: downscale to ~1600px and
+                    // JPEG-compress before uploading so slow networks don't
+                    // time out. Decodable images are always re-encoded as
+                    // JPEG; anything that isn't decodable keeps its original
+                    // bytes and is held to the original 3 MB cap.
+                    val compressed = withContext(Dispatchers.IO) { compressForUpload(bytes) }
+                    val payload = compressed?.data ?: bytes
+                    if (payload.size > 3 * 1024 * 1024) {
+                        uploadError = "That photo is larger than 3 MB — pick a smaller one"
+                    } else {
+                        val mime = if (compressed != null) "image/jpeg"
+                        else context.contentResolver.getType(uri) ?: "image/jpeg"
+                        val url = V2Client.uploadImage(payload, "product.jpg", mime)
+                        if (url != null) imageUrl = url else uploadError = "Upload failed — check your connection"
+                    }
                 }
                 uploading = false
             }
@@ -399,3 +412,43 @@ private fun heuristicCategory(url: String): String = when {
     url.contains("tire") || url.contains("tyre") || url.contains("car") -> "Automotive"
     else -> "Fashion"
 }
+
+// ── Image compression ─────────────────────────────────────────────────────────
+
+private data class CompressedImage(val data: ByteArray)
+
+/**
+ * Downscale + JPEG-compress a picked photo for upload.
+ *
+ * Returns null when the bytes are not a decodable bitmap (e.g. an exotic
+ * format) — the caller then uploads the original bytes subject to the size
+ * cap. Never throws: a compression failure falls back to the raw bytes, so
+ * an uploadable photo is never blocked by the optimiser.
+ */
+private fun compressForUpload(bytes: ByteArray): CompressedImage? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+
+    // Power-of-two sampling keeps it to a single decode pass.
+    var sample = 1
+    while (bounds.outWidth / sample > 1600 || bounds.outHeight / sample > 1600) sample *= 2
+
+    val decoded = BitmapFactory.decodeByteArray(
+        bytes, 0, bytes.size,
+        BitmapFactory.Options().apply { inSampleSize = sample },
+    ) ?: return@runCatching null
+
+    // Step quality down until the payload is comfortably small for a
+    // mobile upload — or until further compression would look bad.
+    var quality = 85
+    var out = java.io.ByteArrayOutputStream()
+    decoded.compress(Bitmap.CompressFormat.JPEG, quality, out)
+    while (out.size() > 2 * 1024 * 1024 && quality > 40) {
+        quality -= 10
+        out = java.io.ByteArrayOutputStream()
+        decoded.compress(Bitmap.CompressFormat.JPEG, quality, out)
+    }
+    decoded.recycle()
+    CompressedImage(out.toByteArray())
+}.getOrNull()
