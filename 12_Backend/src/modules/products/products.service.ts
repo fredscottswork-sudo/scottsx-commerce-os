@@ -399,11 +399,13 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
   const prev = existing.rows[0];
 
   // Price/stock-only edits stay live; content edits need a fresh review.
+  // Any explicit gallery edit counts as content: the photos ARE the listing.
   const contentChanged =
     (input.title !== undefined && input.title !== prev.title) ||
     (input.description !== undefined && input.description !== prev.description) ||
     (input.category !== undefined && input.category !== prev.category) ||
-    (input.imageUrl !== undefined && input.imageUrl !== prev.image_url);
+    (input.imageUrl !== undefined && input.imageUrl !== prev.image_url) ||
+    input.mediaUrls !== undefined;
 
   const nextStatus =
     prev.status === 'approved' && contentChanged ? 'pending' : prev.status === 'rejected' ? 'pending' : prev.status;
@@ -445,6 +447,27 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
     ]
   );
   if (!rows[0]) throw new NotFoundError('Product not found');
+
+  // Gallery reconciliation: the PATCH carries the full gallery, not a delta,
+  // so the rows are replaced wholesale (same contract as creation). When the
+  // caller didn't send an explicit imageUrl the primary photo follows the
+  // first gallery slot, so the single-image column never disagrees with the
+  // gallery the detail screen renders.
+  if (Array.isArray(input.mediaUrls)) {
+    await db.query('DELETE FROM product_media WHERE product_id = $1', [id]);
+    for (let i = 0; i < input.mediaUrls.length; i++) {
+      await db.query(
+        'INSERT INTO product_media (product_id, url, sort_order) VALUES ($1, $2, $3)',
+        [id, input.mediaUrls[i], i],
+      );
+    }
+    if (input.imageUrl === undefined && input.mediaUrls.length > 0) {
+      await db.query('UPDATE products SET image_url = $2, updated_at = now() WHERE id = $1', [
+        id,
+        input.mediaUrls[0],
+      ]);
+    }
+  }
 
   if (nextStatus === 'pending' && prev.status !== 'pending') {
     await db.query(

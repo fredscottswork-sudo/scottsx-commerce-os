@@ -74,7 +74,7 @@ const updateProductSchema = z.object({
   oldPriceMinor: z.number().int().nonnegative().nullable().optional(),
   stockQuantity: z.number().int().nonnegative().optional(),
   imageUrl: z.string().optional(),
-  mediaUrls: z.array(z.string()).optional(),
+  mediaUrls: z.array(z.string()).max(10).optional(),
   location: z.string().optional(),
   isFlashDeal: z.boolean().optional(),
   discountPercent: z.number().int().min(0).max(100).optional(),

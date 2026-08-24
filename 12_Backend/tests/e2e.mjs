@@ -1339,6 +1339,63 @@ async function main() {
   }
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
+  // ── Gallery editing (PATCH carries the full photo set) ────────────────────
+  group('Product gallery editing');
+  {
+    const imgA = 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800';
+    const imgB = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800';
+    // The approval-workflow group left this product approved.
+
+    const withGallery = await call(`/seller/products/${state.newProductId}`, {
+      method: 'PATCH',
+      token: state.sellerToken,
+      body: { mediaUrls: [imgA, imgB] },
+    });
+    const gp = withGallery.data?.product;
+    check('gallery edit is accepted', withGallery.status === 200, JSON.stringify(withGallery.data).slice(0, 120));
+    check(
+      'gallery stores the photos in order',
+      Array.isArray(gp?.mediaUrls) && gp.mediaUrls.join() === [imgA, imgB].join(),
+      JSON.stringify(gp?.mediaUrls),
+    );
+    check('gallery edit returns the listing to review', gp?.status === 'pending', `status=${gp?.status}`);
+
+    // Re-approve, then check what a signed-out buyer actually sees.
+    await call(`/admin/products/${state.newProductId}/approve`, { method: 'POST', token: state.adminToken });
+    const publicOne = await call(`/products/${state.newProductId}`);
+    check(
+      'public product exposes the full gallery',
+      publicOne.status === 200 && (publicOne.data?.product?.mediaUrls ?? []).length === 2,
+      JSON.stringify(publicOne.data?.product?.mediaUrls),
+    );
+    check(
+      'primary image matches the first gallery slot',
+      publicOne.data?.product?.imageUrl === imgA,
+      String(publicOne.data?.product?.imageUrl),
+    );
+
+    // Removing a photo is the same full-replace contract: the gallery
+    // shrinks and the primary photo follows the remaining slot.
+    const trimmed = await call(`/seller/products/${state.newProductId}`, {
+      method: 'PATCH',
+      token: state.sellerToken,
+      body: { mediaUrls: [imgB] },
+    });
+    check(
+      'removing a photo is supported',
+      trimmed.data?.product?.mediaUrls?.length === 1,
+      JSON.stringify(trimmed.data?.product?.mediaUrls),
+    );
+    check(
+      'primary photo follows the first slot',
+      trimmed.data?.product?.imageUrl === imgB,
+      String(trimmed.data?.product?.imageUrl),
+    );
+
+    // Leave the fixture approved for the rest of the suite.
+    await call(`/admin/products/${state.newProductId}/approve`, { method: 'POST', token: state.adminToken });
+  }
+
   group('Image upload & serving');
   {
     // A real 1x1 PNG.

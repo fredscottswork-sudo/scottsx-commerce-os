@@ -49,7 +49,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val CATEGORIES = listOf("Electronics", "Fashion", "Sports", "Beauty", "Home & Living", "Groceries", "Automotive")
+// Shared with EditProductScreen (same package) so the add and edit forms
+// can never drift into offering different categories.
+internal val CATEGORIES = listOf("Electronics", "Fashion", "Sports", "Beauty", "Home & Living", "Groceries", "Automotive")
 
 /**
  * Add product wizard.

@@ -82,6 +82,7 @@ object Routes {
     const val SELLER_STORE_SETTING_DETAIL = "seller/store-settings/{section}"
     const val BUYER_PROFILE_SETTINGS = "settings/buyer-profile"
     const val ADD_PRODUCT = "seller/add-product"
+    const val EDIT_PRODUCT = "seller/product/{id}/edit"
     const val CART = "cart"
     const val ORDERS = "orders"
     const val SAVED_PRODUCTS = "saved-products"
@@ -89,6 +90,7 @@ object Routes {
     const val SUPPORT = "support"
 
     fun product(id: String) = "product/$id"
+    fun editProduct(id: String) = "seller/product/$id/edit"
     fun thread(conversationId: String) = "thread/$conversationId"
     fun cms(slug: String) = "cms/$slug"
     fun sellerStoreSetting(section: String) = "seller/store-settings/$section"
@@ -205,6 +207,7 @@ fun AppNavigation() {
             SellerHomeScreen(
                 onProductClick = { id -> navController.navigate(Routes.product(id)) },
                 onAddProduct = { navController.navigate(Routes.ADD_PRODUCT) },
+                onEditProduct = { id -> navController.navigate(Routes.editProduct(id)) },
                 onNavigate = { route -> navController.navigate(route) },
             )
         }
@@ -221,6 +224,14 @@ fun AppNavigation() {
                     if (conv != null) navController.navigate(Routes.thread(conv))
                 },
                 onViewCart = { navController.navigate(Routes.CART) },
+                onEditProduct = { productId -> navController.navigate(Routes.editProduct(productId)) },
+                onDeleted = {
+                    // Rebuild the seller home so the inventory refetches and
+                    // the deleted card is gone instead of stale.
+                    navController.navigate(Routes.SELLER_HOME) {
+                        popUpTo(Routes.SELLER_HOME) { inclusive = true }
+                    }
+                },
             )
         }
         composable(Routes.MESSAGES) {
@@ -287,7 +298,30 @@ fun AppNavigation() {
             StoreSettingsDetailScreen(section = section, onBack = { navController.popBackStack() })
         }
         composable(Routes.BUYER_PROFILE_SETTINGS) { ProfileSettingsScreen(onBack = { navController.popBackStack() }) }
-        composable(Routes.ADD_PRODUCT) { AddProductScreen(onBack = { navController.popBackStack() }) }
+        composable(Routes.ADD_PRODUCT) {
+            // Leaving the wizard goes to a REBUILT seller home so the new
+            // listing appears in the inventory immediately.
+            AddProductScreen(onBack = {
+                navController.navigate(Routes.SELLER_HOME) {
+                    popUpTo(Routes.SELLER_HOME) { inclusive = true }
+                }
+            })
+        }
+        composable(
+            route = Routes.EDIT_PRODUCT,
+            arguments = listOf(navArgument("id") { type = NavType.StringType }),
+        ) {
+            val id = it.arguments?.getString("id") ?: ""
+            EditProductScreen(
+                productId = id,
+                onBack = { navController.popBackStack() },
+                onSaved = {
+                    navController.navigate(Routes.SELLER_HOME) {
+                        popUpTo(Routes.SELLER_HOME) { inclusive = true }
+                    }
+                },
+            )
+        }
         composable(Routes.CART) {
             CartScreen(
                 onBack = { navController.popBackStack() },

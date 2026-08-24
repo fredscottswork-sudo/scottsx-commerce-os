@@ -470,6 +470,42 @@ object V2Client {
         null
     }
 
+    /**
+     * Edit a listing. The backend PATCH is a full-form update (the edit
+     * screen pre-fills every field, so nothing is silently wiped) and a
+     * content change sends the listing back to the review queue — the
+     * returned product's status tells the UI what happened.
+     */
+    suspend fun updateSellerProduct(id: String, payload: NewProductPayload): Product? = try {
+        val body = JSONObject()
+            .put("title", payload.title)
+            .put("description", payload.description)
+            .put("category", payload.category)
+            .put("brand", payload.brand)
+            .put("priceMinor", payload.priceMinor)
+            .put("stockQuantity", payload.stockQuantity)
+            .put("imageUrl", payload.imageUrl)
+            .put("location", payload.location)
+            .put("isFlashDeal", payload.isFlashDeal)
+            .put("discountPercent", payload.discountPercent)
+        payload.oldPriceMinor?.let { body.put("oldPriceMinor", it) }
+        payload.mediaUrls.takeIf { it.isNotEmpty() }?.let { urls ->
+            body.put("mediaUrls", JSONArray(urls))
+        }
+        val r = call("/seller/products/$id", "PATCH", body)
+        Product.fromJson(r.optJSONObject("product") ?: JSONObject())
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Explicit resubmit for a rejected/suspended listing (no changes needed). */
+    suspend fun submitSellerProduct(id: String): Product? = try {
+        val r = call("/seller/products/$id/submit", "POST")
+        Product.fromJson(r.optJSONObject("product") ?: JSONObject())
+    } catch (e: Exception) {
+        null
+    }
+
     suspend fun deleteSellerProduct(id: String): Boolean = try {
         call("/seller/products/$id", "DELETE").optBoolean("ok", false)
     } catch (e: Exception) {

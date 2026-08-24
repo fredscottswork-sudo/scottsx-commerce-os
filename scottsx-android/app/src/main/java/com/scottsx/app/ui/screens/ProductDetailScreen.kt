@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import coil.compose.AsyncImage
+import com.scottsx.app.SessionCache
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.OfflineBanner
@@ -67,6 +68,8 @@ fun ProductDetailScreen(
     onBack: () -> Unit,
     onMessageSeller: suspend (String) -> Unit,
     onViewCart: () -> Unit = {},
+    onEditProduct: (String) -> Unit = {},
+    onDeleted: () -> Unit = {},
 ) {
     var product by remember { mutableStateOf<Product?>(null) }
     var loadError by remember { mutableStateOf(false) }
@@ -76,7 +79,13 @@ fun ProductDetailScreen(
     var buying by remember { mutableStateOf(false) }
     var checkoutError by remember { mutableStateOf<String?>(null) }
     var addedToCart by remember { mutableStateOf(false) }
+    // Owner management: the seller sees edit/delete instead of buy/chat,
+    // plus what their listing's review state is.
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val currentUser by SessionCache.user.collectAsState()
 
     LaunchedEffect(productId, refresh) {
         val (loaded, failed) = V2Client.fetchProductByIdOutcome(productId)
@@ -252,6 +261,43 @@ fun ProductDetailScreen(
         // show the connection state above the scrolling content.
         OfflineBanner()
 
+        // The owner's review state — buyers never see anything but approved
+        // products, so this banner only ever renders for the seller.
+        val isOwner = p.seller.id.isNotBlank() && p.seller.id == currentUser?.id
+        if (isOwner) {
+            val (emoji, tint, headline, detail) = when (p.status) {
+                "pending" -> "⏳" to ScottsTechXColors.WarningAmber to
+                    "Awaiting admin review" to "You'll get a notification when it's decided."
+                "rejected" -> "⚠️" to ScottsTechXColors.ErrorRed to
+                    "Rejected by admin" to
+                    (p.rejectionReason ?: "The admin didn't give a reason.") +
+                        " Edit the listing to resubmit it for review."
+                "suspended" -> "⛔" to ScottsTechXColors.ErrorRed to
+                    "Suspended" to (p.rejectionReason ?: "Contact support for details.")
+                else -> null
+            }
+            (emoji to tint to headline to detail)?.let { (e, t, h, d) ->
+                Surface(
+                    color = t.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(e, fontSize = 16.sp)
+                        Column {
+                            Text(h, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = t)
+                            Text(d, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -323,9 +369,11 @@ fun ProductDetailScreen(
             Text(p.description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        // Bottom action bar: Add to cart (cash on delivery) + Message seller.
-        // The Nylon Pay "Buy now" route used to live here, but it 503s until
-        // those credentials are configured — this path works today.
+        // Bottom action bar. The seller managing their own listing gets
+        // Edit + Delete instead of the buy bar; everyone else gets Add to
+        // cart (cash on delivery) + Message seller. The Nylon Pay "Buy now"
+        // route used to live here, but it 503s until those credentials are
+        // configured — this path works today.
         Surface(shadowElevation = 10.dp) {
             Row(
                 modifier = Modifier
@@ -334,6 +382,26 @@ fun ProductDetailScreen(
                     .padding(14.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (isOwner) {
+                    PrimaryButton(
+                        text = "Edit listing",
+                        enabled = !deleting,
+                        onClick = { onEditProduct(p.id) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Surface(
+                        color = ScottsTechXColors.ErrorRed,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { confirmDelete = true },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete listing", tint = Color.White)
+                        }
+                    }
+                } else {
                 val soldOut = p.stockQuantity <= 0
                 PrimaryButton(
                     text = when {
@@ -375,6 +443,7 @@ fun ProductDetailScreen(
                         Icon(Icons.Filled.ChatBubble, contentDescription = "Chat", tint = Color.White)
                     }
                 }
+                }
             }
         }
     }
@@ -402,6 +471,45 @@ fun ProductDetailScreen(
             title = { Text("Could not add to cart") },
             text = { Text(err) },
             confirmButton = { TextButton(onClick = { checkoutError = null }) { Text("OK") } },
+        )
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete this listing?") },
+            text = {
+                Text(
+                    "\"${p.title}\" will be removed from the marketplace for good — " +
+                        "buyers who have it open will see a \"no longer available\" page.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        deleting = true
+                        scope.launch {
+                            val ok = V2Client.deleteSellerProduct(p.id)
+                            deleting = false
+                            if (ok) onDeleted()
+                            else deleteError = "Delete failed — check your connection and try again."
+                        }
+                    },
+                ) {
+                    Text(if (deleting) "Deleting…" else "Delete", color = ScottsTechXColors.ErrorRed)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Keep it") } },
+        )
+    }
+
+    deleteError?.let { err ->
+        AlertDialog(
+            onDismissRequest = { deleteError = null },
+            title = { Text("Could not delete") },
+            text = { Text(err) },
+            confirmButton = { TextButton(onClick = { deleteError = null }) { Text("OK") } },
         )
     }
 }

@@ -91,6 +91,7 @@ import kotlinx.coroutines.launch
 fun SellerHomeScreen(
     onProductClick: (String) -> Unit,
     onAddProduct: () -> Unit,
+    onEditProduct: (String) -> Unit,
     onNavigate: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -454,7 +455,9 @@ fun SellerHomeScreen(
                                 tint = ScottsTechXColors.ErrorRed,
                                 title = "Rejected: ${product.title.take(38)}",
                                 body = product.rejectionReason
-                                    ?: "Edit the listing and resubmit it for review.",
+                                    ?: "The admin didn't give a reason.",
+                                actionLabel = "Fix & resubmit",
+                                onAction = { onEditProduct(product.id) },
                             )
                         }
                         suspended.forEach { product ->
@@ -683,6 +686,8 @@ private fun ModerationBanner(
     tint: Color,
     title: String,
     body: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -693,13 +698,31 @@ private fun ModerationBanner(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(emoji, fontSize = 16.sp)
-        Column {
-            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = tint)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = tint, maxLines = 2)
             Text(
                 body,
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (actionLabel != null && onAction != null) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = tint,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onAction),
+                ) {
+                    Text(
+                        actionLabel,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    )
+                }
+            }
         }
     }
 }
