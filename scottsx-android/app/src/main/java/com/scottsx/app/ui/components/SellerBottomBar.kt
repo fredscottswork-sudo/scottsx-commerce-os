@@ -4,8 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,154 +21,198 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
-/** Seller bottom tabs. "Add" is reserved for the centre FAB and is NOT rendered as a nav item. */
+/**
+ * Seller bottom nav — 5 items with a prominent center Add button.
+ *
+ * Order from the brief:
+ *   Home / Orders / [Add] / Messages / Analytics
+ *
+ * The center Add button is a larger pill with the brand gradient and
+ * floats above the bar so it pulls the eye. The bar itself mirrors
+ * the buyer [ScottsTechXBottomBar] styling for visual consistency.
+ */
+@Composable
+fun SellerBottomBar(
+    selected: SellerBottomTab,
+    onSelect: (SellerBottomTab) -> Unit,
+    onAddClicked: () -> Unit,
+    onAiClicked: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Frosted-blue glass bar.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xCC1E40AF),
+                            Color(0xCC1E3A8A),
+                            Color(0xCC312E81),
+                        ),
+                    ),
+                )
+                .padding(horizontal = 8.dp),
+        ) {
+            // 4 nav items split into 2 groups (left of FAB / right of FAB)
+            // so the layout is balanced: Home | AI  [FAB]  Messages | Analytics
+            // Each side has equal weight to the right and left, so the FAB
+            // is visually centered and the buttons don't crowd it.
+            Row(
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Left half: Home + AI
+                Row(
+                    modifier = Modifier.weight(1f).fillMaxWidth().height(64.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SellerNavItem(
+                        tab = SellerBottomTab.Home,
+                        selected = selected == SellerBottomTab.Home,
+                        onClick = { onSelect(SellerBottomTab.Home) },
+                    )
+                    SellerNavItem(
+                        tab = SellerBottomTab.AI,
+                        selected = selected == SellerBottomTab.AI,
+                        onClick = { onSelect(SellerBottomTab.AI) },
+                    )
+                }
+                // Center FAB spacer (same width as the Add button)
+                Spacer(Modifier.width(72.dp))
+                // Right half: Messages + Analytics
+                Row(
+                    modifier = Modifier.weight(1f).fillMaxWidth().height(64.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SellerNavItem(
+                        tab = SellerBottomTab.Messages,
+                        selected = selected == SellerBottomTab.Messages,
+                        onClick = { onSelect(SellerBottomTab.Messages) },
+                    )
+                    SellerNavItem(
+                        tab = SellerBottomTab.Analytics,
+                        selected = selected == SellerBottomTab.Analytics,
+                        onClick = { onSelect(SellerBottomTab.Analytics) },
+                    )
+                }
+            }
+        }
+
+        // Center Add FAB — sits above the bar, larger pill.
+        val pressed by animateFloatAsState(
+            targetValue = if (selected == SellerBottomTab.Add) 1.04f else 1f,
+            animationSpec = tween(160),
+            label = "add-fab-scale",
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-14).dp)
+                .graphicsLayer { scaleX = pressed; scaleY = pressed }
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            ScottsTechXColors.BluePrimaryLight,
+                            ScottsTechXColors.BluePrimary,
+                            ScottsTechXColors.BluePrimaryDark,
+                        ),
+                    ),
+                )
+                .clickable(onClick = onAddClicked),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = "Add Product",
+                tint = Color.White,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SellerNavItem(
+    tab: SellerBottomTab,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val targetScale = if (selected) 1.0f else 0.85f
+    val scale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = tween(180),
+        label = "seller-nav-scale",
+    )
+    val tint = if (selected) Color.White else Color.White.copy(alpha = 0.55f)
+    Box(
+        modifier = Modifier
+            .height(48.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = tab.icon,
+                contentDescription = tab.label,
+                tint = tint,
+                modifier = Modifier.size(22.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = tab.label,
+                color = tint,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                fontSize = 10.sp,
+            )
+        }
+    }
+}
+
+/** The five seller tabs. The Add tab is reserved for the FAB. */
 enum class SellerBottomTab(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home),
     Add("Add", Icons.Filled.AddCircle),
     AI("AI Assistant", Icons.Filled.AutoAwesome),
     Messages("Messages", Icons.Filled.ChatBubble),
     Analytics("Analytics", Icons.Filled.Analytics),
-}
-
-/**
- * THE BALANCED LAYOUT (v0.22.1):
- *
- *   Row split into a left half + 72dp centre spacer + right half:
- *     [Home | AI]      [Add FAB]      [Messages | Analytics]
- *
- * Each half is a Row with SpaceEvenly and equal weight, so the FAB sits
- * visually centred and the AI button is never crowded next to it.
- */
-@Composable
-fun SellerBottomBar(
-    selected: SellerBottomTab,
-    onTabSelected: (SellerBottomTab) -> Unit,
-    onAddClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val leftTabs = listOf(SellerBottomTab.Home, SellerBottomTab.AI)
-    val rightTabs = listOf(SellerBottomTab.Messages, SellerBottomTab.Analytics)
-
-    Box(modifier = modifier.fillMaxWidth()) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-            shadowElevation = 12.dp,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    leftTabs.forEach { tab -> NavItem(tab, selected == tab) { onTabSelected(tab) } }
-                }
-
-                // Reserve room for the FAB so the two halves stay balanced.
-                Spacer(Modifier.width(72.dp))
-
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    rightTabs.forEach { tab -> NavItem(tab, selected == tab) { onTabSelected(tab) } }
-                }
-            }
-        }
-
-        // Centre Add FAB — 64dp circle, gradient, scale animation on press.
-        AddFab(
-            onClick = onAddClick,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = (-14).dp),
-        )
-    }
-}
-
-@Composable
-private fun NavItem(tab: SellerBottomTab, isSelected: Boolean, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Icon(
-            tab.icon,
-            contentDescription = tab.label,
-            tint = if (isSelected) ScottsTechXColors.BluePrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp),
-        )
-        Text(
-            tab.label,
-            fontSize = 10.sp,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (isSelected) ScottsTechXColors.BluePrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun AddFab(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.9f else 1f,
-        animationSpec = tween(120),
-        label = "fabScale",
-    )
-
-    val gradient = Brush.linearGradient(
-        listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
-    )
-
-    Box(
-        modifier = modifier
-            .size(64.dp)
-            .scale(scale)
-            .background(gradient, CircleShape)
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            Icons.Filled.Add,
-            contentDescription = "Add product",
-            tint = Color.White,
-            modifier = Modifier.size(32.dp),
-        )
-    }
 }

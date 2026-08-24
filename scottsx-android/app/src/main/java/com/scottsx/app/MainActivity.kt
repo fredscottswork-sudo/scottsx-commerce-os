@@ -1,47 +1,56 @@
 package com.scottsx.app
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.ui.Modifier
-import androidx.core.content.ContextCompat
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import com.scottsx.app.data.preferences.LocalThemePreference
+import com.scottsx.app.data.preferences.ThemePreference
 import com.scottsx.app.navigation.AppNavigation
+import com.scottsx.app.ui.theme.ColorContext
+import com.scottsx.app.ui.theme.LocalColorContext
 import com.scottsx.app.ui.theme.ScottsTechXTheme
+import com.google.firebase.auth.FirebaseAuth
 
+/**
+ * Seed activity. Hosts the NavHost and supplies the [ThemePreference]
+ * singleton (persisted theme) + the default [ColorContext.Dark] so
+ * the cinematic splash/onboarding screens stay on-brand while the
+ * rest of the app follows the user's chosen theme.
+ *
+ * Also provides [LocalThemePreference] so any screen (e.g. the
+ * seller dashboard) that reads `LocalThemePreference.current`
+ * directly gets the same singleton instance.
+ *
+ * When the app is opened via the Firebase email-verification deep
+ * link (manifest intent-filter for `scottstechx-52bab.firebaseapp.com`
+ * and the `scottsx://` scheme), we eagerly call
+ * `FirebaseAuth.currentUser.reload()` so the freshly-verified flag
+ * is available by the time the user lands on VerifyEmailPendingScreen
+ * and taps "I've verified — continue".
+ */
 class MainActivity : ComponentActivity() {
-
-    /**
-     * Runtime permissions.
-     *
-     * The manifest declares LOCATION and POST_NOTIFICATIONS, but on Android 6+
-     * (location) and 13+ (notifications) a manifest entry alone grants nothing.
-     * Without this launcher the Nearby screen would never get a fix and push
-     * notifications would be silently dropped — both would look like backend
-     * bugs.
-     *
-     * We ask once on first launch; the result is not blocking, every dependent
-     * feature degrades gracefully when denied.
-     */
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { /* Denied is fine: Nearby falls back to a city, push stays in-app. */ }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestStartupPermissions()
-
+        handleDeepLinkVerification(intent)
         setContent {
-            ScottsTechXTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
+            val themePref = remember { ThemePreference.get(applicationContext) }
+            // Stage 5: cross-device theme sync — pull the saved theme
+            // from /api/v1/settings/v2 on first frame so a new
+            // device picks up the user's choice.
+            LaunchedEffect(Unit) {
+                themePref.loadFromServer()
+            }
+            CompositionLocalProvider(
+                LocalColorContext provides ColorContext.Dark,
+                LocalThemePreference provides themePref,
+            ) {
+                ScottsTechXTheme(
+                    context = ColorContext.Dark,
+                    themePreference = themePref,
                 ) {
                     AppNavigation()
                 }
@@ -49,30 +58,33 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestStartupPermissions() {
-        val wanted = mutableListOf<String>()
-
-        val hasFine = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.ACCESS_FINE_LOCATION,
-        ) == PackageManager.PERMISSION_GRANTED
-        val hasCoarse = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.ACCESS_COARSE_LOCATION,
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!hasFine && !hasCoarse) {
-            wanted += Manifest.permission.ACCESS_FINE_LOCATION
-            wanted += Manifest.permission.ACCESS_COARSE_LOCATION
+    /**
+     * Called from onCreate and onNewIntent. If the launching Intent
+     * is a Firebase email-verification deep link, refresh the cached
+     * `isEmailVerified` flag on the currently signed-in user. The
+     * VerifyEmailPendingScreen will then see the updated flag the
+     * moment the user taps "I've verified — continue".
+     */
+    private fun handleDeepLinkVerification(intent: Intent?) {
+        if (intent == null) return
+        val isVerificationLink = when (intent.action) {
+            Intent.ACTION_VIEW -> {
+                val data = intent.data?.toString() ?: return
+                data.contains("firebaseapp.com") || data.contains("scottsx://")
+            }
+            else -> false
         }
+        if (!isVerificationLink) return
+        val user = FirebaseAuth.getInstance().currentUser ?: return
+        // Fire-and-forget. reload() updates the cached emailVerified
+        // flag from Firebase's servers; the user navigates to
+        // VerifyEmailPendingScreen and "I've verified — continue"
+        // calls reload() again to double-check before entering.
+        user.reload()
+    }
 
-        // POST_NOTIFICATIONS only exists on API 33+.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val hasNotifications = ContextCompat.checkSelfPermission(
-                this, Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!hasNotifications) wanted += Manifest.permission.POST_NOTIFICATIONS
-        }
-
-        if (wanted.isNotEmpty()) {
-            permissionLauncher.launch(wanted.toTypedArray())
-        }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleDeepLinkVerification(intent)
     }
 }

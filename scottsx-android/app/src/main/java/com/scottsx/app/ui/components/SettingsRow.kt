@@ -2,75 +2,69 @@ package com.scottsx.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
-/** Standard settings / list row: icon | title (+subtitle) | trailing chevron. */
+/**
+ * Clickable settings row used by [StoreSettingsScreen],
+ * [ProfileSettingsScreen] and any other settings surface.
+ */
 @Composable
 fun SettingsRow(
+    icon: ImageVector,
     title: String,
-    modifier: Modifier = Modifier,
     subtitle: String? = null,
-    icon: ImageVector? = null,
-    iconTint: Color = ScottsTechXColors.BluePrimary,
-    trailing: (@Composable () -> Unit)? = null,
-    onClick: (() -> Unit)? = null,
+    iconBackground: Brush = Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight)),
+    titleColor: Color = ScottsTechXColors.OnLight,
+    onClick: () -> Unit,
 ) {
-    val clickableMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .then(clickableMod)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        if (icon != null) {
-            androidx.compose.foundation.layout.Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        color = iconTint.copy(alpha = 0.12f),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
-            }
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(iconBackground),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
+        Spacer(Modifier.width(12.dp))
         androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(title, color = titleColor, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             if (subtitle != null) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(subtitle, color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
             }
         }
-        if (trailing != null) {
-            trailing()
-        } else if (onClick != null) {
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(18.dp))
     }
 }

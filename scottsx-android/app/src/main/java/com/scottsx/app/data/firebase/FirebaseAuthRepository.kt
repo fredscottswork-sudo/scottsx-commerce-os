@@ -1,60 +1,140 @@
 package com.scottsx.app.data.firebase
 
-import com.scottsx.app.SessionCache
-import com.scottsx.app.data.domain.CurrentUserPayload
-import com.scottsx.app.data.remote.V2Client
+import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FirebaseFirestore
+import com.scottsx.app.data.AuthRepository
+import com.scottsx.app.data.domain.SessionCache
+import kotlinx.coroutines.tasks.await
 
 /**
- * Orchestrates the Firebase email-link verification flow and exchanges
- * the Firebase identity for a ScottsTechX JWT via the backend.
+ * Stage 5 — Firebase Auth primary repository.
+ *
+ * Replaces the existing phone/email+password flow with Firebase
+ * Authentication. Falls back to the existing [AuthRepository] only
+ * if Firebase is unavailable (offline / not configured).
  *
  * Flow:
- *   1. createAccount()          -> Firebase user created + signed in
- *   2. sendVerificationEmail()  -> Firebase emails the real verification link
- *   3. reloadAndCheckVerified() -> user.reload() + isEmailVerified
- *   4. exchangeForJwt()         -> POST /auth/firebase/sign-in -> our JWT
+ *   1. signInWithGoogle(idToken)   → FirebaseAuth.signInWithCredential
+ *   2. After sign-in, call /api/v1/auth/firebase/sign-in on the
+ *      backend with the Firebase ID token. The backend verifies it,
+ *      auto-provisions the user in the `users` table, and returns an
+ *      HS256 JWT for the rest of the backend. We keep both tokens:
+ *      Firebase for the Firestore SDK, HS256 for the REST API.
  */
 object FirebaseAuthRepository {
 
-    /** Create account + send verification email. Returns error message or null on success. */
-    suspend fun signUpAndSendVerification(email: String, password: String): String? {
-        val user = FirebaseBridge.createAccount(email, password)
-            ?: return "Could not create account. Check the email/password and try again."
-        val sent = FirebaseBridge.sendVerificationEmail()
-        return if (sent) null else "Account created but verification email could not be sent."
+    private const val TAG = "FirebaseAuthRepo"
+
+    suspend fun signInWithGoogle(idToken: String): FirebaseUser {
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        val result = FirebaseAuth.getInstance().signInWithCredential(credential).await()
+        return result.user ?: throw IllegalStateException("Firebase signIn returned null user")
     }
 
-    /** Re-check email verification status from the server. */
-    suspend fun reloadAndCheckVerified(): Boolean {
-        FirebaseBridge.reloadUser()
-        return FirebaseBridge.isEmailVerified()
+    /**
+     * Update the Firebase user's display name. Returns the new value.
+     */
+    suspend fun setDisplayName(user: FirebaseUser, displayName: String): String {
+        val req = UserProfileChangeRequest.Builder().setDisplayName(displayName).build()
+        user.updateProfile(req).await()
+        return displayName
     }
 
-    /** Exchange the Firebase idToken for a ScottsTechX JWT and cache the session. */
-    suspend fun exchangeForJwt(): Boolean {
-        val idToken = FirebaseBridge.idToken() ?: return false
-        val result = V2Client.signInWithFirebase(idToken) ?: return false
-        SessionCache.save(result.token, toCurrentUser(result.user))
-        return true
+    /**
+     * Send a Firebase email verification link. The user must be signed
+     * in (i.e. user.email is available). The link is delivered by
+     * Firebase; we return success.
+     */
+    suspend fun sendEmailVerification(user: FirebaseUser) {
+        if (user.email.isNullOrBlank()) {
+            throw IllegalArgumentException("user has no email; cannot verify")
+        }
+        user.sendEmailVerification().await()
     }
 
-    /** Upgrade the (verified) account to a seller. */
-    suspend fun upgradeToSeller(): Boolean {
-        val idToken = FirebaseBridge.idToken() ?: return false
-        val result = V2Client.upgradeToSeller(idToken) ?: return false
-        SessionCache.save(result.token, toCurrentUser(result.user))
-        return true
+    /**
+     * Sign out from Firebase.
+     */
+    fun signOut() {
+        FirebaseAuth.getInstance().signOut()
     }
 
-    private fun toCurrentUser(p: CurrentUserPayload) =
-        com.scottsx.app.CurrentUser(
-            id = p.id,
-            email = p.email,
-            displayName = p.displayName,
-            phone = p.phone,
-            role = p.role,
-            emailVerified = p.emailVerified,
-            profilePhotoUrl = p.profilePhotoUrl,
-            city = p.city,
-        )
+    /**
+     * Look up the user's profile in our `users` table by their
+     * Firebase UID, returning the rows we can mirror to SessionCache.
+     * Returns null if the backend can't be reached or the user
+     * doesn't have a row yet.
+     */
+    suspend fun mirrorProfileToSession(
+        hjwt: String,
+        baseUrl: String,
+    ): Boolean {
+        return try {
+            val url = baseUrl.trimEnd('/') + "/api/v1/auth/firebase/me"
+            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("Authorization", "Bearer $hjwt")
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            val code = conn.responseCode
+            if (code !in 200..299) return false
+            val body = conn.inputStream.bufferedReader().readText()
+            val u = org.json.JSONObject(body)
+            val id = u.optString("id")
+            if (id.isBlank()) return false
+            SessionCache.set(
+                role = com.scottsx.app.data.domain.Role.valueOf(
+                    u.optString("role", "BUYER").uppercase()
+                ),
+                displayName = u.optString("displayName").ifBlank { u.optString("email") },
+                email = u.optString("email"),
+                userId = id,
+                firebaseUid = u.optString("firebaseUid"),
+            )
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "mirrorProfileToSession failed: ${t.message}")
+            false
+        }
+    }
+
+    /**
+     * Push a product to Firestore /products/{id}. Best-effort; on
+     * failure we log and continue (the rest of the app still works
+     * from the in-memory cache).
+     */
+    suspend fun mirrorProduct(
+        productId: String,
+        title: String,
+        description: String?,
+        priceMinor: Long?,
+        currency: String?,
+        category: String?,
+        sellerId: String,
+        imageUrl: String?,
+    ) {
+        try {
+            val data = hashMapOf(
+                "id" to productId,
+                "title" to title,
+                "description" to (description ?: ""),
+                "priceMinor" to (priceMinor ?: 0L),
+                "currency" to (currency ?: "UGX"),
+                "category" to (category ?: ""),
+                "sellerId" to sellerId,
+                "imageUrl" to (imageUrl ?: ""),
+                "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+            )
+            FirebaseFirestore.getInstance().collection("products")
+                .document(productId)
+                .set(data, com.google.firebase.firestore.SetOptions.merge())
+                .await()
+        } catch (t: Throwable) {
+            Log.w(TAG, "mirrorProduct failed: ${t.message}")
+        }
+    }
 }

@@ -1,160 +1,283 @@
 package com.scottsx.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.domain.Refund
-import com.scottsx.app.data.domain.Order
 import com.scottsx.app.data.remote.V2Client
-import com.scottsx.app.ui.components.EmptyState
-import com.scottsx.app.ui.components.InputField
-import com.scottsx.app.ui.components.LoadingRow
-import com.scottsx.app.ui.components.PrimaryButton
-import com.scottsx.app.ui.components.StatusChip
+import com.scottsx.app.ui.components.SettingsScaffold
+import com.scottsx.app.ui.components.SettingsBlankHint
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import org.json.JSONArray
 
-/** Refund claims — list + new claim form. */
+/** Refund requests — list + open new refund against a transaction or receipt. */
 @Composable
 fun RefundsScreen(onBack: () -> Unit) {
-    var refunds by remember { mutableStateOf<List<Refund>>(emptyList()) }
-    var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
+    val items = remember { mutableStateListOf<JSONObject>() }
     var loading by remember { mutableStateOf(true) }
-    var showForm by remember { mutableStateOf(false) }
-    var selectedOrderId by remember { mutableStateOf("") }
-    var reason by remember { mutableStateOf("") }
+    var showDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun reload() {
         scope.launch {
-            refunds = V2Client.fetchRefunds()
-            orders = V2Client.fetchOrders()
+            loading = true
+            val arr = V2Client.fetchRefunds()
+            items.clear()
+            if (arr != null) for (i in 0 until arr.length()) {
+                            val obj = arr.optJSONObject(i)
+                            if (obj != null) {
+                                items.add(obj as JSONObject)
+                            }
+                        }
             loading = false
         }
     }
     LaunchedEffect(Unit) { reload() }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        ScreenHeader(title = "Refunds", onBack = onBack)
-        if (loading) {
-            LoadingRow()
-        } else if (refunds.isEmpty() && !showForm) {
-            EmptyState("↩️", "No refund claims", "If an order isn't right, open a claim within 7 days.")
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-            ) {
-                items(refunds) { refund ->
-                    Surface(
-                        color = MaterialTheme.colorScheme.surface,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 10.dp),
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(refund.reason, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                StatusChip(refund.status)
-                            }
-                            Text("Order ${refund.orderId.take(8)} · ${refund.createdAt.substringAfter("T").substring(0, 10)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-                if (showForm) {
-                    item {
-                        Column(modifier = Modifier.padding(top = 8.dp)) {
-                            Text("New refund claim", style = MaterialTheme.typography.titleLarge)
-                            Spacer(Modifier.height(8.dp))
-                            if (orders.isEmpty()) {
-                                Text("No orders to claim against yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                orders.forEach { order ->
-                                    Surface(
-                                        color = if (selectedOrderId == order.id) ScottsTechXColors.BluePrimary.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(bottom = 6.dp)
-                                            .clickable { selectedOrderId = order.id },
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(order.title, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                                            Text(com.scottsx.app.ui.components.formatUgx(order.amount), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            InputField(value = reason, onValueChange = { reason = it }, label = "Reason", placeholder = "Item not delivered / not as described")
-                            Spacer(Modifier.height(12.dp))
-                            PrimaryButton(
-                                text = "Submit claim",
-                                enabled = selectedOrderId.isNotBlank() && reason.length >= 3,
-                                onClick = {
-                                    scope.launch {
-                                        V2Client.createRefund(selectedOrderId, reason)
-                                        showForm = false
-                                        reason = ""
-                                        reload()
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        Row(
+    SettingsScaffold(title = "Refunds", onBack = onBack) {
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.Center,
+                .padding(vertical = 8.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(ScottsTechXColors.BluePrimary)
+                .clickable { showDialog = true }
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Surface(
-                color = ScottsTechXColors.BluePrimary,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.clickable { showForm = !showForm },
-            ) {
-                Text(
-                    if (showForm) "Close form" else "+ New refund claim",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Request a refund", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        if (loading) SettingsBlankHint("Loading...")
+        else if (items.isEmpty()) SettingsBlankHint("No refund requests yet.")
+        else {
+            items.forEach { refund ->
+                RefundCard(refund)
+                Spacer(Modifier.height(6.dp))
             }
         }
     }
+    if (showDialog) {
+        RefundDialog(onDismiss = { showDialog = false }, onSubmit = { body ->
+            scope.launch {
+                V2Client.createRefund(body)
+                showDialog = false
+                reload()
+            }
+        })
+    }
 }
+
+@Composable
+private fun RefundCard(r: JSONObject) {
+    val statusColor = when (r.optString("status")) {
+        "approved", "paid" -> Color(0xFF059669)
+        "rejected" -> Color(0xFFDC2626)
+        else -> Color(0xFFF59E0B)
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Refund for " + r.optString("transactionId").take(8),
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(statusColor.copy(alpha = 0.15f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    r.optString("status").replaceFirstChar { it.uppercase() },
+                    color = statusColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(r.optString("reason"), fontSize = 12.sp)
+        Text(
+            "Amount: ${formatMinor(r.optLong("amountMinor"), r.optString("currency"))}",
+            fontSize = 12.sp,
+            color = ScottsTechXColors.OnLightSecondary,
+        )
+    }
+}
+
+@Composable
+private fun RefundDialog(onDismiss: () -> Unit, onSubmit: (JSONObject) -> Unit) {
+    var amount by remember { mutableStateOf("") }
+    var reason by remember { mutableStateOf("") }
+    var transactionId by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Request refund") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                FieldRow("Amount (UGX minor)", amount, hint = "e.g. 50000 = 500 UGX") { amount = it }
+                FieldRow("Reason", reason, lines = 2) { reason = it }
+                FieldRow("Transaction ID (optional)", transactionId) { transactionId = it }
+                FieldRow("Notes", notes, lines = 2) { notes = it }
+            }
+        },
+        confirmButton = {
+            Text(
+                "Submit",
+                color = ScottsTechXColors.BluePrimary,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable {
+                    val body = JSONObject()
+                        .put("amountMinor", amount.toLongOrNull() ?: 0L)
+                        .put("reason", reason)
+                        .put("currency", "UGX")
+                        .put("transactionId", transactionId.takeIf { it.isNotBlank() })
+                        .put("notes", notes.takeIf { it.isNotBlank() })
+                    onSubmit(body)
+                },
+            )
+        },
+        dismissButton = {
+            Text("Cancel", color = ScottsTechXColors.OnLightSecondary, modifier = Modifier.clickable(onClick = onDismiss))
+        },
+    )
+}
+
+/** Return requests — list + request a return against a transaction/product. */
+@Composable
+fun ReturnsScreen(onBack: () -> Unit) {
+    val items = remember { mutableStateListOf<JSONObject>() }
+    var loading by remember { mutableStateOf(true) }
+    var showDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun reload() {
+        scope.launch {
+            loading = true
+            val arr = V2Client.fetchReturns()
+            items.clear()
+            if (arr != null) for (i in 0 until arr.length()) {
+                            val obj = arr.optJSONObject(i)
+                            if (obj != null) {
+                                items.add(obj as JSONObject)
+                            }
+                        }
+            loading = false
+        }
+    }
+    LaunchedEffect(Unit) { reload() }
+
+    SettingsScaffold(title = "Returns", onBack = onBack) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(ScottsTechXColors.BluePrimary)
+                .clickable { showDialog = true }
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Request a return", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        if (loading) SettingsBlankHint("Loading...")
+        else if (items.isEmpty()) SettingsBlankHint("No return requests yet.")
+        else {
+            items.forEach { ret ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White)
+                        .padding(12.dp),
+                ) {
+                    Text("Return request: ${ret.optString("reason")}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Quantity: ${ret.optInt("quantity")}", fontSize = 12.sp)
+                    Text("Status: ${ret.optString("status").replaceFirstChar { it.uppercase() }}", fontSize = 12.sp, color = ScottsTechXColors.BluePrimary)
+                }
+            }
+        }
+    }
+    if (showDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Request a return") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    var reason by remember { mutableStateOf("") }
+                    var quantity by remember { mutableStateOf("1") }
+                    var description by remember { mutableStateOf("") }
+                    FieldRow("Reason", reason, lines = 2) { reason = it }
+                    FieldRow("Quantity", quantity) { quantity = it }
+                    FieldRow("Description", description, lines = 2) { description = it }
+                    // store values for the submit button
+                    SideEffect {
+                        returnReason = reason
+                        returnQuantity = quantity
+                        returnDescription = description
+                    }
+                }
+            },
+            confirmButton = {
+                Text(
+                    "Submit",
+                    color = ScottsTechXColors.BluePrimary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable {
+                        scope.launch {
+                            V2Client.createReturn(
+                                JSONObject()
+                                    .put("reason", returnReason)
+                                    .put("quantity", returnQuantity.toIntOrNull() ?: 1)
+                                    .put("description", returnDescription.takeIf { it.isNotBlank() }),
+                            )
+                            showDialog = false
+                            reload()
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                Text("Cancel", color = ScottsTechXColors.OnLightSecondary, modifier = Modifier.clickable { showDialog = false })
+            },
+        )
+    }
+}
+
+// Module-level scratch space for the return-dialog form values.
+private var returnReason: String = ""
+private var returnQuantity: String = "1"
+private var returnDescription: String = ""

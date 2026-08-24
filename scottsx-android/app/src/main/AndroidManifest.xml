@@ -4,17 +4,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".ScottsTechXApp"
-        android:allowBackup="true"
-        android:icon="@drawable/logo"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.ScottsTechX"
-        android:usesCleartextTraffic="true">
+        android:largeHeap="true">
 
         <activity
             android:name=".MainActivity"
@@ -24,28 +23,27 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
 
-        <!--
-          Firebase Cloud Messaging receiver. The backend fans notifications out
-          to every device token registered for a user; this posts them to the
-          system tray. Without this <service> the app would register tokens but
-          never receive anything.
-        -->
-        <service
-            android:name=".data.push.ScottsMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            <!-- Firebase email verification deep link.
+                 When the user taps the verification link in their email,
+                 Android opens the app at MainActivity. MainActivity reads
+                 the incoming Intent and we trigger FirebaseAuth.getInstance()
+                 .currentUser?.reload() to pick up the new isEmailVerified flag. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- Firebase default Dynamic Links host (works out of the box
+                     on any Firebase project, no DNS setup required). -->
+                <data
+                    android:scheme="https"
+                    android:host="scottstechx-52bab.firebaseapp.com" />
+
+                <!-- Custom scheme for direct app-only links from the
+                     verification email templates if/when configured. -->
+                <data android:scheme="scottsx" />
             </intent-filter>
-        </service>
-
-        <!-- Channel used when a push arrives without an explicit channel id. -->
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="general" />
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/logo" />
+        </activity>
     </application>
 </manifest>

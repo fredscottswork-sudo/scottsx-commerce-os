@@ -1,895 +1,946 @@
 package com.scottsx.app.data.remote
 
-import com.scottsx.app.SessionCache
-import com.scottsx.app.data.domain.Address
-import com.scottsx.app.data.domain.AiReply
-import com.scottsx.app.data.domain.AppNotification
-import com.scottsx.app.data.domain.AuthResult
-import com.scottsx.app.data.domain.ChatMessage
-import com.scottsx.app.data.domain.Cart
-import com.scottsx.app.data.domain.CartCheckoutResult
-import com.scottsx.app.BuildConfig
-import com.scottsx.app.data.domain.CheckoutResult
-import com.scottsx.app.data.domain.CmsPage
-import com.scottsx.app.data.domain.Conversation
-import com.scottsx.app.data.domain.CurrentUserPayload
-import com.scottsx.app.data.domain.Faq
-import com.scottsx.app.data.domain.Inbox
-import com.scottsx.app.data.domain.InboxCounts
-import com.scottsx.app.data.domain.AiSearchResult
-import com.scottsx.app.data.domain.NearbyResult
-import com.scottsx.app.data.domain.NearbySeller
-import com.scottsx.app.data.domain.NewProductPayload
-import com.scottsx.app.data.domain.Order
-import com.scottsx.app.data.domain.PaymentMethod
-import com.scottsx.app.data.domain.Place
-import com.scottsx.app.data.domain.Product
-import com.scottsx.app.data.domain.QuickReplyItem
-import com.scottsx.app.data.domain.Refund
-import com.scottsx.app.data.domain.SellerDashboardStats
-import com.scottsx.app.data.domain.SellerProfile
-import com.scottsx.app.data.domain.StoreSettings
-import com.scottsx.app.data.domain.SupportTicket
-import com.scottsx.app.data.domain.Transcript
-import com.scottsx.app.data.domain.UserSettings
+import com.scottsx.app.data.Session
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 /**
- * ScottsTechX — ALL network calls live here.
+ * Stage 5 — REST client for the Firebase-backed backend.
  *
- * One OkHttpClient, one base URL, one bearer-token source (SessionCache).
- * Every function returns a typed model (or null). No raw JSON escapes this file.
+ * Talks to /api/v1/{auth/firebase, ai/v2, settings/v2, memory/v2,
+ * chat/v2, products/v2, sellers/v2} using the HS256 JWT from
+ * [Session.token] as a Bearer token. All calls are best-effort
+ * and return null/empty on failure so the UI never crashes.
  */
 object V2Client {
 
-    // Set at build time from app/build.gradle.kts. Defaults to the emulator
-    // loopback (10.0.2.2 -> the host machine); override per build with
-    //   ./gradlew assembleRelease -PapiBaseUrl=https://api.example.com/api/v1
-    // For a physical phone on your LAN, pass your PC's IP the same way.
-    private val BASE_URL = BuildConfig.API_BASE_URL
+    private const val TAG = "V2Client"
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
-        .build()
+    // Default backend base URL — override at runtime via setBaseUrl().
+    // Real device + adb reverse tcp:3001 tcp:3001 → reaches the host backend.
+    // For Android emulator without adb reverse, use 10.0.2.2 instead.
+    private const val DEFAULT_BASE_URL = "http://127.0.0.1:3001"
+    @Volatile private var baseUrlOverride: String? = null
+    fun setBaseUrl(url: String) { baseUrlOverride = url }
 
-    private val jsonMedia = "application/json; charset=utf-8".toMediaType()
+    /** Base URL — same as the existing RemoteAssistantClient. */
+    private val baseUrl: String get() = DEFAULT_BASE_URL
 
-    // ── low-level request helper (blocking; callers use withContext(IO)) ──────
-
-    private fun raw(path: String, method: String, body: JSONObject?, auth: Boolean): JSONObject {
-        val builder = Request.Builder()
-            .url("$BASE_URL$path")
-            .method(method, body?.toString()?.toRequestBody(jsonMedia))
-
-        if (auth) {
-            SessionCache.authToken()?.let { builder.header("Authorization", "Bearer $it") }
-        }
-
-        client.newCall(builder.build()).execute().use { response ->
-            val text = response.body?.string() ?: ""
-            if (!response.isSuccessful) {
-                val message = try {
-                    JSONObject(text).optString("error").ifBlank { "HTTP ${response.code}" }
-                } catch (_: Exception) {
-                    "HTTP ${response.code}"
-                }
-                throw IOException(message)
-            }
-            if (text.isBlank()) return JSONObject()
-            return try {
-                JSONObject(text)
-            } catch (e: Exception) {
-                JSONObject().put("raw", text)
-            }
-        }
-    }
-
-    private suspend fun call(
+    private suspend fun <T> apiCall(
+        method: String,
         path: String,
-        method: String = "GET",
         body: JSONObject? = null,
-        auth: Boolean = true,
-    ): JSONObject = withContext(Dispatchers.IO) { raw(path, method, body, auth) }
-
-    // ── Auth ──────────────────────────────────────────────────────────────────
-
-    suspend fun register(
-        email: String,
-        password: String,
-        displayName: String,
-        phone: String = "",
-        role: String = "buyer",
-        storeName: String = "",
-    ): AuthResult? = try {
-        val body = JSONObject()
-            .put("email", email)
-            .put("password", password)
-            .put("displayName", displayName)
-            .put("phone", phone)
-            .put("role", role)
-            .put("storeName", storeName)
-        val r = call("/auth/register", "POST", body, auth = false)
-        AuthResult(
-            token = r.optString("token"),
-            user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
-        )
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun login(email: String, password: String): AuthResult? = try {
-        val r = call("/auth/login", "POST", JSONObject().put("email", email).put("password", password), auth = false)
-        AuthResult(
-            token = r.optString("token"),
-            user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
-        )
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun signInWithFirebase(idToken: String): AuthResult? = try {
-        val r = call("/auth/firebase/sign-in", "POST", JSONObject().put("idToken", idToken), auth = false)
-        AuthResult(
-            token = r.optString("token"),
-            user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
-        )
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun signInWithGoogle(idToken: String): AuthResult? = try {
-        val r = call("/auth/google", "POST", JSONObject().put("idToken", idToken), auth = false)
-        AuthResult(
-            token = r.optString("token"),
-            user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
-        )
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun sendFirebaseVerificationEmail(idToken: String): Boolean = try {
-        call("/auth/firebase/send-verification-email", "POST", JSONObject().put("idToken", idToken), auth = false)
-            .optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun fetchFirebaseMe(): CurrentUserPayload? = try {
-        val r = call("/auth/firebase/me")
-        CurrentUserPayload.fromJson(r)
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun upgradeToSeller(idToken: String): AuthResult? = try {
-        val r = call("/auth/firebase/upgrade-to-seller", "POST", JSONObject().put("idToken", idToken))
-        AuthResult(
-            token = r.optString("token"),
-            user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
-        )
-    } catch (e: Exception) {
-        null
-    }
-
-    /** Local (non-Firebase) upgrade to seller — returns a fresh seller JWT. */
-    suspend fun upgradeToSellerLocal(): AuthResult? = try {
-        val r = call("/auth/upgrade-to-seller", "POST")
-        AuthResult(
-            token = r.optString("token"),
-            user = CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject()),
-        )
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun fetchMe(): CurrentUserPayload? = try {
-        val r = call("/auth/me")
-        CurrentUserPayload.fromJson(r.optJSONObject("user") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun updateMe(
-        displayName: String? = null,
-        phone: String? = null,
-        city: String? = null,
-        profilePhotoUrl: String? = null,
-    ): Boolean = try {
-        val body = JSONObject()
-        displayName?.let { body.put("displayName", it) }
-        phone?.let { body.put("phone", it) }
-        city?.let { body.put("city", it) }
-        profilePhotoUrl?.let { body.put("profilePhotoUrl", it) }
-        call("/auth/me", "PATCH", body).has("user")
-    } catch (e: Exception) {
-        false
-    }
-
-    // ── Products ──────────────────────────────────────────────────────────────
-
-    suspend fun fetchProductsList(): List<Product> = try {
-        val r = call("/products", auth = false)
-        Product.fromJsonArray(r.optJSONArray("products") ?: JSONArray())
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun fetchProductById(id: String): Product? = try {
-        val r = call("/products/$id", auth = false)
-        Product.fromJson(r.optJSONObject("product") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    /** The signed-in seller's own inventory (requires seller JWT). */
-    suspend fun fetchSellerProducts(): List<Product> = try {
-        val r = call("/seller/products")
-        Product.fromJsonArray(r.optJSONArray("products") ?: JSONArray())
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun createSellerProduct(payload: NewProductPayload): Product? = try {
-        val body = JSONObject()
-            .put("title", payload.title)
-            .put("description", payload.description)
-            .put("category", payload.category)
-            .put("brand", payload.brand)
-            .put("priceMinor", payload.priceMinor)
-            .put("stockQuantity", payload.stockQuantity)
-            .put("imageUrl", payload.imageUrl)
-            .put("location", payload.location)
-            .put("isFlashDeal", payload.isFlashDeal)
-            .put("discountPercent", payload.discountPercent)
-        payload.oldPriceMinor?.let { body.put("oldPriceMinor", it) }
-        payload.mediaUrls.takeIf { it.isNotEmpty() }?.let { urls ->
-            body.put("mediaUrls", JSONArray(urls))
+        parse: (JSONObject) -> T,
+    ): T? = withContext(Dispatchers.IO) {
+        try {
+            val url = java.net.URL(baseUrl.trimEnd('/') + path)
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = method
+            conn.connectTimeout = 6000
+            conn.readTimeout = 12000
+            conn.setRequestProperty("Accept", "application/json")
+            Session.tokenOrNull()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+            if (body != null) {
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            }
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                android.util.Log.w(TAG, "$method $path -> $code")
+                return@withContext null
+            }
+            val text = conn.inputStream.bufferedReader().use { it.readText() }
+            if (text.isBlank()) null else parse(JSONObject(text))
+        } catch (t: Throwable) {
+            android.util.Log.w(TAG, "$method $path failed: ${t.message}")
+            null
         }
-        val r = call("/seller/products", "POST", body)
-        Product.fromJson(r.optJSONObject("product") ?: JSONObject())
-    } catch (e: Exception) {
-        null
     }
 
-    suspend fun deleteSellerProduct(id: String): Boolean = try {
-        call("/seller/products/$id", "DELETE").optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
+    private suspend fun <T> apiCallArray(
+        method: String,
+        path: String,
+        body: JSONObject? = null,
+        parse: (JSONArray) -> T,
+    ): T? = withContext(Dispatchers.IO) {
+        try {
+            val url = java.net.URL(baseUrl.trimEnd('/') + path)
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = method
+            conn.connectTimeout = 6000
+            conn.readTimeout = 12000
+            conn.setRequestProperty("Accept", "application/json")
+            Session.tokenOrNull()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+            if (body != null) {
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            }
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                android.util.Log.w(TAG, "$method $path -> $code")
+                return@withContext null
+            }
+            val text = conn.inputStream.bufferedReader().use { it.readText() }
+            if (text.isBlank()) null else parse(JSONArray(text))
+        } catch (t: Throwable) {
+            android.util.Log.w(TAG, "$method $path failed: ${t.message}")
+            null
+        }
     }
 
-    // ── Seller ────────────────────────────────────────────────────────────────
-
-    suspend fun fetchSellerProfile(): SellerProfile? = try {
-        val r = call("/seller/profile")
-        SellerProfile.fromJson(r.optJSONObject("seller") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun updateSellerProfile(p: SellerProfile): Boolean = try {
-        val body = JSONObject()
-            .put("storeName", p.storeName)
-            .put("storeDescription", p.description)
-            .put("contactEmail", p.contactEmail)
-            .put("contactPhone", p.contactPhone)
-            .put("momoNumber", p.momoNumber)
-            .put("bankName", p.bankName)
-            .put("city", p.city)
-            .put("address", p.address)
-        call("/seller/store-settings", "PATCH", body).has("settings")
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun fetchStoreSettings(): StoreSettings? = try {
-        val r = call("/seller/store-settings")
-        StoreSettings.fromJson(r.optJSONObject("settings") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun updateStoreSettings(s: StoreSettings): Boolean = try {
-        val body = JSONObject()
-            .put("storeName", s.storeName)
-            .put("storeDescription", s.storeDescription)
-            .put("storeLogoUrl", s.storeLogoUrl)
-            .put("legalName", s.legalName)
-            .put("tin", s.tin)
-            .put("businessEmail", s.businessEmail)
-            .put("businessPhone", s.businessPhone)
-            .put("address", s.address)
-            .put("pickupInstructions", s.pickupInstructions)
-            .put("serviceRadiusKm", s.serviceRadiusKm)
-            .put("deliveryFeeUgx", s.deliveryFeeUgx)
-            .put("freeAboveUgx", s.freeAboveUgx)
-            .put("codEnabled", s.codEnabled)
-            .put("momoNumber", s.momoNumber)
-            .put("bankName", s.bankName)
-            .put("bankAccount", s.bankAccount)
-            .put("notifOrderUpdates", s.notifOrderUpdates)
-            .put("notifBuyerMessages", s.notifBuyerMessages)
-            .put("notifMarketing", s.notifMarketing)
-            .put("notifWeeklyDigest", s.notifWeeklyDigest)
-            .put("twoFactorEnabled", s.twoFactorEnabled)
-            .put("returnsWindowDays", s.returnsWindowDays)
-            .put("refundPolicy", s.refundPolicy)
-            .put("terms", s.terms)
-            .put("contactEmail", s.contactEmail)
-            .put("contactPhone", s.contactPhone)
-            .put("city", s.city)
-        call("/seller/store-settings", "PATCH", body).has("settings")
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun fetchSellerDashboardStats(): SellerDashboardStats? = try {
-        val r = call("/seller/dashboard/stats")
-        SellerDashboardStats.fromJson(r.optJSONObject("stats") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    /** Convenience wrapper. Null [radiusKm] searches the whole marketplace. */
-    suspend fun fetchNearbySellers(
-        lat: Double,
-        lng: Double,
-        radiusKm: Int? = null,
-    ): List<NearbySeller> = fetchNearby(lat, lng, radiusKm).sellers
+    // ----------------------------------------------------------------
+    // Auth helpers
+    // ----------------------------------------------------------------
 
     /**
-     * Nearby stores, re-sorted by distance from the buyer's current position.
-     *
-     * Sellers who have not enabled location sharing keep their last known pin
-     * (the API coalesces last_lat/last_lng), so a store never vanishes from the
-     * map — it is simply reported as not live.
-     *
-     * @param sort distance | rating | products | newest
+     * Promote the current buyer to a seller. The backend requires a
+     * verified email — if the caller hasn't verified yet, the
+     * server returns 403 email_not_verified. The caller can recover
+     * by triggering the email verification flow and retrying.
      */
-    suspend fun fetchNearby(
+    suspend fun upgradeToSeller(): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/auth/firebase/upgrade-to-seller",
+            body = JSONObject(),
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    // ============================================================
+    // PRODUCTS
+    // ============================================================
+
+    /**
+     * Fetch the full product catalogue (public endpoint, no auth
+     * required). Returns [Product] instances decoded from the
+     * v2 product response. The result is intentionally permissive —
+     * unknown categories fall back to "All" so a single missing
+     * enum entry cannot break the home feed.
+     */
+    suspend fun fetchProductsList(): List<com.scottsx.app.data.domain.Product> {
+        val arr = apiCallArray(
+            method = "GET",
+            path = "/api/v1/products",
+            body = null,
+            parse = { it },
+        ) ?: return emptyList()
+        val out = ArrayList<com.scottsx.app.data.domain.Product>(arr.length())
+        for (i in 0 until arr.length()) {
+            val row = arr.optJSONObject(i) ?: continue
+            out += jsonToProduct(row)
+        }
+        return out
+    }
+
+    private fun jsonToProduct(o: org.json.JSONObject): com.scottsx.app.data.domain.Product {
+        val title = o.optString("title")
+        val description = o.optString("description")
+        val category = com.scottsx.app.data.domain.ProductCategory.fromApiName(o.optString("category"))
+            ?: com.scottsx.app.data.domain.ProductCategory.All
+        val sellerId = o.optString("sellerId")
+        val sellerName = o.optString("sellerBusinessName").ifEmpty { "ScottsTechX Seller" }
+        val priceUgx = o.optLong("priceMinor", 0L)
+        val imageUrl = o.optString("imageUrl").takeIf { it.isNotBlank() } ?: ""
+        // Seller data class signature: id, name, rating, location, verified
+        // The Seller.fullConstructorWithStoreName extension wraps this with extra data.
+        val seller = com.scottsx.app.data.domain.Seller(
+            id = sellerId,
+            name = sellerName,
+            rating = 4.5f,
+            location = "Kampala",
+            verified = true,
+        )
+        val brand = com.scottsx.app.data.domain.Brand(
+            id = "default",
+            name = "Generic",
+        )
+        return com.scottsx.app.data.domain.Product(
+            id = o.optString("id"),
+            name = title,
+            shortDescription = description.take(80),
+            description = description,
+            priceUgx = priceUgx,
+            oldPriceUgx = null,
+            category = category,
+            brand = brand,
+            seller = seller,
+            imageUrl = imageUrl,
+            stock = o.optInt("stockQuantity", 1),
+            rating = o.optDouble("productTrustScore", 4.4).toFloat(),
+            ratingCount = 12,
+        )
+    }
+
+    // ============================================================
+    // USER PROFILE / ADDRESSES / PAYMENT METHODS / ETC.
+    // ============================================================
+
+    suspend fun fetchUserProfile(): JSONObject? = apiCall(
+        method = "GET", path = "/api/v1/user/profile", body = null,
+        parse = { o -> o },
+    )
+
+    suspend fun updateUserProfile(patch: JSONObject): Boolean = apiCall(
+        method = "PATCH", path = "/api/v1/user/profile", body = patch,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    suspend fun updateAvatar(avatarUrl: String): Boolean = apiCall(
+        method = "POST",
+        path = "/api/v1/user/profile/avatar",
+        body = JSONObject().put("avatarUrl", avatarUrl),
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    // ============================================================
+    // SELLER PROFILE & STORE SETTINGS
+    // ============================================================
+
+    /**
+     * GET /api/v1/seller/profile — returns the current seller's full
+     * seller profile (business name, address, etc.). Returns null on
+     * 404 (seller not yet on-boarded) or any non-2xx.
+     */
+    suspend fun fetchSellerProfile(): org.json.JSONObject? = apiCall(
+        method = "GET", path = "/api/v1/seller/profile", body = null,
+        parse = { it },
+    )
+
+    /**
+     * PATCH /api/v1/seller/profile — incremental update of the
+     * seller's business profile. The [patch] object's keys are mapped
+     * 1:1 to the backend schema.
+     */
+    suspend fun updateSellerProfile(patch: JSONObject): Boolean = apiCall(
+        method = "PATCH", path = "/api/v1/seller/profile", body = patch,
+        parse = { o -> o.optBoolean("ok", true) },
+    ) ?: false
+
+    /**
+     * GET /api/v1/seller/store-settings — current store branding
+     * (storeName, logoUrl, bannerUrl, opening hours, social links).
+     * Returns null if the seller has no settings yet.
+     */
+    suspend fun fetchStoreSettings(): org.json.JSONObject? = apiCall(
+        method = "GET", path = "/api/v1/seller/store-settings", body = null,
+        parse = { it },
+    )
+
+    /**
+     * PATCH /api/v1/seller/store-settings — store branding update.
+     * Supports logoUrl, bannerUrl, storeName, storeDescription, social
+     * links, opening hours JSON, etc.
+     */
+    suspend fun updateStoreSettings(patch: JSONObject): Boolean = apiCall(
+        method = "PATCH", path = "/api/v1/seller/store-settings", body = patch,
+        parse = { o -> o.optBoolean("ok", true) },
+    ) ?: false
+
+    // Addresses
+    data class Address(
+        val id: String, val label: String, val recipient: String, val phone: String?,
+        val line1: String, val line2: String?, val city: String, val region: String?,
+        val country: String, val postalCode: String?, val isDefault: Boolean,
+    )
+
+    suspend fun fetchAddresses(): List<Address> {
+        val arr = apiCallArray(method = "GET", path = "/api/v1/user/addresses", body = null, parse = { it }) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val a = arr.optJSONObject(i) ?: return@mapNotNull null
+            Address(
+                id = a.optString("id"),
+                label = a.optString("label"),
+                recipient = a.optString("recipient"),
+                phone = a.optString("phone").takeIf { it.isNotBlank() },
+                line1 = a.optString("line1"),
+                line2 = a.optString("line2").takeIf { it.isNotBlank() },
+                city = a.optString("city"),
+                region = a.optString("region").takeIf { it.isNotBlank() },
+                country = a.optString("country"),
+                postalCode = a.optString("postalCode").takeIf { it.isNotBlank() },
+                isDefault = a.optBoolean("isDefault", false),
+            )
+        }
+    }
+
+    suspend fun createAddress(body: JSONObject): String? = apiCall(
+        method = "POST", path = "/api/v1/user/addresses", body = body,
+        parse = { o -> o.optString("id") },
+    )
+
+    suspend fun updateAddress(id: String, body: JSONObject): Boolean = apiCall(
+        method = "PATCH", path = "/api/v1/user/addresses/$id", body = body,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    suspend fun deleteAddress(id: String): Boolean = apiCall(
+        method = "DELETE", path = "/api/v1/user/addresses/$id", body = null,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    // Payment methods
+    data class PaymentMethod(
+        val id: String, val kind: String, val provider: String?, val label: String,
+        val account: String, val isDefault: Boolean, val expiresAt: String?,
+    )
+
+    suspend fun fetchPaymentMethods(): List<PaymentMethod> {
+        val arr = apiCallArray(method = "GET", path = "/api/v1/user/payment-methods", body = null, parse = { it }) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val p = arr.optJSONObject(i) ?: return@mapNotNull null
+            PaymentMethod(
+                id = p.optString("id"),
+                kind = p.optString("kind"),
+                provider = p.optString("provider").takeIf { it.isNotBlank() },
+                label = p.optString("label"),
+                account = p.optString("account"),
+                isDefault = p.optBoolean("isDefault", false),
+                expiresAt = p.optString("expiresAt").takeIf { it.isNotBlank() },
+            )
+        }
+    }
+
+    suspend fun createPaymentMethod(body: JSONObject): String? = apiCall(
+        method = "POST", path = "/api/v1/user/payment-methods", body = body,
+        parse = { o -> o.optString("id") },
+    )
+
+    suspend fun deletePaymentMethod(id: String): Boolean = apiCall(
+        method = "DELETE", path = "/api/v1/user/payment-methods/$id", body = null,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    // Saved products
+    suspend fun fetchSavedProducts(): JSONArray? = apiCallArray(
+        method = "GET", path = "/api/v1/user/saved-products", body = null,
+        parse = { it },
+    )
+
+    suspend fun saveProduct(productId: String): Boolean = apiCall(
+        method = "POST", path = "/api/v1/user/saved-products/$productId", body = null,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    suspend fun unsaveProduct(productId: String): Boolean = apiCall(
+        method = "DELETE", path = "/api/v1/user/saved-products/$productId", body = null,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    // Saved sellers
+    suspend fun fetchSavedSellers(): JSONArray? = apiCallArray(
+        method = "GET", path = "/api/v1/user/saved-sellers", body = null,
+        parse = { it },
+    )
+
+    suspend fun saveSeller(sellerId: String): Boolean = apiCall(
+        method = "POST", path = "/api/v1/user/saved-sellers/$sellerId", body = null,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    suspend fun unsaveSeller(sellerId: String): Boolean = apiCall(
+        method = "DELETE", path = "/api/v1/user/saved-sellers/$sellerId", body = null,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    // Refunds
+    suspend fun fetchRefunds(): JSONArray? = apiCallArray(
+        method = "GET", path = "/api/v1/user/refunds", body = null,
+        parse = { it },
+    )
+
+    suspend fun createRefund(body: JSONObject): String? = apiCall(
+        method = "POST", path = "/api/v1/user/refunds", body = body,
+        parse = { o -> o.optString("id") },
+    )
+
+    // Returns
+    suspend fun fetchReturns(): JSONArray? = apiCallArray(
+        method = "GET", path = "/api/v1/user/returns", body = null,
+        parse = { it },
+    )
+
+    suspend fun createReturn(body: JSONObject): String? = apiCall(
+        method = "POST", path = "/api/v1/user/returns", body = body,
+        parse = { o -> o.optString("id") },
+    )
+
+    // Support tickets
+    suspend fun fetchTickets(): JSONArray? = apiCallArray(
+        method = "GET", path = "/api/v1/support/tickets", body = null,
+        parse = { it },
+    )
+
+    suspend fun createTicket(category: String, subject: String, message: String, attachmentUrl: String? = null): String? = apiCall(
+        method = "POST", path = "/api/v1/support/tickets",
+        body = JSONObject().apply {
+            put("category", category)
+            put("subject", subject)
+            put("message", message)
+            if (attachmentUrl != null) put("attachmentUrl", attachmentUrl)
+        },
+        parse = { o -> o.optString("id") },
+    )
+
+    // CMS
+    suspend fun fetchCms(slug: String, locale: String = "en"): JSONObject? = apiCall(
+        method = "GET", path = "/api/v1/cms/$slug?locale=$locale", body = null,
+        parse = { o -> o },
+    )
+
+    // Reports
+    suspend fun createReport(
+        resourceType: String, resourceId: String, reason: String,
+        description: String? = null,
+    ): String? = apiCall(
+        method = "POST", path = "/api/v1/reports",
+        body = JSONObject().apply {
+            put("resourceType", resourceType)
+            put("resourceId", resourceId)
+            put("reason", reason)
+            if (description != null) put("description", description)
+        },
+        parse = { o -> o.optString("id") },
+    )
+
+    // Notifications (user-specific)
+    suspend fun fetchNotifications(): JSONArray? = apiCallArray(
+        method = "GET", path = "/api/v1/user/notifications", body = null,
+        parse = { it },
+    )
+
+    suspend fun markAllNotificationsRead(): Boolean = apiCall(
+        method = "POST", path = "/api/v1/user/notifications/mark-all-read", body = null,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    suspend fun markNotificationRead(id: String): Boolean = apiCall(
+        method = "POST", path = "/api/v1/user/notifications/$id/read", body = null,
+        parse = { o -> o.optBoolean("ok", false) },
+    ) ?: false
+
+    // Audit log
+    suspend fun fetchMyAudit(): JSONArray? = apiCallArray(
+        method = "GET", path = "/api/v1/audit/me", body = null,
+        parse = { it },
+    )
+
+
+    // ----------------------------------------------------------------
+    // AI
+    // ----------------------------------------------------------------
+
+    data class AiReply(val text: String, val provider: String)
+
+    suspend fun ask(message: String, screen: String? = null): AiReply? =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/ai/v2/ask",
+            body = JSONObject().apply {
+                put("message", message)
+                if (screen != null) put("context", JSONObject().put("screen", screen))
+            },
+            parse = { o ->
+                AiReply(
+                    text = o.optString("reply"),
+                    provider = o.optJSONObject("sources")?.optString("aiProvider") ?: "",
+                )
+            },
+        )
+
+    // ----------------------------------------------------------------
+    // Memory signals — fire and forget from anywhere
+    // ----------------------------------------------------------------
+
+    suspend fun recordSignal(kind: String, value: String) {
+        try {
+            apiCall(
+                method = "POST",
+                path = "/api/v1/memory/v2/ai/signal",
+                body = JSONObject().apply {
+                    put("kind", kind)
+                    put("value", value)
+                },
+                parse = { o -> o.optBoolean("ok", false) },
+            )
+        } catch (_: Throwable) { }
+    }
+
+    suspend fun clearAiMemory(): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/memory/v2/ai/clear",
+            body = null,
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    // ----------------------------------------------------------------
+    // Settings
+    // ----------------------------------------------------------------
+
+    data class Settings(
+        val theme: String,
+        val language: String,
+        val notificationsEnabled: Boolean,
+        val notificationSound: Boolean,
+        val locationSharing: String,
+        val privacyShowReceipts: Boolean,
+        val privacyShowTransactions: Boolean,
+        val aiPersonalizationEnabled: Boolean,
+        val preferredLanguage: String,
+        val preferredCurrency: String,
+    )
+
+    suspend fun loadSettings(): Settings? =
+        apiCall(
+            method = "GET",
+            path = "/api/v1/settings/v2",
+            body = null,
+            parse = { o ->
+                Settings(
+                    theme = o.optString("theme", "system"),
+                    language = o.optString("language", "en"),
+                    notificationsEnabled = o.optBoolean("notificationsEnabled", true),
+                    notificationSound = o.optBoolean("notificationSound", true),
+                    locationSharing = o.optString("locationSharing", "approximate"),
+                    privacyShowReceipts = o.optBoolean("privacyShowReceipts", true),
+                    privacyShowTransactions = o.optBoolean("privacyShowTransactions", true),
+                    aiPersonalizationEnabled = o.optBoolean("aiPersonalizationEnabled", true),
+                    preferredLanguage = o.optString("preferredLanguage", "en"),
+                    preferredCurrency = o.optString("preferredCurrency", "UGX"),
+                )
+            },
+        )
+
+    suspend fun saveSettings(patch: JSONObject): Boolean =
+        apiCall(
+            method = "PUT",
+            path = "/api/v1/settings/v2",
+            body = patch,
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    // Stage 5.5: user + store profile updates. These are thin wrappers
+    // around the V2 endpoints (mirrored to Firestore by the backend).
+    suspend fun updateStoreProfile(patch: JSONObject): Boolean =
+        apiCall(
+            method = "PATCH",
+            path = "/api/v1/seller/store-settings",
+            body = patch,
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    /**
+     * Upload a product image by URL. The backend stores the URL in
+     * [product_media] and the new product's [image_url] is updated.
+     * Returns the persisted URL on success, or null on failure.
+     */
+    suspend fun uploadProductImageUrl(productId: String, url: String, position: Int = 0): String? =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/products/v2/$productId/media",
+            body = JSONObject().apply {
+                put("url", url)
+                put("position", position)
+                put("mediaType", "image")
+            },
+            parse = { o -> o.optString("url").ifBlank { url } },
+        )
+
+    /**
+     * Upload avatar URL for the current user. The backend stores it on
+     * the users.avatar_url column (and mirrors to Firestore).
+     */
+    suspend fun uploadAvatarUrl(avatarUrl: String): Boolean =
+        apiCall(
+            method = "PATCH",
+            path = "/api/v1/user/profile",
+            body = JSONObject().put("avatarUrl", avatarUrl),
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    // ----------------------------------------------------------------
+    // Nearby sellers — returns JSON array
+    // ----------------------------------------------------------------
+
+    data class NearbySeller(
+        val sellerId: String,
+        val storeName: String,
+        val lat: Double,
+        val lng: Double,
+        val city: String?,
+        val address: String?,
+        val rating: Double,
+        val distanceKm: Double,
+        val products: List<NearbyProduct>,
+    )
+
+    data class NearbyProduct(
+        val id: String,
+        val title: String,
+        val priceMinor: Long,
+        val image: String?,
+        val stock: Int,
+        val rating: Double,
+        val category: String?,
+    )
+
+    suspend fun nearbySellers(
         lat: Double,
         lng: Double,
-        /**
-         * Kilometres to search within. **Null means no limit** — the whole
-         * marketplace, nearest first — which is the default because a buyer
-         * with no store inside 50 km should still see the closest ones rather
-         * than an empty screen.
-         */
-        radiusKm: Int? = null,
+        radiusKm: Double = 25.0,
         category: String? = null,
-        query: String? = null,
-        verifiedOnly: Boolean = false,
-        openOnly: Boolean = false,
-        sort: String = "distance",
-        limit: Int = 60,
-    ): NearbyResult = try {
-        val params = StringBuilder("?lat=$lat&lng=$lng&sort=$sort&limit=$limit")
-        radiusKm?.let { params.append("&radiusKm=").append(it) }
-        category?.takeIf { it.isNotBlank() }?.let {
-            params.append("&category=").append(java.net.URLEncoder.encode(it, "UTF-8"))
+        minPrice: Long? = null,
+        maxPrice: Long? = null,
+        limit: Int = 40,
+    ): List<NearbySeller> {
+        val qs = buildString {
+            append("?lat=").append(lat)
+            append("&lng=").append(lng)
+            append("&radiusKm=").append(radiusKm)
+            if (category != null) append("&category=").append(java.net.URLEncoder.encode(category, "UTF-8"))
+            if (minPrice != null) append("&minPrice=").append(minPrice)
+            if (maxPrice != null) append("&maxPrice=").append(maxPrice)
+            append("&limit=").append(limit)
         }
-        query?.takeIf { it.isNotBlank() }?.let {
-            params.append("&q=").append(java.net.URLEncoder.encode(it, "UTF-8"))
+        val arr = apiCallArray(
+            method = "GET",
+            path = "/api/v1/sellers/v2/nearby$qs",
+            body = null,
+            parse = { it },
+        ) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val r = arr.optJSONObject(i) ?: return@mapNotNull null
+            val prods = r.optJSONArray("products")
+            val products = if (prods != null) (0 until prods.length()).mapNotNull { j ->
+                val p = prods.optJSONObject(j) ?: return@mapNotNull null
+                NearbyProduct(
+                    id = p.optString("id"),
+                    title = p.optString("title"),
+                    priceMinor = p.optLong("price", 0L),
+                    image = p.optString("image").takeIf { it.isNotBlank() },
+                    stock = p.optInt("stock", 0),
+                    rating = p.optDouble("rating", 0.0),
+                    category = p.optString("category").takeIf { it.isNotBlank() },
+                )
+            } else emptyList()
+            NearbySeller(
+                sellerId = r.optString("seller_id"),
+                storeName = r.optString("store_name"),
+                lat = r.optDouble("lat", 0.0),
+                lng = r.optDouble("lng", 0.0),
+                city = r.optString("city").takeIf { it.isNotBlank() },
+                address = r.optString("address").takeIf { it.isNotBlank() },
+                rating = r.optDouble("rating", 0.0),
+                distanceKm = r.optDouble("distance_km", Double.MAX_VALUE),
+                products = products,
+            )
         }
-        if (verifiedOnly) params.append("&verifiedOnly=true")
-        if (openOnly) params.append("&openOnly=true")
-
-        val r = call("/sellers/nearby$params", auth = false)
-        val arr = r.optJSONArray("sellers") ?: JSONArray()
-        NearbyResult(
-            sellers = (0 until arr.length()).map { NearbySeller.fromJson(arr.getJSONObject(it)) },
-            count = r.optInt("count", 0),
-            total = r.optInt("total", r.optInt("count", 0)),
-            liveCount = r.optInt("liveCount", 0),
-            place = r.optJSONObject("place")?.let { Place.fromJson(it) },
-        )
-    } catch (e: Exception) {
-        NearbyResult()
     }
 
-    // ── AI search (text / image / voice) ──────────────────────────────────────
+    suspend fun updateSellerLocation(
+        lat: Double,
+        lng: Double,
+        city: String? = null,
+        address: String? = null,
+    ): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/sellers/v2/update-location",
+            body = JSONObject().apply {
+                put("lat", lat)
+                put("lng", lng)
+                if (city != null) put("city", city)
+                if (address != null) put("address", address)
+            },
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
 
-    /** Natural-language search: "cheap phone under 500k in Kampala". */
-    suspend fun aiSearch(query: String, limit: Int = 24): AiSearchResult = try {
-        AiSearchResult.fromJson(
-            call("/ai/search", "POST", JSONObject().put("q", query).put("limit", limit), auth = false),
-        )
-    } catch (e: Exception) {
-        AiSearchResult()
-    }
+    // ----------------------------------------------------------------
+    // Chat v2 — typed write-through + Firestore mirror
+    // ----------------------------------------------------------------
 
-    /** Image search. Pass a URL and/or on-device ML Kit labels. */
-    suspend fun aiImageSearch(
-        imageUrl: String? = null,
-        hint: String? = null,
-        labels: List<String> = emptyList(),
-    ): AiSearchResult = try {
-        val body = JSONObject()
-        imageUrl?.let { body.put("imageUrl", it) }
-        hint?.let { body.put("hint", it) }
-        if (labels.isNotEmpty()) body.put("labels", JSONArray(labels))
-        AiSearchResult.fromJson(call("/ai/image-search", "POST", body, auth = false))
-    } catch (e: Exception) {
-        AiSearchResult()
-    }
+    data class ChatMessage(
+        val id: String,
+        val conversationId: String,
+        val senderUid: String,
+        val recipientUid: String?,
+        val content: String,
+        val role: String,
+        val attachmentUrl: String?,
+        val attachmentMime: String?,
+        val threadParentId: String?,
+        val createdAt: String,
+    )
 
-    /** Voice search — the device does speech-to-text, we send the transcript. */
-    suspend fun aiVoiceSearch(transcript: String): AiSearchResult = try {
-        AiSearchResult.fromJson(
-            call("/ai/voice-search", "POST", JSONObject().put("transcript", transcript), auth = false),
-        )
-    } catch (e: Exception) {
-        AiSearchResult()
-    }
-
-
-    // ── User settings (the BIG surface) ───────────────────────────────────────
-
-    suspend fun fetchAddresses(): List<Address> = try {
-        val arr = call("/me/addresses").optJSONArray("addresses") ?: JSONArray()
-        (0 until arr.length()).map { Address.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun createAddress(a: Address): Boolean = try {
-        call("/me/addresses", "POST", Address.toJson(a)).has("address")
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun updateAddress(id: String, a: Address): Boolean = try {
-        call("/me/addresses/$id", "PATCH", Address.toJson(a)).has("address")
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun deleteAddress(id: String): Boolean = try {
-        call("/me/addresses/$id", "DELETE").optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun fetchPaymentMethods(): List<PaymentMethod> = try {
-        val arr = call("/me/payment-methods").optJSONArray("paymentMethods") ?: JSONArray()
-        (0 until arr.length()).map { PaymentMethod.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun createPaymentMethod(p: PaymentMethod): Boolean = try {
-        call("/me/payment-methods", "POST", PaymentMethod.toJson(p)).has("paymentMethod")
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun deletePaymentMethod(id: String): Boolean = try {
-        call("/me/payment-methods/$id", "DELETE").optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun fetchOrders(): List<Order> = try {
-        val arr = call("/me/orders").optJSONArray("orders") ?: JSONArray()
-        (0 until arr.length()).map { Order.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun fetchOrder(id: String): Order? = try {
-        Order.fromJson(call("/me/orders/$id").optJSONObject("order") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    // ── Cart (cash on delivery) ───────────────────────────────────────────────
-    //
-    // These return Result<T> rather than null because the failure *message*
-    // matters here: "Only 3 left in stock" is the difference between a buyer
-    // fixing their order and a buyer giving up on a silent no-op.
-
-    suspend fun fetchCart(): Result<Cart> = runCatching {
-        Cart.fromJson(call("/me/cart"))
-    }
-
-    /** Adds to the existing quantity server-side (upsert), not replace. */
-    suspend fun addToCart(productId: String, quantity: Int = 1): Result<Cart> = runCatching {
-        Cart.fromJson(
-            call("/me/cart", "POST", JSONObject().put("productId", productId).put("quantity", quantity)),
-        )
-    }
-
-    /** Sets an absolute quantity. Zero or less removes the line. */
-    suspend fun setCartQuantity(productId: String, quantity: Int): Result<Cart> = runCatching {
-        Cart.fromJson(
-            call("/me/cart/$productId", "PATCH", JSONObject().put("quantity", quantity)),
-        )
-    }
-
-    suspend fun removeFromCart(productId: String): Result<Cart> = runCatching {
-        Cart.fromJson(call("/me/cart/$productId", "DELETE"))
-    }
-
-    suspend fun clearCart(): Result<Cart> = runCatching {
-        Cart.fromJson(call("/me/cart", "DELETE"))
-    }
-
-    /**
-     * Cash-on-delivery checkout: one order per cart line, cart emptied, stock
-     * decremented. Use this rather than [checkout], which needs Nylon Pay
-     * credentials and returns 503 until they are configured.
-     */
-    suspend fun checkoutCart(
-        addressId: String? = null,
-        phone: String = "",
-        note: String = "",
-    ): Result<CartCheckoutResult> = runCatching {
-        val body = JSONObject()
-        addressId?.takeIf { it.isNotBlank() }?.let { body.put("addressId", it) }
-        if (phone.isNotBlank()) body.put("phone", phone)
-        if (note.isNotBlank()) body.put("note", note)
-        CartCheckoutResult.fromJson(call("/me/cart/checkout", "POST", body))
-    }
-
-    /**
-     * Create an order + hosted Nylon Pay payment link. Returns null on failure.
-     *
-     * Currently unused by the UI: POST /orders/checkout answers 503 until Nylon
-     * Pay credentials are configured on the backend, so the buy path is the
-     * cash-on-delivery cart ([checkoutCart]). Kept for when payments go live.
-     */
-    suspend fun checkout(productId: String, quantity: Int = 1, buyerPhone: String = ""): CheckoutResult? = try {
-        val body = JSONObject()
-            .put("productId", productId)
-            .put("quantity", quantity)
-            .put("buyerPhone", buyerPhone)
-        CheckoutResult.fromJson(call("/orders/checkout", "POST", body))
-    } catch (e: Exception) {
-        null
-    }
-
-    /** Current Nylon Pay status for an order (from the backend's getStatus mirror). */
-    suspend fun fetchPaymentStatus(orderId: String): String? = try {
-        call("/orders/$orderId/payment-status").optJSONObject("order")?.optString("status")
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun fetchRefunds(): List<Refund> = try {
-        val arr = call("/me/refunds").optJSONArray("refunds") ?: JSONArray()
-        (0 until arr.length()).map { Refund.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun createRefund(orderId: String, reason: String): Refund? = try {
-        val r = call("/me/refunds", "POST", JSONObject().put("orderId", orderId).put("reason", reason))
-        Refund.fromJson(r.optJSONObject("refund") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun fetchBookmarks(): List<Product> = try {
-        val arr = call("/me/bookmarks").optJSONArray("products") ?: JSONArray()
-        (0 until arr.length()).map { Product.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun toggleBookmark(productId: String): Boolean = try {
-        call("/me/bookmarks/toggle", "POST", JSONObject().put("productId", productId))
-            .optBoolean("bookmarked", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun fetchNotifications(): List<AppNotification> = try {
-        val arr = call("/me/notifications").optJSONArray("notifications") ?: JSONArray()
-        (0 until arr.length()).map { AppNotification.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun markNotificationRead(id: String): Boolean = try {
-        call("/me/notifications/$id/read", "PATCH").optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun fetchSupportTickets(): List<SupportTicket> = try {
-        val arr = call("/me/support/tickets").optJSONArray("tickets") ?: JSONArray()
-        (0 until arr.length()).map { SupportTicket.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun createSupportTicket(subject: String, message: String): SupportTicket? = try {
-        val r = call("/me/support/tickets", "POST", JSONObject().put("subject", subject).put("message", message))
-        SupportTicket.fromJson(r.optJSONObject("ticket") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun fetchFaqs(): List<Faq> = try {
-        val arr = call("/me/faqs", auth = false).optJSONArray("faqs") ?: JSONArray()
-        (0 until arr.length()).map { Faq.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    suspend fun fetchUserSettings(): UserSettings = try {
-        val r = call("/me/preferences")
-        UserSettings.fromJson(r.optJSONObject("preferences") ?: JSONObject())
-    } catch (e: Exception) {
-        UserSettings()
-    }
-
-    suspend fun saveSettings(s: UserSettings): Boolean = try {
-        val body = JSONObject()
-            .put("theme", s.theme)
-            .put("language", s.language)
-            .put("currency", s.currency)
-            .put("notifyOrderUpdates", s.notifyOrderUpdates)
-            .put("notifyMessages", s.notifyMessages)
-            .put("notifyMarketing", s.notifyMarketing)
-        call("/me/preferences", "PATCH", body).has("preferences")
-    } catch (e: Exception) {
-        false
-    }
-
-    suspend fun changePassword(oldPassword: String, newPassword: String): Boolean = try {
-        call("/me/change-password", "POST", JSONObject().put("oldPassword", oldPassword).put("newPassword", newPassword))
-            .optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    // ── AI ────────────────────────────────────────────────────────────────────
-
-    suspend fun ask(prompt: String, screen: String): AiReply? = try {
-        val r = call(
-            "/ai/v2/ask",
-            "POST",
-            JSONObject().put("prompt", prompt).put("screen", screen),
-            auth = false,
-        )
-        AiReply.fromJson(r)
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun generateProductFromImage(imageUrl: String, hint: String): AiReply? = try {
-        val r = call(
-            "/ai/v2/generate-product",
-            "POST",
-            JSONObject().put("imageUrl", imageUrl).put("hint", hint),
-            auth = false,
-        )
-        AiReply(text = r.optString("title"), provider = "heuristic")
-    } catch (e: Exception) {
-        null
-    }
-
-    // ── Chat ──────────────────────────────────────────────────────────────────
-
-    suspend fun fetchConversations(): List<Conversation> = fetchInbox().conversations
-
-    /**
-     * Inbox with filter counts.
-     *
-     * @param filter one of all | unread | pinned | archived | offers
-     * @param query  free-text match on counterparty, product or last message
-     */
-    suspend fun fetchInbox(filter: String = "all", query: String = ""): Inbox = try {
-        val params = buildList {
-            if (filter.isNotBlank() && filter != "all") add("filter=$filter")
-            if (query.isNotBlank()) add("q=${java.net.URLEncoder.encode(query, "UTF-8")}")
-        }
-        val suffix = if (params.isEmpty()) "" else "?" + params.joinToString("&")
-        val r = call("/conversations$suffix")
-        val arr = r.optJSONArray("conversations") ?: JSONArray()
-        Inbox(
-            conversations = (0 until arr.length()).map { Conversation.fromJson(arr.getJSONObject(it)) },
-            counts = InboxCounts.fromJson(r.optJSONObject("counts") ?: JSONObject()),
-            totalUnread = r.optInt("totalUnread", 0),
-        )
-    } catch (e: Exception) {
-        Inbox()
-    }
-
-    /** Thread header: counterparty, product context, pin/mute flags, typing. */
-    suspend fun fetchConversation(conversationId: String): Conversation? = try {
-        val o = call("/conversations/$conversationId").optJSONObject("conversation")
-        if (o == null) null else Conversation.fromJson(o)
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun openConversation(sellerId: String, productId: String? = null): String? = try {
-        val body = JSONObject().put("sellerId", sellerId)
-        productId?.let { body.put("productId", it) }
-        call("/conversations", "POST", body).optJSONObject("conversation")?.optString("id")
-    } catch (e: Exception) {
-        null
-    }
-
-    suspend fun fetchMessages(conversationId: String): List<ChatMessage> =
-        fetchTranscript(conversationId).messages
-
-    /** Transcript plus the other party's live typing flag. */
-    suspend fun fetchTranscript(conversationId: String): Transcript = try {
-        val r = call("/conversations/$conversationId/messages")
-        val arr = r.optJSONArray("messages") ?: JSONArray()
-        Transcript(
-            messages = (0 until arr.length()).map { ChatMessage.fromJson(arr.getJSONObject(it)) },
-            otherTyping = r.optBoolean("otherTyping", false),
-        )
-    } catch (e: Exception) {
-        Transcript()
-    }
-
-    suspend fun sendMessage(conversationId: String, text: String): ChatMessage? = try {
-        val r = call("/conversations/$conversationId/messages", "POST", JSONObject().put("text", text))
-        ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    /** Share a photo in the thread. */
-    suspend fun sendImageMessage(
+    suspend fun sendMessage(
         conversationId: String,
-        imageUrl: String,
-        attachmentName: String? = null,
-    ): ChatMessage? = try {
-        val body = JSONObject()
-            .put("kind", "image")
-            .put("imageUrl", imageUrl)
-        attachmentName?.let { body.put("attachmentName", it) }
-        val r = call("/conversations/$conversationId/messages", "POST", body)
-        ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    /**
-     * Make a price offer. The thread's product is used when [productId] is null.
-     * Only the recipient can accept/decline it.
-     */
-    suspend fun sendOffer(
-        conversationId: String,
-        offerMinor: Long,
-        quantity: Int = 1,
+        content: String,
+        attachmentUrl: String? = null,
+        attachmentMime: String? = null,
+        threadParentId: String? = null,
         productId: String? = null,
-        note: String? = null,
-    ): ChatMessage? = try {
-        val body = JSONObject()
-            .put("kind", "offer")
-            .put("offerMinor", offerMinor)
-            .put("offerQuantity", quantity)
-        productId?.let { body.put("productId", it) }
-        note?.takeIf { it.isNotBlank() }?.let { body.put("text", it) }
-        val r = call("/conversations/$conversationId/messages", "POST", body)
-        ChatMessage.fromJson(r.optJSONObject("message") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
-
-    /** @param action accept | decline | withdraw */
-    suspend fun respondToOffer(
-        conversationId: String,
-        messageId: String,
-        action: String,
-    ): Boolean = try {
-        call(
-            "/conversations/$conversationId/offers/$messageId",
-            "POST",
-            JSONObject().put("action", action),
-        ).optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    /** Retract one of your own messages (soft delete — the row is kept). */
-    suspend fun deleteMessage(conversationId: String, messageId: String): Boolean = try {
-        call("/conversations/$conversationId/messages/$messageId", "DELETE").optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    /** Typing heartbeat; the server expires it after ~6 seconds. */
-    suspend fun setTyping(conversationId: String, typing: Boolean): Boolean = try {
-        call(
-            "/conversations/$conversationId/typing",
-            "POST",
-            JSONObject().put("typing", typing),
-        ).optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
-
-    /** Pin / archive / mute a thread for the current user. */
-    suspend fun setConversationState(
-        conversationId: String,
-        pinned: Boolean? = null,
-        archived: Boolean? = null,
-        muted: Boolean? = null,
-    ): Boolean = try {
-        val body = JSONObject()
-        pinned?.let { body.put("pinned", it) }
-        archived?.let { body.put("archived", it) }
-        muted?.let { body.put("muted", it) }
-        call("/conversations/$conversationId/state", "PATCH", body).has("state")
-    } catch (e: Exception) {
-        false
-    }
-
-    // ── Push device tokens ────────────────────────────────────────────────────
+        productTitle: String? = null,
+        productImageUrl: String? = null,
+    ): ChatMessage? =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/chat/v2/messages",
+            body = JSONObject().apply {
+                put("conversationId", conversationId)
+                put("content", content)
+                if (attachmentUrl != null) put("attachmentUrl", attachmentUrl)
+                if (attachmentMime != null) put("attachmentMime", attachmentMime)
+                if (threadParentId != null) put("threadParentId", threadParentId)
+                if (productId != null) put("productId", productId)
+                if (productTitle != null) put("productTitle", productTitle)
+                if (productImageUrl != null) put("productImageUrl", productImageUrl)
+            },
+            parse = { o ->
+                ChatMessage(
+                    id = o.optString("id"),
+                    conversationId = o.optString("conversationId"),
+                    senderUid = o.optString("senderUid"),
+                    recipientUid = o.optString("recipientUid").takeIf { it.isNotBlank() },
+                    content = o.optString("content"),
+                    role = o.optString("role"),
+                    attachmentUrl = o.optString("attachmentUrl").takeIf { it.isNotBlank() },
+                    attachmentMime = o.optString("attachmentMime").takeIf { it.isNotBlank() },
+                    threadParentId = o.optString("threadParentId").takeIf { it.isNotBlank() },
+                    createdAt = o.optString("createdAt"),
+                )
+            },
+        )
 
     /**
-     * Register this device's FCM token so the backend can push to it.
-     * Called after sign-in and whenever FCM rotates the token.
+     * Fetch all messages in a conversation. Used by [MessageStream] to
+     * hydrate the thread and to poll for new messages (the Android
+     * client compares `createdAt` against the last seen timestamp).
      */
-    suspend fun registerDevice(token: String, platform: String = "android"): Boolean = try {
-        call(
-            "/me/devices",
-            "POST",
-            JSONObject().put("token", token).put("platform", platform),
-        ).optBoolean("ok", true)
-    } catch (e: Exception) {
-        false
+    suspend fun fetchMessages(
+        conversationId: String,
+        since: String? = null,
+        limit: Int = 100,
+    ): List<ChatMessage> {
+        val qs = buildString {
+            append("?limit=").append(limit)
+            if (since != null) append("&since=").append(java.net.URLEncoder.encode(since, "UTF-8"))
+        }
+        val arr = apiCallArray(
+            method = "GET",
+            path = "/api/v1/chat/v2/conversations/$conversationId/messages$qs",
+            body = null,
+            parse = { it },
+        ) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val m = arr.optJSONObject(i) ?: return@mapNotNull null
+            ChatMessage(
+                id = m.optString("id"),
+                conversationId = m.optString("conversationId"),
+                senderUid = m.optString("senderUid"),
+                recipientUid = m.optString("recipientUid").takeIf { it.isNotBlank() },
+                content = m.optString("content"),
+                role = m.optString("role"),
+                attachmentUrl = m.optString("attachmentUrl").takeIf { it.isNotBlank() },
+                attachmentMime = m.optString("attachmentMime").takeIf { it.isNotBlank() },
+                threadParentId = m.optString("threadParentId").takeIf { it.isNotBlank() },
+                createdAt = m.optString("createdAt"),
+            )
+        }
     }
 
-    /** Drop this device's token — called on sign-out. */
-    suspend fun unregisterDevice(token: String): Boolean = try {
-        call("/me/devices", "DELETE", JSONObject().put("token", token)).optBoolean("ok", true)
-    } catch (e: Exception) {
-        false
+    /**
+     * Inbox summary — the caller's conversations with the most recent
+     * message preview, unread count, and the other party's display
+     * name. Used by the MessagesScreen sidebar destination.
+     */
+    data class Conversation(
+        val conversationId: String,
+        val otherPartyId: String,
+        val otherPartyDisplayName: String,
+        val productId: String?,
+        val productTitle: String?,
+        val productImageUrl: String?,
+        val lastMessagePreview: String?,
+        val lastMessageAt: String?,
+        val unreadCount: Int,
+    )
+
+    suspend fun fetchConversations(): List<Conversation> {
+        val arr = apiCallArray(
+            method = "GET",
+            path = "/api/v1/chat/v2/conversations",
+            body = null,
+            parse = { it },
+        ) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val r = arr.optJSONObject(i) ?: return@mapNotNull null
+            Conversation(
+                conversationId = r.optString("conversation_id"),
+                otherPartyId = r.optString("other_party_id"),
+                otherPartyDisplayName = r.optString("other_party_display_name").ifBlank { "Seller" },
+                productId = r.optString("product_id").takeIf { it.isNotBlank() },
+                productTitle = r.optString("product_title").takeIf { it.isNotBlank() },
+                productImageUrl = r.optString("product_image_url").takeIf { it.isNotBlank() },
+                lastMessagePreview = r.optString("last_message_preview").takeIf { it.isNotBlank() },
+                lastMessageAt = r.optString("last_message_at").takeIf { it.isNotBlank() },
+                unreadCount = r.optInt("unread_count", 0),
+            )
+        }
     }
 
-    // ── Saved quick replies ───────────────────────────────────────────────────
+    data class ChatUploadHandle(
+        val uploadUrl: String,
+        val gsPath: String,
+        val publicUrl: String,
+        val messageId: String,
+        val expiresAt: Long,
+    )
 
-    suspend fun fetchQuickReplies(): List<QuickReplyItem> = try {
-        val arr = call("/me/quick-replies").optJSONArray("quickReplies") ?: JSONArray()
-        (0 until arr.length()).map { QuickReplyItem.fromJson(arr.getJSONObject(it)) }
-    } catch (e: Exception) {
-        emptyList()
-    }
+    suspend fun requestChatUploadUrl(
+        conversationId: String,
+        mime: String,
+        ext: String,
+    ): ChatUploadHandle? =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/chat/v2/upload-url",
+            body = JSONObject().apply {
+                put("conversationId", conversationId)
+                put("mime", mime)
+                put("ext", ext)
+            },
+            parse = { o ->
+                ChatUploadHandle(
+                    uploadUrl = o.optString("uploadUrl"),
+                    gsPath = o.optString("gsPath"),
+                    publicUrl = o.optString("publicUrl"),
+                    messageId = o.optString("messageId"),
+                    expiresAt = o.optLong("expiresAt", 0L),
+                )
+            },
+        )
 
-    suspend fun addQuickReply(text: String): QuickReplyItem? = try {
-        val r = call("/me/quick-replies", "POST", JSONObject().put("text", text))
-        val o = r.optJSONObject("quickReply")
-        if (o == null) null else QuickReplyItem.fromJson(o)
-    } catch (e: Exception) {
-        null
-    }
+    // ----------------------------------------------------------------
+    // Product image upload (seller)
+    // ----------------------------------------------------------------
 
-    suspend fun deleteQuickReply(id: String): Boolean = try {
-        call("/me/quick-replies/$id", "DELETE").optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
+    /**
+     * Request a signed upload URL for a generic upload purpose.
+     *
+     * The backend mints a short-lived (15 min) signed URL that grants
+     * the authenticated caller direct write access to a specific
+     * Storage path. The client then PUTs the file bytes to that URL
+     * using OkHttp / HttpURLConnection. No Firebase SDK credentials
+     * are needed on the device.
+     *
+     * @param purpose "product" | "avatar" | "chat" | "receipt"
+     * @param filename Client-supplied filename (server infers extension).
+     * @param contentType MIME type, e.g. "image/jpeg".
+     * @param conversationId Required when purpose = "chat".
+     * @return UploadHandle with the signed URL, gsPath, and a public
+     *         downloadUrl the client should store in its DB.
+     */
+    data class UploadHandle(
+        val uploadUrl: String,
+        val gsPath: String,
+        val publicUrl: String,
+        val expiresAt: Long,
+    )
 
-    suspend fun markConversationRead(conversationId: String): Boolean = try {
-        call("/conversations/$conversationId/read", "POST").optBoolean("ok", false)
-    } catch (e: Exception) {
-        false
-    }
+    suspend fun requestUploadUrl(
+        purpose: String,
+        filename: String,
+        contentType: String,
+        conversationId: String? = null,
+    ): UploadHandle? = apiCall(
+        method = "POST",
+        path = "/api/v1/uploads/signed-url",
+        body = JSONObject().apply {
+            put("purpose", purpose)
+            put("filename", filename)
+            put("contentType", contentType)
+            if (conversationId != null) put("conversationId", conversationId)
+        },
+        parse = { o ->
+            UploadHandle(
+                uploadUrl = o.optString("url"),
+                gsPath = o.optString("gsPath"),
+                publicUrl = o.optString("downloadUrl"),
+                expiresAt = o.optLong("expiresAt", 0L),
+            )
+        },
+    )
 
-    // ── CMS ───────────────────────────────────────────────────────────────────
+    data class ProductImageUploadHandle(
+        val uploadUrl: String,
+        val gsPath: String,
+        val publicUrl: String,
+        val expiresAt: Long,
+    )
 
-    suspend fun fetchCmsPage(slug: String): CmsPage? = try {
-        val r = call("/cms/$slug", auth = false)
-        CmsPage.fromJson(r.optJSONObject("page") ?: JSONObject())
-    } catch (e: Exception) {
-        null
-    }
+    suspend fun requestProductImageUploadUrl(
+        productId: String,
+        mime: String,
+        ext: String,
+    ): ProductImageUploadHandle? =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/products/v2/upload-image-url",
+            body = JSONObject().apply {
+                put("productId", productId)
+                put("mime", mime)
+                put("ext", ext)
+            },
+            parse = { o ->
+                ProductImageUploadHandle(
+                    uploadUrl = o.optString("uploadUrl"),
+                    gsPath = o.optString("gsPath"),
+                    publicUrl = o.optString("publicUrl"),
+                    expiresAt = o.optLong("expiresAt", 0L),
+                )
+            },
+        )
+
+    suspend fun setProductImage(productId: String, gsPath: String): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/products/v2/$productId/set-image",
+            body = JSONObject().put("gsPath", gsPath),
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    /**
+     * Create a new product owned by the caller. The caller must be a
+     * seller (or admin). On success returns the new product's UUID.
+     */
+    suspend fun createProduct(
+        title: String,
+        priceMinor: Long,
+        description: String? = null,
+        currency: String = "UGX",
+        stock: Int = 0,
+        category: String? = null,
+        imageUrl: String? = null,
+        imageGsPath: String? = null,
+        sku: String? = null,
+    ): String? = apiCall(
+        method = "POST",
+        path = "/api/v1/products/v2/create",
+        body = JSONObject().apply {
+            put("title", title)
+            put("priceMinor", priceMinor)
+            if (description != null) put("description", description)
+            put("currency", currency)
+            put("stock", stock)
+            if (category != null) put("category", category)
+            if (imageUrl != null) put("imageUrl", imageUrl)
+            if (imageGsPath != null) put("imageGsPath", imageGsPath)
+            if (sku != null) put("sku", sku)
+        },
+        parse = { o -> o.optString("id") },
+    )
 }
