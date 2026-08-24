@@ -485,7 +485,7 @@ private fun heuristicCategory(url: String): String = when {
 
 // ── Image compression ─────────────────────────────────────────────────────────
 
-private data class CompressedImage(val data: ByteArray)
+internal data class CompressedImage(val data: ByteArray)
 
 /**
  * Downscale + JPEG-compress a picked photo for upload.
@@ -495,7 +495,9 @@ private data class CompressedImage(val data: ByteArray)
  * cap. Never throws: a compression failure falls back to the raw bytes, so
  * an uploadable photo is never blocked by the optimiser.
  */
-private fun compressForUpload(bytes: ByteArray): CompressedImage? = runCatching {
+// internal so EditProductScreen uploads new photos through the same
+// compression pipeline instead of a second, drifting copy.
+internal fun compressForUpload(bytes: ByteArray): CompressedImage? = runCatching {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null

@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.Button
@@ -264,21 +265,32 @@ fun ProductDetailScreen(
         // The owner's review state — buyers never see anything but approved
         // products, so this banner only ever renders for the seller.
         val isOwner = p.seller.id.isNotBlank() && p.seller.id == currentUser?.id
+        val ownerBanner: OwnerBanner? = when (p.status) {
+            "pending" -> OwnerBanner(
+                "⏳",
+                ScottsTechXColors.WarningAmber,
+                "Awaiting admin review",
+                "You'll get a notification when it's decided.",
+            )
+            "rejected" -> OwnerBanner(
+                "⚠️",
+                ScottsTechXColors.ErrorRed,
+                "Rejected by admin",
+                (p.rejectionReason ?: "The admin didn't give a reason.") +
+                    " Edit the listing to resubmit it for review.",
+            )
+            "suspended" -> OwnerBanner(
+                "⛔",
+                ScottsTechXColors.ErrorRed,
+                "Suspended",
+                p.rejectionReason ?: "Contact support for details.",
+            )
+            else -> null
+        }
         if (isOwner) {
-            val (emoji, tint, headline, detail) = when (p.status) {
-                "pending" -> "⏳" to ScottsTechXColors.WarningAmber to
-                    "Awaiting admin review" to "You'll get a notification when it's decided."
-                "rejected" -> "⚠️" to ScottsTechXColors.ErrorRed to
-                    "Rejected by admin" to
-                    (p.rejectionReason ?: "The admin didn't give a reason.") +
-                        " Edit the listing to resubmit it for review."
-                "suspended" -> "⛔" to ScottsTechXColors.ErrorRed to
-                    "Suspended" to (p.rejectionReason ?: "Contact support for details.")
-                else -> null
-            }
-            (emoji to tint to headline to detail)?.let { (e, t, h, d) ->
+            ownerBanner?.let { b ->
                 Surface(
-                    color = t.copy(alpha = 0.10f),
+                    color = b.tint.copy(alpha = 0.10f),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -288,10 +300,10 @@ fun ProductDetailScreen(
                         modifier = Modifier.padding(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text(e, fontSize = 16.sp)
+                        Text(b.emoji, fontSize = 16.sp)
                         Column {
-                            Text(h, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = t)
-                            Text(d, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(b.headline, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = b.tint)
+                            Text(b.detail, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -513,3 +525,11 @@ fun ProductDetailScreen(
         )
     }
 }
+
+/** The seller-only review-state banner shown above the listing content. */
+private data class OwnerBanner(
+    val emoji: String,
+    val tint: Color,
+    val headline: String,
+    val detail: String,
+)
