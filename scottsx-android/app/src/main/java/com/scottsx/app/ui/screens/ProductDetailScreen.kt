@@ -85,6 +85,8 @@ fun ProductDetailScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
+    var resubmitting by remember { mutableStateOf(false) }
+    var resubmitError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val currentUser by SessionCache.user.collectAsState()
 
@@ -301,9 +303,38 @@ fun ProductDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(b.emoji, fontSize = 16.sp)
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(b.headline, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = b.tint)
                             Text(b.detail, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        // The admin rejected it, but the seller may believe the
+                        // listing is fine as-is — that has a real backend
+                        // path (POST /submit), so it gets a real button.
+                        if (p.status == "rejected") {
+                            Surface(
+                                color = b.tint,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = !resubmitting) {
+                                        resubmitting = true
+                                        resubmitError = null
+                                        scope.launch {
+                                            val resubmitted = V2Client.submitSellerProduct(p.id)
+                                            resubmitting = false
+                                            if (resubmitted != null) refresh += 1
+                                            else resubmitError = "Resubmit failed — check your connection and try again."
+                                        }
+                                    },
+                            ) {
+                                Text(
+                                    if (resubmitting) "Submitting…" else "Resubmit as is",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -522,6 +553,15 @@ fun ProductDetailScreen(
             title = { Text("Could not delete") },
             text = { Text(err) },
             confirmButton = { TextButton(onClick = { deleteError = null }) { Text("OK") } },
+        )
+    }
+
+    resubmitError?.let { err ->
+        AlertDialog(
+            onDismissRequest = { resubmitError = null },
+            title = { Text("Could not resubmit") },
+            text = { Text(err) },
+            confirmButton = { TextButton(onClick = { resubmitError = null }) { Text("OK") } },
         )
     }
 }
