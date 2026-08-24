@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -73,8 +76,11 @@ fun AddProductScreen(onBack: () -> Unit) {
     var oldPrice by remember { mutableStateOf("") }
     var stock by remember { mutableStateOf("1") }
 
-    // Step 2
-    var imageUrl by remember { mutableStateOf("") }
+    // Step 2 — a gallery, not one photo: the first image is the product's
+    // primary photo, the rest appear in the detail screen's gallery.
+    var imageUrls by remember { mutableStateOf<List<String>>(emptyList()) }
+    var pastedUrl by remember { mutableStateOf("") }
+    var uploadProgress by remember { mutableStateOf("") }
 
     var publishing by remember { mutableStateOf(false) }
     var published by remember { mutableStateOf(false) }
@@ -84,41 +90,50 @@ fun AddProductScreen(onBack: () -> Unit) {
     var uploadError by remember { mutableStateOf("") }
     val context = LocalContext.current
 
-    // Photo picker: on Android 13+ this is the system picker and needs no
-    // storage permission at all; below that the platform provides the same
-    // contract backed by the document picker.
+    // Photo picker, multi-select: on Android 13+ this is the system picker
+    // and needs no storage permission at all; below that the platform backs
+    // the same contract with the document picker.
     val pickPhoto = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
+        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 5)
+    ) { uris ->
+        if (uris != null && uris.isNotEmpty()) {
             scope.launch {
                 uploading = true
                 uploadError = ""
-                val bytes = withContext(Dispatchers.IO) {
-                    runCatching {
-                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    }.getOrNull()
-                }
-                if (bytes == null || bytes.isEmpty()) {
-                    uploadError = "Could not read that photo"
-                } else {
+                val batch = uris.take(5 - imageUrls.size)
+                for ((i, uri) in batch.withIndex()) {
+                    uploadProgress = "Uploading photo ${i + 1} of ${batch.size}…"
+                    val bytes = withContext(Dispatchers.IO) {
+                        runCatching {
+                            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        }.getOrNull()
+                    }
+                    if (bytes == null || bytes.isEmpty()) {
+                        uploadError = "Could not read photo ${i + 1}. The photos already uploaded are kept."
+                        break
+                    }
                     // Phones capture 8–15 MB photos that no one needs at full
                     // resolution in a product grid: downscale to ~1600px and
                     // JPEG-compress before uploading so slow networks don't
                     // time out. Decodable images are always re-encoded as
                     // JPEG; anything that isn't decodable keeps its original
-                    // bytes and is held to the original 3 MB cap.
+                    // bytes and is held to the 3 MB cap.
                     val compressed = withContext(Dispatchers.IO) { compressForUpload(bytes) }
                     val payload = compressed?.data ?: bytes
                     if (payload.size > 3 * 1024 * 1024) {
-                        uploadError = "That photo is larger than 3 MB — pick a smaller one"
-                    } else {
-                        val mime = if (compressed != null) "image/jpeg"
-                        else context.contentResolver.getType(uri) ?: "image/jpeg"
-                        val url = V2Client.uploadImage(payload, "product.jpg", mime)
-                        if (url != null) imageUrl = url else uploadError = "Upload failed — check your connection"
+                        uploadError = "Photo ${i + 1} is larger than 3 MB — pick a smaller one"
+                        break
                     }
+                    val mime = if (compressed != null) "image/jpeg"
+                    else context.contentResolver.getType(uri) ?: "image/jpeg"
+                    val url = V2Client.uploadImage(payload, "product-${imageUrls.size + i + 1}.jpg", mime)
+                    if (url == null) {
+                        uploadError = "Uploading photo ${i + 1} failed — check your connection. Photos already uploaded are kept."
+                        break
+                    }
+                    imageUrls = imageUrls + url
                 }
+                uploadProgress = ""
                 uploading = false
             }
         }
@@ -168,21 +183,21 @@ fun AddProductScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = {
-                            val first = imageUrl.lowercase()
+                            val first = (imageUrls.firstOrNull() ?: "").lowercase()
                             val name = heuristicName(first)
                             val cat = heuristicCategory(first)
                             suggestion = name to cat
                             suggestedDescription = "Carefully sourced and inspected before listing. Fast delivery within Kampala and across Uganda, with Cash-on-Delivery available. Message the seller for more photos or a bulk discount."
                         },
-                        enabled = imageUrl.isNotBlank(),
+                        enabled = imageUrls.isNotEmpty(),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("✨ AI suggest from photo", fontWeight = FontWeight.SemiBold)
                     }
-                    if (imageUrl.isBlank()) {
+                    if (imageUrls.isEmpty()) {
                         Text(
-                            "Add a photo URL in step 3 to enable AI suggestions.",
+                            "Add a photo in step 3 to enable AI suggestions.",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -247,7 +262,9 @@ fun AddProductScreen(onBack: () -> Unit) {
                     Text("Photos", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(10.dp))
                     PrimaryButton(
-                        text = if (uploading) "Uploading…" else if (imageUrl.isBlank()) "Choose a photo" else "Change photo",
+                        text = if (uploading) uploadProgress.ifBlank { "Uploading…" }
+                            else if (imageUrls.isEmpty()) "Choose photos (up to 5)"
+                            else "Add more photos",
                         onClick = {
                             pickPhoto.launch(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -263,10 +280,48 @@ fun AddProductScreen(onBack: () -> Unit) {
                         Spacer(Modifier.height(8.dp))
                         Text(uploadError, color = ScottsTechXColors.ErrorRed, fontSize = 13.sp)
                     }
+                    // What is already uploaded, in order — the first one is
+                    // the primary photo, the rest become the gallery.
+                    if (imageUrls.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            itemsIndexed(imageUrls) { index, url ->
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(10.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        androidx.compose.foundation.layout.Box(
+                                            modifier = Modifier
+                                                .size(56.dp)
+                                                .clip(RoundedCornerShape(8.dp)),
+                                        ) {
+                                            coil.compose.AsyncImage(
+                                                model = V2Client.absoluteMediaUrl(url),
+                                                contentDescription = "Photo ${index + 1}",
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                imageUrls = imageUrls.filterIndexed { i, _ -> i != index }
+                                            },
+                                        ) {
+                                            Text("Remove", fontSize = 12.sp, color = ScottsTechXColors.ErrorRed)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
-                    InputField(value = imageUrl, onValueChange = { imageUrl = it }, label = "…or paste an image link", placeholder = "https://images.unsplash.com/photo-…")
+                    InputField(value = pastedUrl, onValueChange = { pastedUrl = it }, label = "…or paste an image link", placeholder = "https://images.unsplash.com/photo-…")
                     Spacer(Modifier.height(10.dp))
-                    if (imageUrl.isNotBlank()) {
+                    if (pastedUrl.isNotBlank()) {
                         androidx.compose.foundation.layout.Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -274,15 +329,15 @@ fun AddProductScreen(onBack: () -> Unit) {
                                 .clip(RoundedCornerShape(14.dp)),
                         ) {
                             coil.compose.AsyncImage(
-                                model = V2Client.absoluteMediaUrl(imageUrl),
-                                contentDescription = "Product preview",
+                                model = V2Client.absoluteMediaUrl(pastedUrl),
+                                contentDescription = "Pasted link preview",
                                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
-                    } else {
+                    } else if (imageUrls.isEmpty()) {
                         Text(
-                            "Tip: use the photo URL from Unsplash or your store's hosting.",
+                            "Tip: upload from the phone, or paste a link from Unsplash or your store's hosting.",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -335,11 +390,24 @@ fun AddProductScreen(onBack: () -> Unit) {
                         when (step) {
                             0 -> step = 1
                             1 -> step = 2
-                            2 -> step = 3
+                            2 -> {
+                                // The backend quality gate rejects a listing
+                                // without a photo — say so here, in the step
+                                // the photo is missing from, not as a generic
+                                // failure on the review step.
+                                val hasImage =
+                                    imageUrls.isNotEmpty() || pastedUrl.isNotBlank()
+                                if (hasImage) step = 3
+                                else uploadError = "Add at least one photo before continuing — the marketplace won't accept a listing without a picture."
+                            }
                             3 -> {
                                 publishing = true
                                 error = null
                                 scope.launch {
+                                    val allImages = imageUrls +
+                                        (pastedUrl.trim()
+                                            .takeIf { it.isNotBlank() && it !in imageUrls }
+                                            ?.let { listOf(it) } ?: emptyList())
                                     val payload = NewProductPayload(
                                         title = title,
                                         description = description,
@@ -347,8 +415,8 @@ fun AddProductScreen(onBack: () -> Unit) {
                                         priceMinor = price.toLongOrNull() ?: 0,
                                         oldPriceMinor = oldPrice.toLongOrNull(),
                                         stockQuantity = stock.toIntOrNull() ?: 1,
-                                        imageUrl = imageUrl,
-                                        mediaUrls = if (imageUrl.isNotBlank()) listOf(imageUrl) else emptyList(),
+                                        imageUrl = allImages.firstOrNull() ?: "",
+                                        mediaUrls = allImages,
                                         location = com.scottsx.app.UserPrefs.aiCity,
                                     )
                                     val created = V2Client.createSellerProduct(payload)

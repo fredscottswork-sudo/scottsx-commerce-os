@@ -7,6 +7,7 @@ import { useSeo } from './hooks/useSeo';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
+import ResetPassword from './pages/ResetPassword';
 import Home from './pages/Home';
 import ProductDetail from './pages/ProductDetail';
 import SellerStorefront from './pages/SellerStorefront';
@@ -121,6 +122,10 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={user ? <RedirectByRole /> : <Login />} />
         <Route path="/register" element={user ? <RedirectByRole /> : <Register />} />
+        {/* Destination of the password-reset email link. Always public: the
+            token is the credential, and the person's session is exactly what
+            may be compromised. */}
+        <Route path="/reset-password" element={<ResetPassword />} />
         {/* The verification gate.
             A ?token= in the URL means the visitor is arriving from the link in
             their email, and that MUST be honoured whatever the session says.

@@ -127,12 +127,66 @@ fun ProductDetailScreen(
                 .fillMaxWidth()
                 .height(320.dp),
         ) {
+            // The gallery: one photo per position. Sellers can upload up to
+            // five; buyers page through with the edge tap zones and jump
+            // with the dots. A single-photo product renders exactly like the
+            // old fixed hero image did.
+            val galleryImages = p.gallery.ifEmpty { listOf(p.imageUrl) }
+            var galleryIndex by remember { mutableIntStateOf(0) }
+            if (galleryIndex >= galleryImages.size) galleryIndex = 0
+            val shownImage = galleryImages.getOrNull(galleryIndex) ?: p.imageUrl
             AsyncImage(
-                model = p.imageUrl,
+                model = V2Client.absoluteMediaUrl(shownImage),
                 contentDescription = p.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+            if (galleryImages.size > 1) {
+                // Declared BEFORE the back/heart controls so those stay on
+                // top and keep their taps; the paging band keeps clear of
+                // the status bar and the flash-deal badge.
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarSpacer()
+                        .padding(bottom = 48.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                galleryIndex =
+                                    if (galleryIndex > 0) galleryIndex - 1 else galleryImages.size - 1
+                            },
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                galleryIndex = (galleryIndex + 1) % galleryImages.size
+                            },
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    galleryImages.forEachIndexed { i, _ ->
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (i == galleryIndex) Color.White
+                                    else Color.White.copy(alpha = 0.45f)
+                                )
+                                .clickable { galleryIndex = i },
+                        )
+                    }
+                }
+            }
             Box(
                 modifier = Modifier
                     // The hero photo deliberately runs under the status bar,

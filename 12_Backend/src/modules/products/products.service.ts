@@ -20,6 +20,7 @@ const PRODUCT_SELECT = `
     p.old_price_minor::int AS "oldPriceMinor",
     p.stock_quantity AS "stockQuantity",
     COALESCE(pm.url, p.image_url) AS "imageUrl",
+    pmm.mediaUrls,
     p.rating::float AS rating,
     p.rating_count AS "ratingCount",
     p.is_flash_deal AS "isFlashDeal",
@@ -42,6 +43,10 @@ const PRODUCT_SELECT = `
   LEFT JOIN LATERAL (
     SELECT url FROM product_media WHERE product_id = p.id ORDER BY sort_order ASC LIMIT 1
   ) pm ON true
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(json_agg(url ORDER BY sort_order), '[]'::json) AS "mediaUrls"
+    FROM product_media WHERE product_id = p.id
+  ) pmm ON true
 `;
 
 function rowsToProducts(rows: any[]) {

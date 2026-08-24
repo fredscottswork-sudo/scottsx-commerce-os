@@ -71,8 +71,23 @@ data class Product(
     val status: String = "approved",
     val rejectionReason: String? = null,
     val viewCount: Int = 0,
+    /**
+     * The full gallery in sort order (the backend's `mediaUrls`). The first
+     * entry is the same photo `imageUrl` points at, so a product with no
+     * gallery rows still renders from `imageUrl` alone.
+     */
+    val imageUrls: List<String> = emptyList(),
 ) {
     val priceUgx: Long get() = priceMinor
+
+    /** Every image worth showing, deduped, primary first. */
+    val gallery: List<String>
+        get() {
+            val list = mutableListOf<String>()
+            if (imageUrl.isNotBlank()) list.add(imageUrl)
+            for (u in imageUrls) if (u.isNotBlank() && u !in list) list.add(u)
+            return list
+        }
 
     /** Live on the marketplace and visible to buyers. */
     val isPubliclyVisible: Boolean get() = status == "approved"
@@ -112,6 +127,9 @@ data class Product(
             status = o.optStringSafe("status", "approved").ifBlank { "approved" },
             rejectionReason = o.optStringOrNull("rejectionReason"),
             viewCount = o.optInt("viewCount", 0),
+            imageUrls = o.optJSONArray("mediaUrls")
+                ?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } } }
+                ?: emptyList(),
         )
 
         fun fromJsonArray(arr: JSONArray): List<Product> =

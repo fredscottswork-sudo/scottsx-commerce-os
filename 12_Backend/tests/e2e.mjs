@@ -1339,6 +1339,128 @@ async function main() {
   }
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
+  group('Image upload & serving');
+  {
+    // A real 1x1 PNG.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const form = new FormData();
+    form.append('image', new Blob([png], { type: 'image/png' }), 'pixel.png');
+    const upRes = await fetch(`${V1}/uploads/images`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.sellerToken}` },
+      body: form,
+    });
+    const upData = await upRes.json().catch(() => ({}));
+    check(
+      'signed-in user can upload a product image',
+      upRes.status === 200 && typeof upData.url === 'string',
+      JSON.stringify(upData).slice(0, 120)
+    );
+
+    if (upData.url) {
+      // No auth header: a signed-out buyer must be able to see product photos.
+      const abs = upData.url.startsWith('http') ? upData.url : `${BASE}${upData.url}`;
+      const got = await fetch(abs);
+      const bytes = Buffer.from(await got.arrayBuffer());
+      check('uploaded image is served publicly', got.status === 200, `got ${got.status}`);
+      check('served bytes match the upload', bytes.equals(png), `${bytes.length} vs ${png.length} bytes`);
+      check(
+        'served with the original content type',
+        String(got.headers.get('content-type') || '').includes('image/png'),
+        got.headers.get('content-type') || ''
+      );
+    }
+    const anonUp = await fetch(`${V1}/uploads/images`, { method: 'POST', body: new FormData() });
+    check('anonymous image upload rejected (401)', anonUp.status === 401, `got ${anonUp.status}`);
+  }
+
+  group('Password reset');
+  {
+    const forgot = await call('/auth/forgot-password', {
+      method: 'POST',
+      body: { identifier: `buyer_${uniq}@test.ug` },
+    });
+    check(
+      'forgot-password accepts an email identifier',
+      forgot.status === 200 && forgot.data?.ok === true,
+      JSON.stringify(forgot.data).slice(0, 120)
+    );
+
+    const forgotPhone = await call('/auth/forgot-password', {
+      method: 'POST',
+      body: { identifier: '+256 700 000 000' },
+    });
+    check(
+      'forgot-password accepts the phone identifier too',
+      forgotPhone.status === 200 && forgotPhone.data?.ok === true
+    );
+
+    // The response for an unknown identifier must be byte-identical to the
+    // "ok" response minus the dev-only link, so a probe cannot learn whether
+    // an account exists.
+    const forgotUnknown = await call('/auth/forgot-password', {
+      method: 'POST',
+      body: { identifier: `nobody_${uniq}@nowhere.test` },
+    });
+    check(
+      'unknown identifier gets a constant answer (no enumeration)',
+      forgotUnknown.status === 200 && forgotUnknown.data?.ok === true && !forgotUnknown.data?.devLink,
+      JSON.stringify(forgotUnknown.data)
+    );
+
+    const link = forgot.data?.devLink || forgotPhone.data?.devLink;
+    check(
+      'non-mailer build exposes the reset link to the test',
+      typeof link === 'string' && link.includes('token='),
+      String(link).slice(0, 80)
+    );
+
+    if (link) {
+      const token = new URL(link).searchParams.get('token');
+
+      const tampered = await call('/auth/reset-password', {
+        method: 'POST',
+        body: { token: `${token}x`, password: 'NewPass99!' },
+      });
+      check('tampered token rejected', tampered.status === 400, `got ${tampered.status}`);
+
+      const reset = await call('/auth/reset-password', {
+        method: 'POST',
+        body: { token, password: 'NewPass99!' },
+      });
+      check(
+        'valid token resets the password',
+        reset.status === 200 && reset.data?.ok === true,
+        JSON.stringify(reset.data).slice(0, 120)
+      );
+
+      const replay = await call('/auth/reset-password', {
+        method: 'POST',
+        body: { token, password: 'NewPass99!' },
+      });
+      check('reset token is single-use (replay rejected)', replay.status === 400, `got ${replay.status}`);
+
+      const oldLogin = await call('/auth/login', {
+        method: 'POST',
+        body: { email: `buyer_${uniq}@test.ug`, password: 'Buyer123!' },
+      });
+      check('old password no longer works', oldLogin.status === 401, `got ${oldLogin.status}`);
+
+      const newLogin = await call('/auth/login', {
+        method: 'POST',
+        body: { email: `buyer_${uniq}@test.ug`, password: 'NewPass99!' },
+      });
+      check(
+        'new password works for the same account',
+        newLogin.status === 200 && newLogin.data?.user?.id === state.buyerId,
+        `got ${newLogin.status}`
+      );
+    }
+  }
+
   group('Cleanup');
   {
     if (state.newProductId) {

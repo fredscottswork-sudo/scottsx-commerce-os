@@ -88,6 +88,13 @@ export const authService = {
   confirmVerificationLink: (token: string) =>
     api<{ verified: boolean; token: string; user: any }>(
       '/auth/verify/link', { method: 'POST', auth: false, body: { token } }),
+  /** Constant response by design (enumeration safety) — see the backend. */
+  requestPasswordReset: (identifier: string) =>
+    api<{ ok: boolean }>(
+      '/auth/forgot-password', { method: 'POST', auth: false, body: { identifier } }),
+  resetPassword: (token: string, password: string) =>
+    api<{ ok: boolean }>(
+      '/auth/reset-password', { method: 'POST', auth: false, body: { token, password } }),
   me: () => api<{ user: any }>('/auth/me'),
   updateMe: (body: { displayName?: string; phone?: string; profilePhotoUrl?: string | null; city?: string }) =>
     api<{ user: any }>('/auth/me', { method: 'PATCH', body }),
