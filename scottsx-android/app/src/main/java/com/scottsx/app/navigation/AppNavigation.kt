@@ -18,6 +18,7 @@ import com.scottsx.app.ui.screens.BecomeSellerScreen
 import com.scottsx.app.ui.screens.BuyerHomeScreen
 import com.scottsx.app.ui.screens.CartScreen
 import com.scottsx.app.ui.screens.CmsScreen
+import com.scottsx.app.ui.screens.EditProductScreen
 import com.scottsx.app.ui.screens.ForgotPasswordScreen
 import com.scottsx.app.ui.screens.LoginScreen
 import com.scottsx.app.ui.screens.MessageThreadScreen

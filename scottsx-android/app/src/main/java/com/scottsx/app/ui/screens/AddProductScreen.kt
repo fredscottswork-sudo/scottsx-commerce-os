@@ -440,7 +440,7 @@ fun AddProductScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         color = if (selected) ScottsTechXColors.BluePrimary else MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(10.dp),
