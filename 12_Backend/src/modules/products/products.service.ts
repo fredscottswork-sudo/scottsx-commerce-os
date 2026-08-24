@@ -20,7 +20,9 @@ const PRODUCT_SELECT = `
     p.old_price_minor::int AS "oldPriceMinor",
     p.stock_quantity AS "stockQuantity",
     COALESCE(pm.url, p.image_url) AS "imageUrl",
-    pmm.mediaUrls,
+    -- Quoted: the LATERAL alias is "mediaUrls" (camelCase) and Postgres
+    -- folds unquoted references to lowercase, which would 42703.
+    pmm."mediaUrls",
     p.rating::float AS rating,
     p.rating_count AS "ratingCount",
     p.is_flash_deal AS "isFlashDeal",
