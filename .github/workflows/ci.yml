@@ -197,3 +197,32 @@ jobs:
           path: scottsx-android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+
+  scottsx-android-v2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK (v2 dashboards)
+        working-directory: scottsx-android-v2
+        # The app talks to the same backend as the website (Render API is the
+        # built-in default in V2Client).
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scottsx-v2-test-apk
+          path: scottsx-android-v2/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
