@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToLong
+import androidx.compose.animation.core.animateFloat
 
 /**
  * Shared animation + feed-state primitives for the buyer and seller

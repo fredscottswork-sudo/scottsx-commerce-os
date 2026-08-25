@@ -23,6 +23,7 @@ import com.scottsx.app.data.domain.BuyerProfile
 import com.scottsx.app.data.domain.Role
 import com.scottsx.app.ui.components.BrandLogo
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import kotlinx.coroutines.delay
 
 /**
  * Stage-1 placeholder home screen. Used by the email / Google

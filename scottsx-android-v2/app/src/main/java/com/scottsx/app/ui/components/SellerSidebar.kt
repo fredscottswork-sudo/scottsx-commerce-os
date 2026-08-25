@@ -80,6 +80,8 @@ import com.scottsx.app.data.preferences.themeState
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import coil.compose.AsyncImage
 import com.scottsx.app.data.domain.SessionCache
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 
 /** What a seller sidebar tap wants to do. */
 enum class SellerSidebarDestination {

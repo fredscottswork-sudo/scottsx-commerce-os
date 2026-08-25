@@ -28,6 +28,8 @@ import com.scottsx.app.ui.components.SettingsBlankHint
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /**
  * Generic CMS viewer used for Terms / Privacy / About / Help / Contact /

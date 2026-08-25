@@ -86,6 +86,10 @@ import com.scottsx.app.data.preferences.isSeller
 import com.scottsx.app.data.preferences.sidebarPaletteFor
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import coil.compose.AsyncImage
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.delay
 
 /** Destination of a sidebar nav item — opaque to the drawer. */
 enum class SidebarDestination {

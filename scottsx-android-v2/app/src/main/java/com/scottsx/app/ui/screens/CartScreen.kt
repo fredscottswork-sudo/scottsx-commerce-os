@@ -42,6 +42,7 @@ import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import androidx.compose.runtime.mutableStateOf
 
 @Composable
 fun CartScreen(
