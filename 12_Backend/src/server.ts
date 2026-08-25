@@ -11,10 +11,7 @@
 import 'dotenv/config';
 import { buildApp } from './app.js';
 import { initDatabase, closeDatabase, getPool } from './db.js';
-<<<<<<< HEAD
 import { mailConfigured, devCodesAllowed } from './mail.js';
-=======
->>>>>>> origin/master
 
 async function main() {
   await initDatabase();
@@ -25,7 +22,6 @@ async function main() {
   await app.listen({ port, host: '0.0.0.0' });
   console.log(`[server] ScottsTechX API listening on http://0.0.0.0:${port}`);
 
-<<<<<<< HEAD
   // Say plainly which verification mode this server is in. A silent fallback
   // is how "anyone can verify any address" ships unnoticed.
   if (mailConfigured()) {
@@ -44,8 +40,6 @@ async function main() {
     );
   }
 
-=======
->>>>>>> origin/master
   const shutdown = async (signal: string) => {
     console.log(`[server] ${signal} received — shutting down`);
     await app.close().catch(() => undefined);

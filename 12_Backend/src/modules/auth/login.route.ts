@@ -18,7 +18,6 @@ import {
   requireAuth,
   authedUser,
 } from '../../auth.js';
-<<<<<<< HEAD
 import {
   UnauthorizedError,
   ConflictError,
@@ -27,9 +26,6 @@ import {
 } from '../../errors.js';
 import { issueVerification } from './verify.route.js';
 import { verificationUndeliverable } from '../../mail.js';
-=======
-import { UnauthorizedError, ConflictError, NotFoundError } from '../../errors.js';
->>>>>>> origin/master
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -42,17 +38,12 @@ const registerSchema = z.object({
   city: z.string().optional().default(''),
 });
 
-<<<<<<< HEAD
 // The identifier field doubles as the app's single "Email or Phone Number"
 // input: an address is looked up as an email, anything else is treated as a
 // phone number and matched against users who registered one. The field is
 // kept named `email` so existing clients (and the web) keep working.
 const loginSchema = z.object({
   email: z.string().trim().min(1).max(254),
-=======
-const loginSchema = z.object({
-  email: z.string().email(),
->>>>>>> origin/master
   password: z.string().min(1),
 });
 
@@ -92,7 +83,6 @@ export default async function registerAuthRoute(app: FastifyInstance) {
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [body.email]);
     if ((existing.rowCount ?? 0) > 0) throw new ConflictError('Email already registered');
 
-<<<<<<< HEAD
     // Refuse to create an account we could never verify. Previously a server
     // with no mailer answered by returning the code in the response body,
     // which meant anyone could "verify" an address they cannot read - the
@@ -115,12 +105,6 @@ export default async function registerAuthRoute(app: FastifyInstance) {
       // proves they can read that inbox.
       `INSERT INTO users (email, password_hash, display_name, phone, role, city, email_verified)
        VALUES ($1, $2, $3, $4, $5, $6, false)
-=======
-    const hash = await hashPassword(body.password);
-    const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, display_name, phone, role, city, email_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, true)
->>>>>>> origin/master
        RETURNING *`,
       [body.email, hash, body.displayName, body.phone, body.role, body.city]
     );
@@ -135,7 +119,6 @@ export default async function registerAuthRoute(app: FastifyInstance) {
       );
     }
 
-<<<<<<< HEAD
     // Mail the verification code. The account exists and is usable for
     // browsing, but email_verified stays false until the code is confirmed —
     // and selling already requires a verified address.
@@ -157,15 +140,10 @@ export default async function registerAuthRoute(app: FastifyInstance) {
         devLink: issued.devLink,
       },
     });
-=======
-    const token = await tokenForUser(user);
-    return reply.code(201).send({ token, user: publicUser(user) });
->>>>>>> origin/master
   });
 
   app.post('/api/v1/auth/login', async (request, reply) => {
     const body = loginSchema.parse(request.body);
-<<<<<<< HEAD
     const identifier = body.email;
 
     // Resolve the identifier to a user without ever echoing which one
@@ -191,10 +169,6 @@ export default async function registerAuthRoute(app: FastifyInstance) {
       }
     }
 
-=======
-    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [body.email]);
-    const user = rows[0];
->>>>>>> origin/master
     if (!user || !user.password_hash) throw new UnauthorizedError('Invalid email or password');
     const ok = await comparePassword(body.password, user.password_hash);
     if (!ok) throw new UnauthorizedError('Invalid email or password');

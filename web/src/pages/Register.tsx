@@ -5,7 +5,6 @@ import { useToast } from '../store/ToastContext';
 import { Btn, Field, Input, Select } from '../components/ui';
 import { ApiError } from '../api/client';
 import GoogleButton from '../components/GoogleButton';
-<<<<<<< HEAD
 import { BrandLockup } from '../components/BrandLogo';
 import { useSeo } from '../hooks/useSeo';
 
@@ -41,20 +40,12 @@ export default function Register() {
   });
 
   const { register, loginWithFirebase } = useAuth();
-=======
-
-export default function Register() {
-  const { register } = useAuth();
->>>>>>> origin/master
   const { toast } = useToast();
   const navigate = useNavigate();
   const [form, setForm] = useState({ displayName: '', email: '', phone: '', password: '', confirm: '', role: 'buyer', storeName: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-<<<<<<< HEAD
   /** Set once Firebase has emailed a verification link. */
-=======
->>>>>>> origin/master
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -65,7 +56,6 @@ export default function Register() {
     if (form.password.length < 6) return setError('Password must be at least 6 characters');
     if (form.password !== form.confirm) return setError('Passwords do not match');
     setBusy(true);
-<<<<<<< HEAD
     const email = form.email.trim();
     const profile = {
       displayName: form.displayName,
@@ -132,18 +122,12 @@ export default function Register() {
     try {
       await register({
         email,
-=======
-    try {
-      await register({
-        email: form.email.trim(),
->>>>>>> origin/master
         password: form.password,
         displayName: form.displayName,
         phone: form.phone,
         role: form.role as 'buyer' | 'seller',
         storeName: form.storeName,
       } as any);
-<<<<<<< HEAD
       // Both paths email a link now, so the message is the same either way.
       toast('Account created — check your email for the verification link', 'success');
       // The fallback path is unverified too, so it goes through the same gate.
@@ -161,12 +145,6 @@ export default function Register() {
       } else {
         setError(err instanceof ApiError ? err.message : 'Registration failed');
       }
-=======
-      toast('Account created', 'success');
-      navigate('/');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Registration failed');
->>>>>>> origin/master
     } finally {
       setBusy(false);
     }
@@ -175,15 +153,9 @@ export default function Register() {
   return (
     <div className="auth-wrap">
       <div className="auth-brand">
-<<<<<<< HEAD
         <BrandLockup width={300} className="auth-lockup" />
         <h1 className="auth-tagline">Join the marketplace built for Uganda.</h1>
         <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
-=======
-        <div style={{ fontSize: 40, marginBottom: 12 }}>🛍️</div>
-        <h1 style={{ fontSize: 34, margin: 0 }}>Join ScottsTechX</h1>
-        <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 420 }}>
->>>>>>> origin/master
           One account for web and mobile. Buy from local sellers or open your own store —
           the same backend powers every screen.
         </p>

@@ -3,7 +3,6 @@
  * One fetch wrapper, one token source, normalized errors. Every page uses this.
  */
 
-<<<<<<< HEAD
 // Trailing slashes are stripped: a VITE_API_URL of "https://api.example.com/"
 // would otherwise build "https://api.example.com//api/v1", which the backend
 // answers with 404 on every single request. Easy to type, painful to diagnose.
@@ -52,18 +51,12 @@ export const API_ROOT = `${BASE}/api/v1`;
 /** True when the deployment is relying on the fallback rather than config. */
 export const API_URL_IS_FALLBACK = !CONFIGURED && BASE === FALLBACK_API;
 
-=======
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) || '';
-export const API_ROOT = `${BASE}/api/v1`;
-
->>>>>>> origin/master
 const TOKEN_KEY = 'stx_token';
 const USER_KEY = 'stx_user';
 
 export class ApiError extends Error {
   status: number;
   issues?: unknown[];
-<<<<<<< HEAD
   /** Seconds to wait, when the server sent a 429 with Retry-After. */
   retryAfterSec?: number;
   constructor(status: number, message: string, issues?: unknown[], retryAfterSec?: number) {
@@ -71,12 +64,6 @@ export class ApiError extends Error {
     this.status = status;
     this.issues = issues;
     this.retryAfterSec = retryAfterSec;
-=======
-  constructor(status: number, message: string, issues?: unknown[]) {
-    super(message);
-    this.status = status;
-    this.issues = issues;
->>>>>>> origin/master
   }
 }
 
@@ -117,7 +104,6 @@ export interface StoredUser {
 /** Global handler so any 401 can redirect (wired in App.tsx). */
 export const onUnauthorized: { current: (() => void) | null } = { current: null };
 
-<<<<<<< HEAD
 /**
  * Global handler for the backend's EMAIL_NOT_VERIFIED refusal (wired in
  * App.tsx). Distinct from onUnauthorized because the session is still good —
@@ -125,8 +111,6 @@ export const onUnauthorized: { current: (() => void) | null } = { current: null 
  */
 export const onEmailUnverified: { current: (() => void) | null } = { current: null };
 
-=======
->>>>>>> origin/master
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -134,7 +118,6 @@ interface RequestOptions {
   rawBody?: boolean;
 }
 
-<<<<<<< HEAD
 /**
  * Uploaded images are stored as API-relative paths ("/api/v1/uploads/images/…")
  * so the same row works on localhost, a preview host and production without
@@ -173,8 +156,6 @@ function rewriteMedia(node: unknown, depth = 0): void {
   }
 }
 
-=======
->>>>>>> origin/master
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true, rawBody = false } = opts;
   const headers: Record<string, string> = {};
@@ -195,7 +176,6 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
     throw new ApiError(0, 'Network error — check your connection and try again.');
   }
 
-<<<<<<< HEAD
   // A JSON API must answer with JSON. If the static host's SPA catch-all (or a
   // captive portal, or a proxy error page) answers instead, the body is HTML
   // with a 200. Treating that as "empty body" is what turned a misconfigured
@@ -203,13 +183,10 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   const contentType = res.headers.get('content-type') || '';
   const looksLikeJson = contentType.includes('json');
 
-=======
->>>>>>> origin/master
   let data: any = null;
   try {
     data = await res.json();
   } catch {
-<<<<<<< HEAD
     /* empty or non-JSON body — handled below */
   }
 
@@ -219,26 +196,19 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
       'The server did not return data. The app is not connected to its API — ' +
         'please try again shortly.'
     );
-=======
-    /* empty body */
->>>>>>> origin/master
   }
 
   if (!res.ok) {
     if (res.status === 401 && auth) onUnauthorized.current?.();
-<<<<<<< HEAD
     // The account is real but has not proven its address. Keep the session and
     // send the user to the gate instead of showing a bare error.
     if (res.status === 403 && data?.code === 'EMAIL_NOT_VERIFIED') {
       onEmailUnverified.current?.();
     }
-=======
->>>>>>> origin/master
     const message =
       (data && (data.error as string)) ||
       (data && data.message as string) ||
       `Request failed (${res.status})`;
-<<<<<<< HEAD
     throw new ApiError(
       res.status,
       message,
@@ -247,10 +217,6 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
     );
   }
   rewriteMedia(data);
-=======
-    throw new ApiError(res.status, message, data?.issues);
-  }
->>>>>>> origin/master
   return data as T;
 }
 
@@ -262,12 +228,9 @@ export function multipart(path: string, form: FormData): Promise<unknown> {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401) onUnauthorized.current?.();
-<<<<<<< HEAD
       if (res.status === 403 && (data as any)?.code === 'EMAIL_NOT_VERIFIED') {
         onEmailUnverified.current?.();
       }
-=======
->>>>>>> origin/master
       throw new ApiError(res.status, (data as any)?.error || `Upload failed (${res.status})`);
     }
     return data;

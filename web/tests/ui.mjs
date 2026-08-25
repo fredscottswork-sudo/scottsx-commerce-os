@@ -39,16 +39,12 @@ const indexHtml = readFileSync(join(DIST, 'index.html'), 'utf8');
 const jsMatch = indexHtml.match(/src="(\/assets\/index-[^"]+\.js)"/);
 const cssMatch = indexHtml.match(/href="(\/assets\/index-[^"]+\.css)"/);
 if (!jsMatch) { console.error('Could not find the JS bundle in index.html'); process.exit(1); }
-<<<<<<< HEAD
 // The entry is an ES module. Since the Firebase SDK became a lazily-imported
 // chunk, Rollup appends `export{...}` to the entry so the chunk can share its
 // helpers — a token window.eval() cannot parse. The export is meaningless in
 // the eval context (jsdom never loads the lazy chunks), so strip it.
 const bundleJs = readFileSync(join(DIST, jsMatch[1]), 'utf8')
   .replace(/export\s*\{[^}]*\}\s*;?\s*$/, '');
-=======
-const bundleJs = readFileSync(join(DIST, jsMatch[1]), 'utf8');
->>>>>>> origin/master
 const bundleCss = cssMatch ? readFileSync(join(DIST, cssMatch[1]), 'utf8') : '';
 
 // ── Backend helpers ─────────────────────────────────────────────────────────
@@ -101,7 +97,6 @@ async function mount(route, session = null, { settleMs = 1400, google = 'block' 
   // Real network: proxy the app's relative /api/v1 calls to the live backend.
   window.fetch = (input, init) => {
     const url = typeof input === 'string' ? input : input.url;
-<<<<<<< HEAD
 
     // Lazily-imported chunks (e.g. the Firebase SDK) are requested as
     // absolute http://localhost:5173/assets/... URLs, because that is the
@@ -125,8 +120,6 @@ async function mount(route, session = null, { settleMs = 1400, google = 'block' 
       }
     }
 
-=======
->>>>>>> origin/master
     const absolute = url.startsWith('http') ? url : `${API_BASE}${url}`;
     return fetch(absolute, init);
   };
@@ -276,7 +269,6 @@ const reg = await apiFetch('/auth/register', {
 if (reg.status !== 201) { console.error('Could not create the test buyer', reg); process.exit(1); }
 const buyer = reg.body;
 const buyerAuth = { authorization: `Bearer ${buyer.token}` };
-<<<<<<< HEAD
 
 // Registration now issues an UNVERIFIED account and the backend gates every
 // private route until the address is proven. In dev the code comes back in
@@ -292,8 +284,6 @@ const buyerAuth = { authorization: `Bearer ${buyer.token}` };
   // park every buyer page on /verify-email.
   buyer.user = { ...buyer.user, ...(vc.body?.user || {}), emailVerified: true };
 }
-=======
->>>>>>> origin/master
 const sellerAuth = { authorization: `Bearer ${seller.token}` };
 
 // ── 1. Public marketplace ───────────────────────────────────────────────────
