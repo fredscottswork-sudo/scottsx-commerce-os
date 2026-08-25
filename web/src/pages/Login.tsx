@@ -60,6 +60,12 @@ export default function Login() {
           <p className="muted mt-16" style={{ textAlign: 'center' }}>
             New here? <Link to="/register">Create an account</Link>
           </p>
+<<<<<<< HEAD
+=======
+          <p className="muted" style={{ textAlign: 'center', fontSize: 12.5 }}>
+            Demo admin: admin@scottstechx.ug / Admin123! · Seller: techhub@scottstechx.ug / Seller123!
+          </p>
+>>>>>>> origin/master
         </div>
       </div>
     </div>

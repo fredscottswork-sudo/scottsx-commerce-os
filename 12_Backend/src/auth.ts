@@ -9,7 +9,10 @@ import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { UnauthorizedError, ForbiddenError } from './errors.js';
+<<<<<<< HEAD
 import { getPool } from './db.js';
+=======
+>>>>>>> origin/master
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const JWT_ISSUER = 'scottstechx';
@@ -66,6 +69,7 @@ export async function tokenForUser(user: {
   });
 }
 
+<<<<<<< HEAD
 /**
  * Routes an unverified account may still call.
  *
@@ -126,20 +130,30 @@ async function isEmailVerified(userId: string): Promise<boolean> {
  * protected without anyone remembering to protect it — which is the only
  * version of this that survives contact with a growing codebase.
  */
+=======
+/** Fastify preHandler — attach `request.user` from the bearer token. */
+>>>>>>> origin/master
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   const header = request.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return reply.code(401).send({ error: 'Missing bearer token' });
   }
+<<<<<<< HEAD
   let user: AuthUser;
   try {
     const payload = await verifyJwt(header.slice('Bearer '.length));
     user = {
+=======
+  try {
+    const payload = await verifyJwt(header.slice('Bearer '.length));
+    (request as unknown as { user: AuthUser }).user = {
+>>>>>>> origin/master
       id: String(payload.sub),
       email: String(payload.email ?? ''),
       role: (payload.role as 'buyer' | 'seller') ?? 'buyer',
       name: String(payload.name ?? ''),
     };
+<<<<<<< HEAD
     (request as unknown as { user: AuthUser }).user = user;
   } catch {
     return reply.code(401).send({ error: 'Invalid or expired token' });
@@ -159,6 +173,11 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
       email: user.email,
     });
   }
+=======
+  } catch {
+    return reply.code(401).send({ error: 'Invalid or expired token' });
+  }
+>>>>>>> origin/master
   return undefined;
 }
 

@@ -28,6 +28,7 @@ export default function Inventory() {
 
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
+<<<<<<< HEAD
   // The backend PATCH is a full-form update and the gallery is full-replace,
   // so the form carries the whole photo set — first slot is the main image.
   const [form, setForm] = useState({ title: '', description: '', priceMinor: 0, stockQuantity: 0, category: '', brand: '', gallery: [] as string[] });
@@ -51,6 +52,11 @@ export default function Inventory() {
     setForm({ ...form, gallery: [u, ...g] });
   };
 
+=======
+  const [form, setForm] = useState({ title: '', description: '', priceMinor: 0, stockQuantity: 0, category: '', brand: '', imageUrl: '' });
+  const [saving, setSaving] = useState(false);
+
+>>>>>>> origin/master
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -91,13 +97,19 @@ export default function Inventory() {
     setForm({
       title: p.title, description: p.description || '', priceMinor: p.priceMinor,
       stockQuantity: p.stockQuantity, category: p.category || '', brand: p.brand || '',
+<<<<<<< HEAD
       gallery: [...galleryOf(p)],
     });
     setNewPhotoUrl('');
+=======
+      imageUrl: p.imageUrl || '',
+    });
+>>>>>>> origin/master
   };
 
   const saveEdit = async () => {
     if (!editing) return;
+<<<<<<< HEAD
     if (form.gallery.length === 0) {
       toast('Keep at least one photo — listings without a real image cannot be published', 'error');
       return;
@@ -115,6 +127,15 @@ export default function Inventory() {
         form.title !== editing.title ||
         form.description !== (editing.description || '') ||
         form.gallery.join('\u0000') !== galleryOf(editing).join('\u0000');
+=======
+    setSaving(true);
+    try {
+      await sellerService.updateProduct(editing.id, form);
+      const contentChanged =
+        form.title !== editing.title ||
+        form.description !== (editing.description || '') ||
+        form.imageUrl !== (editing.imageUrl || '');
+>>>>>>> origin/master
       toast(
         contentChanged && editing.status === 'approved'
           ? 'Saved — content edits go back to admin review before they show publicly'
@@ -306,6 +327,7 @@ export default function Inventory() {
             <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
           </Field>
         </div>
+<<<<<<< HEAD
         <Field label="Photos" hint="The first photo is the main image; the rest appear in the product gallery. Public http(s) links.">
           {form.gallery.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
@@ -342,6 +364,12 @@ export default function Inventory() {
             </Btn>
           </div>
         </Field>
+=======
+        <Field label="Image URL" hint="Must be a public http(s) link. Listings without a real image cannot be published.">
+          <Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
+        </Field>
+        {form.imageUrl && <img src={form.imageUrl} alt="" className="img-preview" />}
+>>>>>>> origin/master
       </Modal>
 
       <ConfirmModal

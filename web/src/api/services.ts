@@ -48,6 +48,7 @@ export const authService = {
   login: (email: string, password: string) =>
     api<{ token: string; user: any }>('/auth/login', { method: 'POST', auth: false, body: { email, password } }),
   register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string }) =>
+<<<<<<< HEAD
     api<{
       token: string;
       user: any;
@@ -95,12 +96,16 @@ export const authService = {
   resetPassword: (token: string, password: string) =>
     api<{ ok: boolean }>(
       '/auth/reset-password', { method: 'POST', auth: false, body: { token, password } }),
+=======
+    api<{ token: string; user: any }>('/auth/register', { method: 'POST', auth: false, body }),
+>>>>>>> origin/master
   me: () => api<{ user: any }>('/auth/me'),
   updateMe: (body: { displayName?: string; phone?: string; profilePhotoUrl?: string | null; city?: string }) =>
     api<{ user: any }>('/auth/me', { method: 'PATCH', body }),
   /** Exchange a Google id_token for a ScottsTechX session. */
   google: (idToken: string) =>
     api<{ token: string; user: any }>('/auth/google', { method: 'POST', auth: false, body: { idToken } }),
+<<<<<<< HEAD
   /**
    * Exchange a *Firebase* ID token for a ScottsTechX session.
    *
@@ -115,6 +120,8 @@ export const authService = {
     api<{ token: string; user: any; emailVerified?: boolean }>('/auth/firebase/sign-in', {
       method: 'POST', auth: false, body: { idToken, ...(profile ?? {}) },
     }),
+=======
+>>>>>>> origin/master
   upgradeToSeller: () => api<{ token: string; user: any }>('/auth/upgrade-to-seller', { method: 'POST' }),
   uploadPhoto: (file: File) => {
     const form = new FormData();

@@ -16,6 +16,7 @@ async function call(path,{method='GET',token,body}={}){const h={'content-type':'
 const s=Date.now();
 const buyer=await call('/auth/register',{method:'POST',body:{email:`andro_${s}@t.test`,password:'Passw0rd!',displayName:'Android Buyer',role:'buyer'}});
 const bt=buyer.data.token;
+<<<<<<< HEAD
 {
   // Registration now issues an unverified account (the backend gates every
   // private route until the address is proven). In dev the code comes back in
@@ -25,6 +26,8 @@ const bt=buyer.data.token;
   const cf=await call('/auth/verify/confirm',{method:'POST',token:bt,body:{code}});
   if(cf.status!==200) throw new Error(`fixture could not verify buyer: ${cf.status} ${JSON.stringify(cf.data)}`);
 }
+=======
+>>>>>>> origin/master
 const seller=await call('/auth/login',{method:'POST',body:{email:'techhub@scottstechx.ug',password:'Seller123!'}});
 const st=seller.data.token, sid=seller.data.user.id;
 
@@ -297,6 +300,7 @@ ck('checkout is cash on delivery', done.data.paymentMode === 'cod', done.data.pa
 ck('the cart is empty after checking out',
    (await call('/me/cart', { token: bt })).data.itemCount === 0);
 
+<<<<<<< HEAD
 console.log('\n[dashboard — the payload the app dashboards render]');
 {
   const d = await call('/seller/dashboard/stats', { token: st });
@@ -333,6 +337,9 @@ console.log('\n[dashboard — the payload the app dashboards render]');
 
 const admin=await call('/auth/login',{method:'POST',body:{email:'admin@scottstechx.ug',password:'Admin123!'}});
 
+=======
+const admin=await call('/auth/login',{method:'POST',body:{email:'admin@scottstechx.ug',password:'Admin123!'}});
+>>>>>>> origin/master
 // That checkout really sold a unit — give it back so the suite stays repeatable.
 {
   const dir = await call('/admin/users?role=seller&pageSize=100', { token: admin.data.token });

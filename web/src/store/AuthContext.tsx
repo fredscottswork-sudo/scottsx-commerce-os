@@ -1,20 +1,30 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+<<<<<<< HEAD
 import { rememberDevCode, rememberDevLink } from '../lib/devCode';
 import { authService } from '../api/services';
 import { forgetGoogleSession } from '../lib/google';
 import { tokenStore, userStore, onUnauthorized, onEmailUnverified, type StoredUser } from '../api/client';
+=======
+import { authService } from '../api/services';
+import { forgetGoogleSession } from '../lib/google';
+import { tokenStore, userStore, onUnauthorized, type StoredUser } from '../api/client';
+>>>>>>> origin/master
 
 interface AuthState {
   user: StoredUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<StoredUser>;
+<<<<<<< HEAD
   loginWithFirebase: (
     idToken: string,
     profile?: { displayName?: string; phone?: string; role?: string; storeName?: string }
   ) => Promise<StoredUser>;
   register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string })
     => Promise<{ required: boolean; sent: boolean; devCode?: string } | undefined>;
+=======
+  register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string }) => Promise<void>;
+>>>>>>> origin/master
   logout: () => void;
   refresh: () => Promise<void>;
   setUser: (u: StoredUser) => void;
@@ -49,7 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const res = await authService.login(email, password);
+<<<<<<< HEAD
       if (!res?.token) throw new Error('The server did not return a session. Please try again.');
+=======
+>>>>>>> origin/master
       tokenStore.set(res.token);
       setUser(toStoredUser(res.user));
     } finally {
@@ -57,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [setUser]);
 
+<<<<<<< HEAD
   /**
    * Exchange a Firebase ID token for our own session.
    *
@@ -83,12 +97,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setUser]
   );
 
+=======
+>>>>>>> origin/master
   const loginWithGoogle = useCallback(
     async (idToken: string) => {
       setLoading(true);
       try {
         const res = await authService.google(idToken);
+<<<<<<< HEAD
         if (!res?.token) throw new Error('The server did not return a session. Please try again.');
+=======
+>>>>>>> origin/master
         tokenStore.set(res.token);
         const stored = toStoredUser(res.user);
         setUser(stored);
@@ -105,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       try {
         const res = await authService.register(body);
+<<<<<<< HEAD
         if (!res?.token) throw new Error('The server did not return a session. Please try again.');
         tokenStore.set(res.token);
         setUser(toStoredUser(res.user));
@@ -113,6 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         rememberDevCode(res.verification?.devCode);
         rememberDevLink(res.verification?.devLink);
         return res.verification;
+=======
+        tokenStore.set(res.token);
+        setUser(toStoredUser(res.user));
+>>>>>>> origin/master
       } finally {
         setLoading(false);
       }
@@ -137,8 +161,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setUser]);
 
   const value = useMemo(
+<<<<<<< HEAD
     () => ({ user, loading, login, loginWithGoogle, loginWithFirebase, register, logout, refresh, setUser }),
     [user, loading, login, loginWithGoogle, loginWithFirebase, register, logout, refresh, setUser]
+=======
+    () => ({ user, loading, login, loginWithGoogle, register, logout, refresh, setUser }),
+    [user, loading, login, loginWithGoogle, register, logout, refresh, setUser]
+>>>>>>> origin/master
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -156,6 +185,7 @@ onUnauthorized.current = () => {
   userStore.set(null);
   window.dispatchEvent(new CustomEvent('stx:unauthorized'));
 };
+<<<<<<< HEAD
 
 // Wire the global EMAIL_NOT_VERIFIED handler. The session stays — the user
 // needs it to verify — but the cached user is corrected so the route guards
@@ -165,3 +195,5 @@ onEmailUnverified.current = () => {
   if (current && current.emailVerified) userStore.set({ ...current, emailVerified: false });
   window.dispatchEvent(new CustomEvent('stx:email-unverified'));
 };
+=======
+>>>>>>> origin/master

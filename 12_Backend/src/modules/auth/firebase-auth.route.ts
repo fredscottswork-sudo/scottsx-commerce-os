@@ -9,6 +9,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
+<<<<<<< HEAD
 import { tokenForUser, requireAuth, authedUser, markVerified } from '../../auth.js';
 import { verifyIdToken, sendVerificationEmailLink, firebaseEmailVerified } from '../../firebase/admin.js';
 import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../../errors.js';
@@ -26,6 +27,14 @@ const signInSchema = z.object({
   storeName: z.string().trim().max(160).optional(),
 });
 type SignInBody = z.infer<typeof signInSchema>;
+=======
+import { tokenForUser, requireAuth, authedUser } from '../../auth.js';
+import { verifyIdToken, sendVerificationEmailLink, firebaseEmailVerified } from '../../firebase/admin.js';
+import { ForbiddenError, NotFoundError, UnauthorizedError } from '../../errors.js';
+import { publicUser } from './login.route.js';
+
+const signInSchema = z.object({ idToken: z.string().min(10) });
+>>>>>>> origin/master
 
 /** Wrap Firebase verification failures in a clean 401 for the client. */
 function verificationError(err: unknown): never {
@@ -37,6 +46,7 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
   const pool = getPool();
 
   /** Upsert a user row from a verified Firebase token. */
+<<<<<<< HEAD
   async function upsertFromFirebase(decoded: Record<string, any>, profile: Partial<SignInBody> = {}) {
     const uid = String(decoded.uid);
     const email = String(decoded.email ?? '').toLowerCase();
@@ -50,6 +60,12 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
     // when creating a brand-new row.
     const name = String(decoded.name ?? '');
     const fallbackName = email.split('@')[0] || 'ScottsTechX user';
+=======
+  async function upsertFromFirebase(decoded: Record<string, any>) {
+    const uid = String(decoded.uid);
+    const email = String(decoded.email ?? '');
+    const name = String(decoded.name ?? decoded.email?.split('@')[0] ?? '');
+>>>>>>> origin/master
     const photo = decoded.picture ? String(decoded.picture) : null;
 
     const existing = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
@@ -58,6 +74,7 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
     const emailVerified = decoded.email_verified === true;
 
     if (user) {
+<<<<<<< HEAD
       if (user.email !== email) {
         // The address on this Firebase identity changed. Overwriting blindly
         // hits the UNIQUE(email) index and surfaces as a raw 500 "duplicate
@@ -67,15 +84,21 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
           throw new ConflictError('That email address already belongs to another ScottsTechX account');
         }
       }
+=======
+>>>>>>> origin/master
       const { rows } = await pool.query(
         `UPDATE users
          SET email = COALESCE(NULLIF($2,''), email),
              display_name = COALESCE(NULLIF($3,''), display_name),
              profile_photo_url = COALESCE($4, profile_photo_url),
+<<<<<<< HEAD
              -- Verification only ever moves forward. Assigning the claim
              -- directly would let a stale token un-verify someone who already
              -- confirmed their address through our own code flow.
              email_verified = users.email_verified OR $5,
+=======
+             email_verified = $5,
+>>>>>>> origin/master
              updated_at = now()
          WHERE id = $1
          RETURNING *`,
@@ -88,8 +111,12 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
         const { rows } = await pool.query(
           `UPDATE users
            SET firebase_uid = $2, display_name = COALESCE(NULLIF($3,''), display_name),
+<<<<<<< HEAD
                profile_photo_url = COALESCE($4, profile_photo_url),
                email_verified = users.email_verified OR $5,
+=======
+               profile_photo_url = COALESCE($4, profile_photo_url), email_verified = $5,
+>>>>>>> origin/master
                updated_at = now()
            WHERE id = $1 RETURNING *`,
           [byEmail.rows[0].id, uid, name, photo, emailVerified]
@@ -97,6 +124,7 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
         user = rows[0];
       } else {
         const { rows } = await pool.query(
+<<<<<<< HEAD
           `INSERT INTO users (email, display_name, profile_photo_url, firebase_uid, email_verified, role, phone)
            VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING *`,
@@ -121,6 +149,14 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
             [rows[0].id, profile.storeName || profile.displayName || 'My Store']
           );
         }
+=======
+          `INSERT INTO users (email, display_name, profile_photo_url, firebase_uid, email_verified, role)
+           VALUES ($1, $2, $3, $4, $5, 'buyer')
+           RETURNING *`,
+          [email, name, photo, uid, emailVerified]
+        );
+        user = rows[0];
+>>>>>>> origin/master
       }
     }
     return user;
@@ -134,6 +170,7 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
     } catch (err) {
       verificationError(err);
     }
+<<<<<<< HEAD
     const user = await upsertFromFirebase(decoded, body);
     // A user who verified via the emailed link arrives here with the claim
     // already true; record it so the gate opens on the next request.
@@ -146,6 +183,11 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
       // having to re-read the token itself.
       emailVerified: user.email_verified === true,
     });
+=======
+    const user = await upsertFromFirebase(decoded);
+    const token = await tokenForUser(user);
+    return reply.code(200).send({ token, user: publicUser(user) });
+>>>>>>> origin/master
   });
 
   app.post('/api/v1/auth/firebase/send-verification-email', async (request) => {

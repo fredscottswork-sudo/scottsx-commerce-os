@@ -7,7 +7,10 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+<<<<<<< HEAD
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+=======
+>>>>>>> origin/master
 import { initializeApp, cert, type App } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getMessaging as adminMessaging, type Messaging as FirebaseMessaging } from 'firebase-admin/messaging';
@@ -77,6 +80,7 @@ export function getMessaging(): FirebaseMessaging | null {
   }
 }
 
+<<<<<<< HEAD
 /**
  * Firebase project id. Public by design — it is embedded in every client
  * bundle and in the token's own `aud` claim.
@@ -161,6 +165,17 @@ export async function verifyIdToken(idToken: string): Promise<Record<string, any
 
   // Admin SDK exposes the subject as `uid`; mirror that so callers are identical.
   return { ...payload, uid: String(payload.sub) } as Record<string, any>;
+=======
+/** Verify a Firebase idToken and return its payload (throws on failure). */
+export async function verifyIdToken(idToken: string): Promise<Record<string, any>> {
+  if (!firebaseReady()) {
+    throw new ServiceUnavailableError(
+      'Firebase is not configured: place your service account JSON at 12_Backend/secrets/firebase-admin-key.json'
+    );
+  }
+  const decoded = await firebaseAuth().verifyIdToken(idToken);
+  return decoded as unknown as Record<string, any>;
+>>>>>>> origin/master
 }
 
 /** Send a Firebase email-verification link to the token's email. */

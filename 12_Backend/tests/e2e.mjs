@@ -96,6 +96,7 @@ async function main() {
     state.buyerToken = buyer.data?.token;
     state.buyerId = buyer.data?.user?.id;
 
+<<<<<<< HEAD
     // Registration now issues an UNVERIFIED account and the backend gates all
     // private routes until the address is proven. In dev the code comes back
     // in the response, so the fixture verifies itself before continuing.
@@ -108,12 +109,15 @@ async function main() {
       check('buyer verifies email with the dev code', vc.status === 200, JSON.stringify(vc.data).slice(0, 120));
     }
 
+=======
+>>>>>>> origin/master
     const badLogin = await call('/auth/login', {
       method: 'POST',
       body: { email: 'admin@scottstechx.ug', password: 'wrong-password' },
     });
     check('wrong password rejected', badLogin.status === 401, `got ${badLogin.status}`);
 
+<<<<<<< HEAD
     // The app's single identifier field accepts a phone number too: the
     // buyer above registered one, so login by phone must reach the same
     // account — and a phone nobody registered must fail with the same
@@ -133,6 +137,8 @@ async function main() {
     });
     check('login by unknown phone number rejected (401)', unknownPhone.status === 401, `got ${unknownPhone.status}`);
 
+=======
+>>>>>>> origin/master
     const noAuth = await call('/admin/stats');
     check('admin route rejects anonymous', noAuth.status === 401, `got ${noAuth.status}`);
 
@@ -836,6 +842,7 @@ async function main() {
       method: 'POST',
       body: { email: `nosy_${uniq}@test.ug`, password: 'Nosy1234!', displayName: 'Nosy' },
     });
+<<<<<<< HEAD
     // Verify the outsider too — an unverified account would be refused with
     // 403 (the gate) before the ownership check could answer 404, and this
     // test is about ownership, not verification.
@@ -844,6 +851,8 @@ async function main() {
       token: outsider.data?.token,
       body: { code: outsider.data?.verification?.devCode },
     });
+=======
+>>>>>>> origin/master
     const peek = await call(`/conversations/${state.convId}/messages`, { token: outsider.data?.token });
     check('outsider cannot read the thread', peek.status === 404, `got ${peek.status}`);
 
@@ -1339,6 +1348,7 @@ async function main() {
   }
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
+<<<<<<< HEAD
   // ── Gallery editing (PATCH carries the full photo set) ────────────────────
   group('Product gallery editing');
   {
@@ -1536,6 +1546,8 @@ async function main() {
     }
   }
 
+=======
+>>>>>>> origin/master
   group('Cleanup');
   {
     if (state.newProductId) {

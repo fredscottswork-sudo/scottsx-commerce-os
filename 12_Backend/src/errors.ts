@@ -36,6 +36,7 @@ export class ServiceUnavailableError extends Error {
   }
 }
 
+<<<<<<< HEAD
 /**
  * 429 — the caller is asking too often.
  *
@@ -51,6 +52,8 @@ export class TooManyRequestsError extends Error {
   }
 }
 
+=======
+>>>>>>> origin/master
 /** 400 — request understood but the payload fails a business rule. */
 export class ValidationError extends Error {
   constructor(message = 'Validation error') {
