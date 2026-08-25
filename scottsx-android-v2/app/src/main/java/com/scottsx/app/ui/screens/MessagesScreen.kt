@@ -47,6 +47,7 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 
 /**
  * Stage 5.x — Buyer Messages inbox.

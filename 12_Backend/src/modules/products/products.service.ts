@@ -20,6 +20,9 @@ const PRODUCT_SELECT = `
     p.old_price_minor::int AS "oldPriceMinor",
     p.stock_quantity AS "stockQuantity",
     COALESCE(pm.url, p.image_url) AS "imageUrl",
+    -- Quoted: the LATERAL alias is "mediaUrls" (camelCase) and Postgres
+    -- folds unquoted references to lowercase, which would 42703.
+    pmm."mediaUrls",
     p.rating::float AS rating,
     p.rating_count AS "ratingCount",
     p.is_flash_deal AS "isFlashDeal",
@@ -42,6 +45,10 @@ const PRODUCT_SELECT = `
   LEFT JOIN LATERAL (
     SELECT url FROM product_media WHERE product_id = p.id ORDER BY sort_order ASC LIMIT 1
   ) pm ON true
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(json_agg(url ORDER BY sort_order), '[]'::json) AS "mediaUrls"
+    FROM product_media WHERE product_id = p.id
+  ) pmm ON true
 `;
 
 function rowsToProducts(rows: any[]) {
@@ -392,11 +399,26 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
   const prev = existing.rows[0];
 
   // Price/stock-only edits stay live; content edits need a fresh review.
+  // Gallery edits count as content only when the gallery ACTUALLY changed:
+  // full-form clients (Android edit, web inventory) send the unchanged
+  // gallery on every save, and those must not knock a live listing back
+  // into the review queue.
+  let galleryChanged = false;
+  if (Array.isArray(input.mediaUrls)) {
+    const prevMedia = await db.query(
+      'SELECT url FROM product_media WHERE product_id = $1 ORDER BY sort_order',
+      [id],
+    );
+    galleryChanged =
+      prevMedia.rows.map((r) => r.url).join('\u0000') !==
+      input.mediaUrls.join('\u0000');
+  }
   const contentChanged =
     (input.title !== undefined && input.title !== prev.title) ||
     (input.description !== undefined && input.description !== prev.description) ||
     (input.category !== undefined && input.category !== prev.category) ||
-    (input.imageUrl !== undefined && input.imageUrl !== prev.image_url);
+    (input.imageUrl !== undefined && input.imageUrl !== prev.image_url) ||
+    galleryChanged;
 
   const nextStatus =
     prev.status === 'approved' && contentChanged ? 'pending' : prev.status === 'rejected' ? 'pending' : prev.status;
@@ -438,6 +460,27 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
     ]
   );
   if (!rows[0]) throw new NotFoundError('Product not found');
+
+  // Gallery reconciliation: the PATCH carries the full gallery, not a delta,
+  // so the rows are replaced wholesale (same contract as creation). When the
+  // caller didn't send an explicit imageUrl the primary photo follows the
+  // first gallery slot, so the single-image column never disagrees with the
+  // gallery the detail screen renders.
+  if (Array.isArray(input.mediaUrls)) {
+    await db.query('DELETE FROM product_media WHERE product_id = $1', [id]);
+    for (let i = 0; i < input.mediaUrls.length; i++) {
+      await db.query(
+        'INSERT INTO product_media (product_id, url, sort_order) VALUES ($1, $2, $3)',
+        [id, input.mediaUrls[i], i],
+      );
+    }
+    if (input.imageUrl === undefined && input.mediaUrls.length > 0) {
+      await db.query('UPDATE products SET image_url = $2, updated_at = now() WHERE id = $1', [
+        id,
+        input.mediaUrls[0],
+      ]);
+    }
+  }
 
   if (nextStatus === 'pending' && prev.status !== 'pending') {
     await db.query(

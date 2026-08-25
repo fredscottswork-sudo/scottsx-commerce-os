@@ -24,6 +24,8 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun SavedProductsScreen(onBack: () -> Unit, onOpenProduct: (String) -> Unit = {}) {

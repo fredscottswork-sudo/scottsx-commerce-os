@@ -18,6 +18,8 @@ export interface Product {
   currency: string;
   stockQuantity: number;
   imageUrl: string;
+  /** Full photo gallery in sort order (first slot = main image). */
+  mediaUrls?: string[];
   category: string;
   brand: string;
   seller: Seller;

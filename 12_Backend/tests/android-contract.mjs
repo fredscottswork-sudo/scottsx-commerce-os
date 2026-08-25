@@ -16,6 +16,15 @@ async function call(path,{method='GET',token,body}={}){const h={'content-type':'
 const s=Date.now();
 const buyer=await call('/auth/register',{method:'POST',body:{email:`andro_${s}@t.test`,password:'Passw0rd!',displayName:'Android Buyer',role:'buyer'}});
 const bt=buyer.data.token;
+{
+  // Registration now issues an unverified account (the backend gates every
+  // private route until the address is proven). In dev the code comes back in
+  // the response, so the fixture verifies itself the same way the app's
+  // VerifyEmailScreen does.
+  const code=buyer.data?.verification?.devCode;
+  const cf=await call('/auth/verify/confirm',{method:'POST',token:bt,body:{code}});
+  if(cf.status!==200) throw new Error(`fixture could not verify buyer: ${cf.status} ${JSON.stringify(cf.data)}`);
+}
 const seller=await call('/auth/login',{method:'POST',body:{email:'techhub@scottstechx.ug',password:'Seller123!'}});
 const st=seller.data.token, sid=seller.data.user.id;
 
@@ -288,7 +297,42 @@ ck('checkout is cash on delivery', done.data.paymentMode === 'cod', done.data.pa
 ck('the cart is empty after checking out',
    (await call('/me/cart', { token: bt })).data.itemCount === 0);
 
+console.log('\n[dashboard — the payload the app dashboards render]');
+{
+  const d = await call('/seller/dashboard/stats', { token: st });
+  ck('GET /seller/dashboard/stats -> {stats,topProducts,recentOrders,salesSeries}',
+     d.status===200 && !!d.data.stats && Array.isArray(d.data.topProducts) &&
+     Array.isArray(d.data.recentOrders) && Array.isArray(d.data.salesSeries));
+  ck('stats has every field the Kotlin SellerDashboard model reads',
+     ['revenueUgx','revenue30Ugx','orders','orders30','avgOrderValueUgx','totalProducts',
+      'lowStock','outOfStock','topProduct','unreadMessages','followers','totalViews',
+      'productsByStatus','pendingApproval'].every(k=>k in d.data.stats),
+     JSON.stringify(Object.keys(d.data.stats)));
+  ck('salesSeries rows match the Kotlin SalesPoint model (date/orders/revenue)',
+     d.data.salesSeries.length>0 &&
+     ['date','orders','revenue'].every(k=>k in d.data.salesSeries[0]));
+  ck('topProducts rows match the Kotlin TopProduct model (title/sold)',
+     d.data.topProducts.every(t=>'title' in t && 'sold' in t));
+  ck('recentOrders rows match the Kotlin SellerRecentOrder model',
+     d.data.recentOrders.every(o=>['id','buyerId','productTitle','amount','quantity','status','createdAt','buyerName'].every(k=>k in o)));
+
+  const loc = await call('/seller/location', { token: st });
+  ck('GET /seller/location -> {location} (Kotlin SellerLocationState)', loc.status===200 && 'location' in loc.data);
+  ck('PATCH /seller/open-state', (await call('/seller/open-state',{method:'PATCH',token:st,body:{isOpen:true}})).status===200);
+  const pub = await call('/seller/location',{method:'POST',token:st,body:{lat:0.3476,lng:32.5825,sharing:true}});
+  ck('POST /seller/location publishes a live fix', pub.status===200 && !!pub.data.location);
+  ck('DELETE /seller/location stops sharing', (await call('/seller/location',{method:'DELETE',token:st})).status===200);
+
+  ck('GET /products?sort=popular (trending feed)', (await call('/products?sort=popular&pageSize=24')).status===200);
+  ck('GET /products?flashOnly=true (flash feed)', (await call('/products?flashOnly=true&pageSize=24')).status===200);
+  ck('GET /me/favorites/feed (following feed)', (await call('/me/favorites/feed?limit=24',{token:bt})).status===200);
+  ck('GET /me/notifications/unread-count -> {unread}',
+     typeof (await call('/me/notifications/unread-count',{token:bt})).data.unread==='number');
+  ck('POST /me/notifications/read-all', (await call('/me/notifications/read-all',{method:'POST',token:bt})).status===200);
+}
+
 const admin=await call('/auth/login',{method:'POST',body:{email:'admin@scottstechx.ug',password:'Admin123!'}});
+
 // That checkout really sold a unit — give it back so the suite stays repeatable.
 {
   const dir = await call('/admin/users?role=seller&pageSize=100', { token: admin.data.token });

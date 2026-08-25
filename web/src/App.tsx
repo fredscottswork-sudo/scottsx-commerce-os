@@ -2,9 +2,12 @@ import { useEffect, type ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './store/AuthContext';
 import { AppShell } from './components/AppShell';
+import { useSeo } from './hooks/useSeo';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
+import ResetPassword from './pages/ResetPassword';
 import Home from './pages/Home';
 import ProductDetail from './pages/ProductDetail';
 import SellerStorefront from './pages/SellerStorefront';
@@ -43,10 +46,29 @@ import AdminProducts from './pages/admin/AdminProducts';
 import AdminQueue from './pages/admin/AdminQueue';
 import AdminSupport from './pages/admin/AdminSupport';
 
+/**
+ * Is the visitor arriving from a verification link?
+ *
+ * Read straight off window.location rather than useSearchParams because this
+ * is evaluated while deciding which element to render, above the router's own
+ * param context.
+ */
+function hasVerificationToken(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).has('token');
+}
+
 function RequireRole({ role, children }: { role: 'buyer' | 'seller' | 'admin'; children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
+  // Dashboards are per-user and behind auth; a crawler that reaches one must
+  // not index it. Declared here so every present and future private route
+  // inherits it automatically.
+  useSeo({ noIndex: true });
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  // An unverified address is not a usable account. This is the gate: signing
+  // up no longer drops you straight into a dashboard.
+  if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
   if (user.role !== role) {
     // Auto-redirect each role to its own home.
     const home = user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : '/buyer';
@@ -57,13 +79,18 @@ function RequireRole({ role, children }: { role: 'buyer' | 'seller' | 'admin'; c
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  useSeo({ noIndex: true });
   if (!user) return <Navigate to="/login" replace />;
+  if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
   return <>{children}</>;
 }
 
 function RedirectByRole() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/" replace />;
+  // Never bounce an unverified account into a dashboard — that is exactly the
+  // "logged in without verifying" behaviour this gate exists to stop.
+  if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
   return <Navigate to={user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : '/buyer'} replace />;
 }
 
@@ -77,6 +104,17 @@ export default function App() {
     return () => window.removeEventListener('stx:unauthorized', onUnauthorized);
   }, []);
 
+  // Backend refused an unverified account → send them to the gate. Belt and
+  // braces: the guards already redirect, but an API call can be refused from a
+  // page that was reached before the flag was corrected.
+  useEffect(() => {
+    const onUnverified = () => {
+      if (window.location.pathname !== '/verify-email') window.location.assign('/verify-email');
+    };
+    window.addEventListener('stx:email-unverified', onUnverified);
+    return () => window.removeEventListener('stx:email-unverified', onUnverified);
+  }, []);
+
   return (
     <AppShell>
       <Routes>
@@ -84,6 +122,33 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={user ? <RedirectByRole /> : <Login />} />
         <Route path="/register" element={user ? <RedirectByRole /> : <Register />} />
+        {/* Destination of the password-reset email link. Always public: the
+            token is the credential, and the person's session is exactly what
+            may be compromised. */}
+        <Route path="/reset-password" element={<ResetPassword />} />
+        {/* The verification gate.
+            A ?token= in the URL means the visitor is arriving from the link in
+            their email, and that MUST be honoured whatever the session says.
+            They routinely open it on a different device with no session at
+            all, and bouncing them to /login would throw the token away - the
+            link would appear broken through no fault of theirs. The page
+            redeems the token and signs them in itself.
+            Without a token the old rules apply: nothing to verify when signed
+            out, nothing to do here once verified. */}
+        <Route
+          path="/verify-email"
+          element={
+            hasVerificationToken() ? (
+              <VerifyEmail />
+            ) : !user ? (
+              <Navigate to="/login" replace />
+            ) : user.emailVerified ? (
+              <RedirectByRole />
+            ) : (
+              <VerifyEmail />
+            )
+          }
+        />
         <Route path="/product/:id" element={<ProductDetail />} />
         <Route path="/seller/:id" element={<SellerStorefront />} />
         <Route path="/nearby" element={<Nearby />} />

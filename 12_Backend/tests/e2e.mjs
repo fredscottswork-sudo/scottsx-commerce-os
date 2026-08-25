@@ -96,11 +96,42 @@ async function main() {
     state.buyerToken = buyer.data?.token;
     state.buyerId = buyer.data?.user?.id;
 
+    // Registration now issues an UNVERIFIED account and the backend gates all
+    // private routes until the address is proven. In dev the code comes back
+    // in the response, so the fixture verifies itself before continuing.
+    {
+      const vc = await call('/auth/verify/confirm', {
+        method: 'POST',
+        token: state.buyerToken,
+        body: { code: buyer.data?.verification?.devCode },
+      });
+      check('buyer verifies email with the dev code', vc.status === 200, JSON.stringify(vc.data).slice(0, 120));
+    }
+
     const badLogin = await call('/auth/login', {
       method: 'POST',
       body: { email: 'admin@scottstechx.ug', password: 'wrong-password' },
     });
     check('wrong password rejected', badLogin.status === 401, `got ${badLogin.status}`);
+
+    // The app's single identifier field accepts a phone number too: the
+    // buyer above registered one, so login by phone must reach the same
+    // account — and a phone nobody registered must fail with the same
+    // generic 401 as a wrong password.
+    const phoneLogin = await call('/auth/login', {
+      method: 'POST',
+      body: { email: '+256 700 000 000', password: 'Buyer123!' },
+    });
+    check(
+      'login by registered phone number',
+      phoneLogin.status === 200 && phoneLogin.data?.user?.id === state.buyerId,
+      `got ${phoneLogin.status}`,
+    );
+    const unknownPhone = await call('/auth/login', {
+      method: 'POST',
+      body: { email: '+256 999 888 777', password: 'Buyer123!' },
+    });
+    check('login by unknown phone number rejected (401)', unknownPhone.status === 401, `got ${unknownPhone.status}`);
 
     const noAuth = await call('/admin/stats');
     check('admin route rejects anonymous', noAuth.status === 401, `got ${noAuth.status}`);
@@ -805,6 +836,14 @@ async function main() {
       method: 'POST',
       body: { email: `nosy_${uniq}@test.ug`, password: 'Nosy1234!', displayName: 'Nosy' },
     });
+    // Verify the outsider too — an unverified account would be refused with
+    // 403 (the gate) before the ownership check could answer 404, and this
+    // test is about ownership, not verification.
+    await call('/auth/verify/confirm', {
+      method: 'POST',
+      token: outsider.data?.token,
+      body: { code: outsider.data?.verification?.devCode },
+    });
     const peek = await call(`/conversations/${state.convId}/messages`, { token: outsider.data?.token });
     check('outsider cannot read the thread', peek.status === 404, `got ${peek.status}`);
 
@@ -1300,6 +1339,203 @@ async function main() {
   }
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
+  // ── Gallery editing (PATCH carries the full photo set) ────────────────────
+  group('Product gallery editing');
+  {
+    const imgA = 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800';
+    const imgB = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800';
+    // The approval-workflow group left this product approved.
+
+    const withGallery = await call(`/seller/products/${state.newProductId}`, {
+      method: 'PATCH',
+      token: state.sellerToken,
+      body: { mediaUrls: [imgA, imgB] },
+    });
+    const gp = withGallery.data?.product;
+    check('gallery edit is accepted', withGallery.status === 200, JSON.stringify(withGallery.data).slice(0, 120));
+    check(
+      'gallery stores the photos in order',
+      Array.isArray(gp?.mediaUrls) && gp.mediaUrls.join() === [imgA, imgB].join(),
+      JSON.stringify(gp?.mediaUrls),
+    );
+    check('gallery edit returns the listing to review', gp?.status === 'pending', `status=${gp?.status}`);
+
+    // Re-approve, then check what a signed-out buyer actually sees.
+    await call(`/admin/products/${state.newProductId}/approve`, { method: 'POST', token: state.adminToken });
+    const publicOne = await call(`/products/${state.newProductId}`);
+    check(
+      'public product exposes the full gallery',
+      publicOne.status === 200 && (publicOne.data?.product?.mediaUrls ?? []).length === 2,
+      JSON.stringify(publicOne.data?.product?.mediaUrls),
+    );
+    check(
+      'primary image matches the first gallery slot',
+      publicOne.data?.product?.imageUrl === imgA,
+      String(publicOne.data?.product?.imageUrl),
+    );
+
+    // Removing a photo is the same full-replace contract: the gallery
+    // shrinks and the primary photo follows the remaining slot.
+    const trimmed = await call(`/seller/products/${state.newProductId}`, {
+      method: 'PATCH',
+      token: state.sellerToken,
+      body: { mediaUrls: [imgB] },
+    });
+    check(
+      'removing a photo is supported',
+      trimmed.data?.product?.mediaUrls?.length === 1,
+      JSON.stringify(trimmed.data?.product?.mediaUrls),
+    );
+    check(
+      'primary photo follows the first slot',
+      trimmed.data?.product?.imageUrl === imgB,
+      String(trimmed.data?.product?.imageUrl),
+    );
+
+    // Leave the fixture approved for the rest of the suite.
+    await call(`/admin/products/${state.newProductId}/approve`, { method: 'POST', token: state.adminToken });
+
+    // Full-form clients (Android edit, web inventory) send the UNCHANGED
+    // gallery on every save — that must not unpublish a live listing.
+    const noChange = await call(`/seller/products/${state.newProductId}`, {
+      method: 'PATCH',
+      token: state.sellerToken,
+      body: { mediaUrls: [imgB], stockQuantity: 3 },
+    });
+    check(
+      'unchanged gallery keeps an approved listing live',
+      noChange.data?.product?.status === 'approved',
+      `status=${noChange.data?.product?.status}`,
+    );
+    check(
+      'the stock change from that same save applied',
+      noChange.data?.product?.stockQuantity === 3,
+      `${noChange.data?.product?.stockQuantity}`,
+    );
+  }
+
+  group('Image upload & serving');
+  {
+    // A real 1x1 PNG.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const form = new FormData();
+    form.append('image', new Blob([png], { type: 'image/png' }), 'pixel.png');
+    const upRes = await fetch(`${V1}/uploads/images`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.sellerToken}` },
+      body: form,
+    });
+    const upData = await upRes.json().catch(() => ({}));
+    check(
+      'signed-in user can upload a product image',
+      upRes.status === 200 && typeof upData.url === 'string',
+      JSON.stringify(upData).slice(0, 120)
+    );
+
+    if (upData.url) {
+      // No auth header: a signed-out buyer must be able to see product photos.
+      const abs = upData.url.startsWith('http') ? upData.url : `${BASE}${upData.url}`;
+      const got = await fetch(abs);
+      const bytes = Buffer.from(await got.arrayBuffer());
+      check('uploaded image is served publicly', got.status === 200, `got ${got.status}`);
+      check('served bytes match the upload', bytes.equals(png), `${bytes.length} vs ${png.length} bytes`);
+      check(
+        'served with the original content type',
+        String(got.headers.get('content-type') || '').includes('image/png'),
+        got.headers.get('content-type') || ''
+      );
+    }
+    const anonUp = await fetch(`${V1}/uploads/images`, { method: 'POST', body: new FormData() });
+    check('anonymous image upload rejected (401)', anonUp.status === 401, `got ${anonUp.status}`);
+  }
+
+  group('Password reset');
+  {
+    const forgot = await call('/auth/forgot-password', {
+      method: 'POST',
+      body: { identifier: `buyer_${uniq}@test.ug` },
+    });
+    check(
+      'forgot-password accepts an email identifier',
+      forgot.status === 200 && forgot.data?.ok === true,
+      JSON.stringify(forgot.data).slice(0, 120)
+    );
+
+    const forgotPhone = await call('/auth/forgot-password', {
+      method: 'POST',
+      body: { identifier: '+256 700 000 000' },
+    });
+    check(
+      'forgot-password accepts the phone identifier too',
+      forgotPhone.status === 200 && forgotPhone.data?.ok === true
+    );
+
+    // The response for an unknown identifier must be byte-identical to the
+    // "ok" response minus the dev-only link, so a probe cannot learn whether
+    // an account exists.
+    const forgotUnknown = await call('/auth/forgot-password', {
+      method: 'POST',
+      body: { identifier: `nobody_${uniq}@nowhere.test` },
+    });
+    check(
+      'unknown identifier gets a constant answer (no enumeration)',
+      forgotUnknown.status === 200 && forgotUnknown.data?.ok === true && !forgotUnknown.data?.devLink,
+      JSON.stringify(forgotUnknown.data)
+    );
+
+    const link = forgot.data?.devLink || forgotPhone.data?.devLink;
+    check(
+      'non-mailer build exposes the reset link to the test',
+      typeof link === 'string' && link.includes('token='),
+      String(link).slice(0, 80)
+    );
+
+    if (link) {
+      const token = new URL(link).searchParams.get('token');
+
+      const tampered = await call('/auth/reset-password', {
+        method: 'POST',
+        body: { token: `${token}x`, password: 'NewPass99!' },
+      });
+      check('tampered token rejected', tampered.status === 400, `got ${tampered.status}`);
+
+      const reset = await call('/auth/reset-password', {
+        method: 'POST',
+        body: { token, password: 'NewPass99!' },
+      });
+      check(
+        'valid token resets the password',
+        reset.status === 200 && reset.data?.ok === true,
+        JSON.stringify(reset.data).slice(0, 120)
+      );
+
+      const replay = await call('/auth/reset-password', {
+        method: 'POST',
+        body: { token, password: 'NewPass99!' },
+      });
+      check('reset token is single-use (replay rejected)', replay.status === 400, `got ${replay.status}`);
+
+      const oldLogin = await call('/auth/login', {
+        method: 'POST',
+        body: { email: `buyer_${uniq}@test.ug`, password: 'Buyer123!' },
+      });
+      check('old password no longer works', oldLogin.status === 401, `got ${oldLogin.status}`);
+
+      const newLogin = await call('/auth/login', {
+        method: 'POST',
+        body: { email: `buyer_${uniq}@test.ug`, password: 'NewPass99!' },
+      });
+      check(
+        'new password works for the same account',
+        newLogin.status === 200 && newLogin.data?.user?.id === state.buyerId,
+        `got ${newLogin.status}`
+      );
+    }
+  }
+
   group('Cleanup');
   {
     if (state.newProductId) {

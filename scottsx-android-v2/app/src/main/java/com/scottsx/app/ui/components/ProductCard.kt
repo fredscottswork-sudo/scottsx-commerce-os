@@ -46,6 +46,9 @@ import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.WishlistStore
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 
 /**
  * Compact premium product card used by Flash Deals and

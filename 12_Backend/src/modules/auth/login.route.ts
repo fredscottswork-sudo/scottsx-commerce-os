@@ -18,7 +18,14 @@ import {
   requireAuth,
   authedUser,
 } from '../../auth.js';
-import { UnauthorizedError, ConflictError, NotFoundError } from '../../errors.js';
+import {
+  UnauthorizedError,
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from '../../errors.js';
+import { issueVerification } from './verify.route.js';
+import { verificationUndeliverable } from '../../mail.js';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -31,8 +38,12 @@ const registerSchema = z.object({
   city: z.string().optional().default(''),
 });
 
+// The identifier field doubles as the app's single "Email or Phone Number"
+// input: an address is looked up as an email, anything else is treated as a
+// phone number and matched against users who registered one. The field is
+// kept named `email` so existing clients (and the web) keep working.
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().min(1).max(254),
   password: z.string().min(1),
 });
 
@@ -72,10 +83,28 @@ export default async function registerAuthRoute(app: FastifyInstance) {
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [body.email]);
     if ((existing.rowCount ?? 0) > 0) throw new ConflictError('Email already registered');
 
+    // Refuse to create an account we could never verify. Previously a server
+    // with no mailer answered by returning the code in the response body,
+    // which meant anyone could "verify" an address they cannot read - the
+    // exact opposite of what sign-up is for. Failing here is the honest
+    // outcome: it tells the operator to configure SMTP instead of silently
+    // handing out verified accounts.
+    if (verificationUndeliverable()) {
+      throw new ServiceUnavailableError(
+        'Sign-up is temporarily unavailable: this server cannot send verification emails yet. ' +
+          'Please try again later, or continue with Google.'
+      );
+    }
+
     const hash = await hashPassword(body.password);
     const { rows } = await pool.query(
+      // email_verified is FALSE on purpose. It used to be hardcoded true, so
+      // any string that merely parsed as an address became a full account and
+      // nothing stopped fake@nowhere.invalid from signing up. A code is mailed
+      // immediately after this insert and the flag is set only once the user
+      // proves they can read that inbox.
       `INSERT INTO users (email, password_hash, display_name, phone, role, city, email_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, true)
+       VALUES ($1, $2, $3, $4, $5, $6, false)
        RETURNING *`,
       [body.email, hash, body.displayName, body.phone, body.role, body.city]
     );
@@ -90,14 +119,56 @@ export default async function registerAuthRoute(app: FastifyInstance) {
       );
     }
 
+    // Mail the verification code. The account exists and is usable for
+    // browsing, but email_verified stays false until the code is confirmed —
+    // and selling already requires a verified address.
+    const issued = await issueVerification(user.id, user.email, user.display_name);
+
     const token = await tokenForUser(user);
-    return reply.code(201).send({ token, user: publicUser(user) });
+    return reply.code(201).send({
+      token,
+      user: publicUser(user),
+      verification: {
+        required: true,
+        sent: issued.delivered,
+        // Whether the email actually contained a clickable link. False means
+        // PUBLIC_WEB_URL is unset and only a code could be sent.
+        linkSent: issued.linkSent,
+        // Only present when no SMTP is configured (local/dev), so the flow can
+        // still be completed. With a real mailer these are undefined.
+        devCode: issued.devCode,
+        devLink: issued.devLink,
+      },
+    });
   });
 
   app.post('/api/v1/auth/login', async (request, reply) => {
     const body = loginSchema.parse(request.body);
-    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [body.email]);
-    const user = rows[0];
+    const identifier = body.email;
+
+    // Resolve the identifier to a user without ever echoing which one
+    // failed: both paths end in the same generic 401, so the endpoint does
+    // not become an account/phone enumeration oracle.
+    let user: any = null;
+    if (identifier.includes('@')) {
+      const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [identifier]);
+      user = rows[0];
+    } else {
+      const digits = identifier.replace(/\D/g, '');
+      if (digits.length >= 7 && digits.length <= 15) {
+        // Phones are stored however the user typed them ("+256 77x...",
+        // "077x..."), so compare digits only on both sides.
+        const { rows } = await pool.query(
+          `SELECT * FROM users
+           WHERE phone IS NOT NULL
+             AND regexp_replace(phone, '[^0-9]', '', 'g') = $1
+           LIMIT 1`,
+          [digits],
+        );
+        user = rows[0];
+      }
+    }
+
     if (!user || !user.password_hash) throw new UnauthorizedError('Invalid email or password');
     const ok = await comparePassword(body.password, user.password_hash);
     if (!ok) throw new UnauthorizedError('Invalid email or password');

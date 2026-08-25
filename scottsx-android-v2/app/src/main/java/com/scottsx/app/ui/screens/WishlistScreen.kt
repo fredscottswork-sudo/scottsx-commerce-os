@@ -40,6 +40,7 @@ import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import androidx.compose.runtime.mutableStateOf
 
 @Composable
 fun WishlistScreen(
