@@ -319,7 +319,15 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val displayName = backStackEntry.arguments?.getString("displayName")
             val email = backStackEntry.arguments?.getString("email")
-            val profile = MarketplaceDataSource.profileFor(displayName, email)
+            // Real profile from the session — cart/notification counts
+            // are fetched live by the dashboard from the backend; no
+            // demo numbers are seeded here.
+            val profile = com.scottsx.app.data.domain.BuyerProfile(
+                uid = SessionCache.userId ?: "u-self",
+                displayName = displayName?.ifBlank { "Buyer" } ?: "Buyer",
+                email = email ?: "",
+                avatarUrl = SessionCache.avatarUrl,
+            )
             // Role-separation gate. If the signed-in session says Seller
             // but the buyer dashboard got requested, bounce to the
             // wrong-role screen so we never show the wrong UI.

@@ -7,6 +7,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
+ * Thrown by the strict fetch variants when the backend is unreachable
+ * or answers with a non-2xx status. Network screens use it to render
+ * a real Error + Retry state instead of an (incorrect) empty feed.
+ */
+class V2NetworkException(message: String? = null) : Exception(message ?: "Network error")
+
+/**
  * Stage 5 — REST client for the Firebase-backed backend.
  *
  * Talks to /api/v1/{auth/firebase, ai/v2, settings/v2, memory/v2,
@@ -18,21 +25,24 @@ object V2Client {
 
     private const val TAG = "V2Client"
 
-    // Default backend base URL — override at runtime via setBaseUrl().
-    // Real device + adb reverse tcp:3001 tcp:3001 → reaches the host backend.
-    // For Android emulator without adb reverse, use 10.0.2.2 instead.
-    private const val DEFAULT_BASE_URL = "http://127.0.0.1:3001"
+    // Default backend base URL — the SAME single backend the website
+    // uses (web/src/api/client.ts → scottstechx-api.onrender.com).
+    // Override at runtime via setBaseUrl() (e.g. http://10.0.2.2:3001
+    // for an emulator pointed at a host-local backend). Paths below all
+    // carry the /api/v1 prefix, so this must be the bare origin.
+    private const val DEFAULT_BASE_URL = "https://scottstechx-api.onrender.com"
     @Volatile private var baseUrlOverride: String? = null
     fun setBaseUrl(url: String) { baseUrlOverride = url }
 
-    /** Base URL — same as the existing RemoteAssistantClient. */
-    private val baseUrl: String get() = DEFAULT_BASE_URL
+    /** Base URL — honours the runtime override, else the production origin. */
+    private val baseUrl: String get() = baseUrlOverride?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL
 
     private suspend fun <T> apiCall(
         method: String,
         path: String,
         body: JSONObject? = null,
         parse: (JSONObject) -> T,
+        strict: Boolean = false,
     ): T? = withContext(Dispatchers.IO) {
         try {
             val url = java.net.URL(baseUrl.trimEnd('/') + path)
@@ -50,12 +60,16 @@ object V2Client {
             val code = conn.responseCode
             if (code !in 200..299) {
                 android.util.Log.w(TAG, "$method $path -> $code")
+                if (strict) throw V2NetworkException("HTTP $code for $method $path")
                 return@withContext null
             }
             val text = conn.inputStream.bufferedReader().use { it.readText() }
             if (text.isBlank()) null else parse(JSONObject(text))
+        } catch (t: V2NetworkException) {
+            throw t
         } catch (t: Throwable) {
             android.util.Log.w(TAG, "$method $path failed: ${t.message}")
+            if (strict) throw V2NetworkException(t.message ?: "network failure")
             null
         }
     }
@@ -121,13 +135,46 @@ object V2Client {
      * unknown categories fall back to "All" so a single missing
      * enum entry cannot break the home feed.
      */
-    suspend fun fetchProductsList(): List<com.scottsx.app.data.domain.Product> {
-        val arr = apiCallArray(
+    suspend fun fetchProductsList(): List<com.scottsx.app.data.domain.Product> =
+        fetchProductsFeed(sort = null, flashOnly = false, inStock = true, pageSize = 50)
+
+    /**
+     * Fetch a product feed from the live catalogue.
+     *
+     * The backend returns `{ products: [...], total, page, pageSize }` —
+     * a JSON **object**, so this uses [apiCall] and reads the
+     * "products" array (the old code parsed the body as a bare array
+     * and therefore always came back empty even with a working URL).
+     *
+     * @param sort "relevance" | "newest" | "price_asc" | "price_desc" | "rating" | "popular"
+     * @param flashOnly true → only active flash-deal listings
+     * @param inStock true → hide out-of-stock listings
+     */
+    suspend fun fetchProductsFeed(
+        sort: String? = null,
+        flashOnly: Boolean = false,
+        inStock: Boolean = true,
+        category: String? = null,
+        pageSize: Int = 50,
+        strict: Boolean = false,
+    ): List<com.scottsx.app.data.domain.Product> {
+        val params = ArrayList<Pair<String, String>>()
+        sort?.let { params.add("sort" to it) }
+        if (flashOnly) params.add("flashOnly" to "true")
+        if (inStock) params.add("inStock" to "true")
+        category?.let { params.add("category" to it) }
+        params.add("pageSize" to pageSize.toString())
+        val qs = params.joinToString(separator = "&", prefix = "?") { (k, v) ->
+            "$k=${java.net.URLEncoder.encode(v, "UTF-8")}"
+        }
+        val obj = apiCall(
             method = "GET",
-            path = "/api/v1/products",
+            path = "/api/v1/products$qs",
             body = null,
             parse = { it },
+            strict = strict,
         ) ?: return emptyList()
+        val arr = obj.optJSONArray("products") ?: return emptyList()
         val out = ArrayList<com.scottsx.app.data.domain.Product>(arr.length())
         for (i in 0 until arr.length()) {
             val row = arr.optJSONObject(i) ?: continue
@@ -136,42 +183,85 @@ object V2Client {
         return out
     }
 
+    /**
+     * Decode one backend product row. The backend shape (see
+     * 12_Backend/src/modules/products/products.service.ts):
+     *   id, title, description, category, brand, priceMinor,
+     *   oldPriceMinor, stockQuantity, imageUrl, mediaUrls[], rating,
+     *   ratingCount, isFlashDeal, discountPercent, location, status,
+     *   rejectionReason, viewCount, createdAt,
+     *   seller: { id, name, rating, location, verified }
+     *
+     * Every value here is read from the response — nothing is
+     * fabricated. Missing optional fields fall back to neutral
+     * defaults (null / 0), never to invented ratings or locations.
+     */
     private fun jsonToProduct(o: org.json.JSONObject): com.scottsx.app.data.domain.Product {
         val title = o.optString("title")
         val description = o.optString("description")
         val category = com.scottsx.app.data.domain.ProductCategory.fromApiName(o.optString("category"))
             ?: com.scottsx.app.data.domain.ProductCategory.All
-        val sellerId = o.optString("sellerId")
-        val sellerName = o.optString("sellerBusinessName").ifEmpty { "ScottsTechX Seller" }
         val priceUgx = o.optLong("priceMinor", 0L)
+        val oldPriceRaw = o.optLong("oldPriceMinor", 0L)
+        val oldPriceUgx = if (oldPriceRaw > 0L && oldPriceRaw > priceUgx) oldPriceRaw else null
         val imageUrl = o.optString("imageUrl").takeIf { it.isNotBlank() } ?: ""
-        // Seller data class signature: id, name, rating, location, verified
-        // The Seller.fullConstructorWithStoreName extension wraps this with extra data.
-        val seller = com.scottsx.app.data.domain.Seller(
-            id = sellerId,
-            name = sellerName,
-            rating = 4.5f,
-            location = "Kampala",
-            verified = true,
-        )
-        val brand = com.scottsx.app.data.domain.Brand(
-            id = "default",
-            name = "Generic",
-        )
+        val mediaUrls = o.optJSONArray("mediaUrls")
+        val images = if (mediaUrls != null && mediaUrls.length() > 0) {
+            (0 until mediaUrls.length()).mapNotNull { i ->
+                val u = mediaUrls.optString(i).takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                com.scottsx.app.data.domain.ProductImage(
+                    id = "${o.optString("id")}-img-$i",
+                    url = u,
+                    alt = title,
+                )
+            }.ifEmpty { listOf(com.scottsx.app.data.domain.ProductImage("${o.optString("id")}-img-0", imageUrl, title)) }
+        } else {
+            listOf(com.scottsx.app.data.domain.ProductImage("${o.optString("id")}-img-0", imageUrl, title))
+        }
+        // Real seller object from the backend — never hardcoded.
+        val sellerJson = o.optJSONObject("seller")
+        val seller = if (sellerJson != null) {
+            com.scottsx.app.data.domain.Seller(
+                id = sellerJson.optString("id"),
+                name = sellerJson.optString("name").ifEmpty { title },
+                rating = sellerJson.optDouble("rating", 0.0).toFloat(),
+                location = sellerJson.optString("location").ifEmpty { o.optString("location") },
+                verified = sellerJson.optBoolean("verified", false),
+            )
+        } else {
+            com.scottsx.app.data.domain.Seller(
+                id = o.optString("id"),
+                name = "ScottsTechX Seller",
+                rating = 0f,
+                location = o.optString("location").ifEmpty { "Uganda" },
+                verified = false,
+            )
+        }
+        val brandName = o.optString("brand").ifEmpty { "Unbranded" }
         return com.scottsx.app.data.domain.Product(
             id = o.optString("id"),
             name = title,
             shortDescription = description.take(80),
             description = description,
             priceUgx = priceUgx,
-            oldPriceUgx = null,
+            oldPriceUgx = oldPriceUgx,
             category = category,
-            brand = brand,
+            brand = com.scottsx.app.data.domain.Brand(
+                id = brandName.lowercase().replace(' ', '-'),
+                name = brandName,
+            ),
             seller = seller,
             imageUrl = imageUrl,
-            stock = o.optInt("stockQuantity", 1),
-            rating = o.optDouble("productTrustScore", 4.4).toFloat(),
-            ratingCount = 12,
+            stock = o.optInt("stockQuantity", 0),
+            rating = o.optDouble("rating", 0.0).toFloat(),
+            ratingCount = o.optInt("ratingCount", 0),
+            isFlashDeal = o.optBoolean("isFlashDeal", false),
+            discountPercent = o.optInt("discountPercent", 0),
+            location = o.optString("location").ifEmpty { "Uganda" },
+            images = images,
+            status = o.optString("status", "approved").ifEmpty { "approved" },
+            rejectionReason = o.optString("rejectionReason").takeIf { it.isNotBlank() },
+            viewCount = o.optInt("viewCount", 0),
         )
     }
 
@@ -943,4 +1033,259 @@ object V2Client {
         },
         parse = { o -> o.optString("id") },
     )
+
+    // ============================================================
+    // NOTIFICATIONS (buyer badge)
+    // ============================================================
+
+    /**
+     * Real unread-notification count from
+     * `GET /api/v1/me/notifications/unread-count` → `{ unread }`.
+     * Returns 0 on any failure (an offline badge is a safe value —
+     * it never invents notifications).
+     */
+    suspend fun fetchUnreadNotificationCount(): Int =
+        apiCall(
+            method = "GET",
+            path = "/api/v1/me/notifications/unread-count",
+            body = null,
+            parse = { o -> o.optInt("unread", 0) },
+        ) ?: 0
+
+    // ============================================================
+    // SELLER DASHBOARD (real data from /api/v1/seller/*)
+    // ============================================================
+
+    /**
+     * `GET /api/v1/seller/dashboard/stats` →
+     * `{ stats, topProducts, recentOrders, salesSeries }`.
+     *
+     * The stats block is computed by the backend (Postgres
+     * aggregates over the seller's real orders / products) — see
+     * 12_Backend/src/modules/seller/seller-public.route.ts.
+     * Returns null on failure so the UI can show its error + retry
+     * state instead of fabricated numbers.
+     */
+    suspend fun fetchSellerDashboard(): com.scottsx.app.data.domain.SellerDashboardData? =
+        apiCall(
+            method = "GET",
+            path = "/api/v1/seller/dashboard/stats",
+            body = null,
+            parse = { o ->
+                val s = o.optJSONObject("stats") ?: return@parse null
+                val productsByStatus = s.optJSONObject("productsByStatus")
+                val stats = com.scottsx.app.data.domain.SellerStats(
+                    revenueUgx = s.optLong("revenueUgx", 0L),
+                    revenue30Ugx = s.optLong("revenue30Ugx", 0L),
+                    orders = s.optInt("orders", 0),
+                    orders30 = s.optInt("orders30", 0),
+                    avgOrderValueUgx = s.optLong("avgOrderValueUgx", 0L),
+                    totalProducts = s.optInt("totalProducts", 0),
+                    lowStock = s.optInt("lowStock", 0),
+                    outOfStock = s.optInt("outOfStock", 0),
+                    topProduct = s.optString("topProduct").takeIf { it.isNotBlank() },
+                    unreadMessages = s.optInt("unreadMessages", 0),
+                    followers = s.optInt("followers", 0),
+                    totalViews = s.optInt("totalViews", 0),
+                    draft = productsByStatus?.optInt("draft", 0) ?: 0,
+                    pending = productsByStatus?.optInt("pending", 0) ?: 0,
+                    approved = productsByStatus?.optInt("approved", 0) ?: 0,
+                    rejected = productsByStatus?.optInt("rejected", 0) ?: 0,
+                    suspended = productsByStatus?.optInt("suspended", 0) ?: 0,
+                    pendingApproval = s.optInt("pendingApproval", 0),
+                )
+                val topArr = o.optJSONArray("topProducts")
+                val topProducts = (0 until (topArr?.length() ?: 0)).mapNotNull { i ->
+                    val t = topArr?.optJSONObject(i) ?: return@mapNotNull null
+                    com.scottsx.app.data.domain.SellerTopProduct(
+                        title = t.optString("title"),
+                        sold = t.optInt("sold", 0),
+                    )
+                }
+                val recentArr = o.optJSONArray("recentOrders")
+                val recentOrders = (0 until (recentArr?.length() ?: 0)).mapNotNull { i ->
+                    val r = recentArr?.optJSONObject(i) ?: return@mapNotNull null
+                    com.scottsx.app.data.domain.SellerRecentOrder(
+                        id = r.optString("id"),
+                        buyerId = r.optString("buyerId"),
+                        productTitle = r.optString("productTitle"),
+                        amount = r.optLong("amount", 0L),
+                        quantity = r.optInt("quantity", 1),
+                        status = r.optString("status", "pending"),
+                        createdAt = r.optString("createdAt"),
+                        buyerName = r.optString("buyerName").ifEmpty { "Buyer" },
+                    )
+                }
+                val seriesArr = o.optJSONArray("salesSeries")
+                val salesSeries = (0 until (seriesArr?.length() ?: 0)).mapNotNull { i ->
+                    val p = seriesArr?.optJSONObject(i) ?: return@mapNotNull null
+                    com.scottsx.app.data.domain.SellerSalesPoint(
+                        date = p.optString("date"),
+                        orders = p.optInt("orders", 0),
+                        revenue = p.optLong("revenue", 0L),
+                    )
+                }
+                com.scottsx.app.data.domain.SellerDashboardData(
+                    stats = stats,
+                    topProducts = topProducts,
+                    recentOrders = recentOrders,
+                    salesSeries = salesSeries,
+                )
+            },
+        )
+
+    /**
+     * `GET /api/v1/seller/orders` → `{ orders: [...] }` — the seller's
+     * full order list (all statuses), used for the orders-overview
+     * counters and the low-stock-aware order tiles.
+     */
+    suspend fun fetchSellerOrders(): List<com.scottsx.app.data.domain.SellerApiOrder> {
+        val obj = apiCall(
+            method = "GET",
+            path = "/api/v1/seller/orders",
+            body = null,
+            parse = { it },
+        ) ?: return emptyList()
+        val arr = obj.optJSONArray("orders") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            com.scottsx.app.data.domain.SellerApiOrder(
+                id = o.optString("id"),
+                buyerId = o.optString("buyerId"),
+                title = o.optString("title"),
+                amount = o.optLong("amount", 0L),
+                quantity = o.optInt("quantity", 1),
+                status = o.optString("status", "pending"),
+                createdAt = o.optString("createdAt"),
+                buyerName = o.optString("buyerName").ifEmpty { "Buyer" },
+            )
+        }
+    }
+
+    /**
+     * `GET /api/v1/seller/products?status=` →
+     * `{ products: [...], counts: {draft,pending,approved,rejected,suspended} }`.
+     * Product rows use the exact same shape as the public catalogue
+     * (camelCase + nested `seller` object) so they decode with the
+     * same [jsonToProduct] mapper.
+     */
+    suspend fun fetchSellerProducts(
+        status: String? = null,
+    ): com.scottsx.app.data.domain.SellerProductList {
+        val qs = if (status.isNullOrBlank()) "" else "?status=$status"
+        val obj = apiCall(
+            method = "GET",
+            path = "/api/v1/seller/products$qs",
+            body = null,
+            parse = { it },
+        ) ?: return com.scottsx.app.data.domain.SellerProductList(emptyList(), emptyMap())
+        val arr = obj.optJSONArray("products")
+        val products = (0 until (arr?.length() ?: 0)).mapNotNull { i ->
+            val row = arr?.optJSONObject(i) ?: return@mapNotNull null
+            jsonToProduct(row)
+        }
+        val countsJson = obj.optJSONObject("counts")
+        val counts = if (countsJson != null) {
+            val keys = countsJson.keys()
+            val m = HashMap<String, Int>()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                m[k] = countsJson.optInt(k, 0)
+            }
+            m
+        } else {
+            emptyMap()
+        }
+        return com.scottsx.app.data.domain.SellerProductList(products, counts)
+    }
+
+    /**
+     * `PATCH /api/v1/seller/products/:id` — partial update. The backend
+     * accepts a subset of { title, description, category, brand,
+     * priceMinor, oldPriceMinor, stockQuantity, imageUrl, mediaUrls,
+     * location, isFlashDeal, discountPercent } and returns `{ product }`.
+     * Content changes re-send the listing for review (status → pending);
+     * price/stock-only edits keep it live. Returns the updated product
+     * row as JSON, or null on failure.
+     */
+    suspend fun updateSellerProduct(id: String, patch: JSONObject): JSONObject? =
+        apiCall(
+            method = "PATCH",
+            path = "/api/v1/seller/products/$id",
+            body = patch,
+            parse = { it.optJSONObject("product") },
+        )
+
+    /** `DELETE /api/v1/seller/products/:id` → `{ ok }`. */
+    suspend fun deleteSellerProduct(id: String): Boolean =
+        apiCall(
+            method = "DELETE",
+            path = "/api/v1/seller/products/$id",
+            body = null,
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    /** `POST /api/v1/seller/products/:id/submit` → `{ product }` (re-submit for review). */
+    suspend fun submitSellerProduct(id: String): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/seller/products/$id/submit",
+            body = null,
+            parse = { o -> o.optJSONObject("product") != null },
+        ) ?: false
+
+    // ---- Store open/closed state + location (Nearby cards read these) ----
+
+    data class StoreLocationInfo(
+        val lat: Double?,
+        val lng: Double?,
+        val sharing: Boolean,
+        val isOpen: Boolean,
+    )
+
+    /**
+     * `GET /api/v1/seller/location` →
+     * `{ location: { lat, lng, sharing, isOpen } | null }`.
+     */
+    suspend fun fetchStoreLocation(): StoreLocationInfo? =
+        apiCall(
+            method = "GET",
+            path = "/api/v1/seller/location",
+            body = null,
+            parse = { o ->
+                val loc = o.optJSONObject("location") ?: return@parse null
+                StoreLocationInfo(
+                    lat = loc.isNull("lat").not().let { if (it) loc.optDouble("lat") else null },
+                    lng = loc.isNull("lng").not().let { if (it) loc.optDouble("lng") else null },
+                    sharing = loc.optBoolean("sharing", false),
+                    isOpen = loc.optBoolean("isOpen", false),
+                )
+            },
+        )
+
+    /**
+     * `PATCH /api/v1/seller/open-state` `{ isOpen }` → `{ isOpen }`.
+     * This is the flag the Nearby search shows on the seller's store
+     * card — so the dashboard toggle is a real marketplace state,
+     * not a local-only boolean.
+     */
+    suspend fun setStoreOpen(isOpen: Boolean): Boolean =
+        apiCall(
+            method = "PATCH",
+            path = "/api/v1/seller/open-state",
+            body = JSONObject().put("isOpen", isOpen),
+            parse = { o -> o.optBoolean("isOpen", isOpen) },
+        ) ?: false
+
+    /**
+     * `POST /api/v1/seller/location` `{ lat, lng }` — publish the
+     * store pin so Nearby buyers can find it. Returns true on success.
+     */
+    suspend fun publishStoreLocation(lat: Double, lng: Double): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/seller/location",
+            body = JSONObject().put("lat", lat).put("lng", lng),
+            parse = { o -> true },
+        ) ?: false
 }

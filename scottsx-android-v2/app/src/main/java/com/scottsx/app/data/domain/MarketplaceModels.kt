@@ -90,6 +90,11 @@ data class Product(
     val specs: List<ProductSpec> = emptyList(),
     val purchases: Int = 0,
     val wishlistCount: Int = 0,
+    // ---- Backend lifecycle fields (defaults keep old call sites compiling) ----
+    // draft | pending | approved | rejected | suspended
+    val status: String = "approved",
+    val rejectionReason: String? = null,
+    val viewCount: Int = 0,
 )
 
 data class HeroBanner(
