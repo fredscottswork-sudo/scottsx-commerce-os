@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -253,6 +254,7 @@ internal fun SellerAiCard(
     topProduct: String?,
     onAsk: () -> Unit,
 ) {
+    val isEmpty = lowStock == 0 && pendingApproval == 0 && topProduct == null
     val body = buildString {
         if (lowStock > 0) {
             append(lowStock)
@@ -267,7 +269,7 @@ internal fun SellerAiCard(
             append(topProduct.take(40))
             append(". ")
         }
-        if (isBlank) {
+        if (isEmpty) {
             append("Ask me how to get your first order or which listings to fix next. ")
         }
     }

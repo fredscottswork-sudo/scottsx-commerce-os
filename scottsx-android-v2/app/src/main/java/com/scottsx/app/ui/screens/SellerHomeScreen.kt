@@ -97,14 +97,6 @@ import java.util.Locale
 /** Load state of the live seller dashboard (no demo snapshot exists). */
 private enum class SellerFeedState { Loading, Ready, Error }
 
-/** Chart period — the backend delivers exactly 14 days of sales data. */
-private enum class SalesPeriod(val label: String, val days: Int) {
-    ThisWeek("7 days", 7),
-    ThisMonth("14 days", 14),
-}
-
-/** Real revenue delta: last [window] days vs the window before it. */
-private data class RevenueDelta(val label: String, val positive: Boolean, val neutral: Boolean)
 
 private fun greetingFor(hour: Int): String = when (hour) {
     in 5..11 -> "Good morning"
@@ -251,7 +243,7 @@ fun SellerHomeScreen(
             } else {
                 // Sync the authoritative stock value from the backend.
                 val serverStock = updated.optInt("stockQuantity", nextStock)
-                products = products?.copy(
+                products = current?.copy(
                     products = current.products.map {
                         if (it.id == product.id) it.copy(stock = serverStock) else it
                     },

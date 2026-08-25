@@ -3,7 +3,6 @@ package com.scottsx.app.ui.components
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -20,13 +19,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.Shape
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -170,9 +170,9 @@ fun AnimatedNumber(
         if (target == display) return@LaunchedEffect
         val from = display
         if (from == 0L && target == 0L) return@LaunchedEffect
-        animate(
-            initialValue = from,
-            targetValue = target,
+        animateFloat(
+            initialValue = from.toFloat(),
+            targetValue = target.toFloat(),
             animationSpec = tween(durationMillis = durationMs, easing = FastOutSlowInEasing),
         ) { value, _ ->
             display = value.roundToLong()

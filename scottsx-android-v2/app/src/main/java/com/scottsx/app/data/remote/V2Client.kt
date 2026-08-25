@@ -1072,7 +1072,7 @@ object V2Client {
             path = "/api/v1/seller/dashboard/stats",
             body = null,
             parse = { o ->
-                val s = o.optJSONObject("stats") ?: return@parse null
+                val s = o.optJSONObject("stats") ?: return@apiCall null
                 val productsByStatus = s.optJSONObject("productsByStatus")
                 val stats = com.scottsx.app.data.domain.SellerStats(
                     revenueUgx = s.optLong("revenueUgx", 0L),
@@ -1253,7 +1253,7 @@ object V2Client {
             path = "/api/v1/seller/location",
             body = null,
             parse = { o ->
-                val loc = o.optJSONObject("location") ?: return@parse null
+                val loc = o.optJSONObject("location") ?: return@apiCall null
                 StoreLocationInfo(
                     lat = loc.isNull("lat").not().let { if (it) loc.optDouble("lat") else null },
                     lng = loc.isNull("lng").not().let { if (it) loc.optDouble("lng") else null },

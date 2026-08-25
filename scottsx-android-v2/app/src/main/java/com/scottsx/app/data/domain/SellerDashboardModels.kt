@@ -60,6 +60,18 @@ data class SellerRecentOrder(
 ) {
     val buyerInitial: String
         get() = buyerName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+
+    /** Maps a raw backend status to the dashboard's display state. */
+    val displayStatus: String
+        get() = when (status) {
+            "pending" -> "Pending"
+            "paid" -> "Paid"
+            "shipped" -> "Shipped"
+            "delivered" -> "Delivered"
+            "cancelled" -> "Cancelled"
+            "refunded" -> "Refunded"
+            else -> status.replaceFirstChar { it.uppercase() }
+        }
 }
 
 /**
