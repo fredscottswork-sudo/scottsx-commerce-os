@@ -16,6 +16,20 @@ cd web         && npm install && npm run dev    # website on :5173 (proxies /api
 
 Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / `Seller123!`
 
+## Live-app bug-fix wave (2026-08-29)
+
+| Area | What changed |
+|------|--------------|
+| Connectivity | v1 defaulted to `http://127.0.0.1:3001` — the "can't reach the marketplace" home error on real phones. Now the same Render origin as the web. |
+| Nearby | Rebuilt to web parity: no radius/district fakes; auto GPS fix + `geo/reverse` place naming; `me/location` saved once; sort/search/verified/open filters; live + delivery + COD badges; distance/ETA; Follow-me tracking (250 m refetch); tap → real storefront. |
+| Bottom nav | "Cart" tab lied (heart icon → wishlist). Bar now mirrors the web's mobile bottomnav: Home / Explore / Cart / Chats / Alerts, with live `9+`-capped badges (cart, unread chats, unread alerts). |
+| AI screen | ChatGPT-style black rebuild on the REAL `/ai/v2/ask` contract (old client sent `message`/`context` and read `reply` — the endpoint never understood it). Grounded product cards open real products; suggestion chips come from `/ai/agents`. |
+| Uploads | Product photo picker hit a nonexistent `uploads/signed-url`; now compresses + multipart-POSTs to the real `uploads/images`. |
+| Pictures | API-relative image URLs (`/api/v1/uploads/images/…`) could never load in Coil — every ingestion point now absolutizes via `absoluteMediaUrl()`. |
+| Avatars | Profile header + chat rows render REAL photos (they rendered initials forever). Account settings gains web-parity profile editing (photo/name/phone/city via `PATCH /auth/me`). |
+| Speed | Splash 1500→1000 ms and warms catalog + cart during the beat; Coil respects cache headers again (50 MB disk cache reuse instead of re-downloading every image on cold start). |
+
+
 ## Verify it
 
 ```bash
