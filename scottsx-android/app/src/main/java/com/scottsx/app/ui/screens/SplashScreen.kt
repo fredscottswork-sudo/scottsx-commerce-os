@@ -27,7 +27,15 @@ fun SplashScreen(
     onFinished: () -> Unit,
 ) {
     LaunchedEffect(Unit) {
-        delay(1500)
+        // The brand beat is now the marketplace's warm-up window: while
+        // the lockup plays we pull the live catalog + cart + wishlist so
+        // the home screen renders INSTANTLY instead of a second spinner.
+        // Fire-and-forget warm: the fetches race the brand beat but the
+        // splash NEVER waits on the network — a slow connection shows the
+        // normal per-screen shimmers instead of a stuck launch screen.
+        com.scottsx.app.data.LiveMarketplace.warm()
+        com.scottsx.app.data.CartStore.warm()
+        delay(1000)   // was 1500ms of pure waiting — now the warm window
         onFinished()
     }
     Box(

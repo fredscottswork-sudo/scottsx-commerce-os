@@ -36,6 +36,63 @@ object V2Client {
     /** Public accessor for sibling clients (RemoteAssistantClient). */
     fun currentBaseUrl(): String = baseUrl
 
+    /**
+     * The backend stores some media as API-relative paths
+     * ("/api/v1/uploads/images/<key>" — the DB-backed image store) and the
+     * web resolves those against the site origin. Coil cannot load a
+     * scheme-less path, so every media URL parsed from the API is pushed
+     * through here: absolute URLs pass unchanged, relative ones get the
+     * current base origin prepended. This is the fix for products whose
+     * photos never rendered in the app.
+     */
+    fun absoluteMediaUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://") || url.startsWith("https://")) return url
+        if (!url.startsWith("/")) return "https://$url"
+        val origin = currentBaseUrl().let { b ->
+            val i = b.indexOf("/", "https://".length)
+            if (i > 0) b.substring(0, i) else b
+        }
+        return origin + url
+    }
+
+    /**
+     * REAL image upload: multipart POST /api/v1/uploads/images (field
+     * "image"), the only upload route the canonical backend serves.
+     * Returns the absolute public URL to store on the product — either a
+     * GCS link or the API-relative path absolutized by [absoluteMediaUrl].
+     */
+    suspend fun uploadImage(bytes: ByteArray, mime: String, filename: String): String? =
+        withContext(Dispatchers.IO) {
+            try {
+                val boundary = "----scottsx${System.nanoTime()}"
+                val crlf = "\r\n"
+                val url = java.net.URL(baseUrl.trimEnd('/') + "/api/v1/uploads/images")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.connectTimeout = 8000
+                conn.readTimeout = 30000
+                conn.setRequestProperty("Accept", "application/json")
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                Session.tokenOrNull()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+                val out = java.io.DataOutputStream(conn.outputStream)
+                out.writeBytes("--$boundary$crlf")
+                out.writeBytes("Content-Disposition: form-data; name=\"image\"; filename=\"$filename\"$crlf")
+                out.writeBytes("Content-Type: $mime$crlf$crlf")
+                out.write(bytes)
+                out.writeBytes("$crlf--$boundary--$crlf")
+                out.flush()
+                out.close()
+                val code = conn.responseCode
+                val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()?.readText() ?: ""
+                conn.disconnect()
+                if (code !in 200..299) return@withContext null
+                absoluteMediaUrl(JSONObject(text).optString("url").takeIf { it.isNotBlank() })
+            } catch (_: Throwable) { null }
+        }
+
     private suspend fun <T> apiCall(
         method: String,
         path: String,
@@ -407,7 +464,7 @@ object V2Client {
         val status = o.optString("status").ifBlank { "approved" }
         val oldPriceRaw = o.optLong("oldPriceMinor", 0L)
         val oldPriceUgx = if (oldPriceRaw > 0L && oldPriceRaw > priceUgx) oldPriceRaw else null
-        val imageUrl = o.optString("imageUrl").takeIf { it.isNotBlank() } ?: ""
+        val imageUrl = absoluteMediaUrl(o.optString("imageUrl").takeIf { it.isNotBlank() }) ?: ""
         // Real seller object from the backend — never hardcoded.
         val sellerJson = o.optJSONObject("seller")
         val seller = if (sellerJson != null) {
@@ -811,7 +868,7 @@ object V2Client {
                     id = p.optString("id"),
                     title = p.optString("title"),
                     priceMinor = p.optLong("priceMinor", 0L),
-                    imageUrl = p.optString("imageUrl").takeIf { it.isNotBlank() },
+                    imageUrl = absoluteMediaUrl(p.optString("imageUrl").takeIf { it.isNotBlank() }),
                     rating = p.optDouble("rating", 0.0),
                     city = p.optString("city").takeIf { it.isNotBlank() },
                     verified = p.optBoolean("verified", false),
@@ -1230,7 +1287,7 @@ object V2Client {
                     rating = r.optDouble("rating", 0.0),
                     distanceKm = r.optDouble("distanceKm", Double.MAX_VALUE),
                     verified = r.optBoolean("verified", false),
-                    logoUrl = r.optString("logoUrl").takeIf { it.isNotBlank() },
+                    logoUrl = absoluteMediaUrl(r.optString("logoUrl").takeIf { it.isNotBlank() }),
                     live = r.optBoolean("live", false),
                     locationSharing = r.optBoolean("locationSharing", false),
                     locationAgeMinutes = if (r.has("locationAgeMinutes") && !r.isNull("locationAgeMinutes")) r.optInt("locationAgeMinutes") else null,
@@ -1359,7 +1416,7 @@ object V2Client {
             recipientUid = null,
             content = m.optString("text").ifBlank { m.optString("content") },
             role = m.optString("kind").ifBlank { m.optString("role") }.ifBlank { "text" },
-            attachmentUrl = m.optString("imageUrl").ifBlank { m.optString("attachmentUrl") }.takeIf { it.isNotBlank() },
+            attachmentUrl = absoluteMediaUrl(m.optString("imageUrl").ifBlank { m.optString("attachmentUrl") }.takeIf { it.isNotBlank() }),
             attachmentMime = m.optString("attachmentName").ifBlank { m.optString("attachmentMime") }.takeIf { it.isNotBlank() },
             threadParentId = m.optString("replyToId").ifBlank { m.optString("threadParentId") }.takeIf { it.isNotBlank() },
             createdAt = m.optString("createdAt"),
@@ -1428,7 +1485,7 @@ object V2Client {
                 otherPartyDisplayName = (other?.optString("name") ?: "").ifBlank { "Seller" },
                 productId = r.optString("productId").takeIf { it.isNotBlank() },
                 productTitle = r.optString("productTitle").takeIf { it.isNotBlank() },
-                productImageUrl = r.optString("productImageUrl").takeIf { it.isNotBlank() },
+                productImageUrl = absoluteMediaUrl(r.optString("productImageUrl").takeIf { it.isNotBlank() }),
                 lastMessagePreview = r.optString("lastMessage").takeIf { it.isNotBlank() },
                 lastMessageAt = r.optString("lastTime").takeIf { it.isNotBlank() },
                 unreadCount = r.optInt("unread", 0),
@@ -1697,7 +1754,7 @@ object V2Client {
                         city = r.optString("city"),
                         rating = r.optDouble("rating", 0.0),
                         verified = r.optBoolean("verified", false),
-                        logoUrl = r.optString("logoUrl").takeIf { it.isNotBlank() },
+                        logoUrl = absoluteMediaUrl(r.optString("logoUrl").takeIf { it.isNotBlank() }),
                         productCount = r.optInt("productCount", 0),
                     )
                 }
@@ -1791,7 +1848,7 @@ object V2Client {
         title = o.optString("title"),
         priceMinor = o.optLong("priceMinor", 0L),
         stockQuantity = o.optInt("stockQuantity", 0),
-        imageUrl = o.optString("imageUrl").takeIf { it.isNotBlank() },
+        imageUrl = absoluteMediaUrl(o.optString("imageUrl").takeIf { it.isNotBlank() }),
         status = o.optString("status"),
         sellerId = o.optString("sellerId"),
         sellerName = o.optString("sellerName"),

@@ -28,6 +28,16 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object LiveMarketplace {
 
+    private val scope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+    )
+
+    /** Fire-and-forget cold-start warm used by the splash: kicks the live
+     *  catalog fetch off the critical path so the first screen is instant. */
+    fun warm() {
+        scope.launch { runCatching { ensureLoaded() } }
+    }
+
     enum class State { Idle, Loading, Ready, Empty, Error }
 
     private val _products = MutableStateFlow<List<Product>>(emptyList())

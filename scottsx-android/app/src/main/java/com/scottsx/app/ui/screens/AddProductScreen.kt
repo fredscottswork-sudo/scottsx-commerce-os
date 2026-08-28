@@ -112,44 +112,37 @@ fun AddProductScreen(
         uploadingImage = true
         scope.launch {
             val uploaded = runCatching {
-                // 1. Resolve MIME type from the ContentResolver so we can
-                //    send the correct Content-Type to the signed URL.
-                val mime = ctx.contentResolver.getType(uri)
-                    ?: "image/jpeg"
-                val ext = when {
-                    mime.endsWith("png") -> "png"
-                    mime.endsWith("webp") -> "webp"
-                    mime.endsWith("heic") || mime.endsWith("heif") -> "heic"
-                    else -> "jpg"
-                }
-                val filename = "${UUID.randomUUID()}.${ext}"
-
-                // 2. Ask the backend for a signed upload URL.
-                val handle = V2Client.requestUploadUrl(
-                    purpose = "product",
-                    filename = filename,
-                    contentType = mime,
-                ) ?: throw IllegalStateException("Could not get upload URL (are you signed in?)")
-
-                // 3. Read the file bytes and PUT them to the signed URL.
-                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                // Real backend route: multipart POST /api/v1/uploads/images
+                // (the old signed-URL flow called a route that does not
+                // exist, so gallery photos could never reach the server).
+                // Compress first — the backend accepts up to 8 MB and the
+                // route notes explicitly that the app compresses.
+                val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: throw IllegalStateException("Could not read selected image")
-                val putConn = java.net.URL(handle.uploadUrl).openConnection() as
-                    java.net.HttpURLConnection
-                putConn.requestMethod = "PUT"
-                putConn.doOutput = true
-                putConn.setRequestProperty("Content-Type", mime)
-                putConn.setFixedLengthStreamingMode(bytes.size)
-                putConn.outputStream.use { it.write(bytes) }
-                val putCode = putConn.responseCode
-                if (putCode !in 200..299) {
-                    throw IllegalStateException("Upload failed: HTTP $putCode")
+                var mime = ctx.contentResolver.getType(uri) ?: "image/jpeg"
+                var bytes = raw
+                if (bytes.size > 3 * 1024 * 1024 || mime !in setOf("image/jpeg", "image/png", "image/webp")) {
+                    val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size)
+                    if (bmp != null) {
+                        val maxSide = 1600
+                        val scale = minOf(1f, maxSide.toFloat() / maxOf(bmp.width, bmp.height))
+                        val scaled = if (scale < 1f)
+                            android.graphics.Bitmap.createScaledBitmap(
+                                bmp, (bmp.width * scale).toInt().coerceAtLeast(1),
+                                (bmp.height * scale).toInt().coerceAtLeast(1), true)
+                        else bmp
+                        val bos = java.io.ByteArrayOutputStream()
+                        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos)
+                        bytes = bos.toByteArray()
+                        mime = "image/jpeg"
+                    }
                 }
-                putConn.disconnect()
-
-                // 4. Return the public download URL the client stores in
-                //    imageUrls. The backend already minted it.
-                handle.publicUrl
+                val ext = when { mime.endsWith("png") -> "png"; mime.endsWith("webp") -> "webp"; else -> "jpg" }
+                val filename = "${UUID.randomUUID()}.$ext"
+                V2Client.uploadImage(bytes, mime, filename)
+                    ?: throw IllegalStateException(
+                        "Image upload failed — sign in and retry (the server accepts JPEG/PNG/WEBP up to 8 MB)."
+                    )
             }
             uploadingImage = false
             uploaded.fold(

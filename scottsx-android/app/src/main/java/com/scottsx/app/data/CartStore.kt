@@ -66,6 +66,11 @@ object CartStore {
     val synced: StateFlow<Boolean> = _synced.asStateFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Fire-and-forget cold-start sync used by the splash warm window. */
+    fun warm() {
+        scope.launch { runCatching { syncFromServer() } }
+    }
     private val syncMutex = Mutex()
 
     private fun adoptServerCart(cart: V2Client.ServerCart) {

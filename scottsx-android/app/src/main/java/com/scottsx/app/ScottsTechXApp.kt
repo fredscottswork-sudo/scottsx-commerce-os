@@ -57,7 +57,11 @@ class ScottsTechXApp : Application(), ImageLoaderFactory {
                     .maxSizeBytes(diskBytes)
                     .build()
             }
-            .respectCacheHeaders(false) // we always want fresh on cold load
+            // Honour normal cache headers: product/store photos change
+            // rarely, so repeat opens render from the 50MB disk cache
+            // instantly instead of re-downloading every image (the old
+            // respectCacheHeaders(false) made the gallery re-fetch the
+            // world on every cold start).
             .crossfade(true)
             .crossfade(120)
             .build()
