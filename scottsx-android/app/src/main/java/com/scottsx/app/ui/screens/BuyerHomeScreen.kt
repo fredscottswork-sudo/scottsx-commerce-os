@@ -457,7 +457,7 @@ fun BuyerHomeScreen(
                             }
                         }
                         items(
-                            forYou.chunked(count = 2),
+                            forYou.chunked(size = 2),
                             key = { row -> row.first().id },
                         ) { row ->
                             Reveal(index = 5) {
