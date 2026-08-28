@@ -1,3 +1,5 @@
+import java.io.ByteArrayOutputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -59,12 +61,14 @@ android {
     }
 }
 
+// java.io must be imported above: in .kts scripts 'java' resolves to
+// the Gradle JavaPluginExtension, not the JDK package.
 // Print the debug signing fingerprints during every build (CI log included) so
 // the SHA-1/SHA-256 Google needs can be checked without running the APK.
 tasks.register("printDebugSigningFingerprint") {
     doLast {
         runCatching {
-            val out = java.io.ByteArrayOutputStream()
+            val out = ByteArrayOutputStream()
             exec {
                 commandLine(
                     "keytool", "-list", "-v",
