@@ -510,8 +510,42 @@ object V2Client {
             isFlashDeal = o.optBoolean("isFlashDeal", false),
             discountPercent = o.optInt("discountPercent", 0),
             location = o.optString("location").ifEmpty { "Kampala" },
+            images = parseProductImages(o, imageUrl, title),
             status = status,
         )
+    }
+
+    /** Full media gallery from the backend's mediaUrls/media arrays — the PDP
+     *  gallery used to show only the primary photo no matter how many the
+     *  seller uploaded. Every entry runs through [absoluteMediaUrl]. */
+    private fun parseProductImages(
+        o: org.json.JSONObject,
+        fallbackUrl: String,
+        alt: String,
+    ): List<com.scottsx.app.data.domain.ProductImage> {
+        val productId = o.optString("id")
+        fun urlAt(arr: org.json.JSONArray, i: Int): String? {
+            val any = arr.opt(i) ?: return null
+            return when (any) {
+                is String -> any
+                is org.json.JSONObject -> any.optString("url")
+                else -> null
+            }.takeIf { it.isNotBlank() }
+        }
+        val urls = mutableListOf<String>()
+        for (key in listOf("mediaUrls", "media", "images")) {
+            val arr = o.optJSONArray(key) ?: continue
+            for (i in 0 until arr.length()) urlAt(arr, i)?.let { urls += it }
+            if (urls.isNotEmpty()) break
+        }
+        if (urls.isEmpty() && fallbackUrl.isNotBlank()) urls += fallbackUrl
+        return urls.distinct().mapIndexed { i, u ->
+            com.scottsx.app.data.domain.ProductImage(
+                id = "$productId-img-$i",
+                url = absoluteMediaUrl(u) ?: "",
+                alt = alt,
+            )
+        }
     }
 
     // ============================================================
