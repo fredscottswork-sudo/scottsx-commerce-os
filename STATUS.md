@@ -1,7 +1,11 @@
 # ScottsTechX — build status
 
-One backend, two clients. Web is built and verified; Android is written and
-statically verified but **has never been compiled against the Android SDK**.
+One backend, two clients. Web is built and verified; both Android modules
+(v1 flagship + v2) compile in CI on every push and upload APK artifacts
+(`scottsx-test-apk`, `scottsx-v2-test-apk`). Both apps default to the same
+production API origin the website uses (`scottstechx-api.onrender.com`) —
+a phone reaches the real backend out of the box; `setBaseUrl(...)` stays
+as the local-dev escape hatch.
 
 ## Run it
 

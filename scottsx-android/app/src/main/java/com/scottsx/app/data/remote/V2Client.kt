@@ -18,19 +18,20 @@ object V2Client {
 
     private const val TAG = "V2Client"
 
-    // Default backend base URL — the PRODUCTION Cloud Functions host every
-    // shipped APK must reach (identical to the web's VITE_API_URL; the route
-    // prefix below mirrors the web client, which appends /api/v1 to the same
-    // base). Dev loops override with setBaseUrl("http://127.0.0.1:3001") —
-    // hardcoding that default on a real phone looped every request back to
-    // the phone itself ("can't reach the marketplace" on the home feed).
-    private const val DEFAULT_BASE_URL =
-        "https://europe-west1-scottstechx-52bab.cloudfunctions.net/api"
+    // Default backend base URL — the REAL production API every shipped APK
+    // must reach: the same Render origin the web client falls back to
+    // (web/src/api/client.ts FALLBACK_API) and the release workflow builds
+    // against. Route paths below carry the /api/v1 prefix themselves, so
+    // (unlike the release-build URL) this constant omits it. Dev loops
+    // override with setBaseUrl("http://127.0.0.1:3001"); on a real phone
+    // the old localhost default looped requests back to the phone itself —
+    // the live "can't reach the marketplace" failure on the home feed.
+    private const val DEFAULT_BASE_URL = "https://scottstechx-api.onrender.com"
     @Volatile private var baseUrlOverride: String? = null
     fun setBaseUrl(url: String) { baseUrlOverride = url }
 
-    /** Base URL — honours [setBaseUrl]; defaults to the dev host. */
-    private val baseUrl: String get() = baseUrlOverride ?: DEFAULT_BASE_URL
+    /** Base URL — honours [setBaseUrl]; defaults to the production origin. */
+    private val baseUrl: String get() = baseUrlOverride?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL
 
     /** Public accessor for sibling clients (RemoteAssistantClient). */
     fun currentBaseUrl(): String = baseUrl
