@@ -14,14 +14,6 @@
       },
       "oauth_client": [
         {
-          "client_id": "911393008938-391gln1bdhc8bhte02gmoegr6vgkicsm.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.scottsx.app",
-            "certificate_hash": "a69520289b3deb99cd87ef61140eca3ea037e88a"
-          }
-        },
-        {
           "client_id": "911393008938-f0an8p59rlkhimcnn9rdqbtbi1aa9hbk.apps.googleusercontent.com",
           "client_type": 3
         }
