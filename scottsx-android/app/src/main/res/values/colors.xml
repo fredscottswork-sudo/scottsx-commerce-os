@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Brand blue — must match ScottsTechXColors.BluePrimary / web --brand-400. -->
+    <color name="brand_primary">#1E6FFF</color>
     <color name="brand_purple">#7C3AED</color>
     <color name="brand_purple_dark">#5B21B6</color>
     <color name="brand_purple_light">#A855F7</color>

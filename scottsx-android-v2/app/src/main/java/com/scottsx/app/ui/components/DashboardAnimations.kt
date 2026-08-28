@@ -1,6 +1,7 @@
 package com.scottsx.app.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
@@ -170,7 +171,7 @@ fun AnimatedNumber(
         if (target == display) return@LaunchedEffect
         val from = display
         if (from == 0L && target == 0L) return@LaunchedEffect
-        animateFloat(
+        animate(
             initialValue = from.toFloat(),
             targetValue = target.toFloat(),
             animationSpec = tween(durationMillis = durationMs, easing = FastOutSlowInEasing),
