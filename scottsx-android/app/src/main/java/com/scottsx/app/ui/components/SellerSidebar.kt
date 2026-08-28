@@ -437,7 +437,7 @@ private fun SellerProfileHeader(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = data.storeName,
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                         maxLines = 1,
@@ -454,7 +454,7 @@ private fun SellerProfileHeader(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = "Store ID: ${data.storeId}",
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnPanelSecondary,
                     fontSize = 11.sp,
                 )
                 Spacer(Modifier.height(6.dp))
@@ -533,7 +533,7 @@ private fun StoreStatusPill(status: com.scottsx.app.data.domain.StoreStatus) {
 private fun SectionLabel(text: String) {
     Text(
         text = text.uppercase(),
-        color = ScottsTechXColors.OnLightSecondary,
+        color = ScottsTechXColors.OnPanelSecondary,
         fontWeight = FontWeight.Bold,
         fontSize = 10.sp,
         letterSpacing = 1.2.sp,
@@ -599,14 +599,14 @@ private fun SellerSidebarRow(
                 Icon(
                     imageVector = item.icon,
                     contentDescription = null,
-                    tint = accent ?: ScottsTechXColors.OnLight,
+                    tint = accent ?: ScottsTechXColors.OnPanel,
                     modifier = Modifier.size(20.dp),
                 )
             }
             Spacer(Modifier.width(12.dp))
             Text(
                 text = item.label,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = if (item.featured != null) FontWeight.Bold else FontWeight.SemiBold,
                 fontSize = 14.sp,
                 modifier = Modifier.weight(1f),
@@ -673,13 +673,13 @@ private fun SellerThemeRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Theme",
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
             )
             Text(
                 text = current.name,
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnPanelSecondary,
                 fontSize = 11.sp,
             )
         }
@@ -700,7 +700,7 @@ private fun SellerThemeRow(
                 ) {
                     Text(
                         text = mode.name.lowercase().replaceFirstChar { it.uppercase() },
-                        color = if (selected) Color.White else ScottsTechXColors.OnLightSecondary,
+                        color = if (selected) Color.White else ScottsTechXColors.OnPanelSecondary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 10.sp,
                     )

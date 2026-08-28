@@ -441,7 +441,7 @@ private fun ProfileSection(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = profile.displayName.ifBlank { "Buyer" },
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 15.sp,
                 maxLines = 1,
@@ -450,7 +450,7 @@ private fun ProfileSection(
             Spacer(Modifier.height(2.dp))
             Text(
                 text = profile.email.ifBlank { "buyer@scottsx.app" },
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnPanelSecondary,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -479,7 +479,7 @@ private fun ProfileSection(
 private fun SectionLabel(text: String) {
     Text(
         text = text.uppercase(),
-        color = ScottsTechXColors.OnLightSecondary,
+        color = ScottsTechXColors.OnPanelSecondary,
         fontWeight = FontWeight.Bold,
         fontSize = 10.sp,
         letterSpacing = 1.2.sp,
@@ -556,14 +556,14 @@ private fun SidebarRow(
                 Icon(
                     imageVector = item.icon,
                     contentDescription = null,
-                    tint = featuredAccent ?: ScottsTechXColors.OnLight,
+                    tint = featuredAccent ?: ScottsTechXColors.OnPanel,
                     modifier = Modifier.size(20.dp),
                 )
             }
             Spacer(Modifier.width(12.dp))
             Text(
                 text = item.label,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = if (item.featured != null) FontWeight.Bold else FontWeight.SemiBold,
                 fontSize = 14.sp,
                 modifier = Modifier.weight(1f),
