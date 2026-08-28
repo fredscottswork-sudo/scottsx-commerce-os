@@ -167,7 +167,17 @@ origin is authorised for OAuth client
 `911393008938-f0an8p59rlkhimcnn9rdqbtbi1aa9hbk`, or the button will load and
 then refuse with `origin_mismatch`. Override the client id with
 `VITE_GOOGLE_CLIENT_ID` (web) and `GOOGLE_CLIENT_ID` (backend, comma-separated
-for several clients).
+for several clients). **On Android, one more registration is required:**
+Google rejects sign-in from any APK whose (package `com.scottsx.app`, SHA-1)
+pair is not a registered OAuth Android client, and the old code swallowed that
+rejection as "Google sign-in cancelled" — the exact bug users hit. Debug
+APKs are now pinned to a shared repo keystore
+(`scottsx-android*/keystores/debug.keystore`), whose SHA-1/SHA-256 must be
+registered **once** in the Google Cloud console — full steps in
+`scottsx-android/keystores/README.md`. The Gradle build prints the
+fingerprints (prefix `GOOGLE SIGN-IN`) into every build log, and the login
+flow now reports the true Google status (developer error, network error,
+internal error) instead of pretending the user cancelled.
 
 **No live LLM test.** Outbound calls to OpenRouter are blocked from this
 sandbox, so the LLM path is unverified; the grounded local engine is what has
