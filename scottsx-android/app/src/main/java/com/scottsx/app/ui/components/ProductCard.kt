@@ -68,11 +68,11 @@ fun ProductCard(
     onClick: () -> Unit = {},
     onAddToCart: () -> Unit = {},
     modifier: Modifier = Modifier,
-    width: androidx.compose.ui.unit.Dp = 180.dp,
+    width: androidx.compose.ui.unit.Dp? = 180.dp,
 ) {
     Column(
         modifier = modifier
-            .width(width)
+            .then(if (width != null) Modifier.width(width) else Modifier)
             .clip(RoundedCornerShape(18.dp))
             .background(ScottsTechXColors.SurfacePanelDark)
             .border(1.dp, ScottsTechXColors.Divider, RoundedCornerShape(18.dp))

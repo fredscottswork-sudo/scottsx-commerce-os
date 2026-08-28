@@ -26,7 +26,7 @@ object ScottsTechXColors {
     /** Lighter blue for highlights, gradient tops, accents. */
     val BluePrimaryLight = Color(0xFF5B9BFF)
     /** Deeper blue for gradient bottoms, pressed states. */
-    val BluePrimaryDark = Color(0xFF124CA8)
+    val BluePrimaryDark = Color(0xFF0D2F7A)  // web --brand-600 (gradient deep end)
     /** Soft glow tint for backgrounds. */
     val BlueGlow = Color(0x331E6FFF)
     /** Link/accent — same as BluePrimary so colors stay unified. */
@@ -35,52 +35,52 @@ object ScottsTechXColors {
     // ---- Legacy "light" surfaces — MUTABLE (see applyThemePalette) -------
     // Despite the names these default to the dark-app palette and are
     // swapped to true light values when the user picks LIGHT/SYSTEM mode.
-    var PanelLight = Color(0xFF0C1322)
-    var BackgroundLight = Color(0xFF050912)
-    var PanelInputLight = Color(0xFF11192A)
-    val PanelBorderHint = Color(0xFFE5E7EB)
+    var PanelLight = Color(0xFF0B1020)      // web --surface (dark)
+    var BackgroundLight = Color(0xFF05070D)  // web --bg (dark)
+    var PanelInputLight = Color(0xFF121A2F)  // web --surface-2 (dark)
+    val PanelBorderHint = Color(0xFFDFE6F2)  // web --border (light)
 
     // ---- v0.23 dark surfaces ---------------------------------------------
     /** Page background — near-black navy. */
-    val BackgroundDark = Color(0xFF050912)
+    val BackgroundDark = Color(0xFF05070D)  // web --bg (dark)
     /** Cards & list items. */
-    val SurfacePanelDark = Color(0xFF0C1322)
+    val SurfacePanelDark = Color(0xFF0B1020)  // web --surface (dark)
     /** Slightly lighter cards on top of SurfacePanelDark. */
-    val SurfaceElevatedDark = Color(0xFF11192A)
+    val SurfaceElevatedDark = Color(0xFF121A2F)  // web --surface-2 (dark)
     /** Inputs and dividers on dark. */
-    val SurfaceInputDark = Color(0xFF0F172A)
+    val SurfaceInputDark = Color(0xFF121A2F)  // web --surface-2: inputs on dark
     /** Page background behind cards. */
-    val BackgroundSubtle = Color(0xFF0A1120)
+    val BackgroundSubtle = Color(0xFF02040A)  // web --bg-deep (dark)
     /** Convenience: dark surface for legacy `Color.White` panel sites. */
-    val SurfaceDarkCard = Color(0xFF11192A)
+    val SurfaceDarkCard = Color(0xFF121A2F)  // web --surface-2 (dark)
 
     // ---- Panels (fixed light/dark pairs) -----------------------------------
-    val Background = Color(0xFFFAFBFF)
-    val Divider = Color(0xFFE4E8F0)
+    val Background = Color(0xFFF5F7FC)  // web --bg (light)
+    val Divider = Color(0xFFDFE6F2)  // web --border (light)
     val DarkBackground = Color(0xFF0E1420)
-    val DarkPanel = Color(0xFF1A2233)
-    val DarkPanelRaised = Color(0xFF222C40)          // one step above DarkPanel
-    val DarkPanelHover = Color(0xFF283348)           // pressed/hover state
-    val DarkBorder = Color(0xFF2A3550)               // hairline on dark surfaces
+    val DarkPanel = Color(0xFF0B1020)           // web --surface
+    val DarkPanelRaised = Color(0xFF121A2F)     // web --surface-2          // one step above DarkPanel
+    val DarkPanelHover = Color(0xFF1A2440)      // web --surface-3           // pressed/hover state
+    val DarkBorder = Color(0xFF1E2A45)          // web --border (dark)               // hairline on dark surfaces
 
     // ---- Text --------------------------------------------------------------
     /** Primary text on dark backgrounds — white. */
     val OnDark = Color(0xFFFFFFFF)
     /** Secondary text on dark — muted blue-gray. */
-    val OnDarkSecondary = Color(0xFFB7BCC8)
+    val OnDarkSecondary = Color(0xFF94A3C4)  // web --text-2 (dark)
     /** Tertiary / hints on dark. */
-    val OnDarkMuted = Color(0xFF8A91A0)
-    val DarkOn = Color(0xFFE9EDF5)
-    val DarkOnSecondary = Color(0xFF98A2B8)
-    val DarkOnTertiary = Color(0xFF6F7FA0)           // lowest-emphasis dark text
+    val OnDarkMuted = Color(0xFF64748B)  // web --text-3 (dark)
+    val DarkOn = Color(0xFFEEF2FB)  // web --text (dark)
+    val DarkOnSecondary = Color(0xFF94A3C4)  // web --text-2 (dark)
+    val DarkOnTertiary = Color(0xFF64748B)   // web --text-3 (dark)           // lowest-emphasis dark text
     /** Primary text on light backgrounds. */
-    val OnLight = Color(0xFF121826)
-    val OnLightSecondary = Color(0xFF5A6478)
-    val OnLightTertiary = Color(0xFF71809B)          // lowest-emphasis light.text
+    val OnLight = Color(0xFF08122A)  // web --text (light)
+    val OnLightSecondary = Color(0xFF55627D)  // web --text-2 (light)
+    val OnLightTertiary = Color(0xFF8492AD)   // web --text-3 (light)          // lowest-emphasis light.text
 
     // ---- Status / semantic --------------------------------------------------
     val SuccessGreen = Color(0xFF16A34A)
-    val ErrorRed = Color(0xFFDC2626)
+    val ErrorRed = Color(0xFFEF4444)  // web --danger
     val WarningAmber = Color(0xFFF59E0B)
     /** Destructive (delete, error) — restrained pink/red. */
     val Danger = Color(0xFFE94B6E)
@@ -118,13 +118,13 @@ object ScottsTechXColors {
      */
     fun applyThemePalette(isLight: Boolean) {
         if (isLight) {
-            PanelLight = Color(0xFFFFFFFF)
-            BackgroundLight = Color(0xFFF8FAFC)
-            PanelInputLight = Color(0xFFF1F3F7)
+            PanelLight = Color(0xFFFFFFFF)        // web --surface (light)
+            BackgroundLight = Color(0xFFF5F7FC)   // web --bg (light)
+            PanelInputLight = Color(0xFFF3F6FC)   // web --surface-2 (light)
         } else {
-            PanelLight = Color(0xFF0C1322)
-            BackgroundLight = Color(0xFF050912)
-            PanelInputLight = Color(0xFF11192A)
+            PanelLight = Color(0xFF0B1020)        // web --surface (dark)
+            BackgroundLight = Color(0xFF05070D)   // web --bg (dark)
+            PanelInputLight = Color(0xFF121A2F)   // web --surface-2 (dark)
         }
     }
 }

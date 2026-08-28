@@ -47,6 +47,22 @@ without reaching Google. Nothing about it is mocked except the key source.
 **Commerce** — catalogue, search with facets, cart, COD checkout (one order per
 product line), orders, ratings, refunds, addresses, payment methods.
 
+**The Android dashboards are now web-parity live surfaces.** Buyer home and
+the seller dashboard render only real backend data — the in-memory sample
+catalogue (`MarketplaceDataSource` flash deals / recommended / hero benefits)
+and the fabricated seller snapshot (`SellerDataSource`: 850k-UGX days, 42 fake
+orders, "sales up 18%" insights) no longer feed either screen. Buyer home
+mirrors the web hierarchy (live greeting badges from
+`/me/notifications/unread-count`, real flash-deal spotlight, real category
+row, live "flash deals" rail, rating-sorted feed); the seller dashboard reads
+`GET /api/v1/seller/dashboard/stats` (revenue, orders, products, followers,
+listing health, top products, real recent orders, 14-day sales series) with
+the store open/closed state bound to `PATCH /seller/open-state`. Every
+loading state is a shimmer skeleton, every failure is a retryable error
+card, and empty catalogues show honest empty states — no demo content, no
+feature/payment promotion cards. Theme tokens are now byte-equal with the
+web design system (`web/src/styles/globals.css` dark + light).
+
 Android previously had **no cart**: its only purchase path was "Buy now" →
 `POST /orders/checkout`, which is a hard **503** until Nylon Pay credentials
 exist, so buying on the phone always failed. Product detail now says

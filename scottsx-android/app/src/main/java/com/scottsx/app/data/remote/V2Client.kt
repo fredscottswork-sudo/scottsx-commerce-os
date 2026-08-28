@@ -207,14 +207,21 @@ object V2Client {
      * (This method once parsed the body as a bare array, so the home
      * feed was silently empty against a perfectly healthy backend.)
      */
-    suspend fun fetchProductsList(): List<com.scottsx.app.data.domain.Product> {
+    /**
+     * Same feed as [fetchProductsList] but nullable: null means the
+     * request failed (network, non-2xx or an unexpected envelope) so
+     * the UI can show its error state; an EMPTY list means the server
+     * genuinely has no products. Never conflate the two — an error
+     * must not masquerade as an empty marketplace.
+     */
+    suspend fun fetchProductsListOrNull(): List<com.scottsx.app.data.domain.Product>? {
         val obj = apiCall(
             method = "GET",
             path = "/api/v1/products?pageSize=50",
             body = null,
             parse = { it },
-        ) ?: return emptyList()
-        val arr = obj.optJSONArray("products") ?: return emptyList()
+        ) ?: return null
+        val arr = obj.optJSONArray("products") ?: return null
         val out = ArrayList<com.scottsx.app.data.domain.Product>(arr.length())
         for (i in 0 until arr.length()) {
             val row = arr.optJSONObject(i) ?: continue
@@ -222,6 +229,9 @@ object V2Client {
         }
         return out
     }
+
+    suspend fun fetchProductsList(): List<com.scottsx.app.data.domain.Product> =
+        fetchProductsListOrNull() ?: emptyList()
 
     /**
      * Decode one backend product row (see
@@ -661,6 +671,115 @@ object V2Client {
             },
             parse = { o -> o.optString("url").ifBlank { url } },
         )
+
+    // ============================================================
+    // SELLER DASHBOARD + STORE STATE (real web-shared endpoints)
+    // ============================================================
+
+    /**
+     * `GET /api/v1/seller/dashboard/stats` →
+     * `{ stats, topProducts, recentOrders, salesSeries }` — the exact
+     * payload the web seller dashboard renders. Aggregates are computed
+     * by Postgres, never on-device. Null on failure → caller shows its
+     * error/retry state instead of fabricated numbers.
+     */
+    suspend fun fetchSellerDashboard(): com.scottsx.app.data.domain.SellerDashboardData? =
+        apiCall(
+            method = "GET",
+            path = "/api/v1/seller/dashboard/stats",
+            body = null,
+            parse = { o ->
+                val s = o.optJSONObject("stats") ?: return@apiCall null
+                val pbs = s.optJSONObject("productsByStatus")
+                val stats = com.scottsx.app.data.domain.SellerStats(
+                    revenueUgx = s.optLong("revenueUgx", 0L),
+                    revenue30Ugx = s.optLong("revenue30Ugx", 0L),
+                    orders = s.optInt("orders", 0),
+                    orders30 = s.optInt("orders30", 0),
+                    avgOrderValueUgx = s.optLong("avgOrderValueUgx", 0L),
+                    totalProducts = s.optInt("totalProducts", 0),
+                    lowStock = s.optInt("lowStock", 0),
+                    outOfStock = s.optInt("outOfStock", 0),
+                    topProduct = s.optString("topProduct").takeIf { it.isNotBlank() },
+                    unreadMessages = s.optInt("unreadMessages", 0),
+                    followers = s.optInt("followers", 0),
+                    totalViews = s.optInt("totalViews", 0),
+                    draft = pbs?.optInt("draft", 0) ?: 0,
+                    pending = pbs?.optInt("pending", 0) ?: 0,
+                    approved = pbs?.optInt("approved", 0) ?: 0,
+                    rejected = pbs?.optInt("rejected", 0) ?: 0,
+                    suspended = pbs?.optInt("suspended", 0) ?: 0,
+                    pendingApproval = s.optInt("pendingApproval", 0),
+                )
+                fun <T> listOf(arr: org.json.JSONArray?, map: (org.json.JSONObject) -> T?): List<T> =
+                    (0 until (arr?.length() ?: 0)).mapNotNull { i -> arr?.optJSONObject(i)?.let(map) }
+                val topProducts = listOf(o.optJSONArray("topProducts")) { t ->
+                    com.scottsx.app.data.domain.SellerTopProduct(
+                        title = t.optString("title"),
+                        sold = t.optInt("sold", 0),
+                    ).takeIf { it.title.isNotBlank() }
+                }
+                val recentOrders = listOf(o.optJSONArray("recentOrders")) { r ->
+                    com.scottsx.app.data.domain.SellerRecentOrder(
+                        id = r.optString("id"),
+                        buyerId = r.optString("buyerId"),
+                        productTitle = r.optString("productTitle"),
+                        amount = r.optLong("amount", 0L),
+                        quantity = r.optInt("quantity", 1),
+                        status = r.optString("status", "pending"),
+                        createdAt = r.optString("createdAt"),
+                        buyerName = r.optString("buyerName").ifEmpty { "Buyer" },
+                    ).takeIf { it.id.isNotBlank() }
+                }
+                val salesSeries = listOf(o.optJSONArray("salesSeries")) { p ->
+                    com.scottsx.app.data.domain.SellerSalesPoint(
+                        date = p.optString("date"),
+                        orders = p.optInt("orders", 0),
+                        revenue = p.optLong("revenue", 0L),
+                    ).takeIf { it.date.isNotBlank() }
+                }
+                com.scottsx.app.data.domain.SellerDashboardData(
+                    stats = stats,
+                    topProducts = topProducts,
+                    recentOrders = recentOrders,
+                    salesSeries = salesSeries,
+                )
+            },
+        )
+
+    /**
+     * `GET /api/v1/seller/location` → `{ location: { lat, lng, sharing,
+     * isOpen, ... } | null }` — the toggle source of truth shared with
+     * the web seller dashboard. isOpen lives here (not in stats).
+     */
+    suspend fun fetchStoreOpenState(): Boolean? =
+        apiCall(
+            method = "GET",
+            path = "/api/v1/seller/location",
+            body = null,
+            parse = { o -> o.optJSONObject("location")?.optBoolean("isOpen") },
+        )
+
+    /** `PATCH /api/v1/seller/open-state` — flip the store open/closed. */
+    suspend fun setStoreOpen(isOpen: Boolean): Boolean? =
+        apiCall(
+            method = "PATCH",
+            path = "/api/v1/seller/open-state",
+            body = org.json.JSONObject().put("isOpen", isOpen),
+            parse = { o -> if (o.has("isOpen")) o.optBoolean("isOpen") else null },
+        )
+
+    /**
+     * `GET /api/v1/me/notifications/unread-count` → `{ unread: n }` —
+     * header badge source; the web uses the same endpoint.
+     */
+    suspend fun fetchUnreadNotificationCount(): Int =
+        apiCall(
+            method = "GET",
+            path = "/api/v1/me/notifications/unread-count",
+            body = null,
+            parse = { o -> o.optInt("unread", 0) },
+        ) ?: 0
 
     /**
      * Upload avatar URL for the current user. The backend stores it on
