@@ -15,7 +15,6 @@ import java.util.concurrent.TimeUnit
  * Stage 3. The endpoint is configured via two resource strings in
  * `app/src/main/res/values/strings.xml`:
  *
- *  - `remote.assistant.base`     — "https://apifreellm.com"
  *  - `remote.assistant.api_key`  — the bearer token for the free tier
  *
  * Auth: a static `Authorization: Bearer <key>` header. No Firebase ID
@@ -33,7 +32,7 @@ import java.util.concurrent.TimeUnit
  * Always returns a non-null [Result]; never throws.
  */
 class RemoteAssistantClient(
-    private val baseUrl: String = DEFAULT_BASE_URL,
+    private val baseUrl: String = V2Client.currentBaseUrl(),
     private val apiKey: String = DEFAULT_API_KEY,
     private val client: OkHttpClient = defaultClient(),
 ) {
@@ -66,7 +65,7 @@ class RemoteAssistantClient(
         // to the apifreellm.com fallback if the local backend is down.
         val token = com.scottsx.app.data.Session.tokenOrNull()
         val localReqBuilder = Request.Builder()
-            .url("http://127.0.0.1:3001/api/v1/ai/v2/ask")
+            .url("$baseUrl/api/v1/ai/v2/ask")
             .header("Content-Type", "application/json")
         if (token != null) localReqBuilder.header("Authorization", "Bearer $token")
         val localReq = localReqBuilder.post(body.toString().toRequestBody(JSON)).build()
@@ -113,7 +112,6 @@ class RemoteAssistantClient(
         // tier-1 key with a 20s/req delay; safe for our 1-line queries.
         // Stage 3.1 will move this to a deployed Fastify URL with
         // proper per-user auth.
-        private const val DEFAULT_BASE_URL = "https://apifreellm.com"
         private const val DEFAULT_API_KEY = "apf_z8vg9nzv40wfhaktxv216gvc"
         private val JSON = "application/json; charset=utf-8".toMediaType()
 

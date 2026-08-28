@@ -18,15 +18,15 @@ object V2Client {
 
     private const val TAG = "V2Client"
 
-    // Default backend base URL — override at runtime via setBaseUrl().
+    // Default backend base URL — SAME production backend the web app and v2 use.
     // Real device + adb reverse tcp:3001 tcp:3001 → reaches the host backend.
     // For Android emulator without adb reverse, use 10.0.2.2 instead.
-    private const val DEFAULT_BASE_URL = "http://127.0.0.1:3001"
+    private const val DEFAULT_BASE_URL = "https://scottstechx-api.onrender.com"
     @Volatile private var baseUrlOverride: String? = null
     fun setBaseUrl(url: String) { baseUrlOverride = url }
 
-    /** Base URL — honours [setBaseUrl]; defaults to the dev host. */
-    private val baseUrl: String get() = baseUrlOverride ?: DEFAULT_BASE_URL
+    /** Base URL — honours [setBaseUrl]; defaults to the production origin. */
+    private val baseUrl: String get() = baseUrlOverride?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL
 
     /** Public accessor for sibling clients (RemoteAssistantClient). */
     fun currentBaseUrl(): String = baseUrl

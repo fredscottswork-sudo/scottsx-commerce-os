@@ -37,6 +37,9 @@ object V2Client {
     /** Base URL — honours the runtime override, else the production origin. */
     private val baseUrl: String get() = baseUrlOverride?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL
 
+    /** Public accessor for sibling clients (RemoteAssistantClient). */
+    fun currentBaseUrl(): String = baseUrl
+
     private suspend fun <T> apiCall(
         method: String,
         path: String,
