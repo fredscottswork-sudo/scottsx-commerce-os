@@ -1,5 +1,11 @@
 package com.scottsx.app.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,16 +38,77 @@ import com.scottsx.app.ui.components.SettingsRow
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
-/** Account settings — email, password change, security info. */
+/** Account settings — profile editing (name/phone/city/photo) + password. */
 @Composable
 fun AccountSettingsScreen(onBack: () -> Unit) {
-    val user = SessionCache.user.value
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val sessionUser by SessionCache.user.collectAsState()
     var oldPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // ── Profile (web parity: Settings → Profile tab) ──────────────────
+    var displayName by remember(sessionUser?.displayName) { mutableStateOf(sessionUser?.displayName ?: "") }
+    var phone by remember(sessionUser?.phone) { mutableStateOf(sessionUser?.phone ?: "") }
+    var city by remember(sessionUser?.city) { mutableStateOf(sessionUser?.city ?: "") }
+    var photoUrl by remember(sessionUser?.profilePhotoUrl) { mutableStateOf(sessionUser?.profilePhotoUrl ?: "") }
+    var profileBusy by remember { mutableStateOf(false) }
+    var profileMessage by remember { mutableStateOf<String?>(null) }
+    var profileError by remember { mutableStateOf(false) }
+    var avatarUploading by remember { mutableStateOf(false) }
+
+    val pickAvatar = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            avatarUploading = true
+            scope.launch {
+                val uploaded = runCatching {
+                    val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("Could not read image")
+                    var mime = ctx.contentResolver.getType(uri) ?: "image/jpeg"
+                    var bytes = raw
+                    if (bytes.size > 3 * 1024 * 1024 ||
+                        mime !in setOf("image/jpeg", "image/png", "image/webp")
+                    ) {
+                        val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size)
+                        if (bmp != null) {
+                            val maxSide = 800
+                            val scale = minOf(1f, maxSide.toFloat() / maxOf(bmp.width, bmp.height))
+                            val scaled = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(
+                                bmp, (bmp.width * scale).toInt().coerceAtLeast(1),
+                                (bmp.height * scale).toInt().coerceAtLeast(1), true) else bmp
+                            val bos = java.io.ByteArrayOutputStream()
+                            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos)
+                            bytes = bos.toByteArray()
+                            mime = "image/jpeg"
+                        }
+                    }
+                    val ext = when { mime.endsWith("png") -> "png"; mime.endsWith("webp") -> "webp"; else -> "jpg" }
+                    V2Client.uploadImage(bytes, mime, "avatar-${System.currentTimeMillis()}.$ext")
+                        ?: error("Upload failed")
+                }
+                avatarUploading = false
+                uploaded.onSuccess { url ->
+                    photoUrl = url
+                    val ok = V2Client.updateUserProfile(
+                        org.json.JSONObject().put("profilePhotoUrl", url)
+                    )
+                    if (ok && sessionUser != null) {
+                        SessionCache.updateUser(sessionUser!!.copy(profilePhotoUrl = url))
+                    }
+                    profileMessage = if (ok) "Photo updated." else "Uploaded but save failed — press Save profile."
+                    profileError = !ok
+                }.onFailure {
+                    profileMessage = "Photo upload failed — retry or paste an image URL."
+                    profileError = true
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -56,11 +123,129 @@ fun AccountSettingsScreen(onBack: () -> Unit) {
         SettingsRow(title = "", icon = Icons.Filled.KeyboardArrowLeft, onClick = onBack)
         Text("Account settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text(
-            "Signed in as ${user?.email ?: "-"}",
+            "Signed in as ${sessionUser?.email ?: "-"}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(18.dp))
+
+        // ── Public profile — same fields the web's Settings → Profile tab
+        //    edits (display name, phone, city, photo). ────────────────
+        Text("Profile", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(12.dp))
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .then(
+                        if (photoUrl.isBlank()) Modifier.background(ScottsTechXColors.BluePrimary.copy(alpha = 0.14f))
+                        else Modifier
+                    ),
+                contentAlignment = androidx.compose.ui.Alignment.Center,
+            ) {
+                if (photoUrl.isNotBlank()) {
+                    coil.compose.AsyncImage(
+                        model = photoUrl,
+                        contentDescription = "Profile photo",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(androidx.compose.foundation.shape.CircleShape),
+                    )
+                } else {
+                    Text(
+                        (displayName.firstOrNull()?.uppercase() ?: "U").toString(),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 28.sp,
+                        color = ScottsTechXColors.BluePrimary,
+                    )
+                }
+            }
+            Spacer(Modifier.height(0.dp).padding(start = 0.dp))
+            androidx.compose.foundation.layout.Column(
+                modifier = Modifier.padding(start = 14.dp),
+            ) {
+                PrimaryButton(
+                    text = if (avatarUploading) "Uploading…" else "Upload photo",
+                    loading = avatarUploading,
+                    enabled = !avatarUploading,
+                    onClick = {
+                        pickAvatar.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly,
+                            ),
+                        )
+                    },
+                )
+                if (photoUrl.isNotBlank()) {
+                    Text(
+                        "Remove photo",
+                        color = Color(0xFFB91C1C),
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .clickable {
+                                photoUrl = ""
+                                scope.launch {
+                                    val ok = V2Client.updateUserProfile(
+                                        org.json.JSONObject().put("profilePhotoUrl", "")
+                                    )
+                                    if (ok && sessionUser != null) {
+                                        SessionCache.updateUser(sessionUser!!.copy(profilePhotoUrl = null))
+                                    }
+                                }
+                            },
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        InputField(value = displayName, onValueChange = { displayName = it }, label = "Display name")
+        Spacer(Modifier.height(10.dp))
+        InputField(value = phone, onValueChange = { phone = it }, label = "Phone", placeholder = "+256 …")
+        Spacer(Modifier.height(10.dp))
+        InputField(value = city, onValueChange = { city = it }, label = "City / town", placeholder = "Helps sort nearby stores by distance")
+        Spacer(Modifier.height(10.dp))
+        InputField(value = photoUrl, onValueChange = { photoUrl = it }, label = "…or paste an image URL", placeholder = "https://…")
+        Spacer(Modifier.height(8.dp))
+        profileMessage?.let {
+            Text(it, color = if (profileError) ScottsTechXColors.ErrorRed else ScottsTechXColors.SuccessGreen, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+        }
+        PrimaryButton(
+            text = "Save profile",
+            loading = profileBusy,
+            enabled = displayName.isNotBlank() && !profileBusy,
+            onClick = {
+                profileBusy = true
+                profileMessage = null
+                scope.launch {
+                    val ok = V2Client.updateUserProfile(
+                        org.json.JSONObject().apply {
+                            put("displayName", displayName.trim())
+                            put("phone", phone.trim())
+                            put("city", city.trim())
+                            put("profilePhotoUrl", photoUrl.trim())
+                        },
+                    )
+                    if (ok && sessionUser != null) {
+                        SessionCache.updateUser(
+                            sessionUser!!.copy(
+                                displayName = displayName.trim(),
+                                phone = phone.trim(),
+                                city = city.trim(),
+                                profilePhotoUrl = photoUrl.trim().ifBlank { null },
+                            ),
+                        )
+                    }
+                    profileMessage = if (ok) "Profile saved." else "Could not save right now — try again."
+                    profileError = !ok
+                    profileBusy = false
+                }
+            },
+        )
+        Spacer(Modifier.height(22.dp))
 
         Text("Change password", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(10.dp))
