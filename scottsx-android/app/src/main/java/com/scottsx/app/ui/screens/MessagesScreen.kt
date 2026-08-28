@@ -44,6 +44,7 @@ import com.scottsx.app.data.remote.MessageStream
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
@@ -75,12 +76,12 @@ fun MessagesScreen(
     androidx.compose.runtime.LaunchedEffect(Unit) {
         isLoading = true
         loadError = null
-        val convJob = kotlinx.coroutines.async {
+        val convJob = async {
             try { V2Client.fetchConversations() to null }
             catch (t: Throwable) { emptyList<V2Client.Conversation>() to
                 "Couldn't load conversations: ${t.message ?: "unknown error"}" }
         }
-        val favJob = kotlinx.coroutines.async {
+        val favJob = async {
             try { V2Client.fetchFavoriteSellers() ?: emptyList() } catch (_: Throwable) { emptyList() }
         }
         val (list, err) = convJob.await()

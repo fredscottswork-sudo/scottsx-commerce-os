@@ -47,6 +47,7 @@ import com.scottsx.app.data.LiveMarketplace
 import com.scottsx.app.data.remote.V2Client
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
@@ -70,7 +71,7 @@ fun SearchScreen(
     var trending by remember { mutableStateOf<List<String>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.launch { LiveMarketplace.ensureLoaded() }
+        launch { LiveMarketplace.ensureLoaded() }
         val facets = try { V2Client.fetchCatalogFacets() } catch (_: Throwable) { null }
         if (facets != null) {
             trending = (facets.categories.take(6).map { it.name } +

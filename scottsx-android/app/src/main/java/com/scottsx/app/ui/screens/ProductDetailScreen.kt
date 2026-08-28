@@ -229,7 +229,7 @@ fun ProductDetailScreen(
 
     // Keep the wishlist heart in step with the server bookmarks.
     LaunchedEffect(productId) {
-        kotlinx.coroutines.launch { try { WishlistStore.syncFromServer() } catch (_: Throwable) { } }
+        launch { try { WishlistStore.syncFromServer() } catch (_: Throwable) { } }
             .join()
         wishlisted = WishlistStore.contains(productId)
     }
