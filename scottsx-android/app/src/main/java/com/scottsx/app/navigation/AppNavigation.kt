@@ -643,7 +643,10 @@ fun AppNavigation() {
         composable(Routes.SELLER_MESSAGES) {
             SellerMessagesScreen(
                 onBack = { navController.popBackStack() },
-                onOpenThread = { conversationId, peerName -> navController.navigate(Routes.thread("tech-hub", null)) },
+                // Thread route resolves the conversation by PEER user id —
+                // the seller inbox hands back the counterparty's uid in the
+                // second lambda slot (named peerName by the screen contract).
+                onOpenThread = { _, peerId -> navController.navigate(Routes.thread(peerId, null)) },
             )
         }
         composable(Routes.SELLER_ANALYTICS) {
