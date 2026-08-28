@@ -526,11 +526,12 @@ object V2Client {
         val productId = o.optString("id")
         fun urlAt(arr: org.json.JSONArray, i: Int): String? {
             val any = arr.opt(i) ?: return null
-            return when (any) {
+            val raw: String? = when (any) {
                 is String -> any
                 is org.json.JSONObject -> any.optString("url")
                 else -> null
-            }.takeIf { it.isNotBlank() }
+            }
+            return raw?.takeIf { it.isNotBlank() }
         }
         val urls = mutableListOf<String>()
         for (key in listOf("mediaUrls", "media", "images")) {
