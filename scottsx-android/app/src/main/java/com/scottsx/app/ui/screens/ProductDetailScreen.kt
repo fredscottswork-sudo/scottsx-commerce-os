@@ -197,7 +197,7 @@ fun ProductDetailScreen(
         val sf = storefront ?: return@remember emptyList<DeliveryOption>()
         buildList {
             if (sf.freeAboveUgx > 0L) add(
-                DeliveryOption(id = "free", label = "Free delivery", etaDaysLabel = "orders above UGX ${formatUgx(sf.freeAboveUgx)}", feeUgx = 0L),
+                DeliveryOption(id = "free", label = "Free delivery", etaDaysLabel = "orders above ${formatUgx(sf.freeAboveUgx)}", feeUgx = 0L),
             )
             if (sf.deliveryFeeUgx > 0L) add(
                 DeliveryOption(id = "std", label = "Store delivery", etaDaysLabel = "shipped by ${sf.storeName}", feeUgx = sf.deliveryFeeUgx),
@@ -252,7 +252,7 @@ fun ProductDetailScreen(
     fun shareProduct() {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, "Check this out on ScottsTechX: ${product.name} — UGX ${formatUgx(effectivePriceUgx)}")
+            putExtra(Intent.EXTRA_TEXT, "Check this out on ScottsTechX: ${product.name} — ${formatUgx(effectivePriceUgx)}")
         }
         ctx.startActivity(Intent.createChooser(send, "Share ${product.name}"))
     }
@@ -447,7 +447,7 @@ private fun PriceBlock(product: Product, effectivePriceUgx: Long) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                text = "UGX ${formatUgx(effectivePriceUgx)}",
+                text = "${formatUgx(effectivePriceUgx)}",
                 color = ScottsTechXColors.BluePrimary,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 22.sp,
@@ -455,7 +455,7 @@ private fun PriceBlock(product: Product, effectivePriceUgx: Long) {
             if (product.oldPriceUgx != null && product.oldPriceUgx > effectivePriceUgx) {
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    text = "UGX ${formatUgx(product.oldPriceUgx)}",
+                    text = "${formatUgx(product.oldPriceUgx)}",
                     color = ScottsTechXColors.OnLightSecondary,
                     fontSize = 13.sp,
                     textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
@@ -661,7 +661,7 @@ private fun DeliverySection(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = if (opt.feeUgx == 0L) "Free" else "UGX ${formatUgx(opt.feeUgx)}",
+                        text = if (opt.feeUgx == 0L) "Free" else "${formatUgx(opt.feeUgx)}",
                         color = ScottsTechXColors.OnLight,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -770,7 +770,7 @@ private fun NearbySellerCard(ns: NearbySeller, onClick: () -> Unit) {
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "UGX ${formatUgx(ns.priceUgx)}",
+                text = "${formatUgx(ns.priceUgx)}",
                 color = ScottsTechXColors.BluePrimary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,

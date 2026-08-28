@@ -61,6 +61,8 @@ fun SearchScreen(
     onOpenProduct: (com.scottsx.app.data.domain.Product) -> Unit = {},
     onTabSelect: (BottomTab) -> Unit,
     modifier: Modifier = Modifier,
+    flashOnly: Boolean = false,
+    screenTitle: String? = null,
 ) {
     var query by remember { mutableStateOf("") }
     var bottomTab by remember { mutableStateOf(BottomTab.Home) }
@@ -84,22 +86,39 @@ fun SearchScreen(
     LaunchedEffect(query) {
         val q = query.trim()
         if (q.isBlank()) {
-            results = emptyList()
-            searching = false
+            if (flashOnly) {
+                // Deals page: every flash-deal listing, biggest discount first
+                // (web parity: /search?flashOnly=1 sorted by discount).
+                searching = true
+                val deals = try {
+                    V2Client.searchProducts(flashOnly = true, pageSize = 80)
+                } catch (_: Throwable) { null }
+                results = (deals
+                    ?: LiveMarketplace.products.value.filter { it.isFlashDeal })
+                    .sortedByDescending { it.discountPercent }
+                searching = false
+            } else {
+                results = emptyList()
+                searching = false
+            }
             return@LaunchedEffect
         }
         searching = true
         delay(300)
-        val remote = try { V2Client.searchProducts(query = q) } catch (_: Throwable) { null }
+        val remote = try {
+            V2Client.searchProducts(query = q, flashOnly = flashOnly)
+        } catch (_: Throwable) { null }
         if (remote != null) {
             LiveMarketplace.cache(remote)
-            results = remote
+            results = if (flashOnly) remote.sortedByDescending { it.discountPercent } else remote
         } else {
             val needle = q.lowercase()
-            results = LiveMarketplace.products.value.filter { p ->
-                (p.name + " " + p.shortDescription + " " + p.brand.name + " " + p.category.displayName)
-                    .lowercase().contains(needle)
-            }
+            results = LiveMarketplace.products.value
+                .filter { !flashOnly || it.isFlashDeal }
+                .filter { p ->
+                    (p.name + " " + p.shortDescription + " " + p.brand.name + " " + p.category.displayName)
+                        .lowercase().contains(needle)
+                }
         }
         searching = false
     }
@@ -168,7 +187,7 @@ fun SearchScreen(
                             onValueChange = { query = it },
                             placeholder = {
                                 Text(
-                                    text = "Search for products, brands, categories...",
+                                    text = if (flashOnly) "Search flash deals..." else "Search for products, brands, categories...",
                                     color = ScottsTechXColors.OnLightSecondary,
                                     fontSize = 13.sp,
                                 )
@@ -223,13 +242,16 @@ fun SearchScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Browse categories",
+                        text = if (flashOnly) "No flash deals right now" else "Browse categories",
                         color = ScottsTechXColors.OnLight,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                     )
                     Text(
-                        text = "Tap a category on the home screen to see products in that category.",
+                        text = if (flashOnly)
+                            "Sellers haven't published deals yet — check back soon, deals drop daily."
+                        else
+                            "Tap a category on the home screen to see products in that category.",
                         color = ScottsTechXColors.OnLightSecondary,
                         fontSize = 12.sp,
                     )

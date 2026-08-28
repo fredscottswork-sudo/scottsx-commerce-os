@@ -70,7 +70,7 @@ fun MyOrdersScreen(onBack: () -> Unit, onTrack: (String) -> Unit, onOpenReturn: 
                                 Text("Order #${order.id.takeLast(6).uppercase()}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 Text("Product: ${order.title}", fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
                                 Text(
-                                    "${order.quantity} × UGX ${com.scottsx.app.ui.util.formatUgx(order.amountUgx)}",
+                                    "${order.quantity} × ${com.scottsx.app.ui.util.formatUgx(order.amountUgx)}",
                                     fontSize = 12.sp, color = ScottsTechXColors.OnLight,
                                 )
                                 Text(

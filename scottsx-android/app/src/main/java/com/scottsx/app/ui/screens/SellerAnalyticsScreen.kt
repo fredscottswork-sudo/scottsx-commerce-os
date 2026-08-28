@@ -175,12 +175,12 @@ private fun RevenueCard(revenue: Long, orders: Int, aov: Long) {
                 Text("Revenue", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.height(4.dp))
-            Text("UGX ${formatUgx(revenue)}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp)
+            Text("${formatUgx(revenue)}", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp)
             Spacer(Modifier.height(8.dp))
             Row {
                 MetaCell("Orders", orders.toString())
                 Spacer(Modifier.width(16.dp))
-                MetaCell("Avg Order", "UGX ${formatUgx(aov)}")
+                MetaCell("Avg Order", "${formatUgx(aov)}")
             }
         }
     }

@@ -362,6 +362,7 @@ fun AppNavigation() {
                 },
                 onNavigateToBecomeSeller = { navController.navigate(Routes.BECOME_SELLER) },
                 onNavigateToWishlist = { navController.navigate(Routes.WISHLIST) },
+                onNavigateToDeals = { navController.navigate(Routes.DEALS) },
                 onNavigateToProfile = {
                     navController.navigate("profile/${
                         java.net.URLEncoder.encode(profile.displayName.ifBlank { "Buyer" }, "UTF-8")
@@ -455,6 +456,15 @@ fun AppNavigation() {
             CartScreen(
                 onBack = { navController.popBackStack() },
                 onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
+            )
+        }
+        composable(Routes.DEALS) {
+            SearchScreen(
+                onBack = { navController.popBackStack() },
+                onOpenProduct = { p: com.scottsx.app.data.domain.Product -> navController.navigate(Routes.product(p.id)) },
+                onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
+                flashOnly = true,
+                screenTitle = "Deals",
             )
         }
         composable(Routes.NEARBY) {
@@ -1016,6 +1026,7 @@ object Routes {
     const val BUYER_HOME = "buyer_home/{displayName}/{email}"
     const val SELLER_HOME = "seller_home/{displayName}/{email}"
     const val CART = "cart"
+    const val DEALS = "deals"
     const val NEARBY = "nearby"
     const val AI = "ai"
     const val SELLER_AI = "seller/ai"

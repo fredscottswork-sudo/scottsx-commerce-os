@@ -198,7 +198,7 @@ private fun OrderRow(o: SellerOrder, onClick: () -> Unit) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "UGX ${formatUgx(o.totalUgx)}",
+                    text = "${formatUgx(o.totalUgx)}",
                     color = ScottsTechXColors.BluePrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,

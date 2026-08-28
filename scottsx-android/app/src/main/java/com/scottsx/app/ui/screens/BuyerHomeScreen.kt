@@ -108,6 +108,7 @@ fun BuyerHomeScreen(
     onNavigateToAi: () -> Unit,
     onNavigateToAllProducts: () -> Unit,
     onNavigateToWishlist: () -> Unit = {},
+    onNavigateToDeals: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
     onNavigateToTransactions: () -> Unit = {},
     onNavigateToReceipts: () -> Unit = {},
@@ -180,6 +181,7 @@ fun BuyerHomeScreen(
         when (dest) {
             SidebarDestination.Home -> onTabSelect(BottomTab.Home)
             SidebarDestination.Nearby -> onNavigateToNearby()
+            SidebarDestination.Deals -> onNavigateToDeals()
             SidebarDestination.Ai -> onNavigateToAi()
             SidebarDestination.Wishlist -> onNavigateToWishlist()
             SidebarDestination.Cart -> onNavigateToCart()

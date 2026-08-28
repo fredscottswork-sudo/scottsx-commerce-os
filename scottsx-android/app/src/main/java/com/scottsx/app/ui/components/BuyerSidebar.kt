@@ -89,7 +89,7 @@ import kotlinx.coroutines.async
 
 /** Destination of a sidebar nav item — opaque to the drawer. */
 enum class SidebarDestination {
-    Home, Nearby, Ai, Wishlist, Cart, Orders, Messages, Notifications,
+    Home, Nearby, Deals, Ai, Wishlist, Cart, Orders, Messages, Notifications,
     SellerCenter, BecomeSeller, Settings, Theme, Logout, Profile,
     Transactions, Receipts, AiPersonalization,
 }
@@ -279,6 +279,7 @@ fun BuyerSidebarCard(
                 items = listOf(
                     SidebarItem(SidebarDestination.Home, "Home", Icons.Filled.Home, null),
                     SidebarItem(SidebarDestination.Nearby, "Nearby", Icons.Filled.LocationOn, null, featured = FeaturedKind.Nearby),
+                    SidebarItem(SidebarDestination.Deals, "Deals", Icons.Filled.LocalOffer, null),
                     SidebarItem(SidebarDestination.Ai, "AI Assistant", Icons.Filled.AutoAwesome, null, featured = FeaturedKind.Ai),
                     SidebarItem(SidebarDestination.Wishlist, "Wishlist", Icons.Filled.Favorite, wishlistCount),
                     SidebarItem(SidebarDestination.Cart, "Cart", Icons.Filled.ShoppingCart, cartCount),

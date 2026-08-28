@@ -303,11 +303,15 @@ object V2Client {
         query: String? = null,
         category: String? = null,
         pageSize: Int = 50,
+        flashOnly: Boolean = false,
+        sort: String? = null,   // relevance|newest|price_asc|price_desc|rating|popular
     ): List<com.scottsx.app.data.domain.Product>? {
         val qs = buildString {
             append("?pageSize=").append(pageSize)
             if (!query.isNullOrBlank()) append("&q=").append(java.net.URLEncoder.encode(query, "UTF-8"))
             if (!category.isNullOrBlank()) append("&category=").append(java.net.URLEncoder.encode(category, "UTF-8"))
+            if (flashOnly) append("&flashOnly=1")
+            if (!sort.isNullOrBlank()) append("&sort=").append(sort)
         }
         val obj = apiCall(
             method = "GET", path = "/api/v1/products/search$qs", body = null,
@@ -1712,7 +1716,7 @@ object V2Client {
                 address = s.optString("address"),
                 verified = s.optBoolean("verified", false),
                 rating = s.optDouble("rating", 0.0),
-                logoUrl = s.optString("logoUrl").takeIf { it.isNotBlank() },
+                logoUrl = absoluteMediaUrl(s.optString("logoUrl").takeIf { it.isNotBlank() }),
                 deliveryFeeUgx = s.optLong("deliveryFeeUgx", 0L),
                 freeAboveUgx = s.optLong("freeAboveUgx", 0L),
                 codEnabled = s.optBoolean("codEnabled", false),

@@ -79,6 +79,7 @@ fun MessageThreadScreen(
     val scope = rememberCoroutineScope()
     var conversationId by remember { mutableStateOf<String?>(null) }
     var sellerName by remember { mutableStateOf("Seller") }
+    var sellerLogoUrl by remember { mutableStateOf<String?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var product by remember { mutableStateOf<Product?>(null) }
     val myUid = remember { Session.userIdOrNull().orEmpty() }
@@ -96,7 +97,10 @@ fun MessageThreadScreen(
         }
         launch {
             val storefront = try { V2Client.fetchStorefront(sellerId) } catch (_: Throwable) { null }
-            storefront?.let { if (it.storeName.isNotBlank()) sellerName = it.storeName }
+            storefront?.let {
+                if (it.storeName.isNotBlank()) sellerName = it.storeName
+                sellerLogoUrl = it.logoUrl
+            }
         }
         if (productId != null) {
             launch {
@@ -117,7 +121,7 @@ fun MessageThreadScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
-        TopBar(sellerName = sellerName, onBack = onBack)
+        TopBar(sellerName = sellerName, sellerLogoUrl = sellerLogoUrl, onBack = onBack)
 
         when {
             loadError != null && convId == null -> {
@@ -232,6 +236,7 @@ private data class UiMessage(
 @Composable
 private fun TopBar(
     sellerName: String,
+    sellerLogoUrl: String? = null,
     onBack: () -> Unit,
 ) {
     Row(
@@ -250,6 +255,29 @@ private fun TopBar(
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        // The store's real logo when it has one — initial otherwise.
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.20f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (!sellerLogoUrl.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = sellerLogoUrl,
+                    contentDescription = sellerName,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    (sellerName.firstOrNull()?.uppercase() ?: "S").toString(),
+                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                )
+            }
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -287,6 +315,8 @@ private fun ThreadHeader(
                     .padding(10.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The product's REAL photo (web parity) — gradient initial
+                    // only when the listing has no image.
                     Box(
                         modifier = Modifier
                             .size(40.dp)
@@ -294,13 +324,22 @@ private fun ThreadHeader(
                             .background(ScottsTechXColors.BluePrimary),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        if (!product.imageUrl.isNullOrBlank()) {
+                            coil.compose.AsyncImage(
+                                model = product.imageUrl,
+                                contentDescription = product.name,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
                     }
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Product context", color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                         Text(product.name, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("UGX ${com.scottsx.app.ui.util.formatUgx(product.priceUgx)}", color = ScottsTechXColors.BluePrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(com.scottsx.app.ui.util.formatUgx(product.priceUgx), color = ScottsTechXColors.BluePrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
