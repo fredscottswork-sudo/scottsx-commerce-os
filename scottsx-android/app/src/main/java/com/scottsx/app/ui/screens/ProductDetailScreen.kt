@@ -67,8 +67,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.CartStore
-import com.scottsx.app.data.MarketplaceDataSource
+import com.scottsx.app.data.LiveMarketplace
+import com.scottsx.app.data.Session
 import com.scottsx.app.data.WishlistStore
+import com.scottsx.app.data.domain.DeliveryOption
+import com.scottsx.app.data.domain.RatingDistribution
+import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.data.domain.NearbySeller
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.ProductSpec
@@ -120,18 +124,89 @@ fun ProductDetailScreen(
     onOpenProduct: (productId: String) -> Unit,
 ) {
     val ctx = LocalContext.current
-    val product = remember(productId) { MarketplaceDataSource.productFull(productId) }
-    if (product == null) {
+    val scope = rememberCoroutineScope()
+
+    // ── Everything below is live — the PDP never renders seed data ──
+    var productState by remember(productId) { mutableStateOf<Product?>(null) }
+    var loadFailed by remember(productId) { mutableStateOf(false) }
+    var ratingsPage by remember(productId) { mutableStateOf<V2Client.ProductRatingsPage?>(null) }
+    var related by remember(productId) { mutableStateOf<List<Product>>(emptyList()) }
+    var recommended by remember(productId) { mutableStateOf<List<Product>>(emptyList()) }
+    var storefront by remember(productId) { mutableStateOf<V2Client.StorefrontPage?>(null) }
+
+    LaunchedEffect(productId) {
+        loadFailed = false
+        val fetched = try { LiveMarketplace.byIdOrFetch(productId) } catch (_: Throwable) { null }
+        productState = fetched
+        if (fetched == null) {
+            loadFailed = true
+            return@LaunchedEffect
+        }
+        // Parallel enrichment: ratings, related, catalogue cache (for
+        // recommended), and the seller's delivery terms.
+        kotlinx.coroutines.coroutineScope {
+            launch { ratingsPage = try { V2Client.fetchProductRatings(productId) } catch (_: Throwable) { null } }
+            launch { related = (try { V2Client.fetchRelatedProducts(productId) } catch (_: Throwable) { null }) ?: emptyList() }
+            launch {
+                try {
+                    // Bind the reference product's category to a concrete val so
+                    // the comparison inside the filtered flow stays type-stable.
+                    val fetchedCategory = fetched.category
+                    LiveMarketplace.ensureLoaded()
+                    val relIds = mutableSetOf(productId)
+                    recommended = LiveMarketplace.products.value
+                        .filter { it.id != productId && it.category == fetchedCategory }
+                        .take(20)
+                        .also { list -> LiveMarketplace.cache(list) }
+                } catch (_: Throwable) { }
+            }
+            launch {
+                storefront = try { V2Client.fetchStorefront(fetched.seller.id) } catch (_: Throwable) { null }
+            }
+        }
+    }
+
+    if (productState == null && !loadFailed) {
+        Box(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+            androidx.compose.material3.CircularProgressIndicator(
+                color = ScottsTechXColors.BluePrimary,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(28.dp).align(Alignment.Center),
+            )
+        }
+        return
+    }
+    if (productState == null) {
         ProductNotFound(onBack)
         return
     }
-    // Local UI state
-    val reviews = remember(productId) { MarketplaceDataSource.reviewsFor(productId) }
-    val distribution = remember(productId) { MarketplaceDataSource.ratingDistributionFor(productId) }
-    val nearby = remember(productId) { MarketplaceDataSource.nearbySellersFor(productId) }
-    val delivery = remember(productId) { MarketplaceDataSource.deliveryOptionsFor(productId) }
-    val similar = remember(productId) { MarketplaceDataSource.similarProducts(productId) }
-    val recommended = remember(productId) { MarketplaceDataSource.recommendedProducts(productId) }
+    val product = productState!!
+
+    // Real review data → UI models.
+    val reviews = remember(ratingsPage) {
+        ratingsPage?.ratings?.map { with(V2Client) { it.toDomainReview(productId) } } ?: emptyList()
+    }
+    val distribution = remember(ratingsPage) {
+        ratingsPage?.let { with(V2Client) { it.toDistribution() } }
+            ?: RatingDistribution(0, 0, 0, 0, 0)
+    }
+    val similar = related
+
+    // Real delivery terms from the seller's store settings.
+    val delivery = remember(storefront) {
+        val sf = storefront ?: return@remember emptyList<DeliveryOption>()
+        buildList {
+            if (sf.freeAboveUgx > 0L) add(
+                DeliveryOption(id = "free", label = "Free delivery", etaDaysLabel = "orders above UGX ${formatUgx(sf.freeAboveUgx)}", feeUgx = 0L),
+            )
+            if (sf.deliveryFeeUgx > 0L) add(
+                DeliveryOption(id = "std", label = "Store delivery", etaDaysLabel = "shipped by ${sf.storeName}", feeUgx = sf.deliveryFeeUgx),
+            )
+            if (sf.codEnabled) add(
+                DeliveryOption(id = "cod", label = "Cash on delivery", etaDaysLabel = "pay when it arrives", feeUgx = 0L),
+            )
+        }
+    }
 
     // Selected variant (first one by default, or null if no variants)
     var selectedVariant by remember(productId) {
@@ -139,9 +214,11 @@ fun ProductDetailScreen(
     }
     val effectivePriceUgx = product.priceUgx + (selectedVariant?.priceDeltaUgx ?: 0L)
     val effectiveStock = selectedVariant?.stock ?: product.stock
-    val stockStatus = MarketplaceDataSource.stockStatusFor(
-        product.copy(stock = effectiveStock),
-    )
+    val stockStatus = when {
+        effectiveStock <= 0 -> StockStatus.OutOfStock
+        effectiveStock <= 3 -> StockStatus.LowStock
+        else -> StockStatus.InStock
+    }
 
     // Wishlist + cart state
     val isWishlisted = remember(productId) { WishlistStore.contains(productId) }
@@ -149,7 +226,13 @@ fun ProductDetailScreen(
     var quantity by remember(productId) { mutableStateOf(1) }
 
     val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+
+    // Keep the wishlist heart in step with the server bookmarks.
+    LaunchedEffect(productId) {
+        launch { try { WishlistStore.syncFromServer() } catch (_: Throwable) { } }
+            .join()
+        wishlisted = WishlistStore.contains(productId)
+    }
 
     fun addToCart() {
         CartStore.add(productId, quantity, selectedVariant?.id)
@@ -220,12 +303,9 @@ fun ProductDetailScreen(
                 )
                 DeliverySection(
                     options = delivery,
-                    userLocation = "Kampala",  // Stage 3 — wire to user profile saved-address once backend lands
+                    userLocation = Session.locationOrEmpty().ifBlank { "Uganda" },
                 )
-                NearbySellersCarousel(
-                    nearby = nearby,
-                    onSelect = { onViewSeller(it.sellerId) },
-                )
+                NearbyShoppingCta(onOpen = { onOpenNearby(productId) })
                 SellerCard(
                     seller = product.seller,
                     onViewStore = { onViewSeller(product.seller.id) },
@@ -588,6 +668,42 @@ private fun DeliverySection(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NearbyShoppingCta(onOpen: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        SectionTitle(title = "Shop near you", modifier = Modifier.padding(start = 0.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White)
+                .clickable { onOpen() }
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ScottsTechXColors.BluePrimary),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.LocationOn, contentDescription = null,
+                    tint = Color.White, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Find it in stores near you", color = ScottsTechXColors.OnLight,
+                    fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("Live seller locations and distances — updated in real time",
+                    color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+            }
+            Icon(Icons.Filled.ChevronRight, contentDescription = null,
+                tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(18.dp))
         }
     }
 }

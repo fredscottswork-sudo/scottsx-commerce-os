@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -165,6 +166,11 @@ fun AnimatedNumber(
     color: Color = Color.Unspecified,
     fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
     fontWeight: FontWeight? = null,
+    // A dashboard figure must never wrap: hard single-line clamp with ellipsis
+    // as the backstop for unexpectedly long formatted values.
+    maxLines: Int = 1,
+    softWrap: Boolean = false,
+    overflow: TextOverflow = TextOverflow.Ellipsis,
 ) {
     var display by remember { mutableStateOf(0L) }
     LaunchedEffect(target) {
@@ -185,6 +191,9 @@ fun AnimatedNumber(
         color = color,
         fontSize = fontSize,
         fontWeight = fontWeight,
+        maxLines = maxLines,
+        softWrap = softWrap,
+        overflow = overflow,
     )
 }
 

@@ -57,6 +57,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
 import java.util.UUID
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Add a new product. Three steps:
@@ -164,7 +165,7 @@ fun AddProductScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

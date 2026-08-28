@@ -17,49 +17,75 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.remote.V2Client
-import com.scottsx.app.data.TransactionStore
-import com.scottsx.app.data.domain.TransactionStatus
 import com.scottsx.app.ui.components.SettingsScaffold
 import com.scottsx.app.ui.components.SettingsBlankHint
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
 /**
- * My Orders — uses the existing local TransactionStore and the
- * backend's /api/v1/orders endpoints as a fallback.
- *
- * For now this surfaces the transactions list from TransactionStore
- * (which already tracks local completed receipts) and lets the user
- * tap to track, request a return, or open a refund.
+ * My Orders — fully live off `GET /api/v1/me/orders`. Each row shows
+ * the real order the buyer placed through checkout; Track derives the
+ * stage timeline from the server status.
  */
 @Composable
 fun MyOrdersScreen(onBack: () -> Unit, onTrack: (String) -> Unit, onOpenReturn: (String) -> Unit, onOpenRefund: (String) -> Unit) {
-    val agreements = TransactionStore.agreements
+    var orders by remember { mutableStateOf<List<V2Client.MyOrder>?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        try {
+            orders = V2Client.fetchMyOrders()
+            if (orders == null) loadError = "Couldn't load your orders — pull to try again."
+        } catch (t: Throwable) {
+            loadError = "Couldn't load your orders: ${t.message ?: "unknown error"}"
+        }
+    }
+
     SettingsScaffold(title = "My Orders", onBack = onBack) {
-        if (agreements.isEmpty()) {
-            SettingsBlankHint("You haven't placed any orders yet.")
-        } else {
-            agreements.forEach { ag ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White)
-                        .padding(12.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Order #${ag.id.takeLast(6).uppercase()}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Product: ${ag.revisions.lastOrNull()?.productName ?: "N/A"}", fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
-                            Text("Status: ${ag.status.name}", fontSize = 12.sp, color = ScottsTechXColors.BluePrimary)
+        when {
+            orders == null && loadError == null -> {
+                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        color = ScottsTechXColors.BluePrimary,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
+            orders.isNullOrEmpty() -> {
+                SettingsBlankHint(loadError ?: "You haven't placed any orders yet.")
+            }
+            else -> {
+                orders!!.forEach { order ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White)
+                            .padding(12.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Order #${order.id.takeLast(6).uppercase()}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Product: ${order.title}", fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
+                                Text(
+                                    "${order.quantity} × UGX ${com.scottsx.app.ui.util.formatUgx(order.amountUgx)}",
+                                    fontSize = 12.sp, color = ScottsTechXColors.OnLight,
+                                )
+                                Text(
+                                    "Status: ${order.displayStatus}",
+                                    fontSize = 12.sp,
+                                    color = if (order.status == "cancelled" || order.status == "refunded") Color(0xFFDC2626) else ScottsTechXColors.BluePrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
                         }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Track", color = ScottsTechXColors.BluePrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { onTrack(ag.id) })
-                        Text("Return", color = ScottsTechXColors.BluePrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { onOpenReturn(ag.id) })
-                        Text("Refund", color = Color(0xFFDC2626), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { onOpenRefund(ag.id) })
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Track", color = ScottsTechXColors.BluePrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { onTrack(order.id) })
+                            Text("Refund", color = Color(0xFFDC2626), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { onOpenRefund(order.id) })
+                        }
                     }
                 }
             }
@@ -67,14 +93,31 @@ fun MyOrdersScreen(onBack: () -> Unit, onTrack: (String) -> Unit, onOpenReturn: 
     }
 }
 
-/** Track a single order — shows event timeline + ETA. */
+/** Track a single order — stage timeline derived from the real server status. */
 @Composable
 fun TrackOrderScreen(orderId: String, onBack: () -> Unit) {
-    val agreements = TransactionStore.agreements
-    val tx = agreements.firstOrNull { it.id == orderId }
+    var order by remember { mutableStateOf<V2Client.MyOrder?>(null) }
+    var loaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(orderId) {
+        order = try { V2Client.fetchMyOrders()?.firstOrNull { it.id == orderId } } catch (_: Throwable) { null }
+        loaded = true
+    }
+
     SettingsScaffold(title = "Track Order", onBack = onBack) {
+        if (!loaded) {
+            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    color = ScottsTechXColors.BluePrimary,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+            return@SettingsScaffold
+        }
+        val tx = order
         if (tx == null) {
-            SettingsBlankHint("Order not found.")
+            SettingsBlankHint("Order not found. It may have been placed on another device — refresh My Orders.")
             return@SettingsScaffold
         }
         Column(
@@ -85,16 +128,22 @@ fun TrackOrderScreen(orderId: String, onBack: () -> Unit) {
                 .padding(16.dp),
         ) {
             Text("Order #${tx.id.takeLast(6).uppercase()}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text(tx.status.label, fontSize = 14.sp, color = ScottsTechXColors.BluePrimary, fontWeight = FontWeight.SemiBold)
+            Text(tx.displayStatus, fontSize = 14.sp, color = ScottsTechXColors.BluePrimary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(tx.title, fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
             Spacer(Modifier.height(12.dp))
-            val isDone = { status: TransactionStatus ->
-                status == TransactionStatus.COMPLETED || status == TransactionStatus.CONFIRMED || status == TransactionStatus.IN_PROGRESS
-            }
+            // pending → paid → shipped → delivered on the backend.
             val placed = true
-            val confirmed = tx.status == TransactionStatus.CONFIRMED || tx.status == TransactionStatus.IN_PROGRESS || tx.status == TransactionStatus.COMPLETED
-            val shipped = tx.status == TransactionStatus.IN_PROGRESS || tx.status == TransactionStatus.COMPLETED
-            val delivered = tx.status == TransactionStatus.COMPLETED
-            listOf<Pair<String, Boolean>>("Placed" to placed, "Confirmed" to confirmed, "Shipped" to shipped, "Delivered" to delivered).forEach { pair ->
+            val confirmed = tx.status != "pending" && tx.status != "cancelled"
+            val shipped = tx.status == "shipped" || tx.status == "delivered"
+            val delivered = tx.status == "delivered"
+            val cancelled = tx.status == "cancelled" || tx.status == "refunded"
+            listOf<Pair<String, Boolean>>(
+                "Placed" to placed,
+                (if (cancelled) "Cancelled" else "Confirmed") to (confirmed && !cancelled),
+                "Shipped" to (shipped && !cancelled),
+                "Delivered" to (delivered && !cancelled),
+            ).forEach { pair ->
                 val stage = pair.first
                 val done = pair.second
                 Row(

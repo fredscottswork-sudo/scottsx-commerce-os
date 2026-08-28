@@ -1,6 +1,6 @@
 package com.scottsx.app.ai
 
-import com.scottsx.app.data.MarketplaceDataSource
+import com.scottsx.app.data.LiveMarketplace
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.TransactionStore
 import com.scottsx.app.data.domain.AgreementRevision
@@ -81,7 +81,7 @@ internal object LocalPatternRouter {
             val cap = extractPriceUgx(m)
             // Try to extract a product name from context or first noun
             val query = extractQueryTerm(m, listOf("near me", "nearby", "around me", "close to me", "find me a", "find", "show me", "show"))
-                ?: context.productId?.let { MarketplaceDataSource.productById(it)?.name }
+                ?: context.productId?.let { LiveMarketplace.byId(it)?.name }
                 ?: "phone"
             val j = AiTools.findNearbyProducts(query, cap)
             val parsed = parse(j)
@@ -198,7 +198,7 @@ internal object LocalPatternRouter {
                 )
             }
             val lines = draft.items.map { (productName, qty) ->
-                val p = MarketplaceDataSource.allProducts.firstOrNull { it.name.equals(productName, ignoreCase = true) }
+                val p = LiveMarketplace.products.value.firstOrNull { it.name.equals(productName, ignoreCase = true) }
                     ?: return ScottsTechAi.Reply(
                         text = "I couldn't find a product named \"$productName\" in ScottsTechX. I never invent products.",
                         source = ScottsTechAi.Source.LOCAL_RULE,
@@ -296,7 +296,7 @@ internal object LocalPatternRouter {
                     suggestedActions = listOf(ScottsTechAi.SuggestedAction("Browse products", ScottsTechAi.SuggestedAction.Kind.OPEN_NEARBY)),
                 )
             }
-            val p = MarketplaceDataSource.productById(pid)
+            val p = LiveMarketplace.byId(pid)
                 ?: return ScottsTechAi.Reply(
                     text = "I couldn't find that product in ScottsTechX.",
                     source = ScottsTechAi.Source.LOCAL_RULE,

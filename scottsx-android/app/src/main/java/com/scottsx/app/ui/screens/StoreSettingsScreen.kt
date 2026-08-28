@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ui.components.SettingsRow
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Store settings — all the operations a seller needs to manage the
@@ -52,7 +53,7 @@ fun StoreSettingsScreen(
     onBack: () -> Unit,
     onOpenSection: (String) -> Unit = {},
 ) {
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

@@ -39,24 +39,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.remote.MessageStream
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 5.x — Buyer Messages inbox.
  *
- * Shows the caller's recent conversations (derived from the
- * marketplace's seed sellers for now; the real implementation
- * subscribes to /api/v1/chat/v2/conversations). Tapping a row
- * navigates to a chat thread via [onOpenThread] — the host wires
- * this up to the existing MessageThreadScreen / V2Client.sendMessage
- * pipeline.
+ * Shows the caller's real conversations from GET /api/v1/conversations.
+ * When the inbox is empty (or unreachable) it offers the buyer's
+ * favorite stores — also fetched live — as a way to start a chat.
+ * Tapping a row navigates to a chat thread via [onOpenThread].
  *
  * The header mirrors the rest of the app's premium look — gradient
  * backdrop, white avatar / back button, search button on the right.
@@ -72,18 +71,26 @@ fun MessagesScreen(
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
+    var favoriteSellers by remember { mutableStateOf<List<V2Client.FavoriteSeller>>(emptyList()) }
 
-    // Hydrate from backend; fall back to marketplace seed if offline.
+    // Hydrate from the canonical backend (conversations + favorites in parallel).
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        try {
-            val list = V2Client.fetchConversations()
-            conversations = list
-            if (list.isEmpty()) loadError = "No conversations yet. Start a chat from a product page."
-        } catch (t: Throwable) {
-            loadError = "Couldn't load conversations: ${t.message ?: "unknown"}"
-        } finally {
-            isLoading = false
+        isLoading = true
+        loadError = null
+        val convJob = async {
+            try { V2Client.fetchConversations() to null }
+            catch (t: Throwable) { emptyList<V2Client.Conversation>() to
+                "Couldn't load conversations: ${t.message ?: "unknown error"}" }
         }
+        val favJob = async {
+            try { V2Client.fetchFavoriteSellers() ?: emptyList() } catch (_: Throwable) { emptyList() }
+        }
+        val (list, err) = convJob.await()
+        favoriteSellers = favJob.await()
+        conversations = list
+        loadError = err ?: if (list.isEmpty())
+            "No conversations yet. Start a chat from a product page." else null
+        isLoading = false
     }
 
     val filtered = remember(conversations, query) {
@@ -94,7 +101,7 @@ fun MessagesScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight)) {
+    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight).statusBarSpacer()) {
         // Header
         Box(
             modifier = Modifier
@@ -176,41 +183,48 @@ fun MessagesScreen(
                 )
             }
         } else if (loadError != null && conversations.isEmpty()) {
-            // Empty / error state — show the marketplace sellers as a
-            // friendly fallback so the user can tap a store to start a
-            // conversation.
+            // Empty / error state. When the buyer follows stores we
+            // surface those (live) so they can start a real chat.
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                 Text(loadError ?: "", color = ScottsTechXColors.OnLightSecondary,
                     fontSize = 13.sp)
-                Spacer(Modifier.height(16.dp))
-                Text("Or message one of these stores:",
-                    color = ScottsTechXColors.OnLight,
-                    fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Spacer(Modifier.height(8.dp))
-                MarketplaceDataSource.allSellers.take(20).forEach { seller ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenThread(seller.id, null) }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
+                if (favoriteSellers.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text("Message a store you follow:",
+                        color = ScottsTechXColors.OnLight,
+                        fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    favoriteSellers.take(12).forEach { seller ->
+                        Row(
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(ScottsTechXColors.BluePrimary),
-                            contentAlignment = Alignment.Center,
+                                .fillMaxWidth()
+                                .clickable { onOpenThread(seller.id, null) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Filled.Store, contentDescription = null,
-                                tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(seller.name, color = ScottsTechXColors.OnLight,
-                                fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text("Tap to start a chat", color = ScottsTechXColors.OnLightSecondary,
-                                fontSize = 12.sp)
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(ScottsTechXColors.BluePrimary),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Filled.Store, contentDescription = null,
+                                    tint = Color.White, modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(seller.storeName, color = ScottsTechXColors.OnLight,
+                                    fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text(
+                                    listOfNotNull(
+                                        seller.city.takeIf { it.isNotBlank() },
+                                        "${seller.productCount} products",
+                                    ).joinToString(" · ") + " · Tap to chat",
+                                    color = ScottsTechXColors.OnLightSecondary,
+                                    fontSize = 12.sp,
+                                )
+                            }
                         }
                     }
                 }

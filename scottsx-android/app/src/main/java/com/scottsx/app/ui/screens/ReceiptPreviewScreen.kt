@@ -55,6 +55,7 @@ import com.scottsx.app.data.TransactionStore
 import com.scottsx.app.data.domain.Receipt
 import com.scottsx.app.data.domain.ReceiptTemplate
 import com.scottsx.app.data.domain.Role
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 4 — Receipt preview.
@@ -127,6 +128,7 @@ fun ReceiptPreviewScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Color.White, RoundedCornerShape(14.dp))
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar
                         .border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(14.dp))
                         .padding(2.dp),
                 ) {

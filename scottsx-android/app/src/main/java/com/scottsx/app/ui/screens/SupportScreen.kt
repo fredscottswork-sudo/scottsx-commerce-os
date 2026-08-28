@@ -114,8 +114,8 @@ fun ContactScreen(onBack: () -> Unit) {
 }
 
 /**
- * Report a problem.
- * Posts to POST /api/v1/reports.
+ * Report a problem. Delivers the report as a support ticket
+ * (POST /api/v1/me/support/tickets) — the inbox staff actually read.
  */
 @Composable
 fun ReportProblemScreen(onBack: () -> Unit) {

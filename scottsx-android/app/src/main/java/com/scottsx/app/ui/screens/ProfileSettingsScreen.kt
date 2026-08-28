@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ui.components.SettingsRow
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Profile settings hub. Every row routes to a real destination via
@@ -47,6 +48,7 @@ fun ProfileSettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(ScottsTechXColors.PanelLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar
             .verticalScroll(rememberScrollState()),
     ) {
         Row(

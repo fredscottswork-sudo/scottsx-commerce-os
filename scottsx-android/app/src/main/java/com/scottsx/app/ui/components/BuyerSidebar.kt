@@ -76,7 +76,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.BuyerProfile
 import com.scottsx.app.data.domain.Role
 import com.scottsx.app.data.domain.SessionCache
@@ -86,6 +85,7 @@ import com.scottsx.app.data.preferences.isSeller
 import com.scottsx.app.data.preferences.sidebarPaletteFor
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import coil.compose.AsyncImage
+import kotlinx.coroutines.async
 
 /** Destination of a sidebar nav item — opaque to the drawer. */
 enum class SidebarDestination {
@@ -120,14 +120,35 @@ fun BuyerSidebarOverlay(
     profile: BuyerProfile,
     cartCount: Int,
     wishlistCount: Int,
-    messagesCount: Int = MarketplaceDataSource.unreadMessagesCount(),
-    notificationsCount: Int = MarketplaceDataSource.unreadNotificationsCount(),
-    ordersCount: Int = MarketplaceDataSource.pendingOrdersCount(),
+    messagesCount: Int = 0,
+    notificationsCount: Int = 0,
+    ordersCount: Int = 0,
     onNavigate: (SidebarDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val palette = sidebarPaletteFor(ThemeMode.SYSTEM) // sidebar theme uses drawer itself
+
+    // Live badges — fetched fresh every time the drawer opens, from the
+    // canonical backend (chat unread, notification unread, pending orders).
+    var liveMessages by remember { androidx.compose.runtime.mutableStateOf(messagesCount) }
+    var liveNotifications by remember { androidx.compose.runtime.mutableStateOf(notificationsCount) }
+    var liveOrders by remember { androidx.compose.runtime.mutableStateOf(ordersCount) }
+    androidx.compose.runtime.LaunchedEffect(open) {
+        if (!open) return@LaunchedEffect
+        val msgs = async {
+            try { com.scottsx.app.data.remote.V2Client.fetchConversationUnreadCount() } catch (_: Throwable) { null }
+        }
+        val notes = async {
+            try { com.scottsx.app.data.remote.V2Client.fetchUnreadNotificationCount() } catch (_: Throwable) { null }
+        }
+        val orders = async {
+            try { com.scottsx.app.data.remote.V2Client.fetchPendingOrderCount() } catch (_: Throwable) { null }
+        }
+        msgs.await()?.let { liveMessages = it }
+        notes.await()?.let { liveNotifications = it }
+        orders.await()?.let { liveOrders = it }
+    }
 
     AnimatedVisibility(
         visible = open,
@@ -193,9 +214,9 @@ fun BuyerSidebarOverlay(
                 profile = profile,
                 cartCount = cartCount,
                 wishlistCount = wishlistCount,
-                messagesCount = messagesCount,
-                notificationsCount = notificationsCount,
-                ordersCount = ordersCount,
+                messagesCount = liveMessages,
+                notificationsCount = liveNotifications,
+                ordersCount = liveOrders,
                 onNavigate = { dest ->
                     onNavigate(dest)
                     if (dest != SidebarDestination.Theme) onDismiss()

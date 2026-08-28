@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,12 +37,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.CartStore
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.resolve
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 @Composable
 fun CartScreen(
@@ -54,10 +56,21 @@ fun CartScreen(
     val total = resolved.sumOf { (p, q) -> p.priceUgx * q }
     var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Home) }
 
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val snackbar = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() }
+    var placingOrder by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    // Hydrate from the server whenever the cart opens — the canonical
+    // cart lives at /me/cart and is shared with the web app.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        try { CartStore.syncFromServer() } catch (_: Throwable) { }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Column(
             modifier = Modifier
@@ -244,14 +257,30 @@ fun CartScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(14.dp))
                             .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
-                                ),
+                                if (resolved.isEmpty() || placingOrder) {
+                                    Brush.horizontalGradient(
+                                        colors = listOf(ScottsTechXColors.OnLightSecondary.copy(alpha = 0.4f), ScottsTechXColors.OnLightSecondary.copy(alpha = 0.4f)),
+                                    )
+                                } else {
+                                    Brush.horizontalGradient(
+                                        colors = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
+                                    )
+                                },
                             )
+                            .clickable(enabled = resolved.isNotEmpty() && !placingOrder) {
+                                scope.launch {
+                                    placingOrder = true
+                                    val outcome = try { CartStore.checkout() } catch (_: Throwable) {
+                                        CartStore.CheckoutOutcome(false, "Couldn't place the order — check your connection and try again.", 0, 0L, emptyList())
+                                    }
+                                    placingOrder = false
+                                    snackbar.showSnackbar(outcome.message)
+                                }
+                            }
                             .padding(horizontal = 22.dp, vertical = 12.dp),
                     ) {
                         Text(
-                            text = "Checkout",
+                            text = if (placingOrder) "Placing…" else "Checkout",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -260,6 +289,12 @@ fun CartScreen(
                 }
             }
         }
+
+        androidx.compose.material3.SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.navBarSpacer()  // lift the bottom bar clear of the gesture pill
+                .align(Alignment.BottomCenter),
+        )
 
         Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             ScottsTechXBottomBar(

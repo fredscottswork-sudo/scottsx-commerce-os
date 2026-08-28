@@ -49,6 +49,7 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 5.x — Become-a-Seller upgrade CTA.
@@ -76,6 +77,7 @@ fun BecomeSellerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(if (isDark) ScottsTechXColors.BackgroundDark else ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar
             .verticalScroll(rememberScrollState()),
     ) {
         // Header

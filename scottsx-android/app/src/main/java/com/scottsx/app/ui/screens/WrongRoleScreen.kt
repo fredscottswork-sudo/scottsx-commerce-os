@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.domain.Role
 import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Shown when a user authenticates with a role that doesn't match the
@@ -60,7 +61,8 @@ fun WrongRoleScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.PanelLight),
+            .background(ScottsTechXColors.PanelLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         // Header — back button + brand banner.
         Box(

@@ -52,6 +52,7 @@ import com.scottsx.app.data.domain.TransactionStatus
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 4 — Transactions list screen.
@@ -309,6 +310,7 @@ private fun StatusBadge(status: TransactionStatus) {
         ) {
             Box(
                 Modifier.size(6.dp).background(color, CircleShape)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar
             )
             Spacer(Modifier.width(6.dp))
             Text(label, fontSize = 11.sp, color = color, fontWeight = FontWeight.SemiBold)

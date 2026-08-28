@@ -35,11 +35,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.SellerDataSource
+import com.scottsx.app.data.domain.SellerApiOrder
 import com.scottsx.app.data.domain.OrderStatus
 import com.scottsx.app.data.domain.SellerOrder
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Seller orders. Lists every order with quick filters; tapping a row
@@ -52,8 +53,23 @@ fun SellerOrdersScreen(
     onOpenOrder: (String) -> Unit = {}, // reserved for Stage 4 deep-linking
 ) {
     var filter by remember { mutableStateOf<OrderStatus?>(null) }
-    val orders = remember(filter) { SellerDataSource.snapshot().recentOrders.filter { filter == null || it.status == filter } }
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    var raw by remember { mutableStateOf<List<com.scottsx.app.data.domain.SellerApiOrder>?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    // Live seller orders from /api/v1/seller/orders — status enums are
+    // mapped onto the legacy display pipeline so the rows stay unchanged.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        loadError = null
+        raw = try {
+            com.scottsx.app.data.remote.V2Client.fetchSellerOrders()
+        } catch (t: Throwable) { loadError = "Couldn't load orders: ${t.message ?: "unknown error"}"; null }
+        if (raw == null && loadError == null) loadError = "Couldn't load orders — check your connection."
+    }
+
+    val orders = (raw ?: emptyList())
+        .map { it.toLegacyOrder() }
+        .filter { filter == null || it.status == filter }
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -96,6 +112,23 @@ fun SellerOrdersScreen(
         }
     }
 }
+
+/** Map a canonical backend order row onto this screen's legacy view model. */
+private fun SellerApiOrder.toLegacyOrder(): SellerOrder = SellerOrder(
+    id = id,
+    productName = title,
+    itemsCount = quantity,
+    totalUgx = amount * quantity,
+    placedAtLabel = createdAt.replace('T', ' ').take(16),
+    status = when (status) {
+        "pending" -> OrderStatus.Pending
+        "paid" -> OrderStatus.Processing
+        "shipped" -> OrderStatus.Ready
+        "delivered" -> OrderStatus.Completed
+        else -> OrderStatus.Cancelled  // cancelled / refunded
+    },
+    buyerName = buyerName,
+)
 
 @Composable
 private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {

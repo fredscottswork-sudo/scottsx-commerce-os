@@ -68,11 +68,25 @@ fun ProductCard(
     onClick: () -> Unit = {},
     onAddToCart: () -> Unit = {},
     modifier: Modifier = Modifier,
-    width: androidx.compose.ui.unit.Dp = 180.dp,
+    width: androidx.compose.ui.unit.Dp? = 180.dp,
+    /** Turn the wishlist heart off per call site (the seller's own tiles
+     *  show moderation state instead). */
+    showWishlist: Boolean = true,
+    /** Moderation state chip ("pending" / "suspended" / …) shown on the
+     *  tile in place of the heart on seller-owned surfaces. */
+    statusLabel: String? = null,
+    /**
+     * Caller-owned wishlist state. When non-null the card is CONTROLLED:
+     * the icon renders [wished] and taps deliver the target state through
+     * [onToggleWishlist] — no local throwaway state. When null, the heart
+     * reads the shared WishlistStore (still a single source of truth).
+     */
+    wished: Boolean? = null,
+    onToggleWishlist: ((Boolean) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
-            .width(width)
+            .then(if (width != null) Modifier.width(width) else Modifier)
             .clip(RoundedCornerShape(18.dp))
             .background(ScottsTechXColors.SurfacePanelDark)
             .border(1.dp, ScottsTechXColors.Divider, RoundedCornerShape(18.dp))
@@ -119,14 +133,41 @@ fun ProductCard(
             // Favorite (heart) toggle — isolated composable so only
             // this node recomposes when the wishlist state for THIS
             // product changes. The rest of the card stays still.
-            HeartToggle(
-                productId = product.id,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(ScottsTechXColors.BackgroundDark.copy(alpha = 0.72f)),
-            )
+            if (showWishlist) {
+                HeartToggle(
+                    productId = product.id,
+                    wished = wished,
+                    onToggle = onToggleWishlist,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(ScottsTechXColors.BackgroundDark.copy(alpha = 0.72f)),
+                )
+            } else if (statusLabel != null) {
+                // Moderation state takes the heart's spot on seller surfaces —
+                // web parity: the owner sees Pending/Approved/Suspended badges.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            when (statusLabel.lowercase()) {
+                                "approved", "live" -> ScottsTechXColors.SuccessGreen
+                                "rejected", "suspended" -> Color(0xFFE11D48)
+                                else -> Color(0xFFF59E0B) // pending / draft
+                            }.copy(alpha = 0.92f),
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = statusLabel.replaceFirstChar { it.uppercase() },
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 10.sp,
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(2.dp))
@@ -223,9 +264,15 @@ fun ProductCard(
  * unaffected by other cards' wishlist toggles.
  */
 @Composable
-private fun HeartToggle(productId: String, modifier: Modifier = Modifier) {
+private fun HeartToggle(
+    productId: String,
+    modifier: Modifier = Modifier,
+    wished: Boolean? = null,
+    onToggle: ((Boolean) -> Unit)? = null,
+) {
     val favIds by WishlistStore.ids.collectAsState()
-    val isFav = productId in favIds
+    // Controlled when the caller owns the state; store-backed otherwise.
+    val isFav = wished ?: (productId in favIds)
     var heartBump by remember { mutableStateOf(false) }
     val heartScale by animateFloatAsState(
         targetValue = if (heartBump) 1.3f else 1.0f,
@@ -241,7 +288,7 @@ private fun HeartToggle(productId: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .clickable {
-                WishlistStore.toggle(productId)
+                if (onToggle != null) onToggle(!isFav) else WishlistStore.toggle(productId)
                 heartBump = true
             },
         contentAlignment = Alignment.Center,

@@ -28,7 +28,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,20 +41,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
- * Stage 5.x — Notifications inbox.
- *
- * Today the screen renders a curated set of marketplace events seeded
- * locally (price drops, restocks, deal of the day, etc.). The data
- * source can be swapped for `V2Client.fetchNotifications()` once the
- * backend endpoint is wired.
- *
- * Each notification has:
- *  - icon (price / restock / announcement)
- *  - title + body
- *  - timestamp
- *  - mark-as-read toggle on tap
+ * Notifications inbox — fully live. Renders the caller's real rows
+ * from `GET /api/v1/me/notifications` (order updates, messages,
+ * marketing) with server-side read state; mark-as-read persists
+ * through the API so web and app stay in sync. The deep-link payload
+ * (`data.screen`/`data.id`) routes taps to the right screen.
  */
 @Composable
 fun NotificationsScreen(
@@ -64,39 +60,55 @@ fun NotificationsScreen(
         val id: String,
         val title: String,
         val body: String,
-        val kind: String,
+        val kind: String,          // deal | order | chat | system — derived from the server type
         val time: String,
         var read: Boolean = false,
+        val screen: String? = null,
+        val targetId: String? = null,
     )
 
-    val seeded = remember {
-        listOf(
-            NotificationItem(
-                "n1", "Flash deal starts in 1 hour",
-                "Your wishlist items have new discounts. Tap to see.",
-                "deal", "now",
-            ),
-            NotificationItem(
-                "n2", "Price drop on Wireless Earbuds",
-                "Now UGX 95,000 (was UGX 120,000). Limited stock.",
-                "price", "2h ago",
-            ),
-            NotificationItem(
-                "n3", "Order delivered",
-                "Your order #ORD-4412 was marked delivered by the courier.",
-                "order", "yesterday",
-            ),
-            NotificationItem(
-                "n4", "Welcome to ScottsTechX",
-                "Browse, buy, and chat with sellers from anywhere in Uganda.",
-                "system", "3d ago", read = true,
-            ),
-        )
+    var items by remember { mutableStateOf<List<NotificationItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        isLoading = true
+        loadError = null
+        val arr = try { com.scottsx.app.data.remote.V2Client.fetchNotifications() } catch (t: Throwable) {
+            loadError = "Couldn't load notifications: ${t.message ?: "unknown error"}"; null
+        }
+        if (arr != null) {
+            items = (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { o ->
+                    val type = o.optString("type")
+                    val data = o.optJSONObject("data")
+                    NotificationItem(
+                        id = o.optString("id"),
+                        title = o.optString("title"),
+                        body = o.optString("body"),
+                        kind = when {
+                            type.contains("order") -> "order"
+                            type.contains("message") || type.contains("chat") -> "chat"
+                            type.contains("market") || type.contains("deal") || type.contains("price") -> "deal"
+                            else -> "system"
+                        },
+                        time = o.optString("createdAt").replace('T', ' ').take(16),
+                        read = o.optBoolean("read", false),
+                        screen = data?.optString("screen")?.takeIf { it.isNotBlank() },
+                        targetId = data?.optString("id")?.takeIf { it.isNotBlank() },
+                    )
+                }
+            }
+        } else if (loadError == null) {
+            loadError = "Couldn't load notifications — check your connection."
+        }
+        isLoading = false
     }
-    var items by remember { mutableStateOf(seeded) }
+
     val unreadCount = items.count { !it.read }
 
-    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight)) {
+    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight).statusBarSpacer()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -140,6 +152,9 @@ fun NotificationsScreen(
                             .background(Color.White.copy(alpha = 0.18f))
                             .clickable {
                                 items = items.map { it.copy(read = true) }
+                                scope.launch {
+                                    try { com.scottsx.app.data.remote.V2Client.markAllNotificationsRead() } catch (_: Throwable) { }
+                                }
                             }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     ) {
@@ -147,6 +162,27 @@ fun NotificationsScreen(
                     }
                 }
             }
+        }
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    color = ScottsTechXColors.BluePrimary,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            return@Column
+        }
+        if (items.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    loadError ?: "No notifications yet — order updates and messages will appear here.",
+                    color = ScottsTechXColors.OnLightSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(32.dp),
+                )
+            }
+            return@Column
         }
         LazyColumn(modifier = Modifier.fillMaxSize().padding(bottom = 16.dp)) {
             items(items, key = { it.id }) { item ->
@@ -169,8 +205,13 @@ fun NotificationsScreen(
                             items = items.map {
                                 if (it.id == item.id) it.copy(read = true) else it
                             }
-                            if (item.kind in setOf("deal", "price")) {
-                                onOpenProduct(item.id)
+                            scope.launch {
+                                try { com.scottsx.app.data.remote.V2Client.markNotificationRead(item.id) } catch (_: Throwable) { }
+                            }
+                            // Deep link: the backend carries {screen, id}
+                            // payloads — product taps open the PDP.
+                            if (item.screen == "product" && item.targetId != null) {
+                                onOpenProduct(item.targetId)
                             }
                         }
                         .padding(horizontal = 16.dp, vertical = 12.dp),

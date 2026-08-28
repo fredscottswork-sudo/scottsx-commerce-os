@@ -43,11 +43,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
+import com.scottsx.app.data.LiveMarketplace
+import com.scottsx.app.data.remote.V2Client
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 @Composable
 fun SearchScreen(
@@ -59,19 +65,50 @@ fun SearchScreen(
     var query by remember { mutableStateOf("") }
     var bottomTab by remember { mutableStateOf(BottomTab.Home) }
 
-    val all = MarketplaceDataSource.allProducts
-    val results = if (query.isBlank()) emptyList()
-    else all.filter { p ->
-        (p.name + " " + p.shortDescription + " " + p.brand.name + " " + p.category.displayName).lowercase()
-        .contains(query.lowercase())
+    // Live search — hits the canonical /products/search endpoint with a
+    // short debounce. On failure it degrades to filtering the live
+    // catalogue cache; it never reads the retired seed fixture.
+    var results by remember { mutableStateOf<List<com.scottsx.app.data.domain.Product>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var trending by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        launch { LiveMarketplace.ensureLoaded() }
+        val facets = try { V2Client.fetchCatalogFacets() } catch (_: Throwable) { null }
+        if (facets != null) {
+            trending = (facets.categories.take(6).map { it.name } +
+                facets.brands.take(4).map { it.name }).take(8)
+        }
     }
 
-    val trending = listOf("Phone", "Laptop", "Rice", "Shoes", "Power Bank", "Smart Watch")
+    LaunchedEffect(query) {
+        val q = query.trim()
+        if (q.isBlank()) {
+            results = emptyList()
+            searching = false
+            return@LaunchedEffect
+        }
+        searching = true
+        delay(300)
+        val remote = try { V2Client.searchProducts(query = q) } catch (_: Throwable) { null }
+        if (remote != null) {
+            LiveMarketplace.cache(remote)
+            results = remote
+        } else {
+            val needle = q.lowercase()
+            results = LiveMarketplace.products.value.filter { p ->
+                (p.name + " " + p.shortDescription + " " + p.brand.name + " " + p.category.displayName)
+                    .lowercase().contains(needle)
+            }
+        }
+        searching = false
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Column(
             modifier = Modifier
@@ -217,7 +254,8 @@ fun SearchScreen(
             }
         }
 
-        Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        Box(modifier = Modifier.navBarSpacer()  // lift the bottom bar clear of the gesture pill
+                .align(Alignment.BottomCenter).fillMaxWidth()) {
             ScottsTechXBottomBar(
                 selected = bottomTab,
                 onSelect = { tab ->

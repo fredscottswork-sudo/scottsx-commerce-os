@@ -55,4 +55,25 @@ class LocationProvider(private val context: Context) {
             loc
         }.getOrNull()
     }
+
+    /**
+     * Continuous tracking — the equivalent of the web's
+     * `navigator.geolocation.watchPosition`. Returns an unsubscribe lambda
+     * that MUST be invoked when the screen leaves composition; fixes arrive
+     * every ~5s after ≥10m of movement.
+     */
+    @SuppressLint("MissingPermission") // checked inside hasLocationPermission()
+    fun watchLocation(onFix: (Location) -> Unit): () -> Unit {
+        if (!hasLocationPermission()) return {}
+        val req = com.google.android.gms.location.LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY, 5_000L,
+        ).setMinUpdateDistanceMeters(10f).build()
+        val cb = object : com.google.android.gms.location.LocationCallback() {
+            override fun onLocationResult(result: com.google.android.gms.location.LocationResult) {
+                result.lastLocation?.let(onFix)
+            }
+        }
+        client.requestLocationUpdates(req, cb, android.os.Looper.getMainLooper())
+        return { client.removeLocationUpdates(cb) }
+    }
 }

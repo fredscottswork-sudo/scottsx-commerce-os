@@ -1,831 +1,711 @@
 package com.scottsx.app.ui.screens
 
 import android.Manifest
-import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.border
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Store
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
+import coil.compose.AsyncImage
 import com.scottsx.app.data.location.LocationProvider
 import com.scottsx.app.data.remote.V2Client
-import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
+import com.scottsx.app.ui.components.ShimmerBox
+import com.scottsx.app.ui.components.navBarSpacer
+import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
- * Stage-5 Nearby screen — wired to V2Client.nearbySellers().
- *
- * Data flow:
- *   1. Request location permission (or use a manual chip fallback).
- *   2. If GPS available, read the device's current lat/lng.
- *   3. Call GET /api/v1/sellers/v2/nearby?lat=…&lng=…&radiusKm=…
- *   4. Render the result list with distance, rating, and top 3 products.
- *
- * The previous in-memory `MarketplaceDataSource.allProducts` fallback is gone —
- * empty state is shown when the API returns no rows (or is offline).
+ * Nearby stores — global, self-locating. Function-parity with the web's
+ * `/nearby` page (same `GET /api/v1/sellers/nearby` call):
+ *   • NO radius control and NO district list — the marketplace is worldwide;
+ *     the server returns every store on earth, sorted by distance.
+ *   • Auto-detects the buyer's position on open, names the spot
+ *     (village / city / region / country) and re-sorts continuously as the
+ *     buyer moves ("Follow my location", 250 m re-query threshold).
+ *   • Sellers sharing their location show a LIVE pin; everybody else stays
+ *     pinned at their last known position ("Last seen" / "Fixed address").
  */
+
+private const val REFETCH_METRES = 250.0
+
+private fun metresBetween(aLat: Double, aLng: Double, bLat: Double, bLng: Double): Double {
+    val r = 6371000.0
+    val dLat = Math.toRadians(bLat - aLat)
+    val dLng = Math.toRadians(bLng - aLng)
+    val la1 = Math.toRadians(aLat)
+    val la2 = Math.toRadians(bLat)
+    val h = sin(dLat / 2).let { it * it } +
+        cos(la1) * cos(la2) * sin(dLng / 2).let { it * it }
+    return 2 * r * asin(sqrt(h))
+}
+
 @Composable
 fun NearbyScreen(
     onBack: () -> Unit,
     onOpenProduct: (com.scottsx.app.data.domain.Product) -> Unit = {},
+    onOpenStore: (String) -> Unit = {},
     onTabSelect: (BottomTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    var hasLocationPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION,
-            ) == PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var selectedLocation by remember {
-        mutableStateOf<String?>(if (hasLocationPermission) "Kampala" else null)
-    }
-    var bottomTab by remember { mutableStateOf(BottomTab.Home) }
-    var lat by remember { mutableStateOf<Double?>(null) }
-    var lng by remember { mutableStateOf<Double?>(null) }
-    var gpsStatus by remember { mutableStateOf("idle") } // "idle" | "requesting" | "ready" | "unavailable"
     val provider = remember { LocationProvider(context) }
 
-    // Filter & sort state — Stage 5.x advanced UI
-    var selectedCategory by remember { mutableStateOf<String?>(null) }
-    var sortBy by remember { mutableStateOf("distance") } // "distance" | "rating" | "products"
-    var maxRadiusKm by remember { mutableStateOf(20) }
-    var onlyVerified by remember { mutableStateOf(false) }
+    // ---- Position state ----------------------------------------------------
+    var hasLocationPermission by remember {
+        mutableStateOf(provider.hasLocationPermission())
+    }
+    var center by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var place by remember { mutableStateOf<V2Client.GeoPlace?>(null) }
+    var locating by remember { mutableStateOf(true) }
+    var geoDenied by remember { mutableStateOf(false) }
+    var following by remember { mutableStateOf(false) }
+    var watcherStop by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var moved by remember { mutableStateOf(false) }
+    val savedOnce = remember { mutableStateOf(false) }
 
-    // API state
-    var isLoading by remember { mutableStateOf(false) }
-    var loadError by remember { mutableStateOf<String?>(null) }
-    var nearbySellers by remember { mutableStateOf<List<V2Client.NearbySeller>>(emptyList()) }
+    // ---- Filter state (mirrors the web: search / sort / verified / open) ---
+    var query by remember { mutableStateOf("") }
+    var sort by remember { mutableStateOf("distance") } // distance|rating|products|newest
+    var verifiedOnly by remember { mutableStateOf(false) }
+    var openOnly by remember { mutableStateOf(false) }
+
+    // ---- Results -----------------------------------------------------------
+    var sellers by remember { mutableStateOf<List<V2Client.NearbySeller>>(emptyList()) }
+    var total by remember { mutableIntStateOf(0) }
+    var liveCount by remember { mutableIntStateOf(0) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var lastFetchCenter by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        hasLocationPermission = granted
-        if (granted) selectedLocation = "Kampala"
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> hasLocationPermission = granted }
+
+    // Auto-identify the buyer's location the moment the screen opens (web
+    // parity) — ask for the permission once on first composition.
+    var askedPermission by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission && !askedPermission) {
+            askedPermission = true
+            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
     }
 
-    // When permission is granted, attempt a real GPS fix on first composition.
+    /** Apply a new buyer position: name it, persist it once, refresh list. */
+    suspend fun applyPosition(lat: Double, lng: Double, accuracyM: Float? = null) {
+        center = lat to lng
+        locating = false
+        if (!savedOnce.value) {
+            savedOnce.value = true
+            // Signed-in buyers get their fix persisted (web parity); guests
+            // just get the reverse-geocoded label.
+            val saved = try { V2Client.saveMyLocation(lat, lng, accuracyM?.toDouble()) } catch (_: Throwable) { null }
+            if (saved != null) place = saved
+            else place = try { V2Client.geoReverse(lat, lng) } catch (_: Throwable) { null }
+        } else {
+            place = try { V2Client.geoReverse(lat, lng) } catch (_: Throwable) { null }
+        }
+    }
+
+    suspend fun fetchSellers(at: Pair<Double, Double>) {
+        error = null
+        val r = try {
+            V2Client.nearbySellers(
+                lat = at.first, lng = at.second,
+                q = query.trim().ifBlank { null },
+                sort = sort,
+                verifiedOnly = verifiedOnly,
+                openOnly = openOnly,
+            )
+        } catch (_: Throwable) { null }
+        if (r == null) {
+            error = "Could not load nearby stores — check your connection."
+        } else {
+            sellers = r.sellers
+            total = r.total
+            liveCount = r.liveCount
+            if (r.place != null) place = r.place
+            lastFetchCenter = at
+            moved = false
+        }
+        loading = false
+    }
+
+    // ── Initial fix: GPS when permitted, saved position for signed-in users,
+    //    otherwise the honest "couldn't detect" card with a retry. ─────────
     LaunchedEffect(hasLocationPermission) {
-        if (hasLocationPermission && lat == null) {
-            gpsStatus = "requesting"
+        if (hasLocationPermission && center == null) {
+            locating = true
+            geoDenied = false
             val loc = provider.currentLocation()
             if (loc != null) {
-                lat = loc.latitude
-                lng = loc.longitude
-                gpsStatus = "ready"
+                applyPosition(loc.latitude, loc.longitude, loc.accuracy)
             } else {
-                gpsStatus = "unavailable"
+                val saved = try { V2Client.fetchMyLocation() } catch (_: Throwable) { null }
+                if (saved != null && saved.lat != 0.0) {
+                    center = saved.lat to saved.lng
+                    if (saved.place != null) place = saved.place
+                } else {
+                    geoDenied = true
+                }
+                locating = false
+                loading = false
+            }
+        } else if (!hasLocationPermission) {
+            val saved = try { V2Client.fetchMyLocation() } catch (_: Throwable) { null }
+            if (saved != null && saved.lat != 0.0) {
+                center = saved.lat to saved.lng
+                if (saved.place != null) place = saved.place
+                loading = false
+            } else {
+                geoDenied = true
+                loading = false
+            }
+            locating = false
+        }
+    }
+
+    // Refresh whenever the position or a filter changes (debounced like the web).
+    LaunchedEffect(center, query, sort, verifiedOnly, openOnly) {
+        val at = center ?: return@LaunchedEffect
+        loading = true
+        delay(220)
+        fetchSellers(at)
+    }
+
+    fun startFollowing() {
+        if (!hasLocationPermission) { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION); return }
+        following = true
+        geoDenied = false
+        watcherStop = provider.watchLocation { loc ->
+            // Re-sort locally on every fix (instant feedback), re-query the
+            // server only after the buyer has really moved.
+            sellers = sellers.map {
+                it.copy(distanceKm = (metresBetween(loc.latitude, loc.longitude, it.lat, it.lng) / 1000.0 * 100).roundToInt() / 100.0)
+            }.let { list ->
+                if (sort == "distance") list.sortedBy { it.distanceKm } else list
+            }
+            val from = lastFetchCenter
+            if (from == null || metresBetween(from.first, from.second, loc.latitude, loc.longitude) > REFETCH_METRES) {
+                moved = true
+                savedOnce.value = false
+                scope.launch { applyPosition(loc.latitude, loc.longitude, loc.accuracy) }
             }
         }
     }
 
-    // Fetch nearby sellers whenever we have a valid (lat,lng) pair.
-    suspend fun fetchNearby() {
-        val latitude = lat
-        val longitude = lng
-        if (latitude == null || longitude == null) return
-        isLoading = true
-        loadError = null
-        try {
-            val results = V2Client.nearbySellers(
-                lat = latitude,
-                lng = longitude,
-                radiusKm = 25.0,
-                limit = 40,
-            )
-            nearbySellers = results
-            if (results.isEmpty()) {
-                loadError = "No sellers found within 25 km. Try a different location."
-            }
-        } catch (t: Throwable) {
-            loadError = "Network error: ${t.message ?: "unknown"}"
-        } finally {
-            isLoading = false
-        }
+    fun stopFollowing() {
+        watcherStop?.invoke()
+        watcherStop = null
+        following = false
     }
 
-    LaunchedEffect(lat, lng) {
-        if (lat != null && lng != null) fetchNearby()
-    }
+    DisposableEffect(Unit) { onDispose { watcherStop?.invoke() } }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 88.dp),
-            contentPadding = PaddingValues(bottom = 16.dp),
-        ) {
-            // Header
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    ScottsTechXColors.BluePrimaryDark,
-                                    ScottsTechXColors.BluePrimary,
-                                ),
-                            ),
-                        )
-                        .padding(top = 36.dp, bottom = 18.dp),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.12f))
-                                .clickable { onBack() },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Nearby",
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 22.sp,
-                            )
-                            Text(
-                                text = when {
-                                    gpsStatus == "ready" && lat != null && lng != null ->
-                                        "GPS ready: ${"%.4f".format(lat)}, ${"%.4f".format(lng)}"
-                                    gpsStatus == "requesting" -> "Locating you…"
-                                    gpsStatus == "unavailable" -> "GPS unavailable — use the manual picker below"
-                                    else -> "Find trending products and stores near you"
-                                },
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 12.sp,
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.12f))
-                                .clickable {
-                                    scope.launch {
-                                        isLoading = true
-                                        loadError = null
-                                        // Re-fetch the GPS fix
-                                        if (hasLocationPermission) {
-                                            val loc = provider.currentLocation()
-                                            if (loc != null) {
-                                                lat = loc.latitude
-                                                lng = loc.longitude
-                                                gpsStatus = "ready"
-                                            }
-                                        }
-                                        fetchNearby()
-                                    }
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = "Refresh",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Location summary / permission state
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    LocationStatusCard(
-                        hasPermission = hasLocationPermission,
-                        selectedLocation = selectedLocation,
-                        onRequestPermission = {
-                            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                        },
-                        onPickLocation = { loc -> selectedLocation = loc },
-                    )
-                }
-            }
-
-            // Filter / sort bar (Stage 5.x advanced UI)
-            item {
-                androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
-                FilterSortBar(
-                    selectedCategory = selectedCategory,
-                    onCategoryChange = { selectedCategory = it },
-                    sortBy = sortBy,
-                    onSortChange = { sortBy = it },
-                    maxRadiusKm = maxRadiusKm,
-                    onRadiusChange = { maxRadiusKm = it },
-                    onlyVerified = onlyVerified,
-                    onOnlyVerifiedChange = { onlyVerified = it },
-                )
-                androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
-            }
-
-            // Pre-compute filtered & sorted seller list (used by result count + list)
-            val filteredSellers = nearbySellers
-                .asSequence()
-                .filter { maxRadiusKm == 0 || it.distanceKm <= maxRadiusKm }
-                .sortedWith(
-                    when (sortBy) {
-                        "rating" -> compareByDescending<V2Client.NearbySeller> { it.rating }
-                        "products" -> compareByDescending<V2Client.NearbySeller> { it.products.size }
-                        else -> compareBy<V2Client.NearbySeller> { it.distanceKm }
-                    }
-                )
-                .toList()
-
-            // Result count + status
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Sellers near you",
-                        color = ScottsTechXColors.OnLight,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 17.sp,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    when {
-                        isLoading -> CircularProgressIndicator(
-                            color = ScottsTechXColors.BluePrimary,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        else -> Text(
-                            text = "${filteredSellers.size} sellers",
-                            color = ScottsTechXColors.OnLightSecondary,
-                            fontSize = 12.sp,
-                        )
-                    }
-                }
-            }
-
-            // Error / empty state
-            if (loadError != null && !isLoading) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFFFE5E5))
-                            .padding(14.dp),
-                    ) {
-                        Text(
-                            text = loadError ?: "",
-                            color = Color(0xFF991B1B),
-                            fontSize = 13.sp,
-                        )
-                    }
-                }
-            }
-
-            // Sellers
-            items(filteredSellers, key = { it.sellerId }) { seller ->
-                NearbySellerRow(
-                    seller = seller,
-                    onClick = {
-                        // Open first product if available, else ignore
-                        val firstProduct = seller.products.firstOrNull()
-                        if (firstProduct != null) {
-                            val product = com.scottsx.app.data.domain.Product(
-                                id = firstProduct.id,
-                                name = firstProduct.title,
-                                shortDescription = firstProduct.title,
-                                description = firstProduct.title,
-                                priceUgx = firstProduct.priceMinor / 100, // priceMinor is in minor units (cents); treat as UGX
-                                category = com.scottsx.app.data.domain.ProductCategory.All,
-                                brand = com.scottsx.app.data.domain.Brand(
-                                    id = seller.sellerId,
-                                    name = seller.storeName,
-                                ),
-                                seller = com.scottsx.app.data.domain.Seller(
-                                    id = seller.sellerId,
-                                    name = seller.storeName,
-                                    rating = seller.rating.toFloat(),
-                                    location = seller.city ?: "Uganda",
-                                ),
-                                imageUrl = firstProduct.image ?: "",
-                                rating = firstProduct.rating.toFloat(),
-                                location = seller.city ?: "Uganda",
-                            )
-                            onOpenProduct(product)
-                        }
-                    },
-                )
-            }
-        }
-
-        // Floating bottom nav
+    // ───────────────────────────────────────────────────────────────────────
+    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight)) {
+        // ---- Gradient header (status-bar padded) ---------------------------
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
-        ) {
-            ScottsTechXBottomBar(
-                selected = bottomTab,
-                onSelect = { tab ->
-                    bottomTab = tab
-                    onTabSelect(tab)
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun NearbySellerRow(
-    seller: V2Client.NearbySeller,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(54.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .fillMaxWidth()
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(
-                            ScottsTechXColors.BluePrimary,
-                            ScottsTechXColors.BluePrimaryLight,
-                        ),
+                        colors = listOf(ScottsTechXColors.BluePrimaryDark, ScottsTechXColors.BluePrimary),
+                        start = Offset.Zero, end = Offset(800f, 500f),
                     ),
-                ),
-            contentAlignment = Alignment.Center,
+                )
+                .statusBarSpacer()
+                .padding(start = 6.dp, end = 16.dp, top = 8.dp, bottom = 14.dp),
         ) {
-            Icon(
-                imageVector = Icons.Filled.Store,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(26.dp),
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = seller.storeName,
-                color = ScottsTechXColors.OnLight,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-            )
-            Text(
-                text = buildString {
-                    append(seller.city ?: "Uganda")
-                    if (seller.products.isNotEmpty()) {
-                        append(" · ")
-                        append(seller.products.first().title)
-                    }
-                },
-                color = ScottsTechXColors.OnLightSecondary,
-                fontSize = 12.sp,
-                maxLines = 1,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Star,
-                    contentDescription = null,
-                    tint = Color(0xFFFBBF24),
-                    modifier = Modifier.size(13.dp),
-                )
-                Spacer(Modifier.width(2.dp))
-                Text(
-                    text = "%.1f".format(seller.rating),
-                    color = ScottsTechXColors.OnLightSecondary,
-                    fontSize = 11.sp,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = if (seller.distanceKm < Double.MAX_VALUE) "%.1f km away".format(seller.distanceKm) else "— km",
-                    color = ScottsTechXColors.BluePrimary,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 13.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocationStatusCard(
-    hasPermission: Boolean,
-    selectedLocation: String?,
-    onRequestPermission: () -> Unit,
-    onPickLocation: (String) -> Unit,
-) {
-    val ugandaLocations = listOf(
-        "Kampala", "Entebbe", "Jinja", "Mbarara", "Gulu", "Mbale",
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        ScottsTechXColors.BluePrimary,
-                        ScottsTechXColors.BluePrimaryDark,
-                    ),
-                ),
-            )
-            .padding(16.dp),
-    ) {
-        Column {
-            if (hasPermission) {
+            Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.18f)),
+                            .background(Color.White.copy(alpha = 0.18f))
+                            .clickable { onBack() },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.LocationOn,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
+                        Text("Stores near you", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
                         Text(
-                            text = "Using your location",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                        )
-                        Text(
-                            text = selectedLocation ?: "Detecting...",
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 12.sp,
+                            "Live sellers follow their GPS; others stay pinned at last known positions.",
+                            color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
-                }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.18f)),
-                        contentAlignment = Alignment.Center,
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (following) Color(0xFF16A34A)
+                                else Color.White.copy(alpha = 0.18f),
+                            )
+                            .clickable { if (following) stopFollowing() else startFollowing() }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.NearMe,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (following) Icons.Filled.LocationOff else Icons.Filled.MyLocation,
+                                contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                if (following) "Tracking" else "Follow me",
+                                color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Allow location access?",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                        )
-                        Text(
-                            text = "Use your GPS to find products and stores near you.",
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 12.sp,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White)
-                        .clickable { onRequestPermission() }
-                        .padding(vertical = 10.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.NearMe,
-                        contentDescription = null,
-                        tint = ScottsTechXColors.BluePrimary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "Use my location",
-                        color = ScottsTechXColors.BluePrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = "Or pick a location manually:",
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                ugandaLocations.take(3).forEach { loc ->
-                    LocationChip(
-                        label = loc,
-                        selected = selectedLocation == loc,
-                        onClick = { onPickLocation(loc) },
-                    )
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                ugandaLocations.drop(3).forEach { loc ->
-                    LocationChip(
-                        label = loc,
-                        selected = selectedLocation == loc,
-                        onClick = { onPickLocation(loc) },
-                    )
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun LocationChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (selected) Color.White else Color.White.copy(alpha = 0.18f),
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-    ) {
-        Text(
-            text = label,
-            color = if (selected) ScottsTechXColors.BluePrimary else Color.White,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            fontSize = 12.sp,
-        )
-    }
-}
-
-
-@Composable
-private fun FilterSortBar(
-    selectedCategory: String?,
-    onCategoryChange: (String?) -> Unit,
-    sortBy: String,
-    onSortChange: (String) -> Unit,
-    maxRadiusKm: Int,
-    onRadiusChange: (Int) -> Unit,
-    onlyVerified: Boolean,
-    onOnlyVerifiedChange: (Boolean) -> Unit,
-) {
-    val categories = listOf(
-        "All", "Electronics", "Fashion", "Footwear", "Beauty", "Home", "Sports",
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        // Category chips row
+        // ---- Your-location banner ------------------------------------------
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White)
+                .border(1.dp, ScottsTechXColors.Divider, RoundedCornerShape(16.dp))
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            categories.forEach { cat ->
-                val isSelected = (cat == "All" && selectedCategory == null) || cat == selectedCategory
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Place, contentDescription = null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Your location", color = ScottsTechXColors.OnLightTertiary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    when {
+                        locating -> "Detecting your location…"
+                        place != null && place?.label?.isNotBlank() == true -> place!!.label
+                        center != null -> "Location detected"
+                        else -> "Location unavailable"
+                    },
+                    color = ScottsTechXColors.OnLight, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                place?.let { p ->
+                    val parts = listOfNotNull(p.village, p.city, p.region, p.country).distinct()
+                    if (parts.isNotEmpty()) {
+                        Text(
+                            parts.joinToString(" · "),
+                            color = ScottsTechXColors.OnLightTertiary, fontSize = 10.5.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            if (following) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(
-                            if (isSelected) ScottsTechXColors.BluePrimary
-                            else Color.White
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (isSelected) ScottsTechXColors.BluePrimary
-                                    else ScottsTechXColors.OnLightSecondary.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(50),
-                        )
-                        .clickable {
-                            onCategoryChange(if (cat == "All") null else cat)
-                        }
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .background(Color(0xFFDCFCE7))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
                 ) {
-                    Text(
-                        cat,
-                        color = if (isSelected) Color.White else ScottsTechXColors.OnLight,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        fontSize = 12.sp,
-                    )
+                    Text("Live GPS", color = Color(0xFF16A34A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
-        // Sort + radius + verified row
+
+        // ---- Permission-denied card ----------------------------------------
+        if (geoDenied) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 10.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFFFEF3C7))
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("We could not detect your location", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Allow location access — you'll see every store, sorted by distance, anywhere in the world.",
+                        color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(ScottsTechXColors.BluePrimary)
+                        .clickable {
+                            geoDenied = false
+                            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Text("Try again", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        // ---- Filters: search / sort / verified / open — NO radius, NO district
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 10.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White)
+                .border(1.dp, ScottsTechXColors.Divider, RoundedCornerShape(16.dp))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Sort pill
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White)
-                    .border(1.dp, ScottsTechXColors.OnLightSecondary.copy(alpha = 0.3f), RoundedCornerShape(50))
-                    .clickable {
-                        onSortChange(
-                            when (sortBy) {
-                                "distance" -> "rating"
-                                "rating" -> "products"
-                                else -> "distance"
-                            }
+            Icon(Icons.Filled.Search, contentDescription = null, tint = ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Box(modifier = Modifier.weight(1f)) {
+                if (query.isEmpty()) Text("Filter stores…", color = ScottsTechXColors.OnLightTertiary, fontSize = 13.sp)
+                BasicTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(color = ScottsTechXColors.OnLight, fontSize = 13.sp),
+                    singleLine = true,
+                )
+            }
+        }
+        // Sort chips
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(listOf(
+                "distance" to "Nearest first",
+                "rating" to "Top rated",
+                "products" to "Most products",
+                "newest" to "Newest stores",
+            )) { (key, label) ->
+                val active = sort == key
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (active) ScottsTechXColors.BluePrimary else Color.White)
+                        .border(1.dp, if (active) ScottsTechXColors.BluePrimary else ScottsTechXColors.Divider, RoundedCornerShape(50))
+                        .clickable { sort = key }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                ) {
+                    Text(label, color = if (active) Color.White else ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            item {
+                val active = verifiedOnly
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (active) Color(0xFF16A34A) else Color.White)
+                        .border(1.dp, if (active) Color(0xFF16A34A) else ScottsTechXColors.Divider, RoundedCornerShape(50))
+                        .clickable { verifiedOnly = !verifiedOnly }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Verified, contentDescription = null,
+                            tint = if (active) Color.White else ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Verified", color = if (active) Color.White else ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            item {
+                val active = openOnly
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (active) ScottsTechXColors.PurpleAccent else Color.White)
+                        .border(1.dp, if (active) ScottsTechXColors.PurpleAccent else ScottsTechXColors.Divider, RoundedCornerShape(50))
+                        .clickable { openOnly = !openOnly }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                ) {
+                    Text("Open now", color = if (active) Color.White else ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        // ---- Stats strip -----------------------------------------------------
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item { NearbyPill(text = "${sellers.size} of $total stores", bg = ScottsTechXColors.BluePrimary.copy(alpha = 0.10f), fg = ScottsTechXColors.BluePrimary) }
+            if (liveCount > 0) item { NearbyPill(text = "$liveCount live", bg = Color(0xFFDCFCE7), fg = Color(0xFF16A34A)) }
+            item { NearbyPill(text = "${sellers.count { it.isOpen }} open now", bg = ScottsTechXColors.CyanAccent.copy(alpha = 0.12f), fg = ScottsTechXColors.CyanAccent) }
+            item { NearbyPill(text = "${sellers.count { it.withinServiceRadius }} deliver to you", bg = ScottsTechXColors.PurpleAccent.copy(alpha = 0.10f), fg = ScottsTechXColors.PurpleAccent) }
+            if (moved) item { NearbyPill(text = "You moved — refreshing…", bg = ScottsTechXColors.WarningAmber.copy(alpha = 0.14f), fg = ScottsTechXColors.WarningAmber) }
+        }
+
+        // ---- Results ---------------------------------------------------------
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            when {
+                loading -> Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    repeat(4) {
+                        ShimmerBox(
+                            modifier = Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(18.dp)),
+                            base = ScottsTechXColors.Divider,
+                            highlight = Color.White,
                         )
                     }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        androidx.compose.material.icons.Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = ScottsTechXColors.BluePrimary,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = when (sortBy) {
-                            "distance" -> "Nearest"
-                            "rating" -> "Top rated"
-                            else -> "Most products"
-                        },
-                        color = ScottsTechXColors.OnLight,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
-                    )
+                }
+                error != null -> Column(
+                    modifier = Modifier.fillMaxSize().padding(40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(Icons.Filled.CloudOff, contentDescription = null, tint = ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(42.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Text(error!!, color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
+                    Spacer(Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(ScottsTechXColors.BluePrimary)
+                            .clickable {
+                                loading = true
+                                scope.launch {
+                                    val at = center ?: return@launch
+                                    fetchSellers(at)
+                                }
+                            }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                    ) {
+                        Text("Retry", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    }
+                }
+                sellers.isEmpty() -> Column(
+                    modifier = Modifier.fillMaxSize().padding(40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(Icons.Filled.Store, contentDescription = null, tint = ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(42.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Text("No stores match", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Clear the filters to see every store, sorted by distance from you.",
+                        color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp)
+                    Spacer(Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(ScottsTechXColors.BluePrimary)
+                            .clickable {
+                                query = ""; verifiedOnly = false; openOnly = false; sort = "distance"
+                            }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                    ) {
+                        Text("Clear filters", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    }
+                }
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, bottom = 110.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(sellers, key = { it.sellerId }) { seller ->
+                        SellerCard(seller = seller, onOpen = { onOpenStore(seller.sellerId) })
+                    }
                 }
             }
-            // Radius pill
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White)
-                    .border(1.dp, ScottsTechXColors.OnLightSecondary.copy(alpha = 0.3f), RoundedCornerShape(50))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = "≤ $maxRadiusKm km",
-                    color = ScottsTechXColors.OnLight,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.sp,
-                )
+
+            // Bottom navigation
+            Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                ScottsTechXBottomBar(selected = BottomTab.Nearby, onSelect = onTabSelect)
             }
-            // Verified-only toggle pill
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (onlyVerified) ScottsTechXColors.BluePrimary
-                        else Color.White
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = if (onlyVerified) ScottsTechXColors.BluePrimary
-                                else ScottsTechXColors.OnLightSecondary.copy(alpha = 0.3f),
-                        shape = RoundedCornerShape(50),
-                    )
-                    .clickable { onOnlyVerifiedChange(!onlyVerified) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            ) {
+        }
+    }
+}
+
+@Composable
+private fun NearbyPill(text: String, bg: Color, fg: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Text(text, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** One store card — layout parity with the web Nearby card. */
+@Composable
+private fun SellerCard(seller: V2Client.NearbySeller, onOpen: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White)
+            .border(1.dp, ScottsTechXColors.Divider, RoundedCornerShape(18.dp))
+            .clickable { onOpen() }
+            .padding(14.dp),
+    ) {
+        // Store avatar: real logo when the backend has one, initial otherwise.
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (!seller.logoUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = seller.logoUrl,
+                    contentDescription = seller.storeName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
                 Text(
-                    text = if (onlyVerified) "Verified only" else "All sellers",
-                    color = if (onlyVerified) Color.White else ScottsTechXColors.OnLight,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 12.sp,
+                    (seller.storeName.firstOrNull() ?: 'S').uppercase(),
+                    color = ScottsTechXColors.BluePrimary,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 20.sp,
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
-        // Radius slider
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            // Title row: name + verified tick + open/closed badge
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    seller.storeName,
+                    color = ScottsTechXColors.OnLight,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (seller.verified) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Filled.Verified, contentDescription = "Verified", tint = Color(0xFF16A34A), modifier = Modifier.size(15.dp))
+                }
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (seller.isOpen) Color(0xFFDCFCE7) else ScottsTechXColors.Divider)
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        if (seller.isOpen) "Open" else "Closed",
+                        color = if (seller.isOpen) Color(0xFF16A34A) else ScottsTechXColors.OnLightTertiary,
+                        fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            // Rating · products · new-this-week
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                Icon(Icons.Filled.Star, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(12.dp))
+                Text(
+                    " ${"%.1f".format(seller.rating)} · ${seller.productCount} products",
+                    color = ScottsTechXColors.OnLightSecondary, fontSize = 11.5.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                if (seller.newThisWeek > 0) {
+                    Text(" · ${seller.newThisWeek} new", color = Color(0xFF16A34A), fontSize = 11.5.sp, maxLines = 1)
+                }
+            }
+            // Real place label for the store pin (as the web shows it)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                Icon(Icons.Filled.Place, contentDescription = null, tint = ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(12.dp))
+                Text(
+                    " " + seller.placeLabel.ifBlank { seller.address ?: seller.city ?: "—" },
+                    color = ScottsTechXColors.OnLightTertiary, fontSize = 11.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // Trust badges: live / last-seen / delivery / COD
+            Row(
+                modifier = Modifier.padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (seller.live) {
+                    NearbyPill(
+                        text = "Live · ${seller.locationAgeMinutes ?: 0}m ago",
+                        bg = Color(0xFFDCFCE7), fg = Color(0xFF16A34A),
+                    )
+                } else {
+                    NearbyPill(
+                        text = if (seller.locationSharing) "Last seen" else "Fixed address",
+                        bg = ScottsTechXColors.WarningAmber.copy(alpha = 0.12f), fg = Color(0xFFB45309),
+                    )
+                }
+                if (seller.withinServiceRadius) {
+                    NearbyPill(
+                        text = if (seller.deliveryFeeUgx > 0) "Delivery UGX ${"%,d".format(seller.deliveryFeeUgx)}" else "Free delivery",
+                        bg = ScottsTechXColors.CyanAccent.copy(alpha = 0.10f), fg = ScottsTechXColors.CyanAccent,
+                    )
+                } else {
+                    NearbyPill(text = "Outside delivery zone", bg = ScottsTechXColors.Divider, fg = ScottsTechXColors.OnLightTertiary)
+                }
+                if (seller.codEnabled) {
+                    NearbyPill(text = "Pay on delivery", bg = ScottsTechXColors.PurpleAccent.copy(alpha = 0.10f), fg = ScottsTechXColors.PurpleAccent)
+                }
+            }
+        }
+        // Distance + ETA (server-computed)
+        Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
+            Icon(Icons.Filled.Navigation, contentDescription = null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(14.dp))
             Text(
-                "Radius",
-                color = ScottsTechXColors.OnLightSecondary,
-                fontSize = 11.sp,
-                modifier = Modifier.width(48.dp),
+                if (seller.distanceKm < Double.MAX_VALUE) "${"%.1f".format(seller.distanceKm)} km" else "—",
+                color = ScottsTechXColors.OnLight, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp,
+                maxLines = 1, softWrap = false,
             )
-            Slider(
-                value = maxRadiusKm.toFloat(),
-                onValueChange = { onRadiusChange(it.toInt()) },
-                valueRange = 1f..100f,
-                steps = 0,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(
-                    thumbColor = ScottsTechXColors.BluePrimary,
-                    activeTrackColor = ScottsTechXColors.BluePrimary,
-                    inactiveTrackColor = ScottsTechXColors.OnLightSecondary.copy(alpha = 0.3f),
-                ),
-            )
+            if (seller.etaMinutes > 0) {
+                Text("~${seller.etaMinutes} min", color = ScottsTechXColors.OnLightTertiary, fontSize = 10.5.sp, maxLines = 1, softWrap = false)
+            }
         }
     }
 }

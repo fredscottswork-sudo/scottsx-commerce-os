@@ -47,6 +47,7 @@ import com.scottsx.app.data.Session
 import com.scottsx.app.data.TransactionStore
 import com.scottsx.app.data.domain.DisputeReason
 import com.scottsx.app.data.domain.Role
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 4 — Dispute screen.
@@ -123,6 +124,7 @@ fun DisputeScreen(
                             modifier = Modifier
                                 .size(20.dp)
                                 .background(if (selected) Color(0xFFEF4444) else Color.Transparent, CircleShape)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar
                                 .border(2.dp, if (selected) Color(0xFFEF4444) else Color(0xFFD1D5DB), CircleShape),
                             contentAlignment = Alignment.Center,
                         ) {

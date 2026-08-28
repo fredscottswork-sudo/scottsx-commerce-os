@@ -14,7 +14,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.scottsx.app.data.AuthRepository
 import com.scottsx.app.data.GoogleSignInHelper
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.domain.Role
 import com.scottsx.app.data.domain.SessionCache
@@ -319,7 +318,15 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val displayName = backStackEntry.arguments?.getString("displayName")
             val email = backStackEntry.arguments?.getString("email")
-            val profile = MarketplaceDataSource.profileFor(displayName, email)
+            // Real session — never a fabricated profile.
+            val profile = com.scottsx.app.data.domain.BuyerProfile(
+                uid = Session.userIdOrNull().orEmpty(),
+                displayName = displayName?.takeIf { it.isNotBlank() }
+                    ?: Session.displayNameOrEmpty().ifBlank {
+                        (email ?: Session.emailOrEmpty()).substringBefore("@").ifBlank { "Buyer" }
+                    },
+                email = email ?: Session.emailOrEmpty(),
+            )
             // Role-separation gate. If the signed-in session says Seller
             // but the buyer dashboard got requested, bounce to the
             // wrong-role screen so we never show the wrong UI.
@@ -447,6 +454,7 @@ fun AppNavigation() {
         composable(Routes.NEARBY) {
             NearbyScreen(
                 onBack = { navController.popBackStack() },
+                onOpenStore = { sid -> navController.navigate(Routes.storefront(sid)) },
                 onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
             )
         }
@@ -490,7 +498,15 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val displayName = backStackEntry.arguments?.getString("displayName")
             val email = backStackEntry.arguments?.getString("email")
-            val profile = MarketplaceDataSource.profileFor(displayName, email)
+            // Real session — never a fabricated profile.
+            val profile = com.scottsx.app.data.domain.BuyerProfile(
+                uid = Session.userIdOrNull().orEmpty(),
+                displayName = displayName?.takeIf { it.isNotBlank() }
+                    ?: Session.displayNameOrEmpty().ifBlank {
+                        (email ?: Session.emailOrEmpty()).substringBefore("@").ifBlank { "Buyer" }
+                    },
+                email = email ?: Session.emailOrEmpty(),
+            )
             val activityContext = androidx.compose.ui.platform.LocalContext.current
             ProfileScreen(
                 profile = profile,
@@ -628,7 +644,10 @@ fun AppNavigation() {
         composable(Routes.SELLER_MESSAGES) {
             SellerMessagesScreen(
                 onBack = { navController.popBackStack() },
-                onOpenThread = { conversationId, peerName -> navController.navigate(Routes.thread("tech-hub", null)) },
+                // Thread route resolves the conversation by PEER user id —
+                // the seller inbox hands back the counterparty's uid in the
+                // second lambda slot (named peerName by the screen contract).
+                onOpenThread = { _, peerId -> navController.navigate(Routes.thread(peerId, null)) },
             )
         }
         composable(Routes.SELLER_ANALYTICS) {
@@ -975,7 +994,7 @@ private fun onSellerTab(navController: NavHostController, tab: BottomTab) {
 
 @Composable
 private fun SplashHost(onContinue: () -> Unit) {
-    SplashScreen(onContinue = onContinue)
+    SplashScreen(onFinished = onContinue)
 }
 
 object Routes {
@@ -1024,7 +1043,6 @@ object Routes {
     const val DISPUTE = "dispute/{transactionId}"
     const val AI_PERSONALIZATION = "ai/personalization"
     const val NEARBY_MAP = "nearby/map"
-    const val AGREEMENT_PROPOSAL = "agreement/new/{productId}"
     const val SETTINGS = "settings"
 
     // ---- Stage 5.x communications routes ----

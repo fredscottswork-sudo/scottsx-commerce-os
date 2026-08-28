@@ -125,6 +125,7 @@ fun HeroCarousel(
         // Pagination dots overlay (inside Box so we can use .align)
         Row(
             modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 8.dp)
                 .wrapContentSize(),

@@ -72,7 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.domain.SellerDashboardSnapshot
+import com.scottsx.app.data.domain.StoreStatus
 import com.scottsx.app.data.preferences.LocalThemePreference
 import com.scottsx.app.data.preferences.ThemeMode
 import com.scottsx.app.data.preferences.ThemePreference
@@ -105,11 +105,28 @@ private enum class SellerFeaturedKind { SellerAi, Analytics }
  * at the bottom and writes to the same [ThemePreference] singleton
  * the buyer side uses, so a theme choice persists across the app.
  */
+/**
+ * Everything the seller sidebar is allowed to show — real numbers only,
+ * assembled from `/api/v1/seller/dashboard/stats` + `/seller/location`
+ * by the screen. The old SellerDashboardSnapshot shape carried sample
+ * deltas no endpoint ever produced; those are gone.
+ */
+data class SellerSidebarData(
+    val displayName: String,
+    val storeName: String,
+    val storeId: String,
+    val status: StoreStatus,
+    val pendingOrders: Int,
+    val followers: Int,
+    val productsTotal: Int,
+    val unreadMessages: Int,
+)
+
 @Composable
 fun SellerSidebarOverlay(
     open: Boolean,
     onDismiss: () -> Unit,
-    snapshot: SellerDashboardSnapshot,
+    data: SellerSidebarData,
     onNavigate: (SellerSidebarDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -166,7 +183,7 @@ fun SellerSidebarOverlay(
                     )
                     .clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp))
                     .background(Brush.linearGradient(colors = listOf(Color.White, Color(0xFFFAFBFE)))),
-                snapshot = snapshot,
+                data = data,
                 themeMode = themeMode,
                 themePref = themePref,
                 onNavigate = { dest ->
@@ -184,7 +201,7 @@ fun SellerSidebarOverlay(
 @Composable
 fun SellerSidebarCard(
     modifier: Modifier = Modifier,
-    snapshot: SellerDashboardSnapshot,
+    data: SellerSidebarData,
     themeMode: ThemeMode,
     themePref: ThemePreference,
     onNavigate: (SellerSidebarDestination) -> Unit,
@@ -196,11 +213,11 @@ fun SellerSidebarCard(
             .navigationBarsPadding(),
     ) {
         SellerSidebarHeader(
-            storeName = snapshot.storeName,
-            displayName = snapshot.displayName,
-            storeId = snapshot.storeId,
+            storeName = data.storeName,
+            displayName = data.displayName,
+            storeId = data.storeId,
             avatarUrl = SessionCache.avatarUrl,
-            status = snapshot.status,
+            status = data.status,
             onClose = onDismiss,
         )
 
@@ -210,7 +227,7 @@ fun SellerSidebarCard(
         ) {
             item {
                 SellerProfileHeader(
-                    snapshot = snapshot,
+                    data = data,
                     onViewStore = { onNavigate(SellerSidebarDestination.ViewStore) },
                 )
                 Spacer(Modifier.height(12.dp))
@@ -219,15 +236,15 @@ fun SellerSidebarCard(
             itemsIndexed(
                 items = listOf(
                     SellerSidebarItem(SellerSidebarDestination.Dashboard, "Dashboard", Icons.Filled.Dashboard, null),
-                    SellerSidebarItem(SellerSidebarDestination.Orders, "Orders", Icons.Filled.Inventory2, snapshot.ordersOverview.pending),
+                    SellerSidebarItem(SellerSidebarDestination.Orders, "Orders", Icons.Filled.Inventory2, data.pendingOrders),
                     SellerSidebarItem(SellerSidebarDestination.CreateReceipt, "Create Receipt", Icons.Filled.ReceiptLong, null),
                     SellerSidebarItem(SellerSidebarDestination.Transactions, "Transactions", Icons.Filled.SwapHoriz, null),
                     SellerSidebarItem(SellerSidebarDestination.Receipts, "Receipts", Icons.Filled.Receipt, null),
                     SellerSidebarItem(SellerSidebarDestination.AiPersonalization, "AI Personalization", Icons.Filled.SmartToy, null),
-                    SellerSidebarItem(SellerSidebarDestination.Products, "Products", Icons.Filled.Store, 124),
-                    SellerSidebarItem(SellerSidebarDestination.Customers, "Customers", Icons.Filled.Group, snapshot.customersDelta),
-                    SellerSidebarItem(SellerSidebarDestination.Messages, "Messages", Icons.Filled.Message, 5),
-                    SellerSidebarItem(SellerSidebarDestination.Promotions, "Promotions", Icons.Filled.LocalOffer, 2),
+                    SellerSidebarItem(SellerSidebarDestination.Products, "Products", Icons.Filled.Store, data.productsTotal),
+                    SellerSidebarItem(SellerSidebarDestination.Customers, "Customers", Icons.Filled.Group, data.followers),
+                    SellerSidebarItem(SellerSidebarDestination.Messages, "Messages", Icons.Filled.Message, data.unreadMessages),
+                    SellerSidebarItem(SellerSidebarDestination.Promotions, "Promotions", Icons.Filled.LocalOffer, null),
                     SellerSidebarItem(
                         SellerSidebarDestination.Analytics,
                         "Analytics",
@@ -385,7 +402,7 @@ private fun SellerSidebarHeader(
 
 @Composable
 private fun SellerProfileHeader(
-    snapshot: SellerDashboardSnapshot,
+    data: SellerSidebarData,
     onViewStore: () -> Unit,
 ) {
     Column(
@@ -419,7 +436,7 @@ private fun SellerProfileHeader(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = snapshot.storeName,
+                        text = data.storeName,
                         color = ScottsTechXColors.OnLight,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
@@ -436,12 +453,12 @@ private fun SellerProfileHeader(
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Store ID: ${snapshot.storeId}",
+                    text = "Store ID: ${data.storeId}",
                     color = ScottsTechXColors.OnLightSecondary,
                     fontSize = 11.sp,
                 )
                 Spacer(Modifier.height(6.dp))
-                StoreStatusPill(status = snapshot.status)
+                StoreStatusPill(status = data.status)
             }
         }
         Spacer(Modifier.height(10.dp))

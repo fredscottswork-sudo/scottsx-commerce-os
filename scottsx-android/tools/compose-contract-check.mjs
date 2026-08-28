@@ -19,7 +19,9 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SRC = join(ROOT, 'app/src/main/java/com/scottsx/app');
+// APP_SRC overrides the scan root so the same rules can gate the v2 tree:
+//   APP_SRC=$PWD/../scottsx-android-v2/app/src/main/java/com/scottsx/app node tools/compose-contract-check.mjs
+const SRC = process.env.APP_SRC || join(ROOT, 'app/src/main/java/com/scottsx/app');
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -150,11 +152,15 @@ console.log('\n\x1b[1m3. Imports exist for every symbol used\x1b[0m');
     for (const [use, imp] of needs) {
       if (!bodyOnly.includes(use)) continue;
       if (src.includes(`import ${imp}`)) continue;
+      // A star import of the symbol's package covers it too
+      // (import androidx.compose.runtime.* pulls in rememberCoroutineScope).
+      const impPkg = imp.slice(0, imp.lastIndexOf('.'));
+      if (src.includes(`import ${impPkg}.*`)) continue;
       // A fully-qualified use needs no import: strip every occurrence that is
       // preceded by its own package path, then re-test.
       const qualified = new RegExp(`${imp.replace(/\./g, '\\.')}\\b`, 'g');
       if (!qualified.test(bodyOnly) ? false : !bodyOnly.replace(qualified, '').includes(use)) continue;
-      const symbolPkg = imp.slice(0, imp.lastIndexOf('.'));
+      const symbolPkg = impPkg;
       if (symbolPkg === pkg) continue;                 // same package
       if (bodyOnly.includes(`fun ${use.replace('(', '')}`)) continue; // defines it
       if (bodyOnly.includes(`fun Modifier.${use.replace('(', '')}`)) continue;
@@ -188,6 +194,22 @@ console.log('\n\x1b[1m3. Imports exist for every symbol used\x1b[0m');
     }
   }
 
+  // The same name can live in two packages (formatUgx exists in both
+  // ui/components/UiKit.kt and ui/util/Formatters.kt). A file that imports
+  // EITHER provider has a valid binding for that name — only a file that
+  // uses the name with NO import anywhere gets flagged.
+  const elsewhere = new Map();              // symbol -> true (declared outside ui/components)
+  for (const f of files.filter((x) => !x.startsWith(compDir))) {
+    const src = readFileSync(f, 'utf8');
+    const pkg = (/^package\s+(\S+)/m.exec(src) || [])[1] || '';
+    for (const m of src.matchAll(
+      /^(?:internal\s+|public\s+)?(?:data\s+)?(?:class|object|enum class|fun)\s+([A-Za-z_]\w*)/gm
+    )) {
+      if (m[1] === 'Modifier') continue;
+      elsewhere.set(m[1], true);
+    }
+  }
+
   const missingAuto = [];
   for (const f of files) {
     if (f.startsWith(compDir)) continue;    // same package, no import needed
@@ -203,6 +225,9 @@ console.log('\n\x1b[1m3. Imports exist for every symbol used\x1b[0m');
       if (src.includes(`import ${fq}`)) continue;
       if (src.includes('import com.scottsx.app.ui.components.*')) continue;
       if (new RegExp(`(?:fun|class|object|val|var)\\s+${sym}\\b`).test(body)) continue;
+      // Import of the SAME NAME from another package that also declares it
+      // (formatUgx via ui.util). Only legal because the name exists there.
+      if (elsewhere.has(sym) && new RegExp(`import com\\.scottsx\\.app\\.[\\w.]+\\.${sym}\\n`).test(src + '\n')) continue;
       missingAuto.push(`${rel(f)}: ${sym}`);
     }
   }
@@ -359,10 +384,16 @@ console.log('\n\x1b[1m4. No dangling references to removed APIs\x1b[0m');
 {
   console.log('\n\x1b[1m5. Project symbols resolve\x1b[0m');
 
-  // Colours are a closed set defined in one object.
-  const colorsFile = files.find((f) => f.endsWith('ui/theme/ScottsTechXColors.kt'));
+  // Colours are a closed set defined in one object — found by the class
+  // declaration, not the filename (v1 keeps it in ScottsTechXColors.kt,
+  // v2 keeps it in Color.kt). Members can be `val`, `var` (the mutable
+  // legacy-light trio) or `fun` (applyThemePalette).
+  const colorsFile = files.find((f) => /object\s+ScottsTechXColors/.test(readFileSync(f, 'utf8')));
   const colorSrc = colorsFile ? readFileSync(colorsFile, 'utf8') : '';
-  const known = new Set([...colorSrc.matchAll(/val\s+(\w+)\s*[:=]/g)].map((m) => m[1]));
+  const known = new Set([
+    ...colorSrc.matchAll(/va[lr]\s+(\w+)\s*[:=]/g),
+    ...colorSrc.matchAll(/fun\s+(\w+)\s*\(/g),
+  ].map((m) => m[1]));
   ok_if('ScottsTechXColors palette parsed', known.size > 0, `${known.size} colours`);
 
   const badColors = [];
@@ -375,17 +406,29 @@ console.log('\n\x1b[1m4. No dangling references to removed APIs\x1b[0m');
   ok_if('every ScottsTechXColors reference names a real colour',
     badColors.length === 0, [...new Set(badColors)].slice(0, 5).join(' | '));
 
-  // SessionCache is our own object; calling a method it does not declare, or
-  // calling one with the wrong shape, is a compile error.
-  const sessionFile = files.find((f) => f.endsWith('SessionCache.kt'));
-  const sessionSrc = sessionFile ? readFileSync(sessionFile, 'utf8') : '';
-  const sessionFns = new Set([...sessionSrc.matchAll(/fun\s+(\w+)\s*\(/g)].map((m) => m[1]));
-  const sessionVals = new Set([...sessionSrc.matchAll(/va[lr]\s+(\w+)\s*:/g)].map((m) => m[1]));
+  // SessionCache exists in THREE packages (com.scottsx.app, .data, .data.domain)
+  // — a snapshot artefact. Each call site binds to one of them via explicit
+  // import or same-package rules, and the accepted union covers every site.
+  // Model the union: members from every `object SessionCache` in the tree.
+  const sessionFiles = files.filter((f) => /object\s+SessionCache/.test(readFileSync(f, 'utf8')));
+  const sessionFns = new Set();
+  const sessionVals = new Set();
+  for (const sf of sessionFiles) {
+    const s = readFileSync(sf, 'utf8');
+    for (const m of s.matchAll(/fun\s+(\w+)\s*\(/g)) sessionFns.add(m[1]);
+    for (const m of s.matchAll(/va[lr]\s+(\w+)\s*:/g)) sessionVals.add(m[1]);
+  }
+  // Extension members count too: `fun SessionCache.isSeller()` lives in
+  // ThemePreference.kt and is imported where needed.
+  for (const f of files) {
+    for (const m of readFileSync(f, 'utf8').matchAll(/fun\s+SessionCache\.(\w+)\s*\(/g)) sessionFns.add(m[1]);
+    for (const m of readFileSync(f, 'utf8').matchAll(/va[lr]\s+SessionCache\.(\w+)\s*[:=]/g)) sessionVals.add(m[1]);
+  }
   ok_if('SessionCache members parsed', sessionFns.size > 0, [...sessionFns].join(','));
 
   const badSession = [];
   for (const f of files) {
-    if (f === sessionFile) continue;
+    if (sessionFiles.includes(f)) continue;
     for (const m of readFileSync(f, 'utf8').matchAll(/SessionCache\.(\w+)/g)) {
       if (!sessionFns.has(m[1]) && !sessionVals.has(m[1])) {
         badSession.push(`${rel(f)}: SessionCache.${m[1]}`);
@@ -399,7 +442,7 @@ console.log('\n\x1b[1m4. No dangling references to removed APIs\x1b[0m');
   // is the trailing-lambda form and does not compile against that signature.
   const lambdaMisuse = [];
   for (const f of files) {
-    if (f === sessionFile) continue;
+    if (sessionFiles.includes(f)) continue;
     if (/SessionCache\.updateUser\s*\{/.test(readFileSync(f, 'utf8'))) {
       lambdaMisuse.push(rel(f));
     }
@@ -407,11 +450,13 @@ console.log('\n\x1b[1m4. No dangling references to removed APIs\x1b[0m');
   ok_if('SessionCache.updateUser is called with a value, not a lambda',
     lambdaMisuse.length === 0, lambdaMisuse.join(' | '));
 
-  // A `by remember { mutableStateOf(...) }` delegate needs BOTH imports.
+  // A `by remember { mutableStateOf(...) }` delegate needs BOTH imports,
+  // or the star import that covers the whole androidx.compose.runtime package.
   const missingDelegate = [];
   for (const f of files) {
     const src = readFileSync(f, 'utf8');
     if (!/\bby\s+remember\s*\{\s*mutableStateOf/.test(src)) continue;
+    if (src.includes('import androidx.compose.runtime.*')) continue;
     const hasGet = src.includes('import androidx.compose.runtime.getValue');
     const hasSet = src.includes('import androidx.compose.runtime.setValue');
     if (!hasGet || !hasSet) {

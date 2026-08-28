@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,13 +49,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
+import kotlinx.coroutines.launch
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.ProductCategory
 import com.scottsx.app.data.domain.StorefrontTab
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Public seller storefront. Reached via the buyer PDP's "View Store"
@@ -69,8 +71,42 @@ fun SellerStorefrontScreen(
     onMessageSeller: (String, String?) -> Unit,
     onViewAllReviews: (String) -> Unit,
 ) {
-    val storefront = remember(sellerId) { MarketplaceDataSource.storefront(sellerId) }
-    if (storefront == null) {
+    // Fully live storefront: `/api/v1/sellers/:id` for the store +
+    // catalogue; `/me/favorites` for the follow state.
+    var page by remember(sellerId) { mutableStateOf<com.scottsx.app.data.remote.V2Client.StorefrontPage?>(null) }
+    var loadFailed by remember(sellerId) { mutableStateOf(false) }
+    var isFollowing by remember(sellerId) { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    LaunchedEffect(sellerId) {
+        loadFailed = false
+        val fetched = try { com.scottsx.app.data.remote.V2Client.fetchStorefront(sellerId) } catch (_: Throwable) { null }
+        page = fetched
+        if (fetched == null) {
+            loadFailed = true
+            return@LaunchedEffect
+        }
+        com.scottsx.app.data.LiveMarketplace.cache(fetched.products)
+        val favs = try { com.scottsx.app.data.remote.V2Client.fetchFavoriteSellers() } catch (_: Throwable) { null }
+        isFollowing = favs?.any { it.id == sellerId } == true
+    }
+
+    if (page == null && !loadFailed) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScottsTechXColors.PanelLight),
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.CircularProgressIndicator(
+                color = ScottsTechXColors.BluePrimary,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+        return
+    }
+    if (page == null) {
         Box(
             modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight),
             contentAlignment = Alignment.Center,
@@ -79,9 +115,30 @@ fun SellerStorefrontScreen(
         }
         return
     }
+    val storefront = page!!
+    // Domain projections from the real storefront payload.
+    val sellerDomain = com.scottsx.app.data.domain.Seller(
+        id = storefront.sellerId,
+        name = storefront.storeName,
+        rating = storefront.rating.toFloat(),
+        location = storefront.city.ifBlank { "Uganda" },
+        verified = storefront.verified,
+    )
+    val reviewCount = storefront.products.sumOf { it.ratingCount }
+    val categoriesRows = storefront.products
+        .groupBy { it.category }
+        .map { (cat, list) -> com.scottsx.app.data.domain.SellerCategoryRow(cat, list.size) }
+        .sortedByDescending { it.productCount }
     var tab by remember(sellerId) { mutableStateOf(StorefrontTab.Products) }
-    val followed = remember(sellerId) { MarketplaceDataSource.isFollowing(sellerId) }
-    var isFollowing by remember(sellerId) { mutableStateOf(followed) }
+
+    // Is the caller the owner of this store? If so, tiles switch to owner
+    // view: no wishlist hearts (you can't wishlist yourself) and moderation
+    // status chips on each tile — same view the web seller dashboard gives.
+    var ownerUid by remember(sellerId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(sellerId) {
+        ownerUid = try { com.scottsx.app.data.remote.V2Client.fetchUserProfile()?.optString("uid") } catch (_: Throwable) { null }
+    }
+    val isOwner = ownerUid != null && ownerUid == sellerId
 
     Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
         // ---- Top bar with back ----
@@ -89,7 +146,8 @@ fun SellerStorefrontScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(ScottsTechXColors.BluePrimaryDark)
-                .padding(start = 4.dp, end = 16.dp, top = 30.dp, bottom = 12.dp),
+                .statusBarSpacer()
+                .padding(start = 4.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -113,26 +171,31 @@ fun SellerStorefrontScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             StoreHeader(
-                storeName = storefront.seller.name,
-                location = storefront.location,
-                rating = storefront.rating,
-                reviewCount = storefront.reviewCount,
-                followers = storefront.followers,
-                productCount = storefront.productCount,
+                storeName = sellerDomain.name,
+                location = sellerDomain.location,
+                rating = sellerDomain.rating,
+                reviewCount = reviewCount,
+                followers = -1,  // -1 = hide the followers segment (not public data)
+                productCount = storefront.products.size,
                 verified = storefront.verified,
                 isFollowing = isFollowing,
                 onToggleFollow = {
-                    val nowIn = MarketplaceDataSource.toggleFollowSeller(sellerId)
-                    isFollowing = nowIn
+                    scope.launch {
+                        val ok = try {
+                            if (isFollowing) com.scottsx.app.data.remote.V2Client.unsaveSeller(sellerId)
+                            else com.scottsx.app.data.remote.V2Client.saveSeller(sellerId)
+                        } catch (_: Throwable) { false }
+                        if (ok) isFollowing = !isFollowing
+                    }
                 },
                 onMessage = { onMessageSeller(sellerId, null) },
             )
             TabBar(selected = tab, onSelect = { tab = it })
             when (tab) {
-                StorefrontTab.Products -> ProductsTab(storefront.products, onOpenProduct)
-                StorefrontTab.Categories -> CategoriesTab(storefront.categories)
-                StorefrontTab.Reviews -> ReviewsTab(storefront.seller, onViewAllReviews)
-                StorefrontTab.About -> AboutTab(storefront.seller, storefront.description, "Joined 2024")
+                StorefrontTab.Products -> ProductsTab(storefront.products, onOpenProduct, isOwner)
+                StorefrontTab.Categories -> CategoriesTab(categoriesRows)
+                StorefrontTab.Reviews -> ReviewsTab(sellerDomain, onViewAllReviews)
+                StorefrontTab.About -> AboutTab(sellerDomain, storefront.description, "")
             }
         }
     }
@@ -206,7 +269,8 @@ private fun StoreHeader(
                         )
                     }
                     Text(
-                        text = "$followers followers · $productCount products",
+                        text = if (followers >= 0) "$followers followers · $productCount products"
+                               else "$productCount products",
                         color = Color.White.copy(alpha = 0.7f),
                         fontSize = 11.sp,
                     )
@@ -306,7 +370,7 @@ private fun androidx.compose.foundation.layout.RowScope.TabPill(
 }
 
 @Composable
-private fun ProductsTab(products: List<Product>, onOpen: (String) -> Unit) {
+private fun ProductsTab(products: List<Product>, onOpen: (String) -> Unit, isOwner: Boolean = false) {
     if (products.isEmpty()) {
         Text("No products yet", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
         return
@@ -324,6 +388,9 @@ private fun ProductsTab(products: List<Product>, onOpen: (String) -> Unit) {
                         modifier = Modifier.weight(1f),
                         onClick = { onOpen(p.id) },
                         onAddToCart = { com.scottsx.app.data.CartStore.add(p.id) },
+                        // Owner view: hearts off, moderation state on the tile.
+                        showWishlist = !isOwner,
+                        statusLabel = if (isOwner) p.status else null,
                     )
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -378,13 +445,12 @@ private fun CategoriesTab(rows: List<com.scottsx.app.data.domain.SellerCategoryR
 
 @Composable
 private fun ReviewsTab(seller: com.scottsx.app.data.domain.Seller, onViewAll: (String) -> Unit) {
-    val reviews = remember(seller.id) { MarketplaceDataSource.storeReviews(seller.id) }
-    if (reviews.isEmpty()) {
-        Text("No reviews yet", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
-        return
-    }
+    // Real review count: sum of this store's listings' live rating counts
+    // (pulled from the same catalogue rows the Products tab renders).
+    val reviewCount = com.scottsx.app.data.LiveMarketplace.products.value
+        .filter { it.seller.id == seller.id }
+        .sumOf { it.ratingCount }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        // Aggregate rating
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -403,52 +469,30 @@ private fun ReviewsTab(seller: com.scottsx.app.data.domain.Seller, onViewAll: (S
             Column {
                 Row {
                     repeat(5) {
-                        Icon(Icons.Filled.Star, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(12.dp))
+                        Icon(Icons.Filled.Star, contentDescription = null,
+                            tint = if (it < kotlin.math.round(seller.rating.toDouble()).toInt()) Color(0xFFFBBF24) else Color(0xFFD1D5DB),
+                            modifier = Modifier.size(12.dp))
                     }
                 }
-                Text("${reviews.size} reviews", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+                Text("$reviewCount reviews across all products", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
             }
             Spacer(Modifier.weight(1f))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(ScottsTechXColors.BluePrimary)
-                    .clickable { onViewAll("") }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Text("See all", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        reviews.take(10).forEach { r ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
-                    .padding(12.dp),
-            ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = r.authorName,
-                            color = ScottsTechXColors.OnLight,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(r.dateLabel, color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp)
-                    }
-                    Row {
-                        repeat(5) {
-                            Icon(Icons.Filled.Star, contentDescription = null, tint = if (it < r.rating) Color(0xFFFBBF24) else Color(0xFFD1D5DB), modifier = Modifier.size(10.dp))
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(r.text, color = ScottsTechXColors.OnLight, fontSize = 12.sp, lineHeight = 17.sp)
+            if (reviewCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(ScottsTechXColors.BluePrimary)
+                        .clickable { onViewAll("") }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Text("See all", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
+        }
+        if (reviewCount == 0) {
+            Text("No reviews yet — ratings from your product pages will roll up here.",
+                color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = 8.dp))
         }
     }
 }
@@ -457,7 +501,7 @@ private fun ReviewsTab(seller: com.scottsx.app.data.domain.Seller, onViewAll: (S
 private fun AboutTab(
     seller: com.scottsx.app.data.domain.Seller,
     description: String,
-    joinedLabel: String = "Joined 2024",
+    joinedLabel: String = "",  // hidden when blank — no fabricated dates
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Box(
@@ -484,10 +528,12 @@ private fun AboutTab(
                     Text("${"%.1f".format(seller.rating)} rating", color = ScottsTechXColors.OnLight, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Storefront, contentDescription = null, tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(joinedLabel, color = ScottsTechXColors.OnLight, fontSize = 12.sp)
+                if (joinedLabel.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Storefront, contentDescription = null, tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(joinedLabel, color = ScottsTechXColors.OnLight, fontSize = 12.sp)
+                    }
                 }
             }
         }

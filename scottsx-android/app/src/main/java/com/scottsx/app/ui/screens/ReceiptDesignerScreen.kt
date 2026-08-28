@@ -47,7 +47,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.TransactionStore
 import com.scottsx.app.data.domain.Currency
@@ -56,6 +55,7 @@ import com.scottsx.app.data.domain.PaymentMethod
 import com.scottsx.app.data.domain.ReceiptLine
 import com.scottsx.app.data.domain.ReceiptTemplate
 import com.scottsx.app.data.domain.Role
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 4 — Receipt designer screen.
@@ -124,11 +124,21 @@ fun ReceiptDesignerScreen(
                 add(
                     EditableLine(
                         productId = prefilled.productId,
-                        productName = MarketplaceDataSource.productById(prefilled.productId)?.name ?: "",
+                        productName = com.scottsx.app.data.LiveMarketplace.byId(prefilled.productId)?.name ?: "",
                         quantity = prefilled.quantity,
                         unitPriceUgx = prefilled.unitPriceUgx,
                     )
                 )
+            }
+        }
+    }
+    // If the cache missed the prefilled product, resolve it live once mounted.
+    androidx.compose.runtime.LaunchedEffect(prefilled?.productId) {
+        val pid = prefilled?.productId ?: return@LaunchedEffect
+        if (lines.firstOrNull()?.productName.isNullOrBlank()) {
+            val found = try { com.scottsx.app.data.LiveMarketplace.byIdOrFetch(pid) } catch (_: Throwable) { null }
+            if (found != null && lines.isNotEmpty()) {
+                lines[0] = lines[0].copy(productName = found.name)
             }
         }
     }
@@ -146,7 +156,12 @@ fun ReceiptDesignerScreen(
     val subtotal = lines.sumOf { it.lineTotalUgx }
     val total = (subtotal - discountUgx).coerceAtLeast(0)
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarSpacer(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         LazyColumn(
             contentPadding = PaddingValues(bottom = 100.dp),
         ) {
@@ -565,9 +580,19 @@ private fun ProductPickerSheet(
     onSelect: (com.scottsx.app.data.domain.Product) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val results = remember(query) {
-        if (query.isBlank()) MarketplaceDataSource.allProducts.take(20)
-        else MarketplaceDataSource.searchProducts(query).take(20)
+    // Real listings only: the seller's own catalogue from /seller/products,
+    // falling back to the live marketplace cache. Filtered client-side.
+    var results by remember { mutableStateOf<List<com.scottsx.app.data.domain.Product>>(emptyList()) }
+    LaunchedEffect(query) {
+        val base = try {
+            com.scottsx.app.data.remote.V2Client.fetchSellerProducts()?.products
+        } catch (_: Throwable) { null }
+            ?: com.scottsx.app.data.LiveMarketplace.products.value
+        results = if (query.isBlank()) base.take(20)
+        else {
+            val q = query.trim().lowercase()
+            base.filter { (it.name + " " + it.shortDescription).lowercase().contains(q) }.take(20)
+        }
     }
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(16.dp).fillMaxWidth()) {

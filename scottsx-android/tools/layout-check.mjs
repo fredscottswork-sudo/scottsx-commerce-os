@@ -91,7 +91,7 @@ console.log('\n\x1b[1m2. Screens that pin content to a screen edge\x1b[0m');
   const mustBeAware = [
     'screens/BuyerHomeScreen.kt',
     'screens/SellerHomeScreen.kt',
-    'screens/WelcomeScreen.kt',
+    'screens/RoleSelectionScreen.kt',
   ];
   for (const name of mustBeAware) {
     const f = files.find((x) => rel(x).endsWith(name));
@@ -111,7 +111,7 @@ console.log('\n\x1b[1m2. Screens that pin content to a screen edge\x1b[0m');
   // shared headers. Screens are added often; this makes forgetting one a test
   // failure rather than something a user has to notice on a phone.
   const screens = files.filter((f) => rel(f).includes('/screens/'));
-  const viaShared = (src) => /ScreenHeader\(|GradientHeader\(|ConversationListScreen\(/.test(body(src));
+  const viaShared = (src) => /ScreenHeader\(|GradientHeader\(|ConversationListScreen\(|SettingsScaffold\(/.test(body(src));
   const bare = screens.filter((f) => {
     const s = read(f);
     return !insetAware(s) && !viaShared(s);
@@ -122,14 +122,16 @@ console.log('\n\x1b[1m2. Screens that pin content to a screen edge\x1b[0m');
   // The shared headers themselves must be the thing that does it.
   const uiKit = read(files.find((f) => rel(f).endsWith('components/UiKit.kt')));
   ok_if('GradientHeader pads for the status bar', /statusBarSpacer\(\)/.test(uiKit));
-  const addr = read(files.find((f) => rel(f).endsWith('screens/AddressesScreen.kt')));
+  // The shared header used by the settings/me-* family (ScreenHeader was
+  // deleted when the dashboards were rebuilt; SettingsScaffold succeeded it).
+  const scaf = read(files.find((f) => rel(f).endsWith('components/SettingsScaffold.kt')));
   // Scope to the function body: from its declaration to the next top-level
   // declaration, so a match elsewhere in the file cannot satisfy this.
-  const hdrStart = addr.indexOf('internal fun ScreenHeader');
-  const after = addr.slice(hdrStart + 1);
+  const hdrStart = scaf.indexOf('fun SettingsScaffold');
+  const after = scaf.slice(hdrStart + 1);
   const hdrEnd = after.search(/\n(internal |private |@Composable|fun )/);
   const hdrBody = hdrEnd === -1 ? after : after.slice(0, hdrEnd);
-  ok_if('the shared ScreenHeader pads for the status bar',
+  ok_if('the shared SettingsScaffold header pads for the status bar',
     hdrStart !== -1 && /statusBarSpacer\(\)/.test(hdrBody));
 
   // A chat composer must clear BOTH the keyboard and the navigation bar.
@@ -214,18 +216,21 @@ console.log('\n\x1b[1m4. Seller dashboard stat tiles\x1b[0m');
   // The low-stock rail exists ONCE (the "Inventory alerts" strip). An earlier
   // revision shipped it twice; the regression to watch is a second strip, so
   // the assertion is "exactly one", not "none".
-  ok_if('the "Inventory alerts" strip appears exactly once',
-    (s.match(/SectionHeader\("Inventory alerts"\)/g) || []).length === 1);
-  ok_if('the restock list is guarded so its heading never sits above an empty strip',
-    /if \(lowStock\.isNotEmpty\(\)\)[\s\S]{0,200}?SectionHeader\("Inventory alerts"\)/.test(s));
-  ok_if('the inventory grid is a real section with an add-product action',
-    /SectionHeader\("Your inventory", action = "Add product"/.test(s));
-  // Scope to the restock block itself rather than guessing a character window.
-  const rsStart = s.indexOf('SectionHeader("Inventory alerts")');
+  // The rebuilt dashboard renders exactly ONE low-stock band (LowStockBand),
+  // and only when the live counters say something is low.
+  // Count INVOCATIONS (the private declaration would otherwise match too).
+  ok_if('the low-stock band appears exactly once',
+    (s.match(/LowStockBand\(\s*\n\s*low =/g) || []).length === 1);
+  ok_if('the low-stock band is guarded so it never renders an empty strip',
+    /if \(stats\.lowStock > 0 \|\| stats\.outOfStock > 0\)[\s\S]{0,200}?LowStockBand\(/.test(s));
+  // Inventory health is a first-class section AND there is an Add-product action.
+  ok_if('the inventory section is real and offers an add-product action',
+    /ListingHealthCard\(/.test(s) && /QuickChip\("Add product"/.test(s));
+  // Scope to the band's IMPLEMENTATION (the call site is found first otherwise):
+  // its title can never push the count out of the row.
+  const rsStart = s.indexOf('private fun LowStockBand(');
   const restockBlock = rsStart === -1 ? '' : s.slice(rsStart, rsStart + 1500);
-  // The chip text is built with take() so a long title can never push the
-  // "N left" counter out of the row.
-  ok_if('restock chips clamp long product titles',
+  ok_if('low-stock rows clamp long product titles',
     /title\.take\(\d+\)/.test(restockBlock) ||
     (/maxLines = 1/.test(restockBlock) && /TextOverflow\.Ellipsis/.test(restockBlock)));
 }
@@ -313,23 +318,22 @@ console.log('\n\x1b[1m4b. Shipping hygiene\x1b[0m');
 
 console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
 {
-  // The welcome screen is the role-selection screen from the reference
-  // design: near-black futuristic backdrop, WELCOME eyebrow, the big
-  // "How will you use ScottsTechX?" heading, glass Buyer/Seller cards with
-  // circular letter avatars and tappable Terms/Privacy links. Earlier
-  // revisions of this file pinned the other look (emoji brand circle,
-  // lockup wordmark); the reference screenshots are now the source of
-  // truth, so the assertions follow them.
-  const w = files.find((x) => rel(x).endsWith('screens/WelcomeScreen.kt'));
+  // The role-selection screen from the reference design lives in
+  // RoleSelectionScreen.kt: near-black futuristic backdrop, WELCOME
+  // eyebrow, the big "How will you use ScottsTechX?" heading, and
+  // Buyer/Seller cards each offering Log in / Sign up. (An older file
+  // literally named WelcomeScreen.kt duplicated this and was deleted —
+  // it referenced a Routes.WELCOME constant that never existed.)
+  const w = files.find((x) => rel(x).endsWith('screens/RoleSelectionScreen.kt'));
   const s = read(w);
-  ok_if('welcome screen shows the WELCOME eyebrow',
+  ok_if('role screen shows the WELCOME eyebrow',
     /"WELCOME"/.test(s) && /letterSpacing/.test(s));
-  ok_if('welcome screen asks the role question',
-    /How will you use\\nScottsTechX\?/.test(s));
-  ok_if('welcome screen offers buyer and seller role cards',
-    /I am a Buyer/.test(s) && /I am a Seller/.test(s));
-  ok_if('welcome screen wires Terms/Privacy to the CMS pages',
-    /onOpenLegal\("terms"\)/.test(s) && /onOpenLegal\("privacy"\)/.test(s));
+  ok_if('role screen asks the role question',
+    /How will you use ScottsTechX\?/.test(s));
+  ok_if('role screen offers buyer and seller role cards',
+    /Role\.BUYER/.test(s) && /Role\.SELLER/.test(s) && /RoleCard\(/.test(s));
+  ok_if('role screen wires per-role login and sign-up',
+    /onLogin:\s*\(Role\)\s*->\s*Unit/.test(s) && /onSignUp:\s*\(Role\)\s*->\s*Unit/.test(s));
 
   const sp = files.find((x) => rel(x).endsWith('screens/SplashScreen.kt'));
   if (sp) {
@@ -363,9 +367,14 @@ console.log('\n\x1b[1m5b. Seller dashboard hero\x1b[0m');
   // The hero stats keep the ORIGINAL styling: plain figures straight on the
   // gradient at 17sp, label at 0.8 alpha. They were briefly boxed in
   // translucent panels, which changed the look of the whole card.
-  ok_if('stat figures use the original 17sp', /fontSize = 17\.sp/.test(s));
-  ok_if('stat labels keep the original 0.8 alpha',
-    /Color\.White\.copy\(alpha = 0\.8f\)/.test(s));
+  // The 2026 web-parity rebuild replaced the white-on-gradient hero with
+  // dark stat cards; the pixel pins below track THAT design (17sp/0.8 white
+  // belonged to the retired hero — recorded here so nobody reintroduces a
+  // free-floating figure without a size token).
+  ok_if('stat figures carry an explicit size token (dashboard design: 20sp)',
+    /fontSize = 20\.sp/.test(s));
+  ok_if('stat labels use the OnDarkSecondary token (≈ white at 0.8 alpha)',
+    /color = ScottsTechXColors\.OnDarkSecondary/.test(s));
   ok_if('stat tiles are not boxed in a translucent panel',
     !/Color\.White\.copy\(alpha = 0\.14f\)/.test(s));
   // The figure carries the currency ("UGX 2.4M"), and the width math above
@@ -387,11 +396,13 @@ console.log('\n\x1b[1m6. Product card\x1b[0m');
   ok_if('wishlist state is owned by the caller, not a throwaway local',
     !/var wished by remember/.test(s));
 
-  const seller = read(files.find((x) => rel(x).endsWith('screens/SellerHomeScreen.kt')));
-  ok_if('the seller grid hides the wishlist heart on its own products',
-    /showWishlist = false/.test(seller));
-  ok_if('the seller grid shows moderation status on the tile instead',
-    /statusLabel = product\.status/.test(seller));
+  // The seller's own tiles live on the storefront screen; when the caller IS
+  // the owner the heart is hidden and the moderation state takes its slot.
+  const seller = read(files.find((x) => rel(x).endsWith('screens/SellerStorefrontScreen.kt')));
+  ok_if('the seller hides the wishlist heart on its own products (owner view)',
+    /showWishlist = !isOwner/.test(seller) || /showWishlist = false/.test(seller));
+  ok_if('the seller sees moderation status on the tile instead',
+    /statusLabel = if \(isOwner\) p\.status/.test(seller) || /statusLabel = product\.status/.test(seller));
 
   const buyer = read(files.find((x) => rel(x).endsWith('screens/BuyerHomeScreen.kt')));
   ok_if('the buyer grid persists wishlist taps to the backend',

@@ -55,6 +55,7 @@ import com.scottsx.app.data.domain.Role
 import com.scottsx.app.data.domain.TimelineEvent
 import com.scottsx.app.data.domain.TimelineEventType
 import com.scottsx.app.data.domain.TransactionStatus
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 4 — Transaction detail screen.
@@ -103,7 +104,12 @@ fun TransactionDetailScreen(
     val iHaveConfirmed = if (isBuyer) rev.buyerConfirmedAt != null else rev.sellerConfirmedAt != null
     val counterpartyConfirmed = if (isBuyer) rev.sellerConfirmedAt != null else rev.buyerConfirmedAt != null
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarSpacer(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         LazyColumn(
             contentPadding = PaddingValues(bottom = 80.dp),
         ) {

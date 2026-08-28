@@ -59,13 +59,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.ProductCategory
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
 import kotlinx.coroutines.launch
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 5 — Nearby screen with real geolocation.
@@ -221,7 +221,7 @@ fun NearbyMapScreen(
         },
         containerColor = ScottsTechXColors.Background,
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).statusBarSpacer()) {
             // Category chips
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),

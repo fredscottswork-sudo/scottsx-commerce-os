@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -110,13 +110,13 @@ fun OrDivider(modifier: Modifier = Modifier, label: String = "or") {
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HorizontalDivider(modifier = Modifier.weight(1f), color = ScottsTechXColors.Divider)
+        Divider(modifier = Modifier.weight(1f), color = ScottsTechXColors.Divider)
         Text(
             label,
             modifier = Modifier.padding(horizontal = 12.dp),
             fontSize = 12.5.sp,
             color = ScottsTechXColors.OnLightTertiary,
         )
-        HorizontalDivider(modifier = Modifier.weight(1f), color = ScottsTechXColors.Divider)
+        Divider(modifier = Modifier.weight(1f), color = ScottsTechXColors.Divider)
     }
 }
