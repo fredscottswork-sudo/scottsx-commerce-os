@@ -47,15 +47,29 @@ without reaching Google. Nothing about it is mocked except the key source.
 **Commerce** — catalogue, search with facets, cart, COD checkout (one order per
 product line), orders, ratings, refunds, addresses, payment methods.
 
-Both platforms now buy the same way. Android previously had **no cart**: its
-only purchase path was "Buy now" → `POST /orders/checkout`, which is a hard
-**503** until Nylon Pay credentials exist, so buying on the phone always failed.
-Product detail now says **Add to cart**, and a new cart screen does quantity
-edits, per-line stock caps, removal and cash-on-delivery checkout against the
-same endpoints the web cart uses. The cart refuses to oversell — both when
-adding and again at checkout, where stock may have dropped in between — and a
-listing suspended by moderation after it was added is shown as unavailable
-rather than being silently sold.
+**The Android dashboards are now web-parity live surfaces.** Buyer home and
+the seller dashboard render only real backend data — the in-memory sample
+catalogue (`MarketplaceDataSource` flash deals / recommended / hero benefits)
+and the fabricated seller snapshot (`SellerDataSource`: 850k-UGX days, 42 fake
+orders, "sales up 18%" insights) no longer feed either screen. Buyer home
+mirrors the web hierarchy (live greeting badges from
+`/me/notifications/unread-count`, real flash-deal spotlight, real category
+row, live "flash deals" rail, rating-sorted feed); the seller dashboard reads
+`GET /api/v1/seller/dashboard/stats` (revenue, orders, products, followers,
+listing health, top products, real recent orders, 14-day sales series) with
+the store open/closed state bound to `PATCH /seller/open-state`. Every
+loading state is a shimmer skeleton, every failure is a retryable error
+card, and empty catalogues show honest empty states — no demo content, no
+feature/payment promotion cards. Theme tokens are now byte-equal with the
+web design system (`web/src/styles/globals.css` dark + light).
+
+Android previously had **no cart**: its only purchase path was "Buy now" →
+`POST /orders/checkout`, which is a hard **503** until Nylon Pay credentials
+exist, so buying on the phone always failed. Product detail now says
+**Add to cart**, and a cart screen does quantity edits and per-line stock
+caps. The Android cart is held **locally** (`CartStore`, in-memory) — the
+backend `/me/cart` sync used by the web cart is follow-up work, so COD
+checkout from the phone is not yet wired.
 
 **Moderation** — sellers cannot self-publish. New listings enter `pending`;
 public reads are approved-only. Content edits revert `approved → pending`,
@@ -65,7 +79,9 @@ reason that reaches the seller.
 **Messaging** — in-thread price offers (accept/decline/withdraw, where accepting
 one offer voids every other pending offer), photo messages, per-message read
 receipts, typing indicators, pin/archive/mute, message retraction, saved quick
-replies, inbox filters with whole-inbox counts, and search.
+replies, inbox filters with whole-inbox counts, and search. **Web only today**:
+the Android chat client speaks a `/chat/v2` dialect the backend never shipped
+(see known limits), so threads render on the web and stay empty on the phone.
 
 **Nearby** — stores re-sort by distance as the buyer moves. A seller who has not
 enabled location sharing keeps their last known pin and is labelled
@@ -112,17 +128,47 @@ These were all found by running things, not by reading code:
 
 ## Not done / known limits
 
-**The Android app has not been compiled.** There is no JDK-plus-Android-SDK
-here and `maven.google.com` is unreachable, so `./gradlew assembleDebug` cannot
-run. To compensate, the real Kotlin compiler frontend runs over all 56 files
+**v1 (`scottsx-android`) legacy endpoint dialect.** Much of the old
+`V2Client` speaks a dialect the backend never implemented:
+`/api/v1/chat/v2/*`, `/api/v1/user/{profile,addresses,payment-methods,…}`
+(the real routes are `/api/v1/me/*`), `/api/v1/sellers/v2/*`,
+`/api/v1/settings/v2`, `/api/v1/memory/v2/*`, `/api/v1/products/v2/*`,
+`/api/v1/uploads/signed-url`, `/api/v1/reports`, `/api/v1/audit/me`,
+`/api/v1/support/tickets` (real route: `/api/v1/me/support/tickets`).
+Every one of those clients fails soft (null/empty), so the phone shows
+empty screens instead of errors. Concretely, on v1: **messaging, nearby
+sellers, the settings sub-screens and cloud cart are dead**; the home
+feed, product detail, CMS pages, AI assistant, Google sign-in and the
+local cart do work. The endpoint remap is tracked as follow-up work.
+
+**v2 (`scottsx-android-v2`) shares the stale dialect for its legacy
+surfaces** (same `/chat/v2`, `/user/*`, `/sellers/v2`, `settings/v2`,
+`memory/v2`, `products/v2` paths). The rebuilt v2 dashboards do **not** use
+them: buyer home, search and seller home run on the live `/api/v1/products`
+and `/api/v1/seller/*` families, and `fetchProductsFeed` correctly reads
+the `{products:[…]}` object envelope.
+
+**The Android apps have not been compiled in this sandbox.** There is no
+JDK-plus-Android-SDK here and `maven.google.com` is unreachable, so
+`./gradlew assembleDebug` cannot run locally; CI (`.github/workflows/ci.yml`,
+jobs `android` and `scottsx-android-v2`) is where APKs are built. **CI is
+green and both jobs upload APK artifacts** — `scottsx-test-apk` (v1) and
+`scottsx-v2-test-apk` (v2), first confirmed on run 33176797805. Failures
+that hide inside CI logs are surfaced through `::error` annotations (they
+remain readable over the check-runs REST API when log downloads are
+blocked). Locally, the real Kotlin compiler frontend runs over every file
 (catching syntax errors, duplicate declarations, `val` reassignment and
-import shadowing) and the real model parsers are executed against real captured
-API responses using a real `org.json`. **Expect to fix some type errors on
-first Gradle build** — see `scottsx-android/tools/README.md` for the two blind
-spots (non-exhaustive `when`, type mismatches) and why they are suppressed.
+import shadowing — it caught a genuine redeclared `ScottsTechXColors`,
+a duplicate `CmsScreen`, and a `val`-delegate reassignment) and the
+shipping catalogue parser is executed against real captured API responses
+using a real `org.json`. **Type errors the local gates cannot see may still
+surface in Gradle** — see `scottsx-android/tools/README.md` for the two
+blind spots (non-exhaustive `when`, type mismatches) and why they are
+suppressed.
 
 **Android UI screens beyond messaging/nearby/add-product** still use the older
-layouts. They compile and call valid endpoints, but have not been reworked.
+layouts. They compile, but — per the dialect note above — several no longer
+reach a matching backend route.
 
 **FCM is inert until credentials are added.** Drop the service-account JSON at
 `12_Backend/secrets/firebase-admin-key.json` and `google-services.json` into
@@ -137,7 +183,17 @@ origin is authorised for OAuth client
 `911393008938-f0an8p59rlkhimcnn9rdqbtbi1aa9hbk`, or the button will load and
 then refuse with `origin_mismatch`. Override the client id with
 `VITE_GOOGLE_CLIENT_ID` (web) and `GOOGLE_CLIENT_ID` (backend, comma-separated
-for several clients).
+for several clients). **On Android, one more registration is required:**
+Google rejects sign-in from any APK whose (package `com.scottsx.app`, SHA-1)
+pair is not a registered OAuth Android client, and the old code swallowed that
+rejection as "Google sign-in cancelled" — the exact bug users hit. Debug
+APKs are now pinned to a shared repo keystore
+(`scottsx-android*/keystores/debug.keystore`), whose SHA-1/SHA-256 must be
+registered **once** in the Google Cloud console — full steps in
+`scottsx-android/keystores/README.md`. The Gradle build prints the
+fingerprints (prefix `GOOGLE SIGN-IN`) into every build log, and the login
+flow now reports the true Google status (developer error, network error,
+internal error) instead of pretending the user cancelled.
 
 **No live LLM test.** Outbound calls to OpenRouter are blocked from this
 sandbox, so the LLM path is unverified; the grounded local engine is what has
