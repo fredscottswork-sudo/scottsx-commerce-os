@@ -752,18 +752,132 @@ object V2Client {
 
     data class AiReply(val text: String, val provider: String)
 
+    /** One grounded catalog row the assistant attached to its answer. */
+    data class AiProduct(
+        val id: String,
+        val title: String,
+        val priceMinor: Long,
+        val imageUrl: String?,
+        val rating: Double,
+        val city: String?,
+        val verified: Boolean,
+        val discountPercent: Int,
+    )
+
+    /** Agent directory entry from GET /api/v1/ai/agents (starters drive the
+     *  AI screen's suggestion chips — real backend content, never invented). */
+    data class AiAgent(
+        val id: String,
+        val name: String,
+        val tagline: String,
+        val starters: List<String>,
+    )
+
+    data class AiAskReply(
+        val text: String,
+        val provider: String,
+        val model: String,
+        val agentId: String,
+        val agentName: String,
+        val agentTagline: String,
+        val products: List<AiProduct>,
+    )
+
+    suspend fun fetchAiAgents(): List<AiAgent> {
+        val arr = apiCall(
+            method = "GET", path = "/api/v1/ai/agents", body = null,
+            parse = { o -> o.optJSONArray("agents") },
+        ) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val a = arr.optJSONObject(i) ?: return@mapNotNull null
+            val startersArr = a.optJSONArray("starters")
+            AiAgent(
+                id = a.optString("id"),
+                name = a.optString("name"),
+                tagline = a.optString("tagline"),
+                starters = if (startersArr == null) emptyList()
+                else (0 until startersArr.length()).map { startersArr.optString(it) }.filter { it.isNotBlank() },
+            )
+        }
+    }
+
+    private fun parseAiReply(o: JSONObject): AiAskReply {
+        val prodArr = o.optJSONArray("products")
+        val products = mutableListOf<AiProduct>()
+        if (prodArr != null) {
+            for (i in 0 until prodArr.length()) {
+                val p = prodArr.optJSONObject(i) ?: continue
+                products += AiProduct(
+                    id = p.optString("id"),
+                    title = p.optString("title"),
+                    priceMinor = p.optLong("priceMinor", 0L),
+                    imageUrl = p.optString("imageUrl").takeIf { it.isNotBlank() },
+                    rating = p.optDouble("rating", 0.0),
+                    city = p.optString("city").takeIf { it.isNotBlank() },
+                    verified = p.optBoolean("verified", false),
+                    discountPercent = p.optInt("discountPercent", 0),
+                )
+            }
+        }
+        val agent = o.optJSONObject("agent")
+        return AiAskReply(
+            text = o.optString("text").ifBlank { o.optString("reply") },
+            provider = o.optString("provider"),
+            model = o.optString("model"),
+            agentId = agent?.optString("id") ?: "",
+            agentName = agent?.optString("name") ?: "",
+            agentTagline = agent?.optString("tagline") ?: "",
+            products = products,
+        )
+    }
+
+    /**
+     * The real, catalog-grounded assistant. POST /api/v1/ai/v2/ask takes
+     * {prompt, screen, agent?, history:[{role,content}]} — the backend does
+     * its OWN live retrieval, so callers no longer ship a catalog blob.
+     * Returns the reply text plus provider/metadata and the grounded
+     * products the web chat shows as cards.
+     */
+    suspend fun askV2(
+        prompt: String,
+        screen: String? = null,
+        agent: String? = null,
+        history: List<Pair<String, String>> = emptyList(),
+    ): AiAskReply? = apiCall(
+        method = "POST",
+        path = "/api/v1/ai/v2/ask",
+        body = JSONObject().apply {
+            put("prompt", prompt)
+            if (screen != null) put("screen", screen)
+            if (agent != null) put("agent", agent)
+            if (history.isNotEmpty()) {
+                put("history", org.json.JSONArray().apply {
+                    history.takeLast(10).forEach { (r, c) ->
+                        put(JSONObject().apply {
+                            put("role", r)
+                            put("content", c.take(800))
+                        })
+                    }
+                })
+            }
+        },
+        parse = { o -> parseAiReply(o) },
+    )
+
     suspend fun ask(message: String, screen: String? = null): AiReply? =
         apiCall(
             method = "POST",
             path = "/api/v1/ai/v2/ask",
             body = JSONObject().apply {
-                put("message", message)
-                if (screen != null) put("context", JSONObject().put("screen", screen))
+                // Backend contract: {prompt, screen, agent?, history} →
+                // {text, provider, model, agent, products, grounded}.
+                put("prompt", message)
+                if (screen != null) put("screen", screen)
             },
             parse = { o ->
                 AiReply(
-                    text = o.optString("reply"),
-                    provider = o.optJSONObject("sources")?.optString("aiProvider") ?: "",
+                    text = o.optString("text").ifBlank { o.optString("reply") },
+                    provider = o.optString("provider"),
                 )
             },
         )
@@ -1294,6 +1408,8 @@ object V2Client {
         val lastMessagePreview: String?,
         val lastMessageAt: String?,
         val unreadCount: Int,
+        /** otherParty.photoUrl — the counterparty's real avatar (web parity). */
+        val otherPartyPhotoUrl: String? = null,
     )
 
     suspend fun fetchConversations(): List<Conversation> {
@@ -1316,6 +1432,7 @@ object V2Client {
                 lastMessagePreview = r.optString("lastMessage").takeIf { it.isNotBlank() },
                 lastMessageAt = r.optString("lastTime").takeIf { it.isNotBlank() },
                 unreadCount = r.optInt("unread", 0),
+                otherPartyPhotoUrl = other?.optString("photoUrl")?.takeIf { it.isNotBlank() },
             )
         }
     }

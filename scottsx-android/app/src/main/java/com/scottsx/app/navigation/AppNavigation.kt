@@ -468,6 +468,7 @@ fun AppNavigation() {
             RealAiChatScreen(
                 onBack = { navController.popBackStack() },
                 onOpenProduct = { p: com.scottsx.app.data.domain.Product -> navController.navigate(Routes.product(p.id)) },
+                onOpenProductId = { id -> navController.navigate(Routes.product(id)) },
                 onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
             )
         }

@@ -110,12 +110,23 @@ fun ProfileScreen(
                                 .background(Color.White.copy(alpha = 0.18f)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                text = (profile.displayName.firstOrNull()?.uppercase() ?: "U").toString(),
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 28.sp,
-                            )
+                            // Real profile photo when the account has one
+                            // (web parity) — initial letter only as fallback.
+                            if (!profile.avatarUrl.isNullOrBlank()) {
+                                coil.compose.AsyncImage(
+                                    model = profile.avatarUrl,
+                                    contentDescription = profile.displayName,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                Text(
+                                    text = (profile.displayName.firstOrNull()?.uppercase() ?: "U").toString(),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 28.sp,
+                                )
+                            }
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {

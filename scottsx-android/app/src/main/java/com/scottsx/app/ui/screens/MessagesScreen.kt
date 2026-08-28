@@ -268,10 +268,21 @@ private fun ConversationRow(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = conversation.otherPartyDisplayName.firstOrNull()?.uppercase() ?: "?",
-                color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp,
-            )
+            // Real counterparty avatar (web parity) — gradient initial only
+            // until the account has a photo.
+            if (!conversation.otherPartyPhotoUrl.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = conversation.otherPartyPhotoUrl,
+                    contentDescription = conversation.otherPartyDisplayName,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    text = conversation.otherPartyDisplayName.firstOrNull()?.uppercase() ?: "?",
+                    color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp,
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
