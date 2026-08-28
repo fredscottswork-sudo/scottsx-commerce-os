@@ -111,23 +111,110 @@ object V2Client {
         ) ?: false
 
     // ============================================================
+    // GOOGLE SIGN-IN
+    // ============================================================
+
+    /** The `user` half of POST /api/v1/auth/google (see backend publicUser()). */
+    data class GoogleUser(
+        val id: String,
+        val email: String,
+        val displayName: String,
+        val phone: String,
+        val role: String,
+        val emailVerified: Boolean,
+        val profilePhotoUrl: String?,
+        val city: String,
+    )
+
+    data class GoogleSignInResult(
+        val token: String,
+        val user: GoogleUser,
+    )
+
+    /**
+     * Exchange a Google ID token (Credential Manager) for a ScottsTechX
+     * session. The server verifies the token against Google's JWKS —
+     * signature, issuer and audience — so the client just forwards it.
+     * Google accounts arrive email-verified and skip the verification gate.
+     */
+    suspend fun signInWithGoogle(idToken: String): GoogleSignInResult? =
+        apiCall<GoogleSignInResult?>(
+            method = "POST",
+            path = "/api/v1/auth/google",
+            body = JSONObject().put("idToken", idToken),
+            parse = { o ->
+                val token = o.optString("token")
+                val u = o.optJSONObject("user")
+                if (token.isBlank() || u == null) {
+                    null
+                } else {
+                    GoogleSignInResult(
+                        token = token,
+                        user = GoogleUser(
+                            id = u.optString("id"),
+                            email = u.optString("email"),
+                            displayName = u.optString("displayName"),
+                            phone = u.optString("phone"),
+                            role = u.optString("role", "buyer"),
+                            emailVerified = u.optBoolean("emailVerified", false),
+                            // org.json can yield the literal "null" for a JSON
+                            // null — guard both that and the empty string.
+                            profilePhotoUrl = u.optString("profilePhotoUrl")
+                                .takeIf { it.isNotBlank() && it != "null" },
+                            city = u.optString("city"),
+                        ),
+                    )
+                }
+            },
+        )
+
+    /**
+     * Register this device's FCM token so order/message notifications can be
+     * pushed to it. POST /api/v1/me/devices — upserts server-side, so a
+     * refreshed token simply overwrites the old row.
+     */
+    suspend fun registerDevice(token: String, platform: String = "android"): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/me/devices",
+            body = JSONObject().put("token", token).put("platform", platform),
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    /**
+     * Change the password on a local (bcrypt) account. The backend rejects a
+     * wrong current password with 401 — that surfaces here as `false`, which
+     * the UI renders as "check your current password".
+     */
+    suspend fun changePassword(oldPassword: String, newPassword: String): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/me/change-password",
+            body = JSONObject()
+                .put("oldPassword", oldPassword)
+                .put("newPassword", newPassword),
+            parse = { o -> o.optBoolean("ok", false) },
+        ) ?: false
+
+    // ============================================================
     // PRODUCTS
     // ============================================================
 
     /**
      * Fetch the full product catalogue (public endpoint, no auth
-     * required). Returns [Product] instances decoded from the
-     * v2 product response. The result is intentionally permissive —
-     * unknown categories fall back to "All" so a single missing
-     * enum entry cannot break the home feed.
+     * required). The backend returns `{ products: [...], total, ... }` —
+     * a JSON **object** — so this reads the `products` array out of it.
+     * (This method once parsed the body as a bare array, so the home
+     * feed was silently empty against a perfectly healthy backend.)
      */
     suspend fun fetchProductsList(): List<com.scottsx.app.data.domain.Product> {
-        val arr = apiCallArray(
+        val obj = apiCall(
             method = "GET",
-            path = "/api/v1/products",
+            path = "/api/v1/products?pageSize=50",
             body = null,
             parse = { it },
         ) ?: return emptyList()
+        val arr = obj.optJSONArray("products") ?: return emptyList()
         val out = ArrayList<com.scottsx.app.data.domain.Product>(arr.length())
         for (i in 0 until arr.length()) {
             val row = arr.optJSONObject(i) ?: continue
@@ -136,27 +223,49 @@ object V2Client {
         return out
     }
 
+    /**
+     * Decode one backend product row (see
+     * 12_Backend/src/modules/products/products.service.ts):
+     *   id, title, description, category, brand, priceMinor,
+     *   oldPriceMinor, stockQuantity, imageUrl, mediaUrls[], rating,
+     *   ratingCount, isFlashDeal, discountPercent, location, status,
+     *   seller: { id, name, rating, location, verified }
+     *
+     * Every value is read from the response — nothing is fabricated.
+     * Missing optional fields fall back to neutral defaults.
+     */
     private fun jsonToProduct(o: org.json.JSONObject): com.scottsx.app.data.domain.Product {
         val title = o.optString("title")
         val description = o.optString("description")
         val category = com.scottsx.app.data.domain.ProductCategory.fromApiName(o.optString("category"))
             ?: com.scottsx.app.data.domain.ProductCategory.All
-        val sellerId = o.optString("sellerId")
-        val sellerName = o.optString("sellerBusinessName").ifEmpty { "ScottsTechX Seller" }
         val priceUgx = o.optLong("priceMinor", 0L)
+        val oldPriceRaw = o.optLong("oldPriceMinor", 0L)
+        val oldPriceUgx = if (oldPriceRaw > 0L && oldPriceRaw > priceUgx) oldPriceRaw else null
         val imageUrl = o.optString("imageUrl").takeIf { it.isNotBlank() } ?: ""
-        // Seller data class signature: id, name, rating, location, verified
-        // The Seller.fullConstructorWithStoreName extension wraps this with extra data.
-        val seller = com.scottsx.app.data.domain.Seller(
-            id = sellerId,
-            name = sellerName,
-            rating = 4.5f,
-            location = "Kampala",
-            verified = true,
-        )
+        // Real seller object from the backend — never hardcoded.
+        val sellerJson = o.optJSONObject("seller")
+        val seller = if (sellerJson != null) {
+            com.scottsx.app.data.domain.Seller(
+                id = sellerJson.optString("id"),
+                name = sellerJson.optString("name").ifEmpty { title },
+                rating = sellerJson.optDouble("rating", 0.0).toFloat(),
+                location = sellerJson.optString("location").ifEmpty { o.optString("location") },
+                verified = sellerJson.optBoolean("verified", false),
+            )
+        } else {
+            com.scottsx.app.data.domain.Seller(
+                id = o.optString("id"),
+                name = "ScottsTechX Seller",
+                rating = 0f,
+                location = o.optString("location").ifEmpty { "Uganda" },
+                verified = false,
+            )
+        }
+        val brandName = o.optString("brand").ifEmpty { "Unbranded" }
         val brand = com.scottsx.app.data.domain.Brand(
-            id = "default",
-            name = "Generic",
+            id = brandName.lowercase().replace(' ', '-'),
+            name = brandName,
         )
         return com.scottsx.app.data.domain.Product(
             id = o.optString("id"),
@@ -164,14 +273,17 @@ object V2Client {
             shortDescription = description.take(80),
             description = description,
             priceUgx = priceUgx,
-            oldPriceUgx = null,
+            oldPriceUgx = oldPriceUgx,
             category = category,
             brand = brand,
             seller = seller,
             imageUrl = imageUrl,
             stock = o.optInt("stockQuantity", 1),
-            rating = o.optDouble("productTrustScore", 4.4).toFloat(),
-            ratingCount = 12,
+            rating = o.optDouble("rating", 0.0).toFloat(),
+            ratingCount = o.optInt("ratingCount", 0),
+            isFlashDeal = o.optBoolean("isFlashDeal", false),
+            discountPercent = o.optInt("discountPercent", 0),
+            location = o.optString("location").ifEmpty { "Kampala" },
         )
     }
 

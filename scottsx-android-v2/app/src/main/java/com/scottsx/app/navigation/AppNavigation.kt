@@ -1032,7 +1032,6 @@ object Routes {
     const val DISPUTE = "dispute/{transactionId}"
     const val AI_PERSONALIZATION = "ai/personalization"
     const val NEARBY_MAP = "nearby/map"
-    const val AGREEMENT_PROPOSAL = "agreement/new/{productId}"
     const val SETTINGS = "settings"
 
     // ---- Stage 5.x communications routes ----

@@ -165,7 +165,7 @@ fun AnimatedNumber(
     fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
     fontWeight: FontWeight? = null,
 ) {
-    val display by remember { mutableStateOf(0L) }
+    var display by remember { mutableStateOf(0L) }
     LaunchedEffect(target) {
         if (target == display) return@LaunchedEffect
         val from = display
