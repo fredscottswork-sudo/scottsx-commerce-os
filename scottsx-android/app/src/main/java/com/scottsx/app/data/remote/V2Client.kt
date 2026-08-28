@@ -1541,10 +1541,10 @@ object V2Client {
     )
 
     /**
-     * Chat image uploads have no signed-URL route on the canonical backend
-     * (uploads are multipart POST /api/v1/uploads/images). Returning null
-     * keeps the picker flow failing visibly instead of 404-spamming; the
-     * multipart upload arrives with the image-attachment wave.
+     * Kept for call-site compatibility: chat images always travel via
+     * [uploadImage] (multipart POST /api/v1/uploads/images), never the
+     * retired signed-url pipeline. Returning null makes any legacy
+     * caller fail visibly instead of 404-spamming.
      */
     suspend fun requestChatUploadUrl(
         conversationId: String,
@@ -1555,91 +1555,6 @@ object V2Client {
     // ----------------------------------------------------------------
     // Product image upload (seller)
     // ----------------------------------------------------------------
-
-    /**
-     * Request a signed upload URL for a generic upload purpose.
-     *
-     * The backend mints a short-lived (15 min) signed URL that grants
-     * the authenticated caller direct write access to a specific
-     * Storage path. The client then PUTs the file bytes to that URL
-     * using OkHttp / HttpURLConnection. No Firebase SDK credentials
-     * are needed on the device.
-     *
-     * @param purpose "product" | "avatar" | "chat" | "receipt"
-     * @param filename Client-supplied filename (server infers extension).
-     * @param contentType MIME type, e.g. "image/jpeg".
-     * @param conversationId Required when purpose = "chat".
-     * @return UploadHandle with the signed URL, gsPath, and a public
-     *         downloadUrl the client should store in its DB.
-     */
-    data class UploadHandle(
-        val uploadUrl: String,
-        val gsPath: String,
-        val publicUrl: String,
-        val expiresAt: Long,
-    )
-
-    suspend fun requestUploadUrl(
-        purpose: String,
-        filename: String,
-        contentType: String,
-        conversationId: String? = null,
-    ): UploadHandle? = apiCall(
-        method = "POST",
-        path = "/api/v1/uploads/signed-url",
-        body = JSONObject().apply {
-            put("purpose", purpose)
-            put("filename", filename)
-            put("contentType", contentType)
-            if (conversationId != null) put("conversationId", conversationId)
-        },
-        parse = { o ->
-            UploadHandle(
-                uploadUrl = o.optString("url"),
-                gsPath = o.optString("gsPath"),
-                publicUrl = o.optString("downloadUrl"),
-                expiresAt = o.optLong("expiresAt", 0L),
-            )
-        },
-    )
-
-    data class ProductImageUploadHandle(
-        val uploadUrl: String,
-        val gsPath: String,
-        val publicUrl: String,
-        val expiresAt: Long,
-    )
-
-    suspend fun requestProductImageUploadUrl(
-        productId: String,
-        mime: String,
-        ext: String,
-    ): ProductImageUploadHandle? =
-        apiCall(
-            method = "POST",
-            path = "/api/v1/products/v2/upload-image-url",
-            body = JSONObject().apply {
-                put("productId", productId)
-                put("mime", mime)
-                put("ext", ext)
-            },
-            parse = { o ->
-                ProductImageUploadHandle(
-                    uploadUrl = o.optString("uploadUrl"),
-                    gsPath = o.optString("gsPath"),
-                    publicUrl = o.optString("publicUrl"),
-                    expiresAt = o.optLong("expiresAt", 0L),
-                )
-            },
-        )
-
-    suspend fun setProductImage(productId: String, gsPath: String): Boolean =
-        apiCall(
-            method = "POST",
-            path = "/api/v1/products/v2/$productId/set-image",
-            body = JSONObject().put("gsPath", gsPath),
-            parse = { o -> o.optBoolean("ok", false) },
-        ) ?: false
 
     /**
      * Create a new product owned by the caller. The caller must be a
