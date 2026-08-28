@@ -65,11 +65,12 @@ web design system (`web/src/styles/globals.css` dark + light).
 
 Android previously had **no cart**: its only purchase path was "Buy now" →
 `POST /orders/checkout`, which is a hard **503** until Nylon Pay credentials
-exist, so buying on the phone always failed. Product detail now says
-**Add to cart**, and a cart screen does quantity edits and per-line stock
-caps. The Android cart is held **locally** (`CartStore`, in-memory) — the
-backend `/me/cart` sync used by the web cart is follow-up work, so COD
-checkout from the phone is not yet wired.
+exist, so buying on the phone always failed. The cart is now **server-backed
+on both platforms**: `CartStore` syncs `GET /me/cart`, applies quantity edits
+and removals through the API with an optimistic local overlay, and checkout
+runs `POST /me/cart/checkout` (one order per line, stock decremented
+atomically, cart emptied by the backend). A listing suspended by moderation
+after it was added is shown as unavailable rather than being silently sold.
 
 **Moderation** — sellers cannot self-publish. New listings enter `pending`;
 public reads are approved-only. Content edits revert `approved → pending`,
@@ -79,9 +80,12 @@ reason that reaches the seller.
 **Messaging** — in-thread price offers (accept/decline/withdraw, where accepting
 one offer voids every other pending offer), photo messages, per-message read
 receipts, typing indicators, pin/archive/mute, message retraction, saved quick
-replies, inbox filters with whole-inbox counts, and search. **Web only today**:
-the Android chat client speaks a `/chat/v2` dialect the backend never shipped
-(see known limits), so threads render on the web and stay empty on the phone.
+replies, inbox filters with whole-inbox counts, and search. **Android covers the
+core live flow** now: inbox (`GET /conversations`), thread open/creation
+(`POST /conversations`), message paging and send, unread counts and
+mark-as-read — all over the canonical routes the web uses (a `ChatCache`
+shares them with the AI context). Price offers, typing indicators and
+quick-reply cabinets are still web-only extras on the roadmap.
 
 **Nearby** — stores re-sort by distance as the buyer moves. A seller who has not
 enabled location sharing keeps their last known pin and is labelled
@@ -128,18 +132,16 @@ These were all found by running things, not by reading code:
 
 ## Not done / known limits
 
-**v1 (`scottsx-android`) legacy endpoint dialect.** Much of the old
-`V2Client` speaks a dialect the backend never implemented:
-`/api/v1/chat/v2/*`, `/api/v1/user/{profile,addresses,payment-methods,…}`
-(the real routes are `/api/v1/me/*`), `/api/v1/sellers/v2/*`,
-`/api/v1/settings/v2`, `/api/v1/memory/v2/*`, `/api/v1/products/v2/*`,
-`/api/v1/uploads/signed-url`, `/api/v1/reports`, `/api/v1/audit/me`,
-`/api/v1/support/tickets` (real route: `/api/v1/me/support/tickets`).
-Every one of those clients fails soft (null/empty), so the phone shows
-empty screens instead of errors. Concretely, on v1: **messaging, nearby
-sellers, the settings sub-screens and cloud cart are dead**; the home
-feed, product detail, CMS pages, AI assistant, Google sign-in and the
-local cart do work. The endpoint remap is tracked as follow-up work.
+**v1 (`scottsx-android`) canonical alignment.** The old `V2Client` dialect
+(`/api/v1/chat/v2/*`, `/api/v1/user/*`, `/api/v1/sellers/v2/*`,
+`/api/v1/settings/v2`, `/api/v1/memory/v2/*`, `/api/v1/products/v2/*`)
+has been remapped onto the routes the backend actually serves
+(`/api/v1/me/*`, `/api/v1/conversations`, `/api/v1/sellers/*`,
+`/api/v1/seller/*`, `/api/v1/products`), including the chat trio
+(open/messages/send), cart, addresses, payment methods, refunds, settings
+and support tickets. Two legacy call sites remain, both fail-soft with no
+user-visible content until they are remapped: the AI assistant relay
+(`/api/v1/ai/v2/ask`) and product reports (`/api/v1/reports`).
 
 **v2 (`scottsx-android-v2`) shares the stale dialect for its legacy
 surfaces** (same `/chat/v2`, `/user/*`, `/sellers/v2`, `settings/v2`,
