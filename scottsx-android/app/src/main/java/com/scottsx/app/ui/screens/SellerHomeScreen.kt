@@ -459,8 +459,8 @@ fun SellerHomeScreen(
                     bottomTab = tab
                     when (tab) {
                         SellerBottomTab.Home -> Unit
+                        SellerBottomTab.Orders -> onManageOrders()
                         SellerBottomTab.Add -> onAddProduct()
-                        SellerBottomTab.AI -> onOpenSellerAi()
                         SellerBottomTab.Messages -> onOpenSellerMessages()
                         SellerBottomTab.Analytics -> onOpenAnalytics()
                     }

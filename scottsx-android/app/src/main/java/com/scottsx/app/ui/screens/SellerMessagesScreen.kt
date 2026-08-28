@@ -36,8 +36,10 @@ import com.scottsx.app.ui.components.statusBarSpacer
 fun SellerMessagesScreen(
     onBack: () -> Unit,
     onOpenThread: (conversationId: String, peerName: String) -> Unit,
+    sellerTabSelect: (com.scottsx.app.ui.components.SellerBottomTab) -> Unit = {},
 ) {
         val scope = rememberCoroutineScope()
+    var bottomTab by remember { mutableStateOf(com.scottsx.app.ui.components.SellerBottomTab.Messages) }
     var conversations by remember { mutableStateOf<List<V2Client.Conversation>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
@@ -55,6 +57,8 @@ fun SellerMessagesScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -79,10 +83,10 @@ fun SellerMessagesScreen(
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Loading...", color = ScottsTechXColors.OnLightSecondary)
             }
-            conversations.isEmpty() -> EmptyMessagesHint()
+            conversations.isEmpty() -> EmptyMessagesHint(modifier = Modifier.padding(bottom = 96.dp))
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(conversations, key = { it.conversationId }) { convo ->
@@ -95,13 +99,20 @@ fun SellerMessagesScreen(
                 }
             }
         }
+        }  // inner Column
+        }  // weight Box
+        com.scottsx.app.ui.components.SellerBottomBar(
+            selected = bottomTab,
+            onSelect = { tab -> bottomTab = tab; sellerTabSelect(tab) },
+            onAddClicked = { bottomTab = com.scottsx.app.ui.components.SellerBottomTab.Add; sellerTabSelect(com.scottsx.app.ui.components.SellerBottomTab.Add) },
+        )
     }
 }
 
 @Composable
-private fun EmptyMessagesHint() {
+private fun EmptyMessagesHint(modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier.fillMaxSize().padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

@@ -660,15 +660,19 @@ fun AppNavigation() {
         }
         composable(Routes.SELLER_MESSAGES) {
             SellerMessagesScreen(
-                onBack = { navController.popBackStack() },
+                onBack = { pushBackToSellerHome(navController) },
                 // Thread route resolves the conversation by PEER user id —
                 // the seller inbox hands back the counterparty's uid in the
                 // second lambda slot (named peerName by the screen contract).
                 onOpenThread = { _, peerId -> navController.navigate(Routes.thread(peerId, null)) },
+                sellerTabSelect = { tab -> onSellerBarTab(navController, tab) },
             )
         }
         composable(Routes.SELLER_ANALYTICS) {
-            SellerAnalyticsScreen(onBack = { navController.popBackStack() })
+            SellerAnalyticsScreen(
+                onBack = { pushBackToSellerHome(navController) },
+                sellerTabSelect = { tab -> onSellerBarTab(navController, tab) },
+            )
         }
         composable(Routes.SELLER_TOOLS) {
             MarketplaceToolsScreen(onBack = { navController.popBackStack() })
@@ -960,6 +964,36 @@ fun AppNavigation() {
 // helper via `remember(activityContext)` and clears the cached
 // Google account on demand via the "Use a different Google account"
 // button. AppNavigation does not need to hold a singleton helper.
+
+/** Seller floating-bar navigation shared by the seller sub-screens
+ *  (Messages / Analytics) — mirrors SellerHomeScreen's onSelect switch. */
+private fun onSellerBarTab(navController: NavHostController, tab: com.scottsx.app.ui.components.SellerBottomTab) {
+    when (tab) {
+        com.scottsx.app.ui.components.SellerBottomTab.Home -> {
+            val dn = SessionCache.displayName ?: "Seller"
+            val em = java.net.URLEncoder.encode(SessionCache.email ?: "", "UTF-8")
+            navController.navigate("seller_home/$dn/$em") {
+                popUpTo(Routes.SELLER_HOME) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+        com.scottsx.app.ui.components.SellerBottomTab.Orders -> navController.navigate(Routes.SELLER_ORDERS) { launchSingleTop = true }
+        com.scottsx.app.ui.components.SellerBottomTab.Add -> navController.navigate(Routes.SELLER_ADD_PRODUCT) { launchSingleTop = true }
+        com.scottsx.app.ui.components.SellerBottomTab.Messages -> navController.navigate(Routes.SELLER_MESSAGES) { launchSingleTop = true }
+        com.scottsx.app.ui.components.SellerBottomTab.Analytics -> navController.navigate(Routes.SELLER_ANALYTICS) { launchSingleTop = true }
+    }
+}
+
+private fun pushBackToSellerHome(navController: NavHostController) {
+    if (!navController.popBackStack()) {
+        val dn = SessionCache.displayName ?: "Seller"
+        val em = java.net.URLEncoder.encode(SessionCache.email ?: "", "UTF-8")
+        navController.navigate("seller_home/$dn/$em") {
+            popUpTo(Routes.SELLER_HOME) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+}
 
 private fun onBuyerTab(navController: NavHostController, tab: BottomTab) {
     val dn = SessionCache.displayName ?: "Buyer"

@@ -56,7 +56,9 @@ import com.scottsx.app.ui.components.statusBarSpacer
 @Composable
 fun SellerAnalyticsScreen(
     onBack: () -> Unit,
+    sellerTabSelect: (com.scottsx.app.ui.components.SellerBottomTab) -> Unit = {},
 ) {
+    var bottomTab by remember { mutableStateOf(com.scottsx.app.ui.components.SellerBottomTab.Analytics) }
     var period by remember { mutableStateOf(0) } // 0=7d, 1=14d
     var dashboard by remember { mutableStateOf<com.scottsx.app.data.domain.SellerDashboardData?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -81,6 +83,7 @@ fun SellerAnalyticsScreen(
     val aov = if (totalOrders == 0) 0L else totalRevenue / totalOrders
 
     Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -120,8 +123,18 @@ fun SellerAnalyticsScreen(
                 RevenueCard(totalRevenue, totalOrders, aov)
                 ChartCard(points = points)
                 BestProducts(dashboard?.topProducts ?: emptyList())
+                // Clear the floating seller bottom bar at scroll end.
+                androidx.compose.foundation.layout.Spacer(
+                    modifier = androidx.compose.ui.Modifier.height(100.dp),
+                )
             }
         }
+        }  // weight Box
+        com.scottsx.app.ui.components.SellerBottomBar(
+            selected = bottomTab,
+            onSelect = { tab -> bottomTab = tab; sellerTabSelect(tab) },
+            onAddClicked = { bottomTab = com.scottsx.app.ui.components.SellerBottomTab.Add; sellerTabSelect(com.scottsx.app.ui.components.SellerBottomTab.Add) },
+        )
     }
 }
 
