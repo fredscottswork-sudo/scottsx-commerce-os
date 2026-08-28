@@ -1,8 +1,9 @@
 package com.scottsx.app.ai
 
 import com.scottsx.app.data.CartStore
-import com.scottsx.app.data.MarketplaceDataSource
-import com.scottsx.app.data.SellerDataSource
+import com.scottsx.app.data.ChatCache
+import com.scottsx.app.data.LiveMarketplace
+import com.scottsx.app.data.SellerLive
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.TransactionStore
 import com.scottsx.app.data.domain.AgreementRevision
@@ -51,7 +52,11 @@ object AiTools {
 
     fun searchProducts(query: String, maxPriceUgx: Long? = null, categoryName: String? = null): String {
         val ctx = require()
-        val results = MarketplaceDataSource.searchProducts(query)
+        val q = query.trim().lowercase()
+        val results = LiveMarketplace.products.value.filter { p ->
+            q.isBlank() || (p.name + " " + p.shortDescription + " " + p.brand.name + " " + p.category.displayName)
+                .lowercase().contains(q)
+        }
             .let { base ->
                 if (maxPriceUgx != null) base.filter { it.priceUgx <= maxPriceUgx } else base
             }
@@ -72,28 +77,31 @@ object AiTools {
 
     fun getProduct(productId: String): String {
         require()
-        val p = MarketplaceDataSource.productById(productId)
+        val p = LiveMarketplace.byId(productId)
             ?: return "{\"error\":\"Product $productId not found.\"}"
         return "{\"id\":\"${p.id}\",\"name\":\"${escape(p.name)}\",\"priceUgx\":${p.priceUgx},\"oldPriceUgx\":${p.oldPriceUgx ?: "null"},\"category\":\"${escape(p.category.displayName)}\",\"sellerId\":\"${p.seller.id}\",\"sellerName\":\"${escape(p.seller.name)}\",\"rating\":${p.rating},\"ratingCount\":${p.ratingCount},\"stock\":${p.stock},\"location\":\"${escape(p.location)}\",\"description\":\"${escape(p.shortDescription)}\"}"
     }
 
     fun getProductReviews(productId: String): String {
         require()
-        val reviews = MarketplaceDataSource.reviewsFor(productId)
-        if (reviews.isEmpty()) return "{\"productId\":\"$productId\",\"reviews\":[]}"
-        val items = reviews.take(5).map {
-            "{\"author\":\"${escape(it.authorName)}\",\"rating\":${it.rating},\"text\":\"${escape(it.text.take(120))}\",\"date\":\"${escape(it.dateLabel)}\"}"
-        }
-        val dist = MarketplaceDataSource.ratingDistributionFor(productId)
-        return "{\"productId\":\"$productId\",\"count\":${reviews.size},\"five\":${dist.five},\"four\":${dist.four},\"three\":${dist.three},\"two\":${dist.two},\"one\":${dist.one},\"reviews\":[${items.joinToString(",")}]}"
+        // Aggregates come from the live catalogue row; per-review text
+        // renders in-app on the PDP — never fabricated here.
+        val p = LiveMarketplace.byId(productId)
+            ?: return "{\"error\":\"Product $productId not found.\"}"
+        return "{\"productId\":\"${p.id}\",\"average\":${p.rating},\"count\":${p.ratingCount},\"note\":\"live catalogue aggregate\"}"
     }
 
     fun getProductAvailability(productId: String): String {
         require()
-        val p = MarketplaceDataSource.productById(productId)
+        val p = LiveMarketplace.byId(productId)
             ?: return "{\"error\":\"Product $productId not found.\"}"
-        val status = MarketplaceDataSource.stockStatusFor(p)
-        return "{\"productId\":\"${p.id}\",\"name\":\"${escape(p.name)}\",\"stock\":${p.stock},\"status\":\"${status.name}\",\"message\":\"${escape(MarketplaceDataSource.lowStockMessage(p) ?: "")}\"}"
+        val status = when {
+            p.stock <= 0 -> "OutOfStock"
+            p.stock <= 3 -> "LowStock"
+            else -> "InStock"
+        }
+        val msg = if (p.stock in 1..5) "Only ${p.stock} left" else ""
+        return "{\"productId\":\"${p.id}\",\"name\":\"${escape(p.name)}\",\"stock\":${p.stock},\"status\":\"$status\",\"message\":\"${escape(msg)}\"}"
     }
 
     fun getMarketplaceCategories(): String {
@@ -107,40 +115,52 @@ object AiTools {
     // Seller-side tools
     // =================================================================
 
+    private fun sellerFacts(sellerId: String): List<com.scottsx.app.data.domain.Product> =
+        LiveMarketplace.products.value.filter { it.seller.id == sellerId }
+
     fun getSeller(sellerId: String): String {
         require()
-        val s = MarketplaceDataSource.storefront(sellerId)
-            ?: return "{\"error\":\"Seller $sellerId not found.\"}"
-        return "{\"id\":\"${s.seller.id}\",\"name\":\"${escape(s.seller.name)}\",\"verified\":${s.verified},\"rating\":${s.rating},\"followers\":${s.followers},\"productCount\":${s.productCount},\"location\":\"${escape(s.location)}\"}"
+        val list = sellerFacts(sellerId)
+        if (list.isEmpty()) return "{\"error\":\"Seller $sellerId not found in the live catalogue.\"}"
+        val s = list.first().seller
+        return "{\"id\":\"${s.id}\",\"name\":\"${escape(s.name)}\",\"verified\":${s.verified},\"rating\":${s.rating},\"productCount\":${list.size},\"location\":\"${escape(s.location)}\"}"
     }
 
     fun getSellerReviews(sellerId: String): String {
         require()
-        val reviews = MarketplaceDataSource.storeReviews(sellerId)
-        if (reviews.isEmpty()) return "{\"sellerId\":\"$sellerId\",\"reviews\":[]}"
-        val items = reviews.take(5).map {
-            "{\"author\":\"${escape(it.authorName)}\",\"rating\":${it.rating},\"text\":\"${escape(it.text.take(120))}\",\"date\":\"${escape(it.dateLabel)}\"}"
-        }
-        return "{\"sellerId\":\"$sellerId\",\"count\":${reviews.size},\"reviews\":[${items.joinToString(",")}]}"
+        val list = sellerFacts(sellerId)
+        if (list.isEmpty()) return "{\"sellerId\":\"$sellerId\",\"reviews\":[]}"
+        val rated = list.filter { it.ratingCount > 0 }
+        val agg = if (rated.isEmpty()) 0.0
+            else rated.sumOf { it.rating.toDouble() * it.ratingCount } / rated.sumOf { it.ratingCount }
+        return "{\"sellerId\":\"$sellerId\",\"average\":${"%.2f".format(agg)},\"ratingCount\":${rated.sumOf { it.ratingCount }},\"note\":\"aggregate over live catalogue rows\"}"
     }
 
     fun getSellerStore(sellerId: String): String {
         require()
-        val s = MarketplaceDataSource.storefront(sellerId)
-            ?: return "{\"error\":\"Seller $sellerId not found.\"}"
-        val cats = s.categories.joinToString(",") { "\"${escape(it.category.displayName)}\":${it.productCount}" }
-        return "{\"id\":\"${s.seller.id}\",\"name\":\"${escape(s.seller.name)}\",\"verified\":${s.verified},\"rating\":${s.rating},\"followers\":${s.followers},\"productCount\":${s.productCount},\"responseRate\":\"${escape(s.responseRateLabel)}\",\"categoryCounts\":{$cats}}"
+        val list = sellerFacts(sellerId)
+        if (list.isEmpty()) return "{\"error\":\"Seller $sellerId not found in the live catalogue.\"}"
+        val s = list.first().seller
+        val cats = list.groupBy { it.category }.toList()
+            .sortedByDescending { (_, v) -> v.size }
+            .joinToString(",") { (cat, v) -> "\"${escape(cat.displayName)}\":${v.size}" }
+        return "{\"id\":\"${s.id}\",\"name\":\"${escape(s.name)}\",\"verified\":${s.verified},\"rating\":${s.rating},\"productCount\":${list.size},\"categoryCounts\":{$cats}}"
     }
 
     fun getSellerAnalytics(): String {
         val ctx = requireRole(Role.SELLER)
-        val snap = SellerDataSource.snapshot()
-        return "{\"storeName\":\"${escape(snap.storeName)}\",\"salesTodayUgx\":${snap.salesTodayUgx},\"salesDelta\":${snap.salesTodayDeltaPct},\"ordersToday\":${snap.ordersToday},\"customersTotal\":${snap.customersTotal},\"rating\":${snap.rating},\"pendingOrders\":${snap.ordersOverview.pending},\"lowStockCount\":${snap.lowStock.size}}"
+        SellerLive.warm()
+        val d = SellerLive.dashboard
+            ?: return "{\"status\":\"refreshing\",\"note\":\"live stats are being fetched; ask again in a moment\"}"
+        val s = d.stats
+        return "{\"revenueUgx\":${s.revenueUgx},\"revenue30Ugx\":${s.revenue30Ugx},\"orders\":${s.orders},\"orders30\":${s.orders30},\"avgOrderValueUgx\":${s.avgOrderValueUgx},\"totalProducts\":${s.totalProducts},\"lowStock\":${s.lowStock},\"outOfStock\":${s.outOfStock},\"followers\":${s.followers},\"totalViews\":${s.totalViews},\"unreadMessages\":${s.unreadMessages}}"
     }
 
     fun getSellerInventory(): String {
         val ctx = requireRole(Role.SELLER)
-        val items = SellerDataSource.sellerProducts()
+        SellerLive.warm()
+        val items = SellerLive.products?.products
+            ?: return "{\"status\":\"refreshing\",\"note\":\"live inventory is being fetched; ask again in a moment\"}"
         if (items.isEmpty()) return "{\"products\":[]}"
         val list = items.take(20).map {
             "{\"id\":\"${it.id}\",\"name\":\"${escape(it.name)}\",\"priceUgx\":${it.priceUgx},\"stock\":${it.stock},\"category\":\"${escape(it.category.displayName)}\"}"
@@ -150,11 +170,13 @@ object AiTools {
 
     fun getSellerOrders(): String {
         val ctx = requireRole(Role.SELLER)
-        val snap = SellerDataSource.snapshot()
-        val list = snap.recentOrders.take(10).map {
-            "{\"id\":\"${it.id}\",\"buyer\":\"${escape(it.buyerName)}\",\"product\":\"${escape(it.productName)}\",\"totalUgx\":${it.totalUgx},\"status\":\"${it.status.name}\",\"placed\":\"${escape(it.placedAtLabel)}\"}"
+        SellerLive.warm()
+        val orders = SellerLive.orders
+            ?: return "{\"status\":\"refreshing\",\"note\":\"live orders are being fetched; ask again in a moment\"}"
+        val list = orders.take(10).map {
+            "{\"id\":\"${it.id}\",\"buyer\":\"${escape(it.buyerName)}\",\"product\":\"${escape(it.title)}\",\"quantity\":${it.quantity},\"totalUgx\":${it.amount * it.quantity},\"status\":\"${it.status}\",\"placed\":\"${escape(it.createdAt.take(16))}\"}"
         }
-        return "{\"count\":${snap.recentOrders.size},\"orders\":[${list.joinToString(",")}]}"
+        return "{\"count\":${orders.size},\"orders\":[${list.joinToString(",")}]}"
     }
 
     // =================================================================
@@ -163,26 +185,30 @@ object AiTools {
 
     fun findNearbyProducts(query: String, maxPriceUgx: Long? = null): String {
         val ctx = requireRole(Role.BUYER)
-        val products = MarketplaceDataSource.searchProducts(query)
-        val pool = if (maxPriceUgx != null) products.filter { it.priceUgx <= maxPriceUgx } else products
+        val nq = query.trim().lowercase()
+        val pool = LiveMarketplace.products.value.filter { p ->
+            (nq.isBlank() || (p.name + " " + p.shortDescription + " " + p.brand.name).lowercase().contains(nq)) &&
+                (maxPriceUgx == null || p.priceUgx <= maxPriceUgx)
+        }
         val results = pool.take(10).map { p ->
-            val nearby = MarketplaceDataSource.nearbySellersFor(p.id)
-            "{\"productId\":\"${p.id}\",\"name\":\"${escape(p.name)}\",\"priceUgx\":${p.priceUgx},\"sellerId\":\"${p.seller.id}\",\"sellerName\":\"${escape(p.seller.name)}\",\"distanceKm\":${nearby.firstOrNull()?.distanceKm ?: 0.0},\"inStock\":${(p.stock > 0)}}"
+            "{\"productId\":\"${p.id}\",\"name\":\"${escape(p.name)}\",\"priceUgx\":${p.priceUgx},\"sellerId\":\"${p.seller.id}\",\"sellerName\":\"${escape(p.seller.name)}\",\"sellerLocation\":\"${escape(p.seller.location)}\",\"inStock\":${(p.stock > 0)}}"
         }
         return "{\"results\":[${results.joinToString(",")}],\"count\":${results.size}}"
     }
 
     fun findNearbySellers(categoryName: String? = null): String {
         val ctx = requireRole(Role.BUYER)
-        val sellers = MarketplaceDataSource.allStores()
+        val sellers = LiveMarketplace.products.value
+            .groupBy { it.seller.id }
+            .map { (_, list) -> list.first().seller to list }
             .let { base ->
-                if (categoryName != null) base.filter { s ->
-                    s.categories.any { it.category.displayName.equals(categoryName, ignoreCase = true) }
+                if (categoryName != null) base.filter { (_, list) ->
+                    list.any { it.category.displayName.equals(categoryName, ignoreCase = true) }
                 } else base
             }
         if (sellers.isEmpty()) return "{\"results\":[]}"
-        val items = sellers.take(10).map {
-            "{\"sellerId\":\"${it.seller.id}\",\"name\":\"${escape(it.seller.name)}\",\"verified\":${it.verified},\"rating\":${it.rating},\"productCount\":${it.productCount},\"location\":\"${escape(it.location)}\"}"
+        val items = sellers.take(10).map { (s, list) ->
+            "{\"sellerId\":\"${s.id}\",\"name\":\"${escape(s.name)}\",\"verified\":${s.verified},\"rating\":${s.rating},\"productCount\":${list.size},\"location\":\"${escape(s.location)}\"}"
         }
         return "{\"count\":${sellers.size},\"sellers\":[${items.joinToString(",")}]}"
     }
@@ -193,27 +219,27 @@ object AiTools {
 
     fun getConversationContext(threadId: String): String {
         val ctx = require()
-        val thread = MarketplaceDataSource.threadById(threadId)
+        ChatCache.warm()
+        val conv = ChatCache.conversation(threadId)
             ?: return "{\"error\":\"Thread $threadId not found.\"}"
-        val isBuyer = thread.sellerId != ctx.userId && ctx.role == Role.BUYER
-        val isSeller = thread.sellerId == ctx.userId && ctx.role == Role.SELLER
-        if (!isBuyer && !isSeller) return "{\"error\":\"Caller is not a party to this thread.\"}"
-        val messages = MarketplaceDataSource.messagesIn(threadId)
-        val items = messages.take(20).map {
-            "{\"fromBuyer\":${it.isFromBuyer},\"sender\":\"${escape(it.senderName)}\",\"text\":\"${escape(it.text.take(160))}\",\"time\":\"${escape(it.timeLabel)}\"}"
+        val messages = ChatCache.messagesFor(threadId)
+        val items = messages.takeLast(20).map { m ->
+            val mine = m.senderUid == ctx.userId
+            "{\"mine\":$mine,\"sender\":\"${escape(if (mine) "me" else conv.otherPartyDisplayName)}\",\"text\":\"${escape(m.content.take(160))}\",\"time\":\"${escape(m.createdAt.take(16))}\"}"
         }
-        return "{\"threadId\":\"${thread.id}\",\"sellerId\":\"${thread.sellerId}\",\"productId\":\"${thread.productId ?: "null"}\",\"messages\":[${items.joinToString(",")}]}"
+        return "{\"threadId\":\"${conv.conversationId}\",\"otherParty\":\"${escape(conv.otherPartyDisplayName)}\",\"productId\":\"${conv.productId ?: "null"}\",\"messages\":[${items.joinToString(",")}]}"
     }
 
     fun summarizeConversation(threadId: String): String {
         val ctx = require()
-        val thread = MarketplaceDataSource.threadById(threadId)
+        ChatCache.warm()
+        val conv = ChatCache.conversation(threadId)
             ?: return "{\"error\":\"Thread $threadId not found.\"}"
-        val messages = MarketplaceDataSource.messagesIn(threadId)
+        val messages = ChatCache.messagesFor(threadId)
         val parts = mutableListOf<String>()
-        parts += "Thread between ${if (ctx.role == Role.BUYER) "you (buyer) and ${thread.sellerName} (seller)" else "${thread.sellerName} (buyer) and you (seller)"}."
+        parts += "Thread between ${if (ctx.role == Role.BUYER) "you (buyer) and ${conv.otherPartyDisplayName} (seller)" else "${conv.otherPartyDisplayName} (buyer) and you (seller)"}."
         parts += "${messages.size} message(s) exchanged."
-        val product = thread.productId?.let { MarketplaceDataSource.productById(it) }
+        val product = conv.productId?.let { LiveMarketplace.byId(it) }
         if (product != null) parts += "Discussing: ${product.name} (UGX ${product.priceUgx})."
         val agreements = TransactionStore.agreements.filter { it.threadId == threadId }
         if (agreements.isNotEmpty()) {
@@ -293,9 +319,9 @@ object AiTools {
         additionalNotes: String? = null,
     ): String {
         val ctx = require()
-        val product = MarketplaceDataSource.productById(productId)
+        val product = LiveMarketplace.byId(productId)
             ?: return "{\"error\":\"Product $productId not found.\"}"
-        val seller = MarketplaceDataSource.storefront(sellerId)?.seller
+        val seller = sellerFacts(sellerId).firstOrNull()?.seller
         val (buyerId, buyerDisplayName) = if (ctx.role == Role.BUYER) ctx.userId to Session.displayNameOrEmpty() else "draft" to "Draft"
         val sellerIdSafe = if (ctx.role == Role.SELLER) ctx.userId else sellerId
         val sellerName = if (ctx.role == Role.SELLER) Session.displayNameOrEmpty() else seller?.name ?: "Seller"
@@ -373,7 +399,7 @@ object AiTools {
         val dm = runCatching { com.scottsx.app.data.domain.DeliveryMethod.valueOf(deliveryMethod.uppercase()) }.getOrNull()
             ?: return "{\"error\":\"Unknown delivery method: $deliveryMethod\"}"
         val receiptLines = lines.map { (productId, qty) ->
-            val p = MarketplaceDataSource.productById(productId)
+            val p = LiveMarketplace.byId(productId)
                 ?: return "{\"error\":\"Product $productId not found.\"}"
             com.scottsx.app.data.domain.ReceiptLine(
                 productId = p.id,
@@ -421,7 +447,7 @@ object AiTools {
     fun getCart(): String {
         val ctx = requireRole(Role.BUYER)
         val items = CartStore.items.value.map {
-            val p = MarketplaceDataSource.productById(it.productId)
+            val p = LiveMarketplace.byId(it.productId)
             "{\"productId\":\"${it.productId}\",\"name\":\"${escape(p?.name ?: it.productId)}\",\"quantity\":${it.quantity},\"unitPriceUgx\":${p?.priceUgx ?: 0},\"variantId\":\"${it.variantId ?: ""}\"}"
         }
         return "{\"items\":[${items.joinToString(",")}]}"
@@ -435,7 +461,10 @@ object AiTools {
 
     fun getMyNotifications(): String {
         val ctx = require()
-        return "{\"count\":${com.scottsx.app.data.MarketplaceDataSource.unreadNotificationsCount()}}"
+        ChatCache.warm()
+        val conv = ChatCache.conversations
+        return if (conv == null) "{\"count\":null,\"note\":\"live inbox is refreshing\"}"
+            else "{\"count\":${conv.sumOf { it.unreadCount }}}"
     }
 
     fun summarizeDispute(disputeId: String): String {

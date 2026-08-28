@@ -17,6 +17,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# APP_DIR overrides the module root (e.g. to check the v2 tree:
+#   APP_DIR=$PWD/../scottsx-android-v2 tools/wiring-check.sh)
+APP_DIR="${APP_DIR:-$ROOT}"
+cd "$APP_DIR"
+
 SRC="app/src/main/java"
 CLIENT="$SRC/com/scottsx/app/data/remote/V2Client.kt"
 NAV="$SRC/com/scottsx/app/navigation/AppNavigation.kt"
@@ -36,6 +41,10 @@ grep -oE "(suspend )?fun [a-zA-Z_][A-Za-z0-9_]*" "$CLIENT" \
   | awk '{print $NF}' | sort -u > "$TMP/declared"
 # Constants and properties on the object are valid references too.
 grep -oE "va[lr] [a-zA-Z_][A-Za-z0-9_]*" "$CLIENT" \
+  | awk '{print $NF}' | sort -u >> "$TMP/declared"
+# So are the nested types callers reference as V2Client.<Type> —
+# (data) class / object names inside the V2Client object.
+grep -oE "(data )?class [A-Za-z_][A-Za-z0-9_]*|object [A-Za-z_][A-Za-z0-9_]*" "$CLIENT" \
   | awk '{print $NF}' | sort -u >> "$TMP/declared"
 sort -u -o "$TMP/declared" "$TMP/declared"
 
@@ -70,16 +79,30 @@ fi
 [ -z "$undef$dead" ] && echo "  ✓ all $(wc -l < "$TMP/routes_def" | tr -d ' ') routes defined and used"
 
 # ── 3. Screen reachability ─────────────────────────────────────────────────
+# A file is reachable when ANY top-level declaration it exports is referenced
+# from ANOTHER Kotlin file — the nav graph for routed screens, or a sibling
+# for split-out sections (SellerHomeSections.kt is used by SellerHomeScreen.kt,
+# not by AppNavigation.kt). Anything nothing references is dead code that the
+# compiler still has to build — and historically those files called APIs that
+# no longer exist, which is what made this check exist.
 unreachable=0
 for f in "$SCREENS"/*.kt; do
   name="$(basename "$f" .kt)"
-  if ! grep -q "\b$name\b" "$NAV"; then
-    note "$name.kt is never referenced from AppNavigation.kt — unreachable"
+  # Only non-private declarations can be referenced from another file.
+  decls="$(grep -oE "^((internal|public) )?fun [A-Za-z_][A-Za-z0-9_]*|^((internal|public) )?(data )?class [A-Za-z_][A-Za-z0-9_]*|^((internal|public) )?object [A-Za-z_][A-Za-z0-9_]*" "$f" \
+    | awk '{print $NF}' | sort -u || true)"
+  found=""
+  for d in $decls; do
+    [ -z "$d" ] && continue
+    if grep -rql "\b$d\b" "$SRC" --include=*.kt --exclude="$name.kt"; then found="$d"; break; fi
+  done
+  if [ -z "$found" ]; then
+    note "$name.kt exports nothing referenced anywhere — dead file"
     unreachable=$((unreachable + 1))
   fi
 done
 [ "$unreachable" -eq 0 ] && \
-  echo "  ✓ all $(ls "$SCREENS"/*.kt | wc -l | tr -d ' ') screens reachable from AppNavigation"
+  echo "  ✓ all $(ls "$SCREENS"/*.kt | wc -l | tr -d ' ') screens are referenced"
 
 echo
 if [ "$problems" -gt 0 ]; then

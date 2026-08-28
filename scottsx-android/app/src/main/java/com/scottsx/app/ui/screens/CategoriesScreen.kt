@@ -44,7 +44,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.ProductCategory
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ProductCard
@@ -157,7 +156,23 @@ fun CategoriesScreen(
                     }
                 }
             } else {
-                val products = MarketplaceDataSource.productsByCategory(selectedCategory!!)
+                // Live category feed from /products/search?category=
+                var catProducts by remember(selectedCategory) {
+                    mutableStateOf<List<com.scottsx.app.data.domain.Product>?>(null)
+                }
+                androidx.compose.runtime.LaunchedEffect(selectedCategory) {
+                    val cat = selectedCategory!!
+                    val remote = try {
+                        com.scottsx.app.data.remote.V2Client.searchProducts(category = cat.displayName)
+                    } catch (_: Throwable) { null }
+                        ?: try {
+                            com.scottsx.app.data.remote.V2Client.searchProducts(category = cat.name)
+                        } catch (_: Throwable) { null }
+                    catProducts = remote
+                        ?: com.scottsx.app.data.LiveMarketplace.products.value.filter { it.category == cat }
+                    if (remote != null) com.scottsx.app.data.LiveMarketplace.cache(remote)
+                }
+                val products = catProducts ?: emptyList()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

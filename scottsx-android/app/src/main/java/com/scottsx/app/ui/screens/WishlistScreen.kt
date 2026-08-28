@@ -49,7 +49,11 @@ fun WishlistScreen(
     modifier: Modifier = Modifier,
 ) {
     val ids by WishlistStore.ids.collectAsState()
-    val products = WishlistStore.products()
+    // Server-bookmarks-backed product list — hydrated on entry.
+    val products by WishlistStore.products.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        try { WishlistStore.syncFromServer() } catch (_: Throwable) { }
+    }
     var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Wishlist) }
 
     Box(

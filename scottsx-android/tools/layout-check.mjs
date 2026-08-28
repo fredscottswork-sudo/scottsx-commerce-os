@@ -91,7 +91,7 @@ console.log('\n\x1b[1m2. Screens that pin content to a screen edge\x1b[0m');
   const mustBeAware = [
     'screens/BuyerHomeScreen.kt',
     'screens/SellerHomeScreen.kt',
-    'screens/WelcomeScreen.kt',
+    'screens/RoleSelectionScreen.kt',
   ];
   for (const name of mustBeAware) {
     const f = files.find((x) => rel(x).endsWith(name));
@@ -313,23 +313,22 @@ console.log('\n\x1b[1m4b. Shipping hygiene\x1b[0m');
 
 console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
 {
-  // The welcome screen is the role-selection screen from the reference
-  // design: near-black futuristic backdrop, WELCOME eyebrow, the big
-  // "How will you use ScottsTechX?" heading, glass Buyer/Seller cards with
-  // circular letter avatars and tappable Terms/Privacy links. Earlier
-  // revisions of this file pinned the other look (emoji brand circle,
-  // lockup wordmark); the reference screenshots are now the source of
-  // truth, so the assertions follow them.
-  const w = files.find((x) => rel(x).endsWith('screens/WelcomeScreen.kt'));
+  // The role-selection screen from the reference design lives in
+  // RoleSelectionScreen.kt: near-black futuristic backdrop, WELCOME
+  // eyebrow, the big "How will you use ScottsTechX?" heading, and
+  // Buyer/Seller cards each offering Log in / Sign up. (An older file
+  // literally named WelcomeScreen.kt duplicated this and was deleted —
+  // it referenced a Routes.WELCOME constant that never existed.)
+  const w = files.find((x) => rel(x).endsWith('screens/RoleSelectionScreen.kt'));
   const s = read(w);
-  ok_if('welcome screen shows the WELCOME eyebrow',
+  ok_if('role screen shows the WELCOME eyebrow',
     /"WELCOME"/.test(s) && /letterSpacing/.test(s));
-  ok_if('welcome screen asks the role question',
-    /How will you use\\nScottsTechX\?/.test(s));
-  ok_if('welcome screen offers buyer and seller role cards',
-    /I am a Buyer/.test(s) && /I am a Seller/.test(s));
-  ok_if('welcome screen wires Terms/Privacy to the CMS pages',
-    /onOpenLegal\("terms"\)/.test(s) && /onOpenLegal\("privacy"\)/.test(s));
+  ok_if('role screen asks the role question',
+    /How will you use ScottsTechX\?/.test(s));
+  ok_if('role screen offers buyer and seller role cards',
+    /Role\.BUYER/.test(s) && /Role\.SELLER/.test(s) && /RoleCard\(/.test(s));
+  ok_if('role screen wires per-role login and sign-up',
+    /onLogin:\s*\(Role\)\s*->\s*Unit/.test(s) && /onSignUp:\s*\(Role\)\s*->\s*Unit/.test(s));
 
   const sp = files.find((x) => rel(x).endsWith('screens/SplashScreen.kt'));
   if (sp) {

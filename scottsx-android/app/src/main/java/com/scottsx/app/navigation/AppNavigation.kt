@@ -14,7 +14,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.scottsx.app.data.AuthRepository
 import com.scottsx.app.data.GoogleSignInHelper
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.domain.Role
 import com.scottsx.app.data.domain.SessionCache
@@ -319,7 +318,15 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val displayName = backStackEntry.arguments?.getString("displayName")
             val email = backStackEntry.arguments?.getString("email")
-            val profile = MarketplaceDataSource.profileFor(displayName, email)
+            // Real session — never a fabricated profile.
+            val profile = com.scottsx.app.data.domain.BuyerProfile(
+                uid = Session.userIdOrNull().orEmpty(),
+                displayName = displayName?.takeIf { it.isNotBlank() }
+                    ?: Session.displayNameOrEmpty().ifBlank {
+                        (email ?: Session.emailOrEmpty()).substringBefore("@").ifBlank { "Buyer" }
+                    },
+                email = email ?: Session.emailOrEmpty(),
+            )
             // Role-separation gate. If the signed-in session says Seller
             // but the buyer dashboard got requested, bounce to the
             // wrong-role screen so we never show the wrong UI.
@@ -490,7 +497,15 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val displayName = backStackEntry.arguments?.getString("displayName")
             val email = backStackEntry.arguments?.getString("email")
-            val profile = MarketplaceDataSource.profileFor(displayName, email)
+            // Real session — never a fabricated profile.
+            val profile = com.scottsx.app.data.domain.BuyerProfile(
+                uid = Session.userIdOrNull().orEmpty(),
+                displayName = displayName?.takeIf { it.isNotBlank() }
+                    ?: Session.displayNameOrEmpty().ifBlank {
+                        (email ?: Session.emailOrEmpty()).substringBefore("@").ifBlank { "Buyer" }
+                    },
+                email = email ?: Session.emailOrEmpty(),
+            )
             val activityContext = androidx.compose.ui.platform.LocalContext.current
             ProfileScreen(
                 profile = profile,
@@ -1024,7 +1039,6 @@ object Routes {
     const val DISPUTE = "dispute/{transactionId}"
     const val AI_PERSONALIZATION = "ai/personalization"
     const val NEARBY_MAP = "nearby/map"
-    const val AGREEMENT_PROPOSAL = "agreement/new/{productId}"
     const val SETTINGS = "settings"
 
     // ---- Stage 5.x communications routes ----

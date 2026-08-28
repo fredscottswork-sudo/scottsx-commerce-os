@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.ProductCategory
 import com.scottsx.app.data.remote.V2Client

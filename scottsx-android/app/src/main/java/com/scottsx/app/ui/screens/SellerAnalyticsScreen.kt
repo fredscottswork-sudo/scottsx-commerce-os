@@ -42,36 +42,41 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
-import com.scottsx.app.data.SellerDataSource
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
 
 /**
- * Seller analytics. Aggregates sales + orders over 7/30/90 day
- * windows. The data is derived from the same per-product metadata
- * the rest of the marketplace uses (no standalone mock).
+ * Seller analytics. Everything on this screen comes from
+ * `GET /api/v1/seller/dashboard/stats` — the Postgres-computed
+ * revenue series and top products. The chart supports the two
+ * windows the backend actually serves (7 and 14 days).
  */
 @Composable
 fun SellerAnalyticsScreen(
     onBack: () -> Unit,
 ) {
-    var period by remember { mutableStateOf(0) } // 0=7d, 1=30d, 2=90d
-    val snap = remember { SellerDataSource.snapshot() }
-    val days = listOf(7, 30, 90)
-    val multipliers = listOf(1f, 4.2f, 12.0f)
-    val periodLabel = days[period]!!
+    var period by remember { mutableStateOf(0) } // 0=7d, 1=14d
+    var dashboard by remember { mutableStateOf<com.scottsx.app.data.domain.SellerDashboardData?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    val days = listOf(7, 14)
 
-    // Synthetic but deterministic: take the dashboard's per-day sales
-    // and multiply by the period multiplier, then plot.
-    val points = remember(period) {
-        val base = snap.sales
-        val mul = multipliers[period]!!
-        base.map { (it.label to (it.amountUgx * mul).toLong()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        loadError = null
+        dashboard = try {
+            com.scottsx.app.data.remote.V2Client.fetchSellerDashboard()
+        } catch (t: Throwable) { loadError = "Couldn't load analytics: ${t.message ?: "unknown error"}"; null }
+        if (dashboard == null && loadError == null) loadError = "Couldn't load analytics — check your connection."
     }
-    val totalRevenue = points.sumOf { it.second }
-    val totalOrders = (snap.ordersOverview.completed * multipliers[period]!!).toInt()
+
+    val series = dashboard?.salesSeries ?: emptyList()
+    val points = remember(period, series) {
+        val window = series.takeLast(days[period])
+        window.map { (it.date.takeLast(5) to it.revenue) }
+    }
+    val windowed = remember(period, series) { series.takeLast(days[period]) }
+    val totalRevenue = windowed.sumOf { it.revenue }
+    val totalOrders = windowed.sumOf { it.orders }
     val aov = if (totalOrders == 0) 0L else totalRevenue / totalOrders
 
     Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
@@ -95,11 +100,26 @@ fun SellerAnalyticsScreen(
             Spacer(Modifier.width(10.dp))
             Text("Analytics", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
-        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            PeriodRow(period = period, onChange = { period = it })
-            RevenueCard(totalRevenue, totalOrders, aov)
-            ChartCard(points = points)
-            BestProducts(snap)
+        if (dashboard == null && loadError != null) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(loadError ?: "", color = ScottsTechXColors.OnLightSecondary,
+                    fontSize = 13.sp, modifier = Modifier.padding(24.dp))
+            }
+        } else if (dashboard == null) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    color = ScottsTechXColors.BluePrimary,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                PeriodRow(period = period, onChange = { period = it })
+                RevenueCard(totalRevenue, totalOrders, aov)
+                ChartCard(points = points)
+                BestProducts(dashboard?.topProducts ?: emptyList())
+            }
         }
     }
 }
@@ -110,7 +130,7 @@ private fun PeriodRow(period: Int, onChange: (Int) -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        listOf("7 Days", "30 Days", "90 Days").forEachIndexed { i, label ->
+        listOf("7 Days", "14 Days").forEachIndexed { i, label ->
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -253,8 +273,7 @@ private fun ChartCard(points: List<Pair<String, Long>>) {
 }
 
 @Composable
-private fun BestProducts(snap: com.scottsx.app.data.domain.SellerDashboardSnapshot) {
-    val best = remember { MarketplaceDataSource.topSelling(5) }
+private fun BestProducts(best: List<com.scottsx.app.data.domain.SellerTopProduct>) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -266,6 +285,10 @@ private fun BestProducts(snap: com.scottsx.app.data.domain.SellerDashboardSnapsh
         Column {
             Text("Best products", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Spacer(Modifier.height(8.dp))
+            if (best.isEmpty()) {
+                Text("No sales yet — your best products will appear here once orders come in.",
+                    color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp)
+            }
             best.forEachIndexed { idx, p ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                     Box(
@@ -279,14 +302,14 @@ private fun BestProducts(snap: com.scottsx.app.data.domain.SellerDashboardSnapsh
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = p.name,
+                        text = p.title,
                         color = ScottsTechXColors.OnLight,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                     )
-                    Text("UGX ${formatUgx(p.priceUgx)}", color = ScottsTechXColors.BluePrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("${p.sold} sold", color = ScottsTechXColors.BluePrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }
