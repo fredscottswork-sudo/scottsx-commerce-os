@@ -93,12 +93,12 @@ fun MessageThreadScreen(
         } catch (t: Throwable) {
             loadError = "Couldn't open this conversation: ${t.message ?: "unknown error"}"
         }
-        kotlinx.coroutines.launch {
+        launch {
             val storefront = try { V2Client.fetchStorefront(sellerId) } catch (_: Throwable) { null }
             storefront?.let { if (it.storeName.isNotBlank()) sellerName = it.storeName }
         }
         if (productId != null) {
-            kotlinx.coroutines.launch {
+            launch {
                 product = try { LiveMarketplace.byIdOrFetch(productId) } catch (_: Throwable) { null }
             }
         }

@@ -85,6 +85,7 @@ import com.scottsx.app.data.preferences.isSeller
 import com.scottsx.app.data.preferences.sidebarPaletteFor
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import coil.compose.AsyncImage
+import kotlinx.coroutines.async
 
 /** Destination of a sidebar nav item — opaque to the drawer. */
 enum class SidebarDestination {
@@ -135,13 +136,13 @@ fun BuyerSidebarOverlay(
     var liveOrders by remember { androidx.compose.runtime.mutableStateOf(ordersCount) }
     androidx.compose.runtime.LaunchedEffect(open) {
         if (!open) return@LaunchedEffect
-        val msgs = kotlinx.coroutines.async {
+        val msgs = async {
             try { com.scottsx.app.data.remote.V2Client.fetchConversationUnreadCount() } catch (_: Throwable) { null }
         }
-        val notes = kotlinx.coroutines.async {
+        val notes = async {
             try { com.scottsx.app.data.remote.V2Client.fetchUnreadNotificationCount() } catch (_: Throwable) { null }
         }
-        val orders = kotlinx.coroutines.async {
+        val orders = async {
             try { com.scottsx.app.data.remote.V2Client.fetchPendingOrderCount() } catch (_: Throwable) { null }
         }
         msgs.await()?.let { liveMessages = it }
