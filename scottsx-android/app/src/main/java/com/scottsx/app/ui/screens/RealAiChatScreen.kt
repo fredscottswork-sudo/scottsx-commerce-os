@@ -156,7 +156,7 @@ fun RealAiChatScreen(
             }
         },
         bottomBar = {
-            ScottsTechXBottomBar(selected = BottomTab.Ai, onSelect = onTabSelect)
+            ScottsTechXBottomBar(selected = null, onSelect = onTabSelect)
         },
         containerColor = ScottsTechXColors.Background,
     ) { padding ->

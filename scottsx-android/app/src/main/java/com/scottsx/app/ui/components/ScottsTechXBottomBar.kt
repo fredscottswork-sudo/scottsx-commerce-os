@@ -20,16 +20,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +52,7 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
  */
 @Composable
 fun ScottsTechXBottomBar(
-    selected: BottomTab,
+    selected: BottomTab?,
     onSelect: (BottomTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -98,10 +98,33 @@ fun ScottsTechXBottomBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val cartItems by com.scottsx.app.data.CartStore.items.collectAsState()
+            val cartCount = cartItems.sumOf { it.quantity }
+            // Live message / notification counts — 30s poll while the bar is
+            // composed; guests simply keep zero badges (web parity).
+            var chatsCount by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+            var alertsCount by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                while (true) {
+                    chatsCount = try {
+                        com.scottsx.app.data.remote.V2Client.fetchConversationUnreadCount()
+                    } catch (_: Throwable) { null } ?: chatsCount
+                    alertsCount = try {
+                        com.scottsx.app.data.remote.V2Client.fetchUnreadNotificationCount()
+                    } catch (_: Throwable) { null } ?: alertsCount
+                    kotlinx.coroutines.delay(30_000)
+                }
+            }
             BottomTab.values().forEach { tab ->
                 NavItem(
                     tab = tab,
                     selected = tab == selected,
+                    badgeCount = when (tab) {
+                        BottomTab.Cart -> cartCount
+                        BottomTab.Chats -> chatsCount
+                        BottomTab.Alerts -> alertsCount
+                        else -> 0
+                    },
                     onClick = { onSelect(tab) },
                 )
             }
@@ -110,17 +133,21 @@ fun ScottsTechXBottomBar(
 }
 
 enum class BottomTab(val label: String, val icon: ImageVector) {
+    // Parity with the web's mobile bottom nav (web/src/components/MainNav.tsx):
+    // Home / Nearby / Cart / Chats / Alerts — the three badged destinations
+    // carry live counts exactly like the web's icon-badge.
     Home("Home", Icons.Filled.Home),
     Nearby("Explore", Icons.Filled.LocationOn),
-    Ai("AI", Icons.Filled.AutoAwesome),
-    Wishlist("Cart", Icons.Filled.Favorite),
-    Profile("Account", Icons.Filled.Person),
+    Cart("Cart", Icons.Filled.ShoppingCart),
+    Chats("Chats", Icons.Filled.ChatBubble),
+    Alerts("Alerts", Icons.Filled.Notifications),
 }
 
 @Composable
 private fun NavItem(
     tab: BottomTab,
     selected: Boolean,
+    badgeCount: Int = 0,
     onClick: () -> Unit,
 ) {
     val activeColor = Color.White
@@ -172,12 +199,35 @@ private fun NavItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(
-                imageVector = tab.icon,
-                contentDescription = tab.label,
-                tint = iconColor,
-                modifier = Modifier.size(22.dp),
-            )
+            Box {
+                Icon(
+                    imageVector = tab.icon,
+                    contentDescription = tab.label,
+                    tint = iconColor,
+                    modifier = Modifier.size(22.dp),
+                )
+                if (badgeCount > 0) {
+                    // Live cart dot — same count the web header shows.
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 8.dp, y = (-4).dp)
+                            .height(15.dp)
+                            .width(if (badgeCount > 9) 22.dp else 15.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFFEF4444)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (badgeCount > 9) "9+" else badgeCount.toString(),
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 text = tab.label,

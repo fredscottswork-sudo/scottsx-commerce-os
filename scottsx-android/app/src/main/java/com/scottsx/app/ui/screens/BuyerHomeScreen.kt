@@ -107,6 +107,8 @@ fun BuyerHomeScreen(
     onNavigateToNearby: () -> Unit,
     onNavigateToAi: () -> Unit,
     onNavigateToAllProducts: () -> Unit,
+    onNavigateToWishlist: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {},
     onNavigateToTransactions: () -> Unit = {},
     onNavigateToReceipts: () -> Unit = {},
     onNavigateToAiPersonalization: () -> Unit = {},
@@ -179,7 +181,7 @@ fun BuyerHomeScreen(
             SidebarDestination.Home -> onTabSelect(BottomTab.Home)
             SidebarDestination.Nearby -> onNavigateToNearby()
             SidebarDestination.Ai -> onNavigateToAi()
-            SidebarDestination.Wishlist -> onTabSelect(BottomTab.Wishlist)
+            SidebarDestination.Wishlist -> onNavigateToWishlist()
             SidebarDestination.Cart -> onNavigateToCart()
             SidebarDestination.Orders -> onNavigateToAllProducts()
             SidebarDestination.Transactions -> onNavigateToTransactions()
@@ -192,7 +194,7 @@ fun BuyerHomeScreen(
             SidebarDestination.Settings -> onNavigateToSettings()
             SidebarDestination.Theme -> themeSheetOpen = true
             SidebarDestination.Logout -> logoutDialogOpen = true
-            SidebarDestination.Profile -> onTabSelect(BottomTab.Profile)
+            SidebarDestination.Profile -> onNavigateToProfile()
         }
     }
 

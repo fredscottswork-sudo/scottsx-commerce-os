@@ -72,7 +72,7 @@ fun ProfileScreen(
     onEditProfile: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var bottomTab by remember { mutableStateOf(BottomTab.Profile) }
+    var bottomTab by remember { mutableStateOf(BottomTab.Home) }
 
     Box(
         modifier = modifier
@@ -261,7 +261,7 @@ fun ProfileScreen(
         Box(modifier = Modifier.navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter).fillMaxWidth()) {
             ScottsTechXBottomBar(
-                selected = bottomTab,
+                selected = null,
                 onSelect = { tab ->
                     bottomTab = tab
                     onTabSelect(tab)

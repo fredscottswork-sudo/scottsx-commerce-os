@@ -101,7 +101,7 @@ fun NearbyMapScreen(
                 lat = lat, lng = lng,
                 radiusKm = radiusKm.toDouble(),
                 category = categoryFilter, limit = 60,
-            )
+            ).sellers
             sellers = list
             isLoading = false
             V2Client.recordSignal("category", "Nearby")

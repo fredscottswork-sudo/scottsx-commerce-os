@@ -361,6 +361,12 @@ fun AppNavigation() {
                         "${java.net.URLEncoder.encode(profile.email.ifBlank { "seller" }, "UTF-8")}")
                 },
                 onNavigateToBecomeSeller = { navController.navigate(Routes.BECOME_SELLER) },
+                onNavigateToWishlist = { navController.navigate(Routes.WISHLIST) },
+                onNavigateToProfile = {
+                    navController.navigate("profile/${
+                        java.net.URLEncoder.encode(profile.displayName.ifBlank { "Buyer" }, "UTF-8")
+                    }/${java.net.URLEncoder.encode(profile.email, "UTF-8")}")
+                },
                 onOpenProduct = { p: com.scottsx.app.data.domain.Product -> navController.navigate(Routes.product(p.id)) },
                 onOpenStore = { sid -> navController.navigate(Routes.storefront(sid)) },
                 onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
@@ -956,13 +962,13 @@ private fun onBuyerTab(navController: NavHostController, tab: BottomTab) {
         BottomTab.Nearby -> navController.navigate(Routes.NEARBY) {
             launchSingleTop = true
         }
-        BottomTab.Ai -> navController.navigate(Routes.AI) {
+        BottomTab.Chats -> navController.navigate(Routes.MESSAGES) {
             launchSingleTop = true
         }
-        BottomTab.Wishlist -> navController.navigate(Routes.WISHLIST) {
+        BottomTab.Cart -> navController.navigate(Routes.CART) {
             launchSingleTop = true
         }
-        BottomTab.Profile -> navController.navigate("profile/$dn/$encoded") {
+        BottomTab.Alerts -> navController.navigate(Routes.NOTIFICATIONS) {
             launchSingleTop = true
         }
     }
@@ -980,13 +986,13 @@ private fun onSellerTab(navController: NavHostController, tab: BottomTab) {
         BottomTab.Nearby -> navController.navigate(Routes.NEARBY) {
             launchSingleTop = true
         }
-        BottomTab.Ai -> navController.navigate(Routes.AI) {
+        BottomTab.Chats -> navController.navigate(Routes.MESSAGES) {
             launchSingleTop = true
         }
-        BottomTab.Wishlist -> navController.navigate(Routes.WISHLIST) {
+        BottomTab.Cart -> navController.navigate(Routes.CART) {
             launchSingleTop = true
         }
-        BottomTab.Profile -> navController.navigate("profile/$dn/$encoded") {
+        BottomTab.Alerts -> navController.navigate(Routes.NOTIFICATIONS) {
             launchSingleTop = true
         }
     }

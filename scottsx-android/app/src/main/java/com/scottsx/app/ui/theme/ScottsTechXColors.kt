@@ -40,6 +40,14 @@ object ScottsTechXColors {
     var PanelInputLight = Color(0xFF121A2F)  // web --surface-2 (dark)
     val PanelBorderHint = Color(0xFFDFE6F2)  // web --border (light)
 
+    // ---- Text ON the swappable panels (the "black icons" fix) -------
+    // OnLight is a constant dark ink meant for real LIGHT surfaces only;
+    // anything drawn on PanelLight/BackgroundLight/PanelInputLight must
+    // use these two, which swap in applyThemePalette alongside the panels
+    // themselves. Otherwise dark mode renders #08122A ink on #0B1020.
+    var OnPanel = Color(0xFFEEF2FB)          // web --text (dark)
+    var OnPanelSecondary = Color(0xFF94A3C4) // web --text-2 (dark)
+
     // ---- v0.23 dark surfaces ---------------------------------------------
     /** Page background — near-black navy. */
     val BackgroundDark = Color(0xFF05070D)  // web --bg (dark)
@@ -121,10 +129,14 @@ object ScottsTechXColors {
             PanelLight = Color(0xFFFFFFFF)        // web --surface (light)
             BackgroundLight = Color(0xFFF5F7FC)   // web --bg (light)
             PanelInputLight = Color(0xFFF3F6FC)   // web --surface-2 (light)
+            OnPanel = Color(0xFF08122A)           // web --text (light)
+            OnPanelSecondary = Color(0xFF55627D)  // web --text-2 (light)
         } else {
             PanelLight = Color(0xFF0B1020)        // web --surface (dark)
             BackgroundLight = Color(0xFF05070D)   // web --bg (dark)
             PanelInputLight = Color(0xFF121A2F)   // web --surface-2 (dark)
+            OnPanel = Color(0xFFEEF2FB)           // web --text (dark)
+            OnPanelSecondary = Color(0xFF94A3C4)  // web --text-2 (dark)
         }
     }
 }

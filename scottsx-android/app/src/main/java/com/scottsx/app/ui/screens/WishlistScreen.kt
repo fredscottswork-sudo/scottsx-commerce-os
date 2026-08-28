@@ -56,7 +56,7 @@ fun WishlistScreen(
     androidx.compose.runtime.LaunchedEffect(Unit) {
         try { WishlistStore.syncFromServer() } catch (_: Throwable) { }
     }
-    var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Wishlist) }
+    var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Cart) }
 
     Box(
         modifier = modifier

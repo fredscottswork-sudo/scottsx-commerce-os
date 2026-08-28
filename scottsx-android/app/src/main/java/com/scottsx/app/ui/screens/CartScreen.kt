@@ -54,7 +54,7 @@ fun CartScreen(
     val cartItems by CartStore.items.collectAsState()
     val resolved = cartItems.resolve()
     val total = resolved.sumOf { (p, q) -> p.priceUgx * q }
-    var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Home) }
+    var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Cart) }
 
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val snackbar = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() }

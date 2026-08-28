@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.scottsx.app.data.location.LocationProvider
 import com.scottsx.app.data.remote.V2Client
+import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.components.ShimmerBox
 import com.scottsx.app.ui.components.navBarSpacer
@@ -549,7 +550,7 @@ fun NearbyScreen(
                 }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, bottom = 110.dp),
+                    contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 110.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(sellers, key = { it.sellerId }) { seller ->
