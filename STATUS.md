@@ -135,7 +135,9 @@ the `{products:[…]}` object envelope.
 **The Android apps have not been compiled in this sandbox.** There is no
 JDK-plus-Android-SDK here and `maven.google.com` is unreachable, so
 `./gradlew assembleDebug` cannot run locally; CI (`.github/workflows/ci.yml`,
-jobs `android` and `scottsx-android-v2`) is where APKs are built. Failures
+jobs `android` and `scottsx-android-v2`) is where APKs are built. **CI is
+green and both jobs upload APK artifacts** — `scottsx-test-apk` (v1) and
+`scottsx-v2-test-apk` (v2), first confirmed on run 33176797805. Failures
 that hide inside CI logs are surfaced through `::error` annotations (they
 remain readable over the check-runs REST API when log downloads are
 blocked). Locally, the real Kotlin compiler frontend runs over every file
