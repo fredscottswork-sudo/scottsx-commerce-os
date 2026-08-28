@@ -191,6 +191,11 @@ object WishlistStore {
 
     fun contains(productId: String): Boolean = _ids.value.contains(productId)
 
+    /** Toggle the saved state AND persist it through the backend
+     *  saved-products endpoints (optimistic with rollback on failure).
+     *  Same code path as [toggle] — named for what it actually does. */
+    fun toggleBookmark(productId: String): Boolean = toggle(productId)
+
     fun toggle(productId: String): Boolean {
         val added = !_ids.value.contains(productId)
         _ids.update { if (added) it + productId else it - productId }

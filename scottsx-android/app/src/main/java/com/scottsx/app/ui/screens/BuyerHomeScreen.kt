@@ -74,6 +74,8 @@ import com.scottsx.app.ui.components.SidebarDestination
 import com.scottsx.app.ui.components.ThemeSelectorSheet
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 /**
  * Buyer Home — rebuilt on the web contract.
@@ -121,6 +123,9 @@ fun BuyerHomeScreen(
 ) {
     val cartItems by CartStore.items.collectAsState()
     val cartCount = cartItems.sumOf { it.quantity }
+
+    // Caller-owned wishlist state for every product tile on this screen.
+    val wishlistIds by com.scottsx.app.data.WishlistStore.ids.collectAsState()
 
     // ---- Live feed state ---------------------------------------------------
     var products by remember { mutableStateOf<List<Product>>(emptyList()) }
@@ -197,7 +202,8 @@ fun BuyerHomeScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundDark),
+            .background(ScottsTechXColors.BackgroundDark)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         LazyColumn(
             modifier = Modifier
@@ -437,6 +443,10 @@ fun BuyerHomeScreen(
                                             product = product,
                                             onClick = { onOpenProduct(product) },
                                             onAddToCart = { CartStore.add(product.id) },
+                                            wished = product.id in wishlistIds,
+                                            // Each tap persists through the
+                                            // backend saved-products endpoints.
+                                            onToggleWishlist = { com.scottsx.app.data.WishlistStore.toggleBookmark(product.id) },
                                         )
                                     }
                                 }
@@ -474,6 +484,8 @@ fun BuyerHomeScreen(
                                             onAddToCart = { CartStore.add(product.id) },
                                             modifier = Modifier.weight(1f),
                                             width = null,
+                                            wished = product.id in wishlistIds,
+                                            onToggleWishlist = { com.scottsx.app.data.WishlistStore.toggleBookmark(product.id) },
                                         )
                                     }
                                     if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -500,6 +512,7 @@ fun BuyerHomeScreen(
         // Floating bottom nav
         Box(
             modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
         ) {

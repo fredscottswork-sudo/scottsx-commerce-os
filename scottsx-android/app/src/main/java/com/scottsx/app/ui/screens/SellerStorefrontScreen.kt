@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +56,7 @@ import com.scottsx.app.data.domain.StorefrontTab
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Public seller storefront. Reached via the buyer PDP's "View Store"
@@ -76,7 +78,7 @@ fun SellerStorefrontScreen(
     var isFollowing by remember(sellerId) { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    androidx.compose.runtime.LaunchedEffect(sellerId) {
+    LaunchedEffect(sellerId) {
         loadFailed = false
         val fetched = try { com.scottsx.app.data.remote.V2Client.fetchStorefront(sellerId) } catch (_: Throwable) { null }
         page = fetched
@@ -91,7 +93,9 @@ fun SellerStorefrontScreen(
 
     if (page == null && !loadFailed) {
         Box(
-            modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ScottsTechXColors.PanelLight),
             contentAlignment = Alignment.Center,
         ) {
             androidx.compose.material3.CircularProgressIndicator(
@@ -127,13 +131,23 @@ fun SellerStorefrontScreen(
         .sortedByDescending { it.productCount }
     var tab by remember(sellerId) { mutableStateOf(StorefrontTab.Products) }
 
+    // Is the caller the owner of this store? If so, tiles switch to owner
+    // view: no wishlist hearts (you can't wishlist yourself) and moderation
+    // status chips on each tile — same view the web seller dashboard gives.
+    var ownerUid by remember(sellerId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(sellerId) {
+        ownerUid = try { com.scottsx.app.data.remote.V2Client.fetchUserProfile()?.optString("uid") } catch (_: Throwable) { null }
+    }
+    val isOwner = ownerUid != null && ownerUid == sellerId
+
     Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
         // ---- Top bar with back ----
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(ScottsTechXColors.BluePrimaryDark)
-                .padding(start = 4.dp, end = 16.dp, top = 30.dp, bottom = 12.dp),
+                .statusBarSpacer()
+                .padding(start = 4.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -178,7 +192,7 @@ fun SellerStorefrontScreen(
             )
             TabBar(selected = tab, onSelect = { tab = it })
             when (tab) {
-                StorefrontTab.Products -> ProductsTab(storefront.products, onOpenProduct)
+                StorefrontTab.Products -> ProductsTab(storefront.products, onOpenProduct, isOwner)
                 StorefrontTab.Categories -> CategoriesTab(categoriesRows)
                 StorefrontTab.Reviews -> ReviewsTab(sellerDomain, onViewAllReviews)
                 StorefrontTab.About -> AboutTab(sellerDomain, storefront.description, "")
@@ -356,7 +370,7 @@ private fun androidx.compose.foundation.layout.RowScope.TabPill(
 }
 
 @Composable
-private fun ProductsTab(products: List<Product>, onOpen: (String) -> Unit) {
+private fun ProductsTab(products: List<Product>, onOpen: (String) -> Unit, isOwner: Boolean = false) {
     if (products.isEmpty()) {
         Text("No products yet", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
         return
@@ -374,6 +388,9 @@ private fun ProductsTab(products: List<Product>, onOpen: (String) -> Unit) {
                         modifier = Modifier.weight(1f),
                         onClick = { onOpen(p.id) },
                         onAddToCart = { com.scottsx.app.data.CartStore.add(p.id) },
+                        // Owner view: hearts off, moderation state on the tile.
+                        showWishlist = !isOwner,
+                        statusLabel = if (isOwner) p.status else null,
                     )
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))

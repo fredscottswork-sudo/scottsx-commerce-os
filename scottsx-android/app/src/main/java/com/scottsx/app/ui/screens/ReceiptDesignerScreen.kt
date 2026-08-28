@@ -55,6 +55,7 @@ import com.scottsx.app.data.domain.PaymentMethod
 import com.scottsx.app.data.domain.ReceiptLine
 import com.scottsx.app.data.domain.ReceiptTemplate
 import com.scottsx.app.data.domain.Role
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 4 — Receipt designer screen.
@@ -155,7 +156,12 @@ fun ReceiptDesignerScreen(
     val subtotal = lines.sumOf { it.lineTotalUgx }
     val total = (subtotal - discountUgx).coerceAtLeast(0)
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarSpacer(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         LazyColumn(
             contentPadding = PaddingValues(bottom = 100.dp),
         ) {

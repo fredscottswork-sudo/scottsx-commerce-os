@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ai.AiPersonalizationStore
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 4 — AI Personalization settings screen.
@@ -60,7 +61,12 @@ import com.scottsx.app.ai.AiPersonalizationStore
 fun AiPersonalizationScreen(onBack: () -> Unit = {}) {
     var confirmClear by remember { mutableStateOf(false) }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarSpacer(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
                 Row(

@@ -40,6 +40,7 @@ import com.scottsx.app.data.domain.OrderStatus
 import com.scottsx.app.data.domain.SellerOrder
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Seller orders. Lists every order with quick filters; tapping a row
@@ -68,7 +69,7 @@ fun SellerOrdersScreen(
     val orders = (raw ?: emptyList())
         .map { it.toLegacyOrder() }
         .filter { filter == null || it.status == filter }
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

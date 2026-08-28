@@ -10,10 +10,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
+import com.scottsx.app.ui.components.navBarSpacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -379,7 +380,12 @@ private fun ComposerBar(onSend: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.White)
-            .navigationBarsPadding()
+            // Clear BOTH: the keyboard (imePadding — zero when it's closed)
+            // and the gesture pill (navBarSpacer). The small double-lift when
+            // the keyboard is open is the accepted trade-off for never hiding
+            // the composer under either bar.
+            .imePadding()
+            .navBarSpacer()
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

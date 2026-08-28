@@ -75,8 +75,11 @@ import com.scottsx.app.ui.components.SellerSidebarOverlay
 import com.scottsx.app.ui.components.ShimmerBox
 import com.scottsx.app.ui.components.ThemeSelectorSheet
 import com.scottsx.app.ui.components.formatUgx
+import com.scottsx.app.ui.components.formatUgxCompact
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 /**
  * Seller Home — rebuilt on the web's seller dashboard contract.
@@ -171,7 +174,8 @@ fun SellerHomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundDark),
+            .background(ScottsTechXColors.BackgroundDark)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         LazyColumn(
             modifier = Modifier
@@ -295,7 +299,9 @@ fun SellerHomeScreen(
                                     StatCard(
                                         label = "Revenue",
                                         value = stats.revenueUgx,
-                                        format = { formatUgx(it) },
+                                        // Abbreviated ("UGX 45.0M") — the raw
+                                        // figure is up to 13 chars wide.
+                                        format = { formatUgxCompact(it) },
                                         icon = Icons.Filled.AttachMoney,
                                         accent = ScottsTechXColors.SuccessGreen,
                                         modifier = Modifier.weight(1f),
@@ -443,6 +449,7 @@ fun SellerHomeScreen(
         // Floating bottom nav
         Box(
             modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
         ) {
@@ -596,14 +603,22 @@ private fun StatCard(
             Icon(imageVector = icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
         }
         Spacer(Modifier.height(10.dp))
-        AnimatedNumber(
+            AnimatedNumber(
             target = value,
             format = format,
             color = ScottsTechXColors.OnDark,
             fontSize = 20.sp,
             fontWeight = FontWeight.ExtraBold,
+            // Hard-clamped to one line: an unexpected figure degrades to
+            // "UGX 9…" instead of wrapping and bursting the tile.
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
-        Text(text = label, color = ScottsTechXColors.OnDarkSecondary, fontSize = 11.5.sp)
+        Text(
+            text = label, color = ScottsTechXColors.OnDarkSecondary, fontSize = 11.5.sp,
+            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -894,8 +909,16 @@ private fun LowStockBand(low: Int, out: Int, onInventory: () -> Unit, modifier: 
                 color = ScottsTechXColors.OnDark,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold,
+                // Long localized strings clamp instead of pushing the
+                // count/chevron out of the band.
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
             )
-            Text(text = "Restock before they go quiet.", color = ScottsTechXColors.OnDarkSecondary, fontSize = 11.sp)
+            Text(
+                text = "Restock before they go quiet.", color = ScottsTechXColors.OnDarkSecondary, fontSize = 11.sp,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+            )
         }
         Icon(imageVector = Icons.Filled.ChevronRight, contentDescription = null, tint = ScottsTechXColors.WarningAmber, modifier = Modifier.size(18.dp))
     }

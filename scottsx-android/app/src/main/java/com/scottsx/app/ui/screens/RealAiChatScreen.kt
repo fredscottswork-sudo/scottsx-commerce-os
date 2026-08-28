@@ -55,6 +55,7 @@ import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 5 — Real chat UI screen.
@@ -130,6 +131,7 @@ fun RealAiChatScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .statusBarSpacer()
                         .padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

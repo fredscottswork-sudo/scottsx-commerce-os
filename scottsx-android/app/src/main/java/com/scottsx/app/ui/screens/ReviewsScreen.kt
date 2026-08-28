@@ -41,6 +41,7 @@ import com.scottsx.app.data.LiveMarketplace
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Full reviews list for a product, fed entirely by
@@ -79,7 +80,7 @@ fun ReviewsScreen(
         ratingsPage?.let { with(V2Client) { it.toDistribution() } }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         // Top bar
         Row(
             modifier = Modifier

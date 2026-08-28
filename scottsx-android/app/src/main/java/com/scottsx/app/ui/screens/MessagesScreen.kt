@@ -47,6 +47,7 @@ import com.scottsx.app.ui.util.formatUgx
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 5.x — Buyer Messages inbox.
@@ -100,7 +101,7 @@ fun MessagesScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight)) {
+    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight).statusBarSpacer()) {
         // Header
         Box(
             modifier = Modifier

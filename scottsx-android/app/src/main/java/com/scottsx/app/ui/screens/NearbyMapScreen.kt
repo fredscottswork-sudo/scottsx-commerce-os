@@ -65,6 +65,7 @@ import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
 import kotlinx.coroutines.launch
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 5 — Nearby screen with real geolocation.
@@ -220,7 +221,7 @@ fun NearbyMapScreen(
         },
         containerColor = ScottsTechXColors.Background,
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).statusBarSpacer()) {
             // Category chips
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),

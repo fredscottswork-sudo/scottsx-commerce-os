@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Notifications inbox — fully live. Renders the caller's real rows
@@ -107,7 +108,7 @@ fun NotificationsScreen(
 
     val unreadCount = items.count { !it.read }
 
-    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight)) {
+    Column(modifier = modifier.fillMaxSize().background(ScottsTechXColors.BackgroundLight).statusBarSpacer()) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()

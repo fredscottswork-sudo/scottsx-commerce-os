@@ -26,6 +26,7 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Seller inbox. Fetches real conversations where the seller is a
@@ -53,7 +54,7 @@ fun SellerMessagesScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

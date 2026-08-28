@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Seller analytics. Everything on this screen comes from
@@ -79,7 +80,7 @@ fun SellerAnalyticsScreen(
     val totalOrders = windowed.sumOf { it.orders }
     val aov = if (totalOrders == 0) 0L else totalRevenue / totalOrders
 
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

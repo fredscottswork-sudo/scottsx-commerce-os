@@ -63,8 +63,11 @@ fun SettingsScaffold(
                             ScottsTechXColors.BluePrimary,
                         ),
                     ),
-                )
-                .padding(start = 4.dp, end = 16.dp, top = 30.dp, bottom = 12.dp),
+                        )
+                // Content clears the real status bar height; the gradient
+                // keeps bleeding to the top edge (edge-to-edge design).
+                .statusBarSpacer()
+                .padding(start = 4.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

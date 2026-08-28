@@ -993,7 +993,7 @@ private fun onSellerTab(navController: NavHostController, tab: BottomTab) {
 
 @Composable
 private fun SplashHost(onContinue: () -> Unit) {
-    SplashScreen(onContinue = onContinue)
+    SplashScreen(onFinished = onContinue)
 }
 
 object Routes {

@@ -301,6 +301,7 @@ private fun FullscreenGalleryViewer(
         // Page indicator
         Box(
             modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 24.dp)
                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))

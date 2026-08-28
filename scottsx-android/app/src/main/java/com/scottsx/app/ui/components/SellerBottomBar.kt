@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -61,11 +60,13 @@ fun SellerBottomBar(
     modifier: Modifier = Modifier,
 ) {
     Box(
+        // The bar's own surface paints all the way to the bottom edge; below,
+        // navBarSpacer() lifts ONLY the bar's rows clear of the gesture pill.
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .navBarSpacer()
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.BottomCenter,
     ) {
         // Frosted-blue glass bar.
         Box(

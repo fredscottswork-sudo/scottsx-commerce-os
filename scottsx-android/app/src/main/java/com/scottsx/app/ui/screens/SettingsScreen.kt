@@ -33,6 +33,7 @@ import com.scottsx.app.data.preferences.ThemeMode
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 5 — Settings screen.
@@ -287,7 +288,8 @@ private fun SettingsSectionCard(title: String, content: @Composable ColumnScope.
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(ScottsTechXColors.Surface),
+            .background(ScottsTechXColors.Surface)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Text(
             title.uppercase(),

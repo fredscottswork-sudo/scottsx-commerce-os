@@ -394,6 +394,9 @@ object V2Client {
         val category = com.scottsx.app.data.domain.ProductCategory.fromApiName(o.optString("category"))
             ?: com.scottsx.app.data.domain.ProductCategory.All
         val priceUgx = o.optLong("priceMinor", 0L)
+        // Moderation state; public catalog rows are approved-by-definition,
+        // seller rows carry the real state.
+        val status = o.optString("status").ifBlank { "approved" }
         val oldPriceRaw = o.optLong("oldPriceMinor", 0L)
         val oldPriceUgx = if (oldPriceRaw > 0L && oldPriceRaw > priceUgx) oldPriceRaw else null
         val imageUrl = o.optString("imageUrl").takeIf { it.isNotBlank() } ?: ""
@@ -438,6 +441,7 @@ object V2Client {
             isFlashDeal = o.optBoolean("isFlashDeal", false),
             discountPercent = o.optInt("discountPercent", 0),
             location = o.optString("location").ifEmpty { "Kampala" },
+            status = status,
         )
     }
 

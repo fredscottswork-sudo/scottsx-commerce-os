@@ -90,6 +90,10 @@ data class Product(
     val specs: List<ProductSpec> = emptyList(),
     val purchases: Int = 0,
     val wishlistCount: Int = 0,
+    /** Moderation state from the backend row ("pending", "approved", …).
+     *  Public catalogue listings are always approved, which is the default;
+     *  seller-scoped rows carry their real moderation state. */
+    val status: String = "approved",
 )
 
 data class HeroBanner(

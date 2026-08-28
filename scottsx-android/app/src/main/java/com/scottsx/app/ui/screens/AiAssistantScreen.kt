@@ -65,6 +65,8 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 /**
  * Stage-2 AI Assistant landing screen.
@@ -119,7 +121,8 @@ fun AiAssistantScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Column(
             modifier = Modifier
@@ -351,6 +354,7 @@ fun AiAssistantScreen(
 
         Box(
             modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
         ) {

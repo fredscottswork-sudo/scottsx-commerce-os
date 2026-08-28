@@ -24,11 +24,11 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun SplashScreen(
-    onContinue: () -> Unit,
+    onFinished: () -> Unit,
 ) {
     LaunchedEffect(Unit) {
         delay(1500)
-        onContinue()
+        onFinished()
     }
     Box(
         modifier = Modifier
@@ -38,14 +38,16 @@ fun SplashScreen(
         contentAlignment = Alignment.Center,
     ) {
         CinematicBackground()
-        BrandLogo(
-            monogramSize = 140.dp,
-            showWordmark = true,
-            showTagline = true,
-            autoPlay = true,
+        // The transparent lockup (RGBA PNG) — it carries the full
+        // wordmark once, so nothing else is printed over it.
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(
+                com.scottsx.app.R.drawable.brand_lockup,
+            ),
+            contentDescription = "ScottsTechX",
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 36.dp),
         )
     }
 }

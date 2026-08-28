@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -34,6 +35,10 @@ import com.google.firebase.auth.FirebaseAuth
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Draw behind the system bars — targetSdk 35 makes this mandatory, so
+        // declare it explicitly: every screen handles its own insets via the
+        // ScreenScaffold/statusBarSpacer/navBarSpacer helpers.
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         handleDeepLinkVerification(intent)
         setContent {
