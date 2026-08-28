@@ -25,8 +25,11 @@ object V2Client {
     @Volatile private var baseUrlOverride: String? = null
     fun setBaseUrl(url: String) { baseUrlOverride = url }
 
-    /** Base URL — same as the existing RemoteAssistantClient. */
-    private val baseUrl: String get() = DEFAULT_BASE_URL
+    /** Base URL — honours [setBaseUrl]; defaults to the dev host. */
+    private val baseUrl: String get() = baseUrlOverride ?: DEFAULT_BASE_URL
+
+    /** Public accessor for sibling clients (RemoteAssistantClient). */
+    fun currentBaseUrl(): String = baseUrl
 
     private suspend fun <T> apiCall(
         method: String,
@@ -702,19 +705,20 @@ object V2Client {
         parse = { o -> o },
     )
 
-    // Reports
+    // Reports — the backend has no dedicated /reports route; abuse and issue
+    // reports are delivered as SUPPORT TICKETS (POST /me/support/tickets,
+    // {subject, message}), which the staff inbox actually reads. Returns the
+    // ticket id on success.
     suspend fun createReport(
         resourceType: String, resourceId: String, reason: String,
         description: String? = null,
     ): String? = apiCall(
-        method = "POST", path = "/api/v1/reports",
+        method = "POST", path = "/api/v1/me/support/tickets",
         body = JSONObject().apply {
-            put("resourceType", resourceType)
-            put("resourceId", resourceId)
-            put("reason", reason)
-            if (description != null) put("description", description)
+            put("subject", "Report: $resourceType $resourceId — $reason")
+            put("message", description ?: "Reported $resourceType $resourceId: $reason")
         },
-        parse = { o -> o.optString("id") },
+        parse = { o -> o.optJSONObject("ticket")?.optString("id") },
     )
 
     // Notifications (user-specific)

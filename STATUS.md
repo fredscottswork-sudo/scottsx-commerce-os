@@ -139,9 +139,11 @@ has been remapped onto the routes the backend actually serves
 (`/api/v1/me/*`, `/api/v1/conversations`, `/api/v1/sellers/*`,
 `/api/v1/seller/*`, `/api/v1/products`), including the chat trio
 (open/messages/send), cart, addresses, payment methods, refunds, settings
-and support tickets. Two legacy call sites remain, both fail-soft with no
-user-visible content until they are remapped: the AI assistant relay
-(`/api/v1/ai/v2/ask`) and product reports (`/api/v1/reports`).
+and support tickets. The last two legacy call sites have been closed since:
+the AI assistant relay was already the canonical `/api/v1/ai/v2/ask` (now
+routed through the configured app backend instead of a hardcoded localhost),
+and abuse/product reports are delivered as support tickets via
+`POST /me/support/tickets` — the staff inbox that actually gets read.
 
 **v2 (`scottsx-android-v2`) shares the stale dialect for its legacy
 surfaces** (same `/chat/v2`, `/user/*`, `/sellers/v2`, `settings/v2`,
