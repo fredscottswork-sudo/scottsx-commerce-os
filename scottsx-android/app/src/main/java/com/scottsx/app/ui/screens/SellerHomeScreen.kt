@@ -103,6 +103,7 @@ fun SellerHomeScreen(
     onAddProduct: () -> Unit = {},
     onManageOrders: () -> Unit = {},
     onOpenInventory: () -> Unit = {},
+    onOpenBulkImport: () -> Unit = {},
     onOpenAnalytics: () -> Unit = {},
     onOpenMarketplaceTools: () -> Unit = {},
     onOpenStoreSettings: () -> Unit = {},
@@ -490,6 +491,7 @@ fun SellerHomeScreen(
                     SellerSidebarDestination.Dashboard -> Unit
                     SellerSidebarDestination.Orders -> onManageOrders()
                     SellerSidebarDestination.Products -> onOpenInventory()
+                    SellerSidebarDestination.BulkImport -> onOpenBulkImport()
                     SellerSidebarDestination.Customers -> Unit
                     SellerSidebarDestination.Messages -> onOpenMessages()
                     SellerSidebarDestination.Promotions -> onOpenMarketplaceTools()

@@ -159,7 +159,7 @@ fun SellerAIAssistantScreen(onBack: () -> Unit) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
                 Text(
                     "Quick tools",
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnPanel,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),

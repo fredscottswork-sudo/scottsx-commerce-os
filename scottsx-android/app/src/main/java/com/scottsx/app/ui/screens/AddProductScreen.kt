@@ -78,6 +78,7 @@ fun AddProductScreen(
     var step by remember { mutableStateOf(0) }
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var brandText by remember { mutableStateOf("") }
     // Stage 5.x AI-generated fields (when seller adds a photo URL)
     var aiSuggestedName by remember { mutableStateOf<String?>(null) }
     var aiSuggestedDesc by remember { mutableStateOf<String?>(null) }
@@ -212,6 +213,8 @@ fun AddProductScreen(
                     InputField(value = name, onValueChange = { name = it }, label = "Product name")
                     Spacer(Modifier.height(10.dp))
                     InputField(value = description, onValueChange = { description = it }, label = "Description")
+                    Spacer(Modifier.height(10.dp))
+                    InputField(value = brandText, onValueChange = { brandText = it }, label = "Brand (optional)")
                     Spacer(Modifier.height(10.dp))
                     // Stage 5.x: AI helper. Seller enters a short hint (or
                     // uses the first photo URL as context), and we fill
@@ -624,7 +627,9 @@ fun AddProductScreen(
                         scope.launch {
                             isUploading = true
                             try {
-                                // Real backend: POST /api/v1/products/v2/create
+                                // Real backend: POST /api/v1/seller/products
+                                // (the old /api/v1/products/v2/create route
+                                // never existed — every publish was a 404).
                                 val newId = V2Client.createProduct(
                                     title = productName,
                                     priceMinor = priceUgx,
@@ -632,7 +637,11 @@ fun AddProductScreen(
                                     currency = "UGX",
                                     stock = stock,
                                     category = category.name,
+                                    brand = brandText.trim(),
                                     imageUrl = firstImage,
+                                    mediaUrls = imageUrls,
+                                    location = locationLabel,
+                                    discountPercent = discount,
                                 )
                                 if (newId != null) {
                                     android.util.Log.i("AddProduct", "created id=$newId")

@@ -16,6 +16,17 @@ cd web         && npm install && npm run dev    # website on :5173 (proxies /api
 
 Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / `Seller123!`
 
+## Seller/buyer web-parity wave (2026-08-29, second pass)
+
+| Area | What changed |
+|------|--------------|
+| **Critical fix** | The Android Add-Product flow posted to `/api/v1/products/v2/create` — a route that never existed, so every in-app publish was a masked 404. `V2Client.createProduct` now POSTs `/api/v1/seller/products` with the full backend schema (title/description/category/brand/priceMinor/oldPriceMinor/stockQuantity/imageUrl/mediaUrls/location/isFlashDeal/discountPercent/asDraft). |
+| Seller inventory | New `SellerInventoryScreen` + route `seller/inventory`: status tabs (all/approved/pending/drafts/rejected) with live counts, inline stock +/- (→ sparse `PATCH`), edit sheet (title/description/price/old price/stock/location), submit-for-review on drafts/rejected rows, delete confirm, add-product shortcut. Sidebar "Products" finally opens it (it previously re-routed to Orders). |
+| Seller bulk import | New `BulkImportScreen` + route `seller/bulk-import`: paste CSV (quoted-cell parser matching the web's), preview rows, "stage as drafts" toggle, then per-row `/api/v1/seller/products` creates exactly like the web loop (no bulk endpoint exists). Sidebar gets a "Bulk import" entry. |
+| Buyer sidebar | Direct entries for Payments / Addresses / Refunds / Support — all four routes existed but were only reachable through Settings (web shows them in the sidebar). |
+| Dark theme | Seller AI assistant "Quick tools" heading rendered `OnLight` ink on the dark panel (invisible in dark mode); now `OnPanel`. |
+| Seller mutations | `V2Client` gains `updateSellerProduct` (sparse PATCH), `deleteSellerProduct`, `submitSellerProductForReview` against the real `products.route.ts` surface (`/submit` → status 'pending'). |
+
 ## Live-app bug-fix wave (2026-08-29)
 
 | Area | What changed |

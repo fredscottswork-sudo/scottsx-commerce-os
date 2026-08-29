@@ -36,6 +36,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.ChatBubble
@@ -49,6 +52,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -91,6 +95,7 @@ import kotlinx.coroutines.async
 /** Destination of a sidebar nav item — opaque to the drawer. */
 enum class SidebarDestination {
     Home, Nearby, Deals, Ai, Wishlist, Cart, Orders, Messages, Notifications,
+    Payments, Addresses, Refunds, Support,
     SellerCenter, BecomeSeller, Settings, Theme, Logout, Profile,
     Transactions, Receipts, AiPersonalization,
 }
@@ -285,6 +290,10 @@ fun BuyerSidebarCard(
                     SidebarItem(SidebarDestination.Wishlist, "Wishlist", Icons.Filled.Favorite, wishlistCount),
                     SidebarItem(SidebarDestination.Cart, "Cart", Icons.Filled.ShoppingCart, cartCount),
                     SidebarItem(SidebarDestination.Orders, "My Orders", Icons.Filled.LocalShipping, ordersCount),
+                    SidebarItem(SidebarDestination.Payments, "Payments", Icons.Filled.AccountBalanceWallet, null),
+                    SidebarItem(SidebarDestination.Addresses, "Addresses", Icons.Filled.Place, null),
+                    SidebarItem(SidebarDestination.Refunds, "Refunds", Icons.Filled.Receipt, null),
+                    SidebarItem(SidebarDestination.Support, "Support", Icons.Filled.SupportAgent, null),
                     SidebarItem(SidebarDestination.Transactions, "My Transactions", Icons.Filled.SwapHoriz, null),
                     SidebarItem(SidebarDestination.Receipts, "My Receipts", Icons.Filled.ReceiptLong, null),
                     SidebarItem(SidebarDestination.AiPersonalization, "AI Personalization", Icons.Filled.SmartToy, null),

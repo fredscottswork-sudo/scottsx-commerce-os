@@ -114,6 +114,10 @@ fun BuyerHomeScreen(
     onNavigateToReceipts: () -> Unit = {},
     onNavigateToAiPersonalization: () -> Unit = {},
     onNavigateToMessages: () -> Unit = {},
+    onNavigateToPayments: () -> Unit = {},
+    onNavigateToAddresses: () -> Unit = {},
+    onNavigateToRefunds: () -> Unit = {},
+    onNavigateToSupport: () -> Unit = {},
     onNavigateToNotifications: () -> Unit = {},
     onNavigateToSellerCenter: () -> Unit = {},
     onNavigateToBecomeSeller: () -> Unit = {},
@@ -186,6 +190,10 @@ fun BuyerHomeScreen(
             SidebarDestination.Wishlist -> onNavigateToWishlist()
             SidebarDestination.Cart -> onNavigateToCart()
             SidebarDestination.Orders -> onNavigateToAllProducts()
+            SidebarDestination.Payments -> onNavigateToPayments()
+            SidebarDestination.Addresses -> onNavigateToAddresses()
+            SidebarDestination.Refunds -> onNavigateToRefunds()
+            SidebarDestination.Support -> onNavigateToSupport()
             SidebarDestination.Transactions -> onNavigateToTransactions()
             SidebarDestination.Receipts -> onNavigateToReceipts()
             SidebarDestination.AiPersonalization -> onNavigateToAiPersonalization()

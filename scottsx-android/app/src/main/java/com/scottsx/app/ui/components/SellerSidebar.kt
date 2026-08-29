@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LocalOffer
@@ -83,7 +84,7 @@ import com.scottsx.app.data.domain.SessionCache
 
 /** What a seller sidebar tap wants to do. */
 enum class SellerSidebarDestination {
-    Dashboard, Orders, Products, Customers, Messages, Promotions, Analytics,
+    Dashboard, Orders, Products, BulkImport, Customers, Messages, Promotions, Analytics,
     SellerAi, MarketingTools,
     StoreProfile, StoreSettings, Settings,
     SwitchToBuyer, Logout, ViewStore,
@@ -242,6 +243,7 @@ fun SellerSidebarCard(
                     SellerSidebarItem(SellerSidebarDestination.Receipts, "Receipts", Icons.Filled.Receipt, null),
                     SellerSidebarItem(SellerSidebarDestination.AiPersonalization, "AI Personalization", Icons.Filled.SmartToy, null),
                     SellerSidebarItem(SellerSidebarDestination.Products, "Products", Icons.Filled.Store, data.productsTotal),
+                    SellerSidebarItem(SellerSidebarDestination.BulkImport, "Bulk import", Icons.Filled.FileUpload, null),
                     SellerSidebarItem(SellerSidebarDestination.Customers, "Customers", Icons.Filled.Group, data.followers),
                     SellerSidebarItem(SellerSidebarDestination.Messages, "Messages", Icons.Filled.Message, data.unreadMessages),
                     SellerSidebarItem(SellerSidebarDestination.Promotions, "Promotions", Icons.Filled.LocalOffer, null),

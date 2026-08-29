@@ -1561,32 +1561,87 @@ object V2Client {
      * Create a new product owned by the caller. The caller must be a
      * seller (or admin). On success returns the new product's UUID.
      */
+    /**
+     * Create a listing. POST /api/v1/seller/products (the ONLY create
+     * endpoint the backend serves — the old "/api/v1/products/v2/create"
+     * path does not exist, which made every in-app Add-Product publish a
+     * guaranteed 404 masked by the toast). Returns the new product id; the
+     * row lands as 'pending' unless [asDraft] is set.
+     */
     suspend fun createProduct(
         title: String,
         priceMinor: Long,
         description: String? = null,
         currency: String = "UGX",
-        stock: Int = 0,
+        stock: Int = 1,
         category: String? = null,
+        brand: String? = null,
         imageUrl: String? = null,
+        mediaUrls: List<String>? = null,
+        oldPriceMinor: Long? = null,
+        location: String? = null,
+        isFlashDeal: Boolean = false,
+        discountPercent: Int = 0,
+        asDraft: Boolean = false,
         imageGsPath: String? = null,
         sku: String? = null,
     ): String? = apiCall(
         method = "POST",
-        path = "/api/v1/products/v2/create",
+        path = "/api/v1/seller/products",
         body = JSONObject().apply {
             put("title", title)
+            put("description", description ?: "")
+            put("category", category ?: "Other")
+            put("brand", brand ?: "")
             put("priceMinor", priceMinor)
-            if (description != null) put("description", description)
-            put("currency", currency)
-            put("stock", stock)
-            if (category != null) put("category", category)
-            if (imageUrl != null) put("imageUrl", imageUrl)
+            if (oldPriceMinor != null && oldPriceMinor > 0) put("oldPriceMinor", oldPriceMinor)
+            put("stockQuantity", stock)
+            put("imageUrl", imageUrl ?: mediaUrls?.firstOrNull() ?: "")
+            if (!mediaUrls.isNullOrEmpty()) put("mediaUrls", org.json.JSONArray(mediaUrls))
+            put("location", location ?: "")
+            put("isFlashDeal", isFlashDeal)
+            put("discountPercent", discountPercent)
+            put("asDraft", asDraft)
             if (imageGsPath != null) put("imageGsPath", imageGsPath)
             if (sku != null) put("sku", sku)
         },
-        parse = { o -> o.optString("id") },
+        parse = { o ->
+            o.optJSONObject("product")?.optString("id")?.ifBlank { null }
+                ?: o.optString("id").ifBlank { null }
+        },
     )
+
+    /**
+     * Partial update of an owned listing — PATCH /api/v1/seller/products/:id.
+     * Only the keys placed in [patch] are written (the backend's update
+     * schema intentionally has no defaults so partial stays partial).
+     * Content edits knock an 'approved' row back to the review queue.
+     */
+    suspend fun updateSellerProduct(id: String, patch: JSONObject): Boolean = apiCall(
+        method = "PATCH",
+        path = "/api/v1/seller/products/$id",
+        body = patch,
+        parse = { true },
+    ) ?: false
+
+    /** Delete an owned listing — DELETE /api/v1/seller/products/:id. */
+    suspend fun deleteSellerProduct(id: String): Boolean = apiCall(
+        method = "DELETE",
+        path = "/api/v1/seller/products/$id",
+        body = null,
+        parse = { true },
+    ) ?: false
+
+    /**
+     * Submit an owned draft for admin review — POST /api/v1/seller/products/:id/submit.
+     * Returns the backend's message (e.g. "submitted for review").
+     */
+    suspend fun submitSellerProductForReview(id: String): Boolean = apiCall(
+        method = "POST",
+        path = "/api/v1/seller/products/$id/submit",
+        body = null,
+        parse = { true },
+    ) ?: false
 
     // ----------------------------------------------------------------
     // Seller orders / listings / public storefront (live backend)

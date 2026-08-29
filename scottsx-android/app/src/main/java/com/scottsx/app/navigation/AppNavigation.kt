@@ -40,6 +40,8 @@ import com.scottsx.app.ui.screens.RoleSelectionScreen
 import com.scottsx.app.ui.screens.SearchScreen
 import com.scottsx.app.ui.screens.AddProductScreen
 import com.scottsx.app.ui.screens.MarketplaceToolsScreen
+import com.scottsx.app.ui.screens.SellerInventoryScreen
+import com.scottsx.app.ui.screens.BulkImportScreen
 import com.scottsx.app.ui.screens.MessageThreadScreen
 import com.scottsx.app.ui.screens.ProductDetailScreen
 import com.scottsx.app.ui.screens.ProfileSettingsScreen
@@ -371,6 +373,10 @@ fun AppNavigation() {
                 onNavigateToAiPersonalization = { navController.navigate(Routes.AI_PERSONALIZATION) },
                 onNavigateToMessages = { navController.navigate(Routes.MESSAGES) },
                 onNavigateToNotifications = { navController.navigate(Routes.NOTIFICATIONS) },
+                onNavigateToPayments = { navController.navigate(Routes.PAYMENT_METHODS) },
+                onNavigateToAddresses = { navController.navigate(Routes.ADDRESSES) },
+                onNavigateToRefunds = { navController.navigate(Routes.REFUNDS) },
+                onNavigateToSupport = { navController.navigate(Routes.HELP) },
                 onNavigateToSellerCenter = {
                     navController.navigate(Routes.SELLER_HOME +
                         "/${java.net.URLEncoder.encode(profile.displayName.ifBlank { "Seller" }, "UTF-8")}/" +
@@ -429,7 +435,8 @@ fun AppNavigation() {
                 email = email,
                 onAddProduct = { navController.navigate(Routes.SELLER_ADD_PRODUCT) },
                 onManageOrders = { navController.navigate(Routes.SELLER_ORDERS) },
-                onOpenInventory = { navController.navigate(Routes.SELLER_ORDERS) },
+                onOpenInventory = { navController.navigate(Routes.SELLER_INVENTORY) },
+                onOpenBulkImport = { navController.navigate(Routes.SELLER_BULK_IMPORT) },
                 onOpenAnalytics = { navController.navigate(Routes.SELLER_ANALYTICS) },
                 onOpenMarketplaceTools = { navController.navigate(Routes.SELLER_TOOLS) },
                 onOpenStoreSettings = { navController.navigate(Routes.SELLER_STORE_SETTINGS) },
@@ -690,6 +697,13 @@ fun AppNavigation() {
                 sellerTabSelect = { tab -> onSellerBarTab(navController, tab) },
             )
         }
+        composable(Routes.SELLER_INVENTORY) {
+            SellerInventoryScreen(
+                onBack = { navController.popBackStack() },
+                onAddProduct = { navController.navigate(Routes.SELLER_ADD_PRODUCT) },
+            )
+        }
+        composable(Routes.SELLER_BULK_IMPORT) { BulkImportScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.SELLER_TOOLS) {
             MarketplaceToolsScreen(onBack = { navController.popBackStack() })
         }
@@ -1108,6 +1122,8 @@ object Routes {
     const val SELLER_MESSAGES = "seller/messages"
     const val SELLER_ANALYTICS = "seller/analytics"
     const val SELLER_TOOLS = "seller/marketplace-tools"
+    const val SELLER_INVENTORY = "seller/inventory"
+    const val SELLER_BULK_IMPORT = "seller/bulk-import"
     const val SELLER_STORE_SETTINGS = "seller/store-settings"
     const val SELLER_STORE_SETTING_DETAIL = "seller/store-settings/{section}"
     const val SELLER_PROFILE_SETTINGS = "seller/profile-settings"
