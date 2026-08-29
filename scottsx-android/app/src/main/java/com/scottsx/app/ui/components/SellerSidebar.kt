@@ -505,13 +505,19 @@ private fun SellerProfileHeader(
 
 @Composable
 private fun StoreStatusPill(status: com.scottsx.app.data.domain.StoreStatus) {
+    // Theme-aware: solid pale pills on light, translucent glow pills on dark.
+    val light = ScottsTechXColors.isLightPalette
     val bg = when (status) {
-        com.scottsx.app.data.domain.StoreStatus.Online -> Color(0xFFDCFCE7)
-        com.scottsx.app.data.domain.StoreStatus.Away -> Color(0xFFFEF3C7)
+        com.scottsx.app.data.domain.StoreStatus.Online ->
+            if (light) Color(0xFFDCFCE7) else Color(0xFF16A34A).copy(alpha = 0.20f)
+        com.scottsx.app.data.domain.StoreStatus.Away ->
+            if (light) Color(0xFFFEF3C7) else Color(0xFFF59E0B).copy(alpha = 0.20f)
     }
     val fg = when (status) {
-        com.scottsx.app.data.domain.StoreStatus.Online -> Color(0xFF15803D)
-        com.scottsx.app.data.domain.StoreStatus.Away -> Color(0xFFB45309)
+        com.scottsx.app.data.domain.StoreStatus.Online ->
+            if (light) Color(0xFF15803D) else Color(0xFF4ADE80)
+        com.scottsx.app.data.domain.StoreStatus.Away ->
+            if (light) Color(0xFFB45309) else Color(0xFFFBBF24)
     }
     Row(
         modifier = Modifier
@@ -591,7 +597,7 @@ private fun SellerSidebarRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(accent?.copy(alpha = 0.10f) ?: Color.Transparent)
+                .background(accent?.copy(alpha = if (ScottsTechXColors.isLightPalette) 0.10f else 0.18f) ?: Color.Transparent)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -600,7 +606,7 @@ private fun SellerSidebarRow(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(accent?.copy(alpha = 0.25f) ?: ScottsTechXColors.PanelInputLight),
+                    .background(accent?.copy(alpha = if (ScottsTechXColors.isLightPalette) 0.25f else 0.35f) ?: ScottsTechXColors.PanelInputLight),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -719,12 +725,19 @@ private fun SellerThemeRow(
 
 @Composable
 private fun SellerLogOutRow(onClick: () -> Unit) {
+    // Theme-aware destructive row: pale red card on light, translucent
+    // red glow with a lighter red label on dark (the old hard-coded
+    // light-only colours read as a broken white patch on the dark panel).
+    val light = ScottsTechXColors.isLightPalette
+    val rowBg = if (light) Color(0xFFFEE2E2) else Color(0xFFEF4444).copy(alpha = 0.14f)
+    val chipBg = if (light) Color(0xFFFECACA) else Color(0xFFEF4444).copy(alpha = 0.22f)
+    val fg = if (light) Color(0xFFB91C1C) else Color(0xFFFCA5A5)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFFFEE2E2))
+            .background(rowBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -733,20 +746,20 @@ private fun SellerLogOutRow(onClick: () -> Unit) {
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFFECACA)),
+                .background(chipBg),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Filled.Logout,
                 contentDescription = null,
-                tint = Color(0xFFB91C1C),
+                tint = fg,
                 modifier = Modifier.size(18.dp),
             )
         }
         Spacer(Modifier.width(12.dp))
         Text(
             text = "Log Out",
-            color = Color(0xFFB91C1C),
+            color = fg,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
             modifier = Modifier.weight(1f),
@@ -754,7 +767,7 @@ private fun SellerLogOutRow(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
-            tint = Color(0xFFB91C1C),
+            tint = fg,
             modifier = Modifier.size(16.dp),
         )
     }

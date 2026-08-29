@@ -13,8 +13,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -69,21 +70,21 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * THE company-branded auth backdrop — every sign-in surface rides it:
+ * THE company-branded auth backdrop — mixed DARK + BLUE, matching the
+ * rest of the app (home, chat, dashboards are all dark navy + brand
+ * blue). Every sign-in surface rides it:
  * Login, Sign-Up, Forgot Password, Reset Password, Verification.
  *
  * Design language:
- *  - deep navy → brand blue gradient (exact company palette)
- *  - THREE slow-drifting glow orbs + a sweeping light beam so the
- *    background breathes (matches the dashboard vibe animations)
- *  - the transparent brand lockup up top — company identity is
- *    unmistakable before a single field renders
- *  - a floating white content card (rounded 32dp) that slides up +
- *    fades in, with staggered entrance for every field inside
+ *  - deep navy → brand blue gradient with three drifting glow orbs and
+ *    a sweeping light beam so the background breathes
+ *  - the transparent brand lockup up top, PLUS the company logo picture
+ *    + wordmark INSIDE the card — identity from two angles
+ *  - a floating DARK SLATE card (rounded 32dp) that slides up + fades
+ *    in; fields are dark with blue focus rings
  *  - role pill ("Buying"/"Selling") so the account lane is always clear
  *
- * Every colour is a fixed value — invisible-text bugs by missing theme
- * tokens are impossible by construction.
+ * Every colour is a fixed value — no theme-token surprises.
  */
 @Composable
 fun BrandedAuthScaffold(
@@ -122,9 +123,9 @@ fun BrandedAuthScaffold(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    0f to Color(0xFF0A1730),
-                    0.4f to ScottsTechXColors.BluePrimaryDark,
-                    1f to ScottsTechXColors.BluePrimary,
+                    0f to Color(0xFF071021),
+                    0.4f to Color(0xFF0A1830),
+                    1f to ScottsTechXColors.BluePrimaryDark,
                 ),
             )
             .statusBarsPadding()
@@ -146,7 +147,7 @@ fun BrandedAuthScaffold(
                 .align(Alignment.CenterStart)
                 .offset(x = (-80 + drift * 18).dp, y = (-40).dp)
                 .clip(CircleShape)
-                .background(Color(0xFF38BDF8).copy(alpha = 0.13f)),
+                .background(Color(0xFF38BDF8).copy(alpha = 0.14f)),
         )
         // Glow orb — bottom left
         Box(
@@ -155,7 +156,7 @@ fun BrandedAuthScaffold(
                 .align(Alignment.BottomStart)
                 .offset(x = (-90).dp, y = (70 - drift * 22).dp)
                 .clip(CircleShape)
-                .background(Color(0xFF93C5FD).copy(alpha = 0.12f)),
+                .background(Color(0xFF93C5FD).copy(alpha = 0.13f)),
         )
         // Light beam sweeping across the header area
         Box(
@@ -221,8 +222,8 @@ fun BrandedAuthScaffold(
                 .alpha(fadeIn.value),
         )
 
-        // White content card
-        Box(
+        // DARK content card — mixed dark + blue per the brand brief.
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -231,15 +232,56 @@ fun BrandedAuthScaffold(
                     alpha = fadeIn.value
                 }
                 .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
-                .background(Color.White)
-                .padding(horizontal = 24.dp, vertical = 26.dp),
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color(0xFF101E3A),
+                        1f to Color(0xFF0A1428),
+                    ),
+                )
+                .border(
+                    width = 1.dp,
+                    color = Color(0xFF22335C).copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                )
+                .padding(horizontal = 24.dp, vertical = 24.dp),
         ) {
+            // Company logo INSIDE the form card — picture + wordmark.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(ScottsTechXColors.BrandGradient),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.brand_mark),
+                        contentDescription = "ScottsTechX logo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(21.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.width(9.dp))
+                Text(
+                    text = "ScottsTechX",
+                    color = Color(0xFFEFF4FF),
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    letterSpacing = 0.3.sp,
+                )
+            }
             content()
         }
     }
 }
 
-/** Title + subtitle inside the white card. */
+/** Title + subtitle inside the dark card. */
 @Composable
 fun BrandedAuthHeader(title: String, sub: String) {
     Column {
@@ -247,14 +289,14 @@ fun BrandedAuthHeader(title: String, sub: String) {
             text = title,
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF0F172A),
+            color = Color(0xFFF3F7FF),
             letterSpacing = (-0.5).sp,
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = sub,
             fontSize = 14.sp,
-            color = Color(0xFF475569),
+            color = Color(0xFFA9B7D6),
             lineHeight = 20.sp,
         )
     }
@@ -268,13 +310,13 @@ fun AuthStatusSlot(message: String?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         CircularProgressIndicator(
             strokeWidth = 2.dp,
-            color = ScottsTechXColors.BluePrimary,
+            color = ScottsTechXColors.BluePrimaryLight,
             modifier = Modifier.size(15.dp),
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = message,
-            color = Color(0xFF475569),
+            color = Color(0xFFA9B7D6),
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
         )
@@ -299,8 +341,7 @@ private fun StaggerIn(index: Int, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-/** The company-styled text field — soft slate fill, brand-blue focus ring,
- * leading icon, 16dp corners. Used by every auth form. */
+/** The company-styled DARK field — deep navy fill, blue focus ring. */
 @Composable
 fun StyledAuthField(
     value: String,
@@ -320,7 +361,9 @@ fun StyledAuthField(
             value = value,
             onValueChange = onValueChange,
             label = { Text(label, fontSize = 13.sp) },
-            placeholder = if (placeholder.isBlank()) null else ({ Text(placeholder, color = Color(0xFF94A3B8), fontSize = 14.sp) }),
+            placeholder = if (placeholder.isBlank()) null else ({
+                Text(placeholder, color = Color(0xFF5F7099), fontSize = 14.sp)
+            }),
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -335,13 +378,20 @@ fun StyledAuthField(
                 onGo = { onImeAction?.invoke() },
             ),
             leadingIcon = leadingIcon?.let { icon ->
-                { Icon(icon, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(20.dp)) }
+                {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = Color(0xFF7C8DB0),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             },
             trailingIcon = if (isPassword) ({
                 Icon(
                     imageVector = if (hidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                     contentDescription = if (hidden) "Show password" else "Hide password",
-                    tint = Color(0xFF94A3B8),
+                    tint = Color(0xFF7C8DB0),
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
@@ -350,15 +400,15 @@ fun StyledAuthField(
                 )
             }) else null,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = ScottsTechXColors.BluePrimary,
-                unfocusedBorderColor = Color(0xFFE2E8F0),
-                focusedContainerColor = Color(0xFFF8FAFF),
-                unfocusedContainerColor = Color(0xFFF6F8FC),
-                cursorColor = ScottsTechXColors.BluePrimary,
-                focusedTextColor = Color(0xFF0F172A),
-                unfocusedTextColor = Color(0xFF0F172A),
-                focusedLabelColor = ScottsTechXColors.BluePrimary,
-                unfocusedLabelColor = Color(0xFF64748B),
+                focusedBorderColor = ScottsTechXColors.BluePrimaryLight,
+                unfocusedBorderColor = Color(0xFF22335C),
+                focusedContainerColor = Color(0xFF14254A),
+                unfocusedContainerColor = Color(0xFF111F3B),
+                cursorColor = ScottsTechXColors.BluePrimaryLight,
+                focusedTextColor = Color(0xFFF3F7FF),
+                unfocusedTextColor = Color(0xFFF3F7FF),
+                focusedLabelColor = ScottsTechXColors.BluePrimaryLight,
+                unfocusedLabelColor = Color(0xFF8FA3CC),
             ),
         )
     }
@@ -386,7 +436,7 @@ fun PasswordField(
     index = index,
 )
 
-/** "───── or continue with ─────" divider. */
+/** "───── or continue with ─────" divider (dark skin). */
 @Composable
 fun AuthDivider(text: String, index: Int = 0) {
     StaggerIn(index = index) {
@@ -400,11 +450,11 @@ fun AuthDivider(text: String, index: Int = 0) {
                 modifier = Modifier
                     .weight(1f)
                     .height(1.dp)
-                    .background(Color(0xFFE2E8F0)),
+                    .background(Color(0xFF22335C)),
             )
             Text(
                 text = text,
-                color = Color(0xFF94A3B8),
+                color = Color(0xFF7C8DB0),
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
@@ -412,13 +462,13 @@ fun AuthDivider(text: String, index: Int = 0) {
                 modifier = Modifier
                     .weight(1f)
                     .height(1.dp)
-                    .background(Color(0xFFE2E8F0)),
+                    .background(Color(0xFF22335C)),
             )
         }
     }
 }
 
-/** The big brand-blue primary CTA with a subtle press-in feel. */
+/** The big brand-blue primary CTA. */
 @Composable
 fun PrimaryCtaButton(
     label: String,
@@ -437,7 +487,7 @@ fun PrimaryCtaButton(
                     if (enabled) Brush.horizontalGradient(
                         listOf(ScottsTechXColors.BluePrimaryDark, ScottsTechXColors.BluePrimary),
                     ) else Brush.horizontalGradient(
-                        listOf(Color(0xFF94A3B8), Color(0xFF94A3B8)),
+                        listOf(Color(0xFF3B4A6B), Color(0xFF3B4A6B)),
                     ),
                 )
                 .clickable(enabled = enabled && !loading, onClick = onClick),
@@ -462,7 +512,7 @@ fun PrimaryCtaButton(
     }
 }
 
-/** THE Google button — white, authentic 4-colour G, bordered. */
+/** THE Google button — white, authentic 4-colour G (legible on navy). */
 @Composable
 fun GoogleAuthButton(
     label: String,
@@ -507,14 +557,14 @@ fun GoogleAuthButton(
     }
 }
 
-/** Error text slot (red, centred). */
+/** Error text slot (soft red — readable on navy). */
 @Composable
 fun AuthErrorSlot(message: String?) {
     if (message == null) return
     Spacer(modifier = Modifier.height(10.dp))
     Text(
         text = message,
-        color = Color(0xFFB91C1C),
+        color = Color(0xFFFCA5A5),
         fontSize = 13.sp,
         fontWeight = FontWeight.Medium,
         textAlign = TextAlign.Center,
@@ -522,7 +572,7 @@ fun AuthErrorSlot(message: String?) {
     )
 }
 
-/** Footer "question — link" row. */
+/** Footer "question — link" row (dark skin). */
 @Composable
 fun BrandedFooterLink(text: String, linkText: String, onClick: () -> Unit) {
     Spacer(modifier = Modifier.height(16.dp))
@@ -532,7 +582,7 @@ fun BrandedFooterLink(text: String, linkText: String, onClick: () -> Unit) {
     ) {
         Text(
             text = "$text ",
-            color = Color(0xFF64748B),
+            color = Color(0xFF8FA3CC),
             fontSize = 13.sp,
         )
         Text(

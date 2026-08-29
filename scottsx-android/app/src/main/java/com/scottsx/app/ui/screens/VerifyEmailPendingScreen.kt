@@ -139,7 +139,7 @@ fun VerifyEmailPendingScreen(
                     modifier = Modifier
                         .size(66.dp)
                         .clip(CircleShape)
-                        .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.12f)),
+                        .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.18f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -184,19 +184,19 @@ fun VerifyEmailPendingScreen(
                                     .size(width = 46.dp, height = 56.dp)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(
-                                        if (active) Color(0xFFF0F6FF) else Color(0xFFF6F8FC),
+                                        if (active) Color(0xFF14254A) else Color(0xFF111F3B),
                                     )
                                     .border(
                                         width = if (active) 2.dp else 1.dp,
-                                        color = if (active) ScottsTechXColors.BluePrimary
-                                        else Color(0xFFE2E8F0),
+                                        color = if (active) ScottsTechXColors.BluePrimaryLight
+                                        else Color(0xFF22335C),
                                         shape = RoundedCornerShape(14.dp),
                                     ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     text = ch?.toString() ?: "",
-                                    color = Color(0xFF0F172A),
+                                    color = Color(0xFFF3F7FF),
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                 )

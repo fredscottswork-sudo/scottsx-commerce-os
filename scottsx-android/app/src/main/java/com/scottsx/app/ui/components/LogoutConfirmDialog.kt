@@ -42,20 +42,26 @@ fun LogoutConfirmDialog(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    // Theme-aware destructive palette (light-only hard-codes read as a
+    // broken white patch on the dark sheet otherwise).
+    val light = ScottsTechXColors.isLightPalette
+    val destructiveBg = if (light) Color(0xFFFEE2E2) else Color(0xFFEF4444).copy(alpha = 0.18f)
+    val destructiveBg2 = if (light) Color(0xFFFECACA) else Color(0xFFEF4444).copy(alpha = 0.26f)
+    val destructiveFg = if (light) Color(0xFFB91C1C) else Color(0xFFFCA5A5)
     AlertDialog(
         onDismissRequest = onCancel,
         confirmButton = {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color(0xFFFEE2E2))
+                    .background(destructiveBg)
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     imageVector = Icons.Filled.Logout,
                     contentDescription = null,
-                    tint = Color(0xFFB91C1C),
+                    tint = destructiveFg,
                     modifier = Modifier
                         .padding(start = 6.dp)
                         .height(20.dp),
@@ -64,7 +70,7 @@ fun LogoutConfirmDialog(
                 TextButton(onClick = onConfirm) {
                     Text(
                         text = "Log Out",
-                        color = Color(0xFFB91C1C),
+                        color = destructiveFg,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                     )
@@ -85,13 +91,13 @@ fun LogoutConfirmDialog(
             Icon(
                 imageVector = Icons.Filled.Logout,
                 contentDescription = null,
-                tint = Color(0xFFB91C1C),
+                tint = destructiveFg,
                 modifier = Modifier
                     .background(
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                Color(0xFFFEE2E2),
-                                Color(0xFFFECACA),
+                                destructiveBg2,
+                                destructiveBg,
                             ),
                         ),
                     )

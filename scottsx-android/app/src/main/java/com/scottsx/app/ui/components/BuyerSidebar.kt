@@ -626,12 +626,18 @@ private fun FeaturedDot(featured: FeaturedKind) {
 
 @Composable
 private fun LogOutRow(onClick: () -> Unit) {
+    // Theme-aware destructive row (same fix as the seller sidebar):
+    // pale red card on light, translucent red glow + lighter label on dark.
+    val light = ScottsTechXColors.isLightPalette
+    val rowBg = if (light) Color(0xFFFEE2E2) else Color(0xFFEF4444).copy(alpha = 0.14f)
+    val chipBg = if (light) Color(0xFFFECACA) else Color(0xFFEF4444).copy(alpha = 0.22f)
+    val fg = if (light) Color(0xFFB91C1C) else Color(0xFFFCA5A5)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFFFEE2E2))
+            .background(rowBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -640,20 +646,20 @@ private fun LogOutRow(onClick: () -> Unit) {
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFFECACA)),
+                .background(chipBg),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Filled.Logout,
                 contentDescription = null,
-                tint = Color(0xFFB91C1C),
+                tint = fg,
                 modifier = Modifier.size(18.dp),
             )
         }
         Spacer(Modifier.width(12.dp))
         Text(
             text = "Log Out",
-            color = Color(0xFFB91C1C),
+            color = fg,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
             modifier = Modifier.weight(1f),
@@ -661,7 +667,7 @@ private fun LogOutRow(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
-            tint = Color(0xFFB91C1C),
+            tint = fg,
             modifier = Modifier.size(16.dp),
         )
     }

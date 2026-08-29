@@ -63,7 +63,12 @@ fun SavedProductsScreen(onBack: () -> Unit, onOpenProduct: (String) -> Unit = {}
                         AsyncImage(
                             model = p.optString("imageUrl"),
                             contentDescription = null,
-                            modifier = Modifier.size(54.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE5E7EB)),
+                            modifier = Modifier.size(54.dp).clip(RoundedCornerShape(8.dp)).background(
+                                // Theme-aware placeholder: pale gray on light,
+                                // deep blue-slate on the dark card.
+                                if (ScottsTechXColors.isLightPalette) Color(0xFFE5E7EB)
+                                else ScottsTechXColors.PanelInputLight,
+                            )),
                         )
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {

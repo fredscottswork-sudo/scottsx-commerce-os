@@ -141,7 +141,14 @@ object ScottsTechXColors {
      *
      * Called from ThemePreference.set().
      */
+    /** True while the palette is re-skinned for LIGHT mode — lets widgets
+     *  with semantic accents (status pills, destructive rows) pick
+     *  theme-aware variants instead of hardcoded light-only colours. */
+    @Volatile var isLightPalette: Boolean = false
+        private set
+
     fun applyThemePalette(isLight: Boolean) {
+        isLightPalette = isLight
         if (isLight) {
             PanelLight = Color(0xFFFFFFFF)        // web --surface (light)
             BackgroundLight = Color(0xFFF5F7FC)   // web --bg (light)

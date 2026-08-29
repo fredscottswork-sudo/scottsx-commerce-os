@@ -1,5 +1,6 @@
 package com.scottsx.app.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,14 +15,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,11 +54,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.scottsx.app.R
 import com.scottsx.app.data.CartStore
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.domain.BuyerProfile
@@ -192,9 +198,6 @@ fun BuyerHomeScreen(
                 .take(10)
         }
     }
-    val topDeal by remember(products) {
-        derivedStateOf { flashDeals.maxByOrNull { it.discountPercent } }
-    }
 
     // ---- Chrome state ------------------------------------------------------
     var selectedCategory by remember { mutableStateOf(ProductCategory.All) }
@@ -303,11 +306,13 @@ fun BuyerHomeScreen(
                             .background(ScottsTechXColors.BrandGradient),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = "S",
-                            color = Color.White,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 16.sp,
+                        // The COMPANY LOGO picture — brand identification,
+                        // always the first thing on screen.
+                        Image(
+                            painter = painterResource(R.drawable.brand_mark),
+                            contentDescription = "ScottsTechX logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                     Spacer(Modifier.width(9.dp))
@@ -488,13 +493,15 @@ fun BuyerHomeScreen(
                             )
                         }
                     } else {
-                        // 3. Hero — the biggest real flash deal right now
+                        // 3. Hero — ROTATING flash-deal showcase: every
+                        //    live deal takes the stage in turn, sliding in
+                        //    with the app signature motion (auto-advance
+                        //    every 5s + any manual tap to switch).
                         item {
                             Reveal(index = 1) {
                                 HeroSpotlight(
-                                    deal = topDeal,
-                                    totalDeals = flashDeals.size,
-                                    onOpenDeal = { topDeal?.let(onOpenProduct) },
+                                    deals = flashDeals,
+                                    onOpenDeal = onOpenProduct,
                                     onBrowse = onNavigateToAllProducts,
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                 )
@@ -555,16 +562,22 @@ fun BuyerHomeScreen(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
-                                    items(flashDeals, key = { it.id }) { product ->
-                                        ProductCard(
-                                            product = product,
-                                            onClick = { onOpenProduct(product) },
-                                            onAddToCart = { CartStore.add(product.id) },
-                                            wished = product.id in wishlistIds,
-                                            // Each tap persists through the
-                                            // backend saved-products endpoints.
-                                            onToggleWishlist = { com.scottsx.app.data.WishlistStore.toggleBookmark(product.id) },
-                                        )
+                                    items(flashDeals.size, key = { flashDeals[it].id }) { i ->
+                                        val product = flashDeals[i]
+                                        // Cards cascade in as the row scrolls;
+                                        // the stagger index keeps motion
+                                        // cheap for far-off items.
+                                        Reveal(index = i.coerceAtMost(6)) {
+                                            ProductCard(
+                                                product = product,
+                                                onClick = { onOpenProduct(product) },
+                                                onAddToCart = { CartStore.add(product.id) },
+                                                wished = product.id in wishlistIds,
+                                                // Each tap persists through the
+                                                // backend saved-products endpoints.
+                                                onToggleWishlist = { com.scottsx.app.data.WishlistStore.toggleBookmark(product.id) },
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -836,88 +849,197 @@ private fun HeaderBadge(
 }
 
 /**
- * Hero — spotlights the best real flash deal in the feed. The artwork
- * is the actual product photo; the chip carries its real discount.
- * With no flash deal in the catalogue the hero degrades to a brand
- * strip offering the full catalogue — never a fake promotion.
+ * Hero — ROTATING flash-deal showcase. Every live deal takes the stage
+ * in turn: the current slide slips out to the left while the next one
+ * rises in from the right (the app's signature slide+fade), each with
+ * its REAL photo, discount chip and per-slide pulse strip so the user
+ * can see exactly which deal is on. Auto-advances every 5 s; tapping a
+ * dot jumps straight to that deal. With zero live deals the hero
+ * degrades to the static brand strip — never a fake promotion.
  */
 @Composable
 private fun HeroSpotlight(
-    deal: Product?,
-    totalDeals: Int,
-    onOpenDeal: () -> Unit,
+    deals: List<Product>,
+    onOpenDeal: (Product) -> Unit,
     onBrowse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (deals.isEmpty()) {
+        // Static brand fallback (no fake promotion, ever).
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(ScottsTechXColors.BrandGradient)
+                .clickable { onBrowse() },
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(18.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PulsingDot(color = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "LIVE MARKETPLACE",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.4.sp,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Real listings from\nUgandan sellers",
+                    color = Color.White,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    lineHeight = 24.sp,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Kampala  ·  Entebbe  ·  Jinja",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                )
+            }
+        }
+        return
+    }
+
+    val stage = deals.take(8)
+    var index by remember { mutableIntStateOf(0) }
+
+    // Auto-rotation — recycles through every live deal.
+    LaunchedEffect(stage.size) {
+        while (stage.size > 1) {
+            kotlinx.coroutines.delay(5000)
+            index = (index + 1) % stage.size
+        }
+    }
+
+    val active = stage[index.coerceIn(0, stage.lastIndex)]
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (deal != null) 190.dp else 120.dp)
+            .height(190.dp)
             .clip(RoundedCornerShape(22.dp))
             .background(ScottsTechXColors.BrandGradient)
-            .clickable { if (deal != null) onOpenDeal() else onBrowse() },
+            .clickable { onOpenDeal(active) },
     ) {
-        if (deal != null) {
-            AsyncImage(
-                model = deal.imageUrl,
-                contentDescription = deal.name,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .width(180.dp)
-                    .height(190.dp),
-                contentScale = ContentScale.Crop,
-            )
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(Color(0x6605070D)),
-            )
-        }
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(18.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PulsingDot(color = Color.White)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = if (deal != null) "$totalDeals FLASH DEALS LIVE" else "LIVE MARKETPLACE",
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.4.sp,
+        // The stage: slide+fade between deals.
+        androidx.compose.animation.AnimatedContent(
+            targetState = active,
+            transitionSpec = {
+                (androidx.compose.animation.slideInHorizontally(
+                    animationSpec = tween(520, easing = androidx.compose.animation.core.EaseOutCubic),
+                ) { it } + androidx.compose.animation.fadeIn(tween(520))) togetherWith
+                    (androidx.compose.animation.slideOutHorizontally(
+                        animationSpec = tween(420, easing = androidx.compose.animation.core.EaseInCubic),
+                    ) { -it / 2 } + androidx.compose.animation.fadeOut(tween(420)))
+            },
+            label = "hero-deal-rotation",
+            modifier = Modifier.matchParentSize(),
+        ) { deal ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                AsyncImage(
+                    model = deal.imageUrl,
+                    contentDescription = deal.name,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .width(180.dp)
+                        .height(190.dp),
+                    contentScale = ContentScale.Crop,
                 )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = deal?.name ?: "Real listings from\nUgandan sellers",
-                color = Color.White,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.ExtraBold,
-                lineHeight = 24.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = deal?.seller?.name ?: "Kampala  ·  Entebbe  ·  Jinja",
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 12.sp,
-            )
-            if (deal != null && deal.discountPercent > 0) {
-                Spacer(Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(ScottsTechXColors.CardSurface)
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                        .matchParentSize()
+                        .background(Color(0x6605070D)),
+                )
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(18.dp),
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PulsingDot(color = Color.White)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "${stage.size} FLASH DEALS LIVE",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.4.sp,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "-${deal.discountPercent}% today",
-                        color = ScottsTechXColors.BluePrimaryDark,
-                        fontSize = 12.sp,
+                        text = deal.name,
+                        color = Color.White,
+                        fontSize = 19.sp,
                         fontWeight = FontWeight.ExtraBold,
+                        lineHeight = 24.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 200.dp),
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = deal.seller?.name ?: "",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (deal.discountPercent > 0) {
+                        Spacer(Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.White)
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                        ) {
+                            Text(
+                                text = "-${deal.discountPercent}% today",
+                                color = ScottsTechXColors.BluePrimaryDark,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Progress dots — tap to jump to that deal.
+        if (stage.size > 1) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 18.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                stage.forEachIndexed { i, d ->
+                    val selected = i == index
+                    val w by animateFloatAsState(
+                        targetValue = if (selected) 18f else 6f,
+                        animationSpec = tween(300),
+                        label = "hero-dot-w",
+                    )
+                    Box(
+                        modifier = Modifier
+                            .height(6.dp)
+                            .width(w.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (selected) Color.White
+                                else Color.White.copy(alpha = 0.45f),
+                            )
+                            .clickable { index = i },
                     )
                 }
             }

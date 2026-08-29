@@ -21,6 +21,19 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.ChairAlt
+import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Grass
+import androidx.compose.material.icons.filled.Kitchen
+import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.Checkroom
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.DirectionsRun
@@ -239,11 +252,25 @@ fun CategoriesScreen(
 private fun iconFor(c: ProductCategory): ImageVector = when (c) {
     ProductCategory.All -> Icons.Filled.LocalGroceryStore
     ProductCategory.Electronics -> Icons.Filled.Devices
+    ProductCategory.PhonesTablets -> Icons.Filled.Smartphone
+    ProductCategory.Computers -> Icons.Filled.Computer
+    ProductCategory.TvAudio -> Icons.Filled.Tv
     ProductCategory.Fashion -> Icons.Filled.Checkroom
     ProductCategory.HomeLiving -> Icons.Filled.Home
+    ProductCategory.Appliances -> Icons.Filled.Kitchen
+    ProductCategory.Furniture -> Icons.Filled.ChairAlt
     ProductCategory.Beauty -> Icons.Filled.Spa
+    ProductCategory.Health -> Icons.Filled.LocalHospital
     ProductCategory.Sports -> Icons.Filled.DirectionsRun
+    ProductCategory.Gaming -> Icons.Filled.SportsEsports
     ProductCategory.Groceries -> Icons.Filled.LocalGroceryStore
+    ProductCategory.BabyKids -> Icons.Filled.ChildCare
+    ProductCategory.Books -> Icons.Filled.MenuBook
+    ProductCategory.Office -> Icons.Filled.Work
+    ProductCategory.Pets -> Icons.Filled.Pets
     ProductCategory.Automotive -> Icons.Filled.DirectionsCar
+    ProductCategory.Agriculture -> Icons.Filled.Grass
+    ProductCategory.ArtCrafts -> Icons.Filled.Brush
+    ProductCategory.Services -> Icons.Filled.Build
     ProductCategory.More -> Icons.Filled.Home
 }

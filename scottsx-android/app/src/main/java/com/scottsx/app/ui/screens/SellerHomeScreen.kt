@@ -1,6 +1,7 @@
 package com.scottsx.app.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -53,12 +54,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.scottsx.app.R
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.SellerDashboardData
 import com.scottsx.app.data.domain.SellerStats
@@ -292,11 +296,13 @@ fun SellerHomeScreen(
                             .background(ScottsTechXColors.BrandGradient),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = "S",
-                            color = Color.White,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 16.sp,
+                        // The COMPANY LOGO picture — brand identification,
+                        // always the first thing on screen.
+                        Image(
+                            painter = painterResource(R.drawable.brand_mark),
+                            contentDescription = "ScottsTechX logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                     Spacer(Modifier.width(9.dp))

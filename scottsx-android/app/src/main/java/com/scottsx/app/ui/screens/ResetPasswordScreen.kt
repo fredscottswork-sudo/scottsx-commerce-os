@@ -151,7 +151,7 @@ fun ResetPasswordScreen(
                         modifier = Modifier
                             .size(64.dp)
                             .clip(CircleShape)
-                            .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.12f)),
+                            .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.18f)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -230,7 +230,7 @@ fun ResetPasswordScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "The two passwords do not match.",
-                            color = Color(0xFFB91C1C),
+                            color = Color(0xFFFCA5A5),
                             fontSize = 12.sp,
                         )
                     }

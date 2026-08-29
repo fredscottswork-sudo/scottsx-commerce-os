@@ -27,12 +27,26 @@ enum class Role(val displayName: String, val tagline: String) {
 enum class ProductCategory(val displayName: String, val icon: String) {
     All("All", "all"),
     Electronics("Electronics", "electronics"),
+    PhonesTablets("Phones & Tablets", "phones"),
+    Computers("Computers", "computers"),
+    TvAudio("TV & Audio", "tv"),
     Fashion("Fashion", "fashion"),
     HomeLiving("Home & Living", "home"),
+    Appliances("Appliances", "appliances"),
+    Furniture("Furniture", "furniture"),
     Beauty("Beauty", "beauty"),
+    Health("Health", "health"),
     Sports("Sports", "sports"),
+    Gaming("Gaming", "gaming"),
     Groceries("Groceries", "groceries"),
+    BabyKids("Baby & Kids", "baby"),
+    Books("Books", "books"),
+    Office("Office", "office"),
+    Pets("Pets", "pets"),
     Automotive("Automotive", "auto"),
+    Agriculture("Agriculture", "agriculture"),
+    ArtCrafts("Art & Crafts", "art"),
+    Services("Services", "services"),
     More("More", "more");
 
     companion object {
@@ -44,9 +58,24 @@ enum class ProductCategory(val displayName: String, val icon: String) {
             values().firstOrNull { it.name.equals(s, true) || it.displayName.equals(s, true) }?.let { return it }
             return when (s.lowercase()) {
                 "home", "home & living", "home &living", "home&living", "home and living" -> HomeLiving
+                "phone", "phones", "smartphone", "smartphones", "tablet", "tablets",
+                "phones & tablets", "phones and tablets", "mobile" -> PhonesTablets
+                "computer", "laptop", "laptops", "desktop", "computing" -> Computers
+                "tv", "television", "audio", "sound", "speakers", "tv & audio" -> TvAudio
                 "footwear", "shoes", "sneakers" -> Sports
                 "grocery", "groceries", "food" -> Groceries
-                "car", "cars", "vehicle", "vehicles", "auto" -> Automotive
+                "car", "cars", "vehicle", "vehicles", "auto", "motorbike", "boda" -> Automotive
+                "appliance", "kitchen appliance", "kitchen appliances", "fridge", "cooker" -> Appliances
+                "furnishing", "sofa", "bed", "chair" -> Furniture
+                "wellness", "pharmacy", "medical" -> Health
+                "games", "consoles", "playstation", "xbox" -> Gaming
+                "baby", "kids", "children", "toys", "baby & kids" -> BabyKids
+                "book", "stationery", "novel" -> Books
+                "stationery office", "office supplies" -> Office
+                "pet", "dog", "cat" -> Pets
+                "farm", "produce", "seeds" -> Agriculture
+                "handmade", "craft", "crafts", "art & crafts" -> ArtCrafts
+                "service", "repair" -> Services
                 else -> null
             }
         }
