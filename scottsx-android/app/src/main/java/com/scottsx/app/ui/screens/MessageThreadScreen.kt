@@ -130,7 +130,7 @@ fun MessageThreadScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(24.dp),
                     ) {
-                        Text(loadError ?: "", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
+                        Text(loadError ?: "", color = ScottsTechXColors.OnPanelSecondary, fontSize = 13.sp)
                         Spacer(Modifier.height(12.dp))
                         Text(
                             "Back to messages",
