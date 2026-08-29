@@ -29,6 +29,22 @@ class ScottsTechXApp : Application(), ImageLoaderFactory {
         // calling it explicitly avoids any race when the first composable
         // asks for Firebase auth immediately on first frame.
         FirebaseApp.initializeApp(this)
+        // Push-notification wiring: on every sign-in (password, Google,
+        // cold start restore) register the FCM device token with the
+        // backend so phone notifications actually reach this device,
+        // and on every FRESH sign-in post the local "You're signed in"
+        // phone notification. Without these hooks the device never
+        // registered and no notification ever fired.
+        SessionCache.onSessionChanged = { signedIn ->
+            if (signedIn) com.scottsx.app.data.push.ScottsMessagingService.registerCurrentToken(this)
+        }
+        SessionCache.onFreshSignIn = { user ->
+            com.scottsx.app.data.push.ScottsMessagingService.notifySignedIn(this, user.displayName)
+        }
+        // "When new messages come in I am notified": while the app is
+        // in the foreground, poll the conversation list and post a
+        // phone notification whenever an inbound message arrives.
+        com.scottsx.app.data.ChatWatcher.start(this)
     }
 
     /**

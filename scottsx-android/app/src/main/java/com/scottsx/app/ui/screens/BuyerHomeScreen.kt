@@ -658,16 +658,6 @@ fun BuyerHomeScreen(
             item { Spacer(Modifier.height(8.dp)) }
         }
 
-        // Sidebar overlay
-        BuyerSidebarOverlay(
-            open = sidebarOpen,
-            onDismiss = { sidebarOpen = false },
-            profile = profile,
-            cartCount = cartCount,
-            wishlistCount = 0,
-            onNavigate = onSidebarNav,
-        )
-
         // Floating bottom nav
         Box(
             modifier = Modifier
@@ -683,6 +673,18 @@ fun BuyerHomeScreen(
                 },
             )
         }
+
+        // Sidebar overlay — drawn AFTER the bottom nav so the drawer (and
+        // its sticky Log-out button) sits on top of the floating bar;
+        // before, the bar covered the logout row and swallowed its taps.
+        BuyerSidebarOverlay(
+            open = sidebarOpen,
+            onDismiss = { sidebarOpen = false },
+            profile = profile,
+            cartCount = cartCount,
+            wishlistCount = 0,
+            onNavigate = onSidebarNav,
+        )
 
         if (themeSheetOpen) {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

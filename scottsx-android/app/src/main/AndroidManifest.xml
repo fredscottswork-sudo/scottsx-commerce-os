@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Android 13+: without this every push notification is silently
+         dropped — including message alerts and the welcome ping. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".ScottsTechXApp"
@@ -15,10 +18,22 @@
         android:theme="@style/Theme.ScottsTechX"
         android:largeHeap="true">
 
+        <!-- Firebase Cloud Messaging receiver. Without this entry the
+             service class exists but the system NEVER delivers pushes
+             to it, so "message arrived" notifications did not work. -->
+        <service
+            android:name=".data.push.ScottsMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.ScottsTechX">
+            android:theme="@style/Theme.ScottsTechX"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

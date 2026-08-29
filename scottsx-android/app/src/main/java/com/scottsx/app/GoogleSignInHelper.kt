@@ -88,6 +88,12 @@ object GoogleSignInHelper {
     /**
      * Exchange a Google idToken for a ScottsTechX session.
      * Returns true when the session was stored in SessionCache.
+     *
+     * Writes into BOTH session stores: the root SessionCache (user
+     * profile) and the network-session mirror (bearer JWT + role/userId
+     * for V2Client + AI tooling + chat attribution). Without the mirror
+     * write, every authenticated API call used to go out unauthenticated
+     * (401 → "dashboard shows nothing", "messaging doesn't work").
      */
     suspend fun exchange(idToken: String): Boolean {
         val result = V2Client.signInWithGoogle(idToken) ?: return false
@@ -103,6 +109,17 @@ object GoogleSignInHelper {
                 profilePhotoUrl = result.user.profilePhotoUrl,
                 city = result.user.city,
             ),
+            announce = true,
+        )
+        com.scottsx.app.data.Session.adoptSession(
+            token = result.token,
+            userId = result.user.id,
+            role = if (result.user.role.equals("seller", true)) com.scottsx.app.data.domain.Role.SELLER
+                  else com.scottsx.app.data.domain.Role.BUYER,
+            displayName = result.user.displayName,
+            email = result.user.email,
+            avatarUrl = result.user.profilePhotoUrl,
+            storeLocation = result.user.city,
         )
         return true
     }

@@ -207,31 +207,64 @@ object V2Client {
             method = "POST",
             path = "/api/v1/auth/google",
             body = JSONObject().put("idToken", idToken),
-            parse = { o ->
-                val token = o.optString("token")
-                val u = o.optJSONObject("user")
-                if (token.isBlank() || u == null) {
-                    null
-                } else {
-                    GoogleSignInResult(
-                        token = token,
-                        user = GoogleUser(
-                            id = u.optString("id"),
-                            email = u.optString("email"),
-                            displayName = u.optString("displayName"),
-                            phone = u.optString("phone"),
-                            role = u.optString("role", "buyer"),
-                            emailVerified = u.optBoolean("emailVerified", false),
-                            // org.json can yield the literal "null" for a JSON
-                            // null — guard both that and the empty string.
-                            profilePhotoUrl = u.optString("profilePhotoUrl")
-                                .takeIf { it.isNotBlank() && it != "null" },
-                            city = u.optString("city"),
-                        ),
-                    )
-                }
-            },
+            parse = { o -> parseGoogleSignInResult(o) },
         )
+
+    /**
+     * Exchange a FIREBASE ID token (from `FirebaseUser.getIdToken`) for a
+     * ScottsTechX session via POST /api/v1/auth/firebase/sign-in.
+     *
+     * This is the bridge every sign-in path uses after Firebase Auth
+     * succeeds — email/password, Google-via-Firebase, and cold-start
+     * session restore — so the app ALWAYS holds a valid backend JWT and
+     * every /api/v1 call goes out authenticated. Without this exchange
+     * the bearer token was null and every authenticated feature
+     * (dashboard, messaging, notifications, receipts) silently 401'd.
+     *
+     * The optional profile fields are only applied when the backend
+     * creates the user row for the first time; later calls cannot
+     * overwrite an existing profile.
+     */
+    suspend fun signInWithFirebase(
+        idToken: String,
+        displayName: String? = null,
+        phone: String? = null,
+        role: String? = null,
+        storeName: String? = null,
+    ): GoogleSignInResult? =
+        apiCall<GoogleSignInResult?>(
+            method = "POST",
+            path = "/api/v1/auth/firebase/sign-in",
+            body = JSONObject()
+                .put("idToken", idToken)
+                .put("displayName", displayName?.takeIf { it.isNotBlank() })
+                .put("phone", phone?.takeIf { it.isNotBlank() })
+                .put("role", role?.takeIf { it == "buyer" || it == "seller" })
+                .put("storeName", storeName?.takeIf { it.isNotBlank() }),
+            parse = { o -> parseGoogleSignInResult(o) },
+        )
+
+    private fun parseGoogleSignInResult(o: JSONObject): GoogleSignInResult? {
+        val token = o.optString("token")
+        val u = o.optJSONObject("user")
+        if (token.isBlank() || u == null) return null
+        return GoogleSignInResult(
+            token = token,
+            user = GoogleUser(
+                id = u.optString("id"),
+                email = u.optString("email"),
+                displayName = u.optString("displayName"),
+                phone = u.optString("phone"),
+                role = u.optString("role", "buyer"),
+                emailVerified = u.optBoolean("emailVerified", false),
+                // org.json can yield the literal "null" for a JSON
+                // null — guard both that and the empty string.
+                profilePhotoUrl = u.optString("profilePhotoUrl")
+                    .takeIf { it.isNotBlank() && it != "null" },
+                city = u.optString("city"),
+            ),
+        )
+    }
 
     /**
      * Register this device's FCM token so order/message notifications can be

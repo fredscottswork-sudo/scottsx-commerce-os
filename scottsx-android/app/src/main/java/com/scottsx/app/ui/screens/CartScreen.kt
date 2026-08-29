@@ -161,16 +161,37 @@ fun CartScreen(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            // Real product photo — the cart previously painted a
+                            // gradient placeholder, so buyers never saw what
+                            // they were paying for.
                             Box(
                                 modifier = Modifier
                                     .size(54.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        Brush.linearGradient(
-                                            colors = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
-                                        ),
-                                    ),
-                            )
+                                    .background(ScottsTechXColors.CardSurfaceAlt),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                val photo = product.imageUrl.ifBlank {
+                                    product.images.firstOrNull()?.url ?: ""
+                                }
+                                if (photo.isNotBlank()) {
+                                    coil.compose.AsyncImage(
+                                        model = photo,
+                                        contentDescription = product.name,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.ShoppingCart,
+                                        contentDescription = null,
+                                        tint = ScottsTechXColors.OnCardSecondary,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(

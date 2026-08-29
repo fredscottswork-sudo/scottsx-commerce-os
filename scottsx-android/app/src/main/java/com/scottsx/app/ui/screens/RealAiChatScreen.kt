@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.BottomTab
+import androidx.compose.foundation.layout.imePadding
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.components.navBarSpacer
 import com.scottsx.app.ui.components.statusBarSpacer
@@ -167,7 +168,13 @@ fun RealAiChatScreen(
             .fillMaxSize()
             .background(ScottsTechXColors.BackgroundDark),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // The composer must rise above the soft keyboard — edge-to-edge
+                // disables the old resize behaviour, so handle it here.
+                .imePadding(),
+        ) {
 
             // ── Top bar ────────────────────────────────────────────────
             Row(
