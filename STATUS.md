@@ -16,6 +16,20 @@ cd web         && npm install && npm run dev    # website on :5173 (proxies /api
 
 Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / `Seller123!`
 
+## Buyer personal rail + order payload parity (2026-08-29, fourth pass)
+
+* New `BuyerPersonalRail` on the buyer home — mirrors the web buyer
+  dashboard exactly: stat chips (active orders + lifetime hint, total
+  spent, saved, following), the **On the way** strip (real product image,
+  store name, amount, status chip) deep-linked to order tracking, and the
+  **Sellers you follow** strip (logo avatar, rating, product count).
+  Signed-out visitors never see it (token-gated like the rest of the
+  personal surfaces).
+* `V2Client.MyOrder` now maps `imageUrl` + `storeName` — the backend
+  already returned them on `/me/orders`, the app just dropped them.
+* Local gates green (kotlin-syntax 130 files, wiring 55 screens, layout
+  62/62, compose-contract 18/18, res 9/9).
+
 ## Identical-twin theming + dashboard parity (2026-08-29, third pass)
 
 | Area | What changed |
