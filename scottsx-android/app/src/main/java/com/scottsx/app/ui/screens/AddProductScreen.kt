@@ -452,7 +452,7 @@ fun AddProductScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = imageUrls.size.toString() + " image(s) — uploaded to Firebase Storage",
+                        text = imageUrls.size.toString() + " image(s) — uploaded to your store media",
                         color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 11.sp,
                     )

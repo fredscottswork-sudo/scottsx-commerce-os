@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +60,37 @@ fun AccountSettingsScreen(onBack: () -> Unit) {
     var profileMessage by remember { mutableStateOf<String?>(null) }
     var profileError by remember { mutableStateOf(false) }
     var avatarUploading by remember { mutableStateOf(false) }
+
+    // Live refresh from the backend: a profile edited on the WEB (name,
+    // phone, city, photo — same row) must appear here the moment this
+    // screen opens, not only from the sign-in-time snapshot.
+    LaunchedEffect(Unit) {
+        val fresh = runCatching { V2Client.fetchUserProfile() }.getOrNull() ?: return@LaunchedEffect
+        val u = com.scottsx.app.SessionCache.user.value
+        if (u != null) {
+            com.scottsx.app.SessionCache.updateUser(
+                u.copy(
+                    displayName = fresh.optString("displayName").ifBlank { u.displayName },
+                    phone = fresh.optString("phone").ifBlank { u.phone },
+                    city = fresh.optString("city").ifBlank { u.city },
+                    profilePhotoUrl = fresh.optString("profilePhotoUrl").takeIf {
+                        it.isNotBlank() && it != "null"
+                    } ?: u.profilePhotoUrl,
+                    emailVerified = fresh.optBoolean("emailVerified", u.emailVerified),
+                ),
+            )
+        }
+        com.scottsx.app.data.Session.adoptSession(
+            token = com.scottsx.app.data.Session.tokenOrNull() ?: return@LaunchedEffect,
+            userId = fresh.optString("id").takeIf { it.isNotBlank() },
+            role = if (fresh.optString("role").equals("seller", true))
+                com.scottsx.app.data.domain.Role.SELLER else com.scottsx.app.data.domain.Role.BUYER,
+            displayName = fresh.optString("displayName"),
+            email = fresh.optString("email"),
+            avatarUrl = fresh.optString("profilePhotoUrl").takeIf { it.isNotBlank() && it != "null" },
+            storeLocation = fresh.optString("city"),
+        )
+    }
 
     val pickAvatar = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
