@@ -1,31 +1,22 @@
 package com.scottsx.app.ui.screens
 
-import com.scottsx.app.data.domain.Role
-
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.EaseOutCubic
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,40 +25,42 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
-import android.app.Activity
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import com.scottsx.app.data.AuthRepository
-import com.scottsx.app.data.AuthResult
-import com.scottsx.app.data.GoogleSignInHelper
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.ui.components.BrandLogo
-import com.scottsx.app.ui.components.CinematicBackground
-import com.scottsx.app.ui.components.InputField
-import com.scottsx.app.ui.components.PrimaryButton
-import com.scottsx.app.ui.components.SocialButton
+import com.scottsx.app.data.AuthRepository
+import com.scottsx.app.data.AuthResult
+import com.scottsx.app.data.GoogleSignInHelper
+import com.scottsx.app.data.domain.Role
+import com.scottsx.app.ui.components.GoogleG
+import com.scottsx.app.ui.components.GoogleOnlyAuthHeader
+import com.scottsx.app.ui.components.GoogleOnlyAuthLayout
+import com.scottsx.app.ui.components.GoogleOnlyErrorSlot
+import com.scottsx.app.ui.components.GoogleOnlyFooterLink
 import com.scottsx.app.ui.theme.ScottsTechXColors
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Screen 4 — Email Login.
+ * Screen 4 — Login (Google-only).
  *
- * Slides up from the bottom, leaving a slim peek of the cinematic
- * background above so the ScottsTechX brand identity carries through.
+ * Per product direction the ONLY way into the app is a Google account:
+ *  - ONE big white Google button with the authentic four-colour "G"
+ *    (drawn by [GoogleG] — no asset, identical on every device).
+ *  - NO email/password fields, NO Apple button, no social disabled rows.
+ *  - SPEED: the moment the screen appears we attempt a silent Google
+ *    sign-in with the device's cached account — returning users touch
+ *    NOTHING and land on their dashboard in under a second. The manual
+ *    button is the fallback and doubles as the account-picker entry.
  *
- * @param role [Role.BUYER] or [Role.SELLER] — controls the copy
- *            and the badge shown at the top of the panel.
+ * The card rides the shared [GoogleOnlyAuthLayout] so Login and Sign-Up
+ * look and feel like the same place (which they are: the Google account
+ * IS the account).
  */
 @Composable
 fun LoginScreen(
@@ -75,460 +68,224 @@ fun LoginScreen(
     onBack: () -> Unit,
     onLogin: (Role) -> Unit,
     onGoogle: (Role) -> Unit,
-    onApple: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onApple: () -> Unit,   // removed — Apple sign-in is gone for good
     onSignUp: () -> Unit,
-    onForgotPassword: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onForgotPassword: () -> Unit, // removed — Google owns credentials
     onRoleMismatch: (Role) -> Unit = {},
     onVerificationPending: (email: String) -> Unit = {},
     authRepository: AuthRepository = AuthRepository(),
 ) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
+    var silentTried by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var statusMsg by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val activityContext = LocalContext.current as? Activity
     val googleHelper = remember(activityContext) { activityContext?.let { GoogleSignInHelper(it) } }
-    // Launcher for the Google Sign-In account picker.
+
     val googleLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        // CRITICAL: any exception thrown here crashes the process
-        // (the launcher callback runs on the main thread inside
-        // Activity.onActivityResult). Defer to handleResult, which
-        // is exception-safe.
+        // Defer to handleResult (exception-safe) so the callback never crashes the process.
         try {
             googleHelper?.handleResult(result)
         } catch (t: Throwable) {
             android.util.Log.e("LoginScreen", "Google Sign-In launcher crashed", t)
+            errorMsg = "Google sign-in failed to finish. Try again."
+            loading = false
         }
     }
 
-    val slideOffset = remember { Animatable(1f) }
-    LaunchedEffect(Unit) {
-        slideOffset.animateTo(0f, tween(420, easing = EaseOutCubic))
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.BackgroundDark)) {
-        CinematicBackground()
-
-        Box(
-            modifier = Modifier
-                .statusBarsPadding()
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = ScottsTechXColors.OnDark,
-                modifier = Modifier
-                .size(40.dp)
-                .clickable { onBack() }
-                .padding(8.dp),
-            )
+    /** Complete the sign-in once we hold a Google id_token. */
+    suspend fun finishGoogleSignIn(idToken: String?, silentResume: Boolean) {
+        if (idToken == null) {
+            if (!silentResume) errorMsg = "Google sign-in was cancelled."
+            return
         }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 100.dp),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        color = Color.White,
-                        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-                    )
-                    .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))
-                    .verticalScroll(rememberScrollState())
-                    .systemBarsPadding()
-                    .padding(horizontal = 24.dp)
-                    .padding(top = 10.dp, bottom = 28.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .height(4.dp)
-                            .width(40.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(ScottsTechXColors.PanelBorderHint),
-                    )
+        val result: AuthResult = try {
+            authRepository.signInWithGoogle(idToken, role)
+        } catch (t: Throwable) {
+            AuthResult.Failure(t.message ?: "Google sign-in failed")
+        }
+        val stillActive = coroutineContext[kotlinx.coroutines.Job]?.isActive ?: true
+        if (!stillActive) return
+        loading = false
+        statusMsg = null
+        when (result) {
+            is AuthResult.Success -> {
+                try {
+                    onGoogle(result.role)
+                } catch (t: Throwable) {
+                    android.util.Log.e("LoginScreen", "post-google nav failed", t)
+                    errorMsg = "Signed in, but the dashboard failed to load: ${t.message ?: t.javaClass.simpleName}"
                 }
-
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    BrandLogo(
-                        monogramSize = 64.dp,
-                        showWordmark = true,
-                        showTagline = false,
-                        autoPlay = false,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Logging in as ",
-                        color = ScottsTechXColors.OnLightSecondary,
-                        fontSize = 13.sp,
-                    )
-                    RoleBadge(role)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text(
-                    text = "Welcome back to ScottsTechX",
-                    color = ScottsTechXColors.OnLight,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 24.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = if (role == Role.SELLER)
-                        "Pick up where you left off — your customers are waiting."
-                    else
-                        "Your next opportunity is one tap away.",
-                    color = ScottsTechXColors.OnLightSecondary,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                InputField(
-                    value = email,
-                    onValueChange = { email = it; errorMsg = null },
-                    label = "Email or Phone Number",
-                    placeholder = "Enter your email or phone number",
-                    keyboardType = KeyboardType.Email,
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                InputField(
-                    value = password,
-                    onValueChange = { password = it; errorMsg = null },
-                    label = "Password",
-                    placeholder = "Enter your password",
-                    isPassword = true,
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    Text(
-                        text = "Forgot Password?",
-                        color = ScottsTechXColors.AccentLink,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        modifier = Modifier
-                            .clickable { onForgotPassword() }
-                            .padding(8.dp),
-                    )
-                }
-
-                if (errorMsg != null) {
-                    Text(
-                        text = friendlyError(errorMsg!!),
-                        color = Color(0xFFB91C1C),
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                PrimaryButton(
-                    text = if (role == Role.SELLER) "Login to my Seller account" else "Login",
-                    loading = loading,
-                    onClick = {
-                        if (email.isBlank()) {
-                            errorMsg = "Please enter your email or phone."
-                            return@PrimaryButton
-                        }
-                        if (password.isBlank()) {
-                            errorMsg = "Please enter your password."
-                            return@PrimaryButton
-                        }
-                        errorMsg = null
-                        loading = true
-                        scope.launch {
-                            val result = runCatching {
-                                authRepository.signIn(email, password, expectedRole = role)
-                            }.getOrElse { AuthResult.Failure(it.message ?: "Sign-in failed") }
-                            loading = false
-                            when (result) {
-                                is AuthResult.Success -> {
-                                    try {
-                                        onLogin(result.role)
-                                    } catch (t: Throwable) {
-                                        android.util.Log.e("LoginScreen", "post-login nav failed", t)
-                                        errorMsg = "Signed in, but the dashboard failed to load: ${t.message ?: t.javaClass.simpleName}"
-                                    }
-                                }
-                                is AuthResult.Failure -> errorMsg = result.message
-                                is AuthResult.VerificationPending -> {
-                                    onVerificationPending(result.email)
-                                }
-                                is AuthResult.RoleMismatch -> {
-                                    errorMsg = "This email is registered as a ${result.actual.displayName}."
-                                    onRoleMismatch(result.actual)
-                                }
-                            }
-                        }
-                    },
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(modifier = Modifier.weight(1f).height(1.dp).background(ScottsTechXColors.PanelBorderHint))
-                    Text(
-                        text = "or continue with",
-                        color = ScottsTechXColors.OnLightSecondary,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    )
-                    Box(modifier = Modifier.weight(1f).height(1.dp).background(ScottsTechXColors.PanelBorderHint))
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                SocialButton(
-                    text = "Login with Google",
-                    onClick = {
-                        val helper = googleHelper
-                        if (helper == null) {
-                            errorMsg = "Google sign-in unavailable right now."
-                            return@SocialButton
-                        }
-                        loading = true
-                        scope.launch {
-                            val result: AuthResult = try {
-                                // 1. Try silent sign-in first (works if the
-                                //    user has previously authenticated with
-                                //    Google on this device). The "Use a
-                                //    different account" button below calls
-                                //    helper.forcePickerOnNextSignIn() to skip
-                                //    step 1 and go straight to the picker.
-                                val silentToken = helper.trySilentSignIn()
-                                // 2. Otherwise launch the interactive picker.
-                                val idToken = silentToken
-                                    ?: kotlinx.coroutines.withTimeoutOrNull(180_000) {
-                                        helper.signInWithInteractive(googleLauncher)
-                                    }
-                                if (idToken == null) {
-                                    AuthResult.Failure("Google sign-in cancelled.")
-                                } else {
-                                    authRepository.signInWithGoogle(idToken, role)
-                                }
-                            } catch (ce: kotlinx.coroutines.CancellationException) {
-                                throw ce  // propagate structured cancellation
-                            } catch (t: Throwable) {
-                                AuthResult.Failure(t.message ?: "Google sign-in failed")
-                            }
-                            // If the composition was destroyed during the
-                            // suspend (e.g. user pressed back), `loading = false`
-                            // and `onGoogle(...)` would crash with a snapshot
-                            // error. Capture the callbacks now and only invoke
-                            // them if the coroutine is still active.
-                            val onSuccess = onGoogle
-                            val onMismatch = onRoleMismatch
-                            val stillActive = coroutineContext[kotlinx.coroutines.Job]?.isActive ?: true
-                            if (!stillActive) return@launch
-                            loading = false
-                            when (result) {
-                                is AuthResult.Success -> {
-                                    try {
-                                        onSuccess(result.role)
-                                    } catch (t: Throwable) {
-                                        android.util.Log.e("LoginScreen", "post-google nav failed", t)
-                                        errorMsg = "Signed in, but the dashboard failed to load: ${t.message ?: t.javaClass.simpleName}"
-                                    }
-                                }
-                                is AuthResult.Failure -> errorMsg = result.message
-                                is AuthResult.VerificationPending -> {
-                                    // Google sign-in: email is already verified by Google,
-                                    // but if Firebase says no, bounce to the pending screen.
-                                    onVerificationPending(result.email)
-                                }
-                                is AuthResult.RoleMismatch -> {
-                                    errorMsg = "This Google account is registered as a ${result.actual.displayName}."
-                                    onMismatch(result.actual)
-                                }
-                            }
-                        }
-                    },
-                    leadingIcon = { GoogleMark() },
-                )
-
-                // "Use a different Google account" — visible whenever the
-                // Google SDK has a cached last-signed-in account. Forces the
-                // next tap to open the system account chooser instead of
-                // silently signing back in with the same account. Critical
-                // for testing multi-account flows.
-                val helper = googleHelper
-                if (helper != null && helper.hasCachedAccount()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Use a different Google account",
-                        color = ScottsTechXColors.AccentLink,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        modifier = Modifier
-                            .clickable {
-                                // Clear the SDK cache; next tap shows picker.
-                                helper.forcePickerOnNextSignIn()
-                                errorMsg = "Pick a different Google account on the next screen."
-                            }
-                            .padding(vertical = 6.dp),
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                SocialButton(
-                    text = "Continue with Apple",
-                    onClick = onApple,
-                    leadingIcon = { AppleMark() },
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        text = if (role == Role.SELLER)
-                            "New to selling? "
-                        else
-                            "New here? ",
-                        color = ScottsTechXColors.OnLightSecondary,
-                        fontSize = 13.sp,
-                    )
-                    Text(
-                        text = if (role == Role.SELLER)
-                            "Create a Seller account"
-                        else
-                            "Create your ScottsTechX account",
-                        color = ScottsTechXColors.AccentLink,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        modifier = Modifier
-                            .clickable { onSignUp() }
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
+            }
+            is AuthResult.Failure -> errorMsg = result.message
+            is AuthResult.VerificationPending -> onVerificationPending(result.email)
+            is AuthResult.RoleMismatch -> {
+                errorMsg = "This Google account is registered as a ${result.actual.displayName}."
+                onRoleMismatch(result.actual)
             }
         }
     }
+
+    /** The manual "Continue with Google" tap: silent first, picker if needed. */
+    fun startInteractiveSignIn() {
+        val helper = googleHelper
+        if (helper == null) {
+            errorMsg = "Google sign-in is unavailable on this device."
+            return
+        }
+        loading = true
+        errorMsg = null
+        statusMsg = "Opening Google…"
+        scope.launch {
+            val silentToken = helper.trySilentSignIn()
+            val idToken = silentToken
+                ?: kotlinx.coroutines.withTimeoutOrNull(180_000) {
+                    helper.signInWithInteractive(googleLauncher)
+                }
+            finishGoogleSignIn(idToken, silentResume = false)
+        }
+    }
+
+    // FASTER THAN A TAP: on first composition, if the device already knows
+    // a Google account, resume the session silently and skip the sheet.
+    LaunchedEffect(Unit) {
+        if (silentTried) return@LaunchedEffect
+        silentTried = true
+        val helper = googleHelper ?: return@LaunchedEffect
+        if (!helper.hasCachedAccount()) return@LaunchedEffect
+        statusMsg = "Welcome back — signing you in…"
+        loading = true
+        val silentToken = helper.trySilentSignIn()
+        if (silentToken != null) {
+            finishGoogleSignIn(silentToken, silentResume = true)
+        } else {
+            loading = false
+            statusMsg = null
+        }
+    }
+
+    GoogleOnlyAuthLayout(role = role, onBack = onBack) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            GoogleOnlyAuthHeader(
+                title = "Welcome back",
+                sub = "One tap on Google and you're straight into your " +
+                    (if (role == Role.SELLER) "seller dashboard" else "buyer feed") +
+                    " — no passwords, no forms.",
+            )
+
+            if (statusMsg != null) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        color = ScottsTechXColors.BluePrimary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = statusMsg!!,
+                        color = Color(0xFF475569),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            // THE button. One Google button, the original one.
+            GoogleAuthButtonSimple(
+                label = if (loading) "Signing you in…" else "Continue with Google",
+                loading = loading,
+                onClick = { if (!loading) startInteractiveSignIn() },
+            )
+
+            GoogleOnlyErrorSlot(errorMsg)
+
+            // "Use a different Google account" — only when the SDK has a cached account.
+            val helper = googleHelper
+            if (helper != null && helper.hasCachedAccount() && !loading) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Use a different Google account",
+                    color = ScottsTechXColors.AccentLink,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clickable {
+                            helper.forcePickerOnNextSignIn()
+                            errorMsg = null
+                            startInteractiveSignIn()
+                        }
+                        .padding(vertical = 6.dp),
+                )
+            }
+
+            GoogleOnlyFooterLink(
+                text = "New to ScottsTechX?",
+                linkText = "Create an account",
+                onClick = onSignUp,
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Same account as the web — messages, orders and cart stay in sync.",
+                color = Color(0xFF94A3B8),
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
 }
 
+/**
+ * THE Google button — white with the authentic four-colour G, H-shaped
+ * hit area, scale feedback. Everything about this matches the web
+ * GoogleButton exactly.
+ */
 @Composable
-private fun RoleBadge(role: Role) {
+private fun GoogleAuthButtonSimple(
+    label: String,
+    loading: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(27.dp)
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.12f))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .fillMaxWidth()
+            .height(54.dp)
+            .clip(shape)
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE1E6EF), shape)
+            .clickable(enabled = !loading, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = role.displayName,
-            color = ScottsTechXColors.BluePrimary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-        )
-    }
-}
-
-private fun friendlyError(raw: String): String = when {
-    raw.contains("no user record", ignoreCase = true) -> "No account found for that email."
-    raw.contains("password is invalid", ignoreCase = true) -> "Wrong password. Try again."
-    raw.contains("blocked", ignoreCase = true) -> "Too many attempts. Try again later."
-    raw.contains("network", ignoreCase = true) -> "Network error. Check your connection."
-    raw.isBlank() -> "Sign-in failed. Please try again."
-    else -> raw
-}
-
-@Composable
-private fun GoogleMark() {
-    androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
-        val cx = this.size.width / 2f
-        val cy = this.size.height / 2f
-        val r = this.size.minDimension / 2f
-        drawArc(
-            color = Color(0xFFEA4335),
-            startAngle = 0f, sweepAngle = 90f, useCenter = true,
-            topLeft = androidx.compose.ui.geometry.Offset(cx - r, cy - r),
-            size = androidx.compose.ui.geometry.Size(r * 2, r * 2),
-        )
-        drawArc(
-            color = Color(0xFFFBBC05),
-            startAngle = 90f, sweepAngle = 90f, useCenter = true,
-            topLeft = androidx.compose.ui.geometry.Offset(cx - r, cy - r),
-            size = androidx.compose.ui.geometry.Size(r * 2, r * 2),
-        )
-        drawArc(
-            color = Color(0xFF34A853),
-            startAngle = 180f, sweepAngle = 90f, useCenter = true,
-            topLeft = androidx.compose.ui.geometry.Offset(cx - r, cy - r),
-            size = androidx.compose.ui.geometry.Size(r * 2, r * 2),
-        )
-        drawArc(
-            color = Color(0xFF4285F4),
-            startAngle = 270f, sweepAngle = 90f, useCenter = true,
-            topLeft = androidx.compose.ui.geometry.Offset(cx - r, cy - r),
-            size = androidx.compose.ui.geometry.Size(r * 2, r * 2),
-        )
-    }
-}
-
-@Composable
-private fun AppleMark() {
-    androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
-        val w = this.size.width
-        val h = this.size.height
-        drawOval(
-            color = Color(0xFF0F172A),
-            topLeft = androidx.compose.ui.geometry.Offset(0.05f * w, 0.18f * h),
-            size = androidx.compose.ui.geometry.Size(0.9f * w, 0.82f * h),
-        )
-        drawCircle(
-            color = Color.White,
-            radius = 0.15f * w,
-            center = androidx.compose.ui.geometry.Offset(0.78f * w, 0.15f * h),
-        )
-        drawOval(
-            color = Color(0xFF0F172A),
-            topLeft = androidx.compose.ui.geometry.Offset(0.65f * w, 0.02f * h),
-            size = androidx.compose.ui.geometry.Size(0.25f * w, 0.20f * h),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = ScottsTechXColors.BluePrimary,
+                    modifier = Modifier.size(20.dp),
+                )
+            } else {
+                GoogleG(modifier = Modifier.size(22.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = label,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF101828),
+            )
+        }
     }
 }

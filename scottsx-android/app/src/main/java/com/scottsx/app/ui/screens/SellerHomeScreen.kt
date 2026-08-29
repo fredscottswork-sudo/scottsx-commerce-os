@@ -145,24 +145,35 @@ fun SellerHomeScreen(
     var refreshTick by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(refreshTick) {
-        state = kotlinx.coroutines.coroutineScope {
+        // Each of the four fetches is best-effort and exception-isolated:
+        // if ANY of them threw (parse glitch, flaky network, a 4xx the
+        // client maps to an exception), coroutineScope would CANCEL the
+        // other children and the whole block would fail — leaving the
+        // dashboard stuck on the Loading skeleton forever. supervisorScope
+        // + runCatching keeps every failure local so the Home tab always
+        // reaches Ready (or Error only when the main feed itself failed).
+        state = kotlinx.coroutines.supervisorScope {
             var feed: SellerDashboardData? = null
-            val d = launch { feed = V2Client.fetchSellerDashboard() }
+            val d = launch { feed = runCatching { V2Client.fetchSellerDashboard() }.getOrNull() }
             val l = launch {
-                open = V2Client.fetchStoreOpenState()
-                V2Client.fetchSellerLocationState()?.let { loc ->
-                    sharing = loc.sharing
-                    lastFix = loc.updatedAt
+                runCatching {
+                    open = V2Client.fetchStoreOpenState()
+                    V2Client.fetchSellerLocationState()?.let { loc ->
+                        sharing = loc.sharing
+                        lastFix = loc.updatedAt
+                    }
                 }
             }
-            val n = launch { unread = V2Client.fetchUnreadNotificationCount() }
+            val n = launch { unread = runCatching { V2Client.fetchUnreadNotificationCount() }.getOrDefault(0) }
             val p = launch {
-                V2Client.fetchSellerProfile()?.let { prof ->
-                    storeName = listOf("businessName", "storeName", "name")
-                        .firstNotNullOfOrNull { key ->
-                            prof.optString(key).takeIf { it.isNotBlank() }
-                        }
-                    sellerId = prof.optString("id").takeIf { it.isNotBlank() }
+                runCatching {
+                    V2Client.fetchSellerProfile()?.let { prof ->
+                        storeName = listOf("businessName", "storeName", "name")
+                            .firstNotNullOfOrNull { key ->
+                                prof.optString(key).takeIf { it.isNotBlank() }
+                            }
+                        sellerId = prof.optString("id").takeIf { it.isNotBlank() }
+                    }
                 }
             }
             d.join(); l.join(); n.join(); p.join()

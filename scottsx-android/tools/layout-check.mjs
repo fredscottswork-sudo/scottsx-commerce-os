@@ -111,7 +111,7 @@ console.log('\n\x1b[1m2. Screens that pin content to a screen edge\x1b[0m');
   // shared headers. Screens are added often; this makes forgetting one a test
   // failure rather than something a user has to notice on a phone.
   const screens = files.filter((f) => rel(f).includes('/screens/'));
-  const viaShared = (src) => /ScreenHeader\(|GradientHeader\(|ConversationListScreen\(|SettingsScaffold\(/.test(body(src));
+  const viaShared = (src) => /ScreenHeader\(|GradientHeader\(|ConversationListScreen\(|SettingsScaffold\(|GoogleOnlyAuthLayout\(/.test(body(src));
   const bare = screens.filter((f) => {
     const s = read(f);
     return !insetAware(s) && !viaShared(s);

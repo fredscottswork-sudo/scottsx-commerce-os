@@ -99,6 +99,15 @@ fun AccountSettingsScreen(onBack: () -> Unit) {
                     )
                     if (ok && sessionUser != null) {
                         SessionCache.updateUser(sessionUser!!.copy(profilePhotoUrl = url))
+                        // Mirror into the role/AI session cache so the new
+                        // avatar shows on the dashboard chrome immediately.
+                        com.scottsx.app.data.domain.SessionCache.set(
+                            role = com.scottsx.app.data.Session.roleOrNull() ?: com.scottsx.app.data.domain.Role.BUYER,
+                            displayName = com.scottsx.app.data.Session.displayNameOrEmpty(),
+                            email = com.scottsx.app.data.Session.emailOrEmpty(),
+                            userId = com.scottsx.app.data.Session.userIdOrNull(),
+                            avatarUrl = url,
+                        )
                     }
                     profileMessage = if (ok) "Photo updated." else "Uploaded but save failed — press Save profile."
                     profileError = !ok
