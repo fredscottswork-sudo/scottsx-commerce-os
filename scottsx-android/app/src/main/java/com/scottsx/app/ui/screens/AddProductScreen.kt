@@ -207,7 +207,7 @@ fun AddProductScreen(
         ) {
             when (step) {
                 0 -> {
-                    Text("Basics", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Basics", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(12.dp))
                     InputField(value = name, onValueChange = { name = it }, label = "Product name")
                     Spacer(Modifier.height(10.dp))
@@ -303,13 +303,13 @@ fun AddProductScreen(
                         // Show preview
                         Text(
                             text = "→ ${aiSuggestedName.orEmpty()}",
-                            color = ScottsTechXColors.OnLight,
+                            color = ScottsTechXColors.OnPanel,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp,
                         )
                         Text(
                             text = aiSuggestedDesc.orEmpty().take(140) + if ((aiSuggestedDesc?.length ?: 0) > 140) "..." else "",
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnPanelSecondary,
                             fontSize = 11.sp,
                         )
                         Text(
@@ -320,7 +320,7 @@ fun AddProductScreen(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
-                    Text("Category", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Category", color = ScottsTechXColors.OnPanelSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(ProductCategory.values().toList()) { c ->
@@ -335,7 +335,7 @@ fun AddProductScreen(
                             ) {
                                 Text(
                                     text = c.displayName,
-                                    color = if (c == category) Color.White else ScottsTechXColors.OnLight,
+                                    color = if (c == category) Color.White else ScottsTechXColors.OnPanel,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -343,7 +343,7 @@ fun AddProductScreen(
                         }
                     }
                     Spacer(Modifier.height(14.dp))
-                    Text("Location (where the item ships from)", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Location (where the item ships from)", color = ScottsTechXColors.OnPanelSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(listOf("Kampala", "Entebbe", "Jinja", "Gulu", "Mbarara", "Arua")) { loc ->
@@ -358,7 +358,7 @@ fun AddProductScreen(
                             ) {
                                 Text(
                                     text = loc,
-                                    color = if (locationLabel == loc) Color.White else ScottsTechXColors.OnLight,
+                                    color = if (locationLabel == loc) Color.White else ScottsTechXColors.OnPanel,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -367,7 +367,7 @@ fun AddProductScreen(
                     }
                 }
                 1 -> {
-                    Text("Pricing & Stock", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Pricing & Stock", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(12.dp))
                     InputField(value = priceText, onValueChange = { priceText = it.filter { c -> c.isDigit() } }, label = "Price (UGX)", keyboardType = KeyboardType.Number)
                     Spacer(Modifier.height(10.dp))
@@ -375,7 +375,7 @@ fun AddProductScreen(
                     Spacer(Modifier.height(10.dp))
                     InputField(value = stockText, onValueChange = { stockText = it.filter { c -> c.isDigit() } }, label = "Stock quantity", keyboardType = KeyboardType.Number)
                     Spacer(Modifier.height(16.dp))
-                    Text("Product images", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Product images", color = ScottsTechXColors.OnPanelSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     if (imageUrls.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -450,12 +450,12 @@ fun AddProductScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = imageUrls.size.toString() + " image(s) — uploaded to Firebase Storage",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 11.sp,
                     )
                 }
                 2 -> {
-                    Text("Review", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Review", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(12.dp))
                     Box(
                         modifier = Modifier
@@ -477,7 +477,7 @@ fun AddProductScreen(
                     }
                 }
                 3 -> {
-                    Text("Safety Check", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Safety Check", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(8.dp))
                     val safety = remember(name, description, category.displayName, priceText, stockText, imageUrls.size, locationLabel) {
                         com.scottsx.app.data.ProductUploadSafety.check(
@@ -579,7 +579,7 @@ fun AddProductScreen(
                         .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Back", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("Back", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
                 Spacer(Modifier.width(8.dp))
             }

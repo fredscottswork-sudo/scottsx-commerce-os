@@ -256,14 +256,14 @@ fun SellerAIAssistantScreen(onBack: () -> Unit) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 "Ask me anything about your store",
-                                color = ScottsTechXColors.OnLight,
+                                color = ScottsTechXColors.OnPanel,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp,
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
                                 "Try: \"Which products should I discount this weekend?\" or \"How can I improve my seller rating?\"",
-                                color = ScottsTechXColors.OnLightSecondary,
+                                color = ScottsTechXColors.OnPanelSecondary,
                                 fontSize = 12.sp,
                             )
                         }
@@ -295,12 +295,12 @@ fun SellerAIAssistantScreen(onBack: () -> Unit) {
                 TextField(
                     value = input,
                     onValueChange = { input = it },
-                    placeholder = { Text("Ask about your store\u2026", color = ScottsTechXColors.OnLightSecondary) },
+                    placeholder = { Text("Ask about your store\u2026", color = ScottsTechXColors.OnPanelSecondary) },
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
-                        focusedTextColor = ScottsTechXColors.OnLight,
-                        unfocusedTextColor = ScottsTechXColors.OnLight,
+                        focusedTextColor = ScottsTechXColors.OnPanel,
+                        unfocusedTextColor = ScottsTechXColors.OnPanel,
                         cursorColor = ScottsTechXColors.BluePrimary,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,

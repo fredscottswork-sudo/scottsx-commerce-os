@@ -441,7 +441,7 @@ private fun ComposerBar(onSend: (String) -> Unit) {
             Icon(
                 Icons.Filled.Add,
                 contentDescription = "More",
-                tint = ScottsTechXColors.OnLightSecondary,
+                tint = ScottsTechXColors.OnPanelSecondary,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -455,12 +455,12 @@ private fun ComposerBar(onSend: (String) -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
             if (text.isEmpty()) {
-                Text("Message seller...", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
+                Text("Message seller...", color = ScottsTechXColors.OnPanelSecondary, fontSize = 13.sp)
             }
             BasicTextField(
                 value = text,
                 onValueChange = { text = it },
-                textStyle = TextStyle(color = ScottsTechXColors.OnLight, fontSize = 13.sp),
+                textStyle = TextStyle(color = ScottsTechXColors.OnPanel, fontSize = 13.sp),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -476,7 +476,7 @@ private fun ComposerBar(onSend: (String) -> Unit) {
             Icon(
                 Icons.Filled.Star,
                 contentDescription = "Quick replies",
-                tint = ScottsTechXColors.OnLightSecondary,
+                tint = ScottsTechXColors.OnPanelSecondary,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -488,7 +488,7 @@ private fun ComposerBar(onSend: (String) -> Unit) {
                 .clip(CircleShape)
                 .background(
                     if (text.isNotBlank()) ScottsTechXColors.BluePrimary
-                    else ScottsTechXColors.OnLightSecondary.copy(alpha = 0.3f)
+                    else ScottsTechXColors.OnPanelSecondary.copy(alpha = 0.3f)
                 )
                 .clickable(enabled = text.isNotBlank()) {
                     onSend(text.trim())

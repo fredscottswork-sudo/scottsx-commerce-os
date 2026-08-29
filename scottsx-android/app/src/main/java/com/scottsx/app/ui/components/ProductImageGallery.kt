@@ -231,7 +231,7 @@ private fun EmptyGallery(modifier: Modifier) {
             .background(ScottsTechXColors.PanelInputLight),
         contentAlignment = Alignment.Center,
     ) {
-        Text("No image", color = ScottsTechXColors.OnLightSecondary, fontSize = 14.sp)
+        Text("No image", color = ScottsTechXColors.OnPanelSecondary, fontSize = 14.sp)
     }
 }
 

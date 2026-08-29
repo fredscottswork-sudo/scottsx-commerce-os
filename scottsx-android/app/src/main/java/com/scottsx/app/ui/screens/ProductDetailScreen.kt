@@ -580,7 +580,7 @@ private fun QuantityAndStock(
                 }
                 Text(
                     text = "$quantity",
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnPanel,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 10.dp),
@@ -865,7 +865,7 @@ private fun SellerCard(
                         .clickable(onClick = onMessage)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 ) {
-                    Icon(Icons.Filled.Message, contentDescription = "Message", tint = ScottsTechXColors.OnLight, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Message, contentDescription = "Message", tint = ScottsTechXColors.OnPanel, modifier = Modifier.size(18.dp))
                 }
             }
         }

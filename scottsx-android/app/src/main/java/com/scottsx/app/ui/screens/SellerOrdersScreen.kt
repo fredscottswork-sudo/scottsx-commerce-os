@@ -143,7 +143,7 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text = label,
-            color = if (selected) Color.White else ScottsTechXColors.OnLight,
+            color = if (selected) Color.White else ScottsTechXColors.OnPanel,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
         )
