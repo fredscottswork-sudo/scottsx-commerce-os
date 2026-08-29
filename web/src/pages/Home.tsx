@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CreditCard, MapPin, Search, ShoppingBag, Sparkles } from 'lucide-react';
+import { MapPin, Search, ShoppingBag, Sparkles } from 'lucide-react';
 import { productService, aiService } from '../api/services';
 import type { Product } from '../api/types';
 import { ProductCard } from '../components/ProductCard';
@@ -35,20 +35,22 @@ export default function Home() {
   );
   const flash = products.filter((p) => p.isFlashDeal).slice(0, 6);
 
+  // Benefits strip — payment card REMOVED per product direction; the
+  // remaining trio is reorganized as an animated strip (staggered entrance,
+  // floating icons, hover sheen + gradient underline, live-ring on AI).
   const benefits = [
-    { icon: <CreditCard size={20} />, title: 'Mobile Money & Cards', sub: 'MTN MoMo, Airtel Money, Nylon Pay' },
-    { icon: <MapPin size={20} />, title: 'Nearby sellers', sub: 'Kampala · Entebbe · Jinja · Mbarara · Gulu · Mbale' },
-    { icon: <Sparkles size={20} />, title: 'AI assistant', sub: 'Answers from the live catalog' },
-    { icon: <ShoppingBag size={20} />, title: 'Local & genuine', sub: 'Every item inspected before listing' },
+    { icon: <MapPin size={20} />, title: 'Nearby sellers', sub: 'Kampala · Entebbe · Jinja · Mbarara · Gulu · Mbale', live: false },
+    { icon: <Sparkles size={20} />, title: 'AI assistant', sub: 'Answers from the live catalog', live: true },
+    { icon: <ShoppingBag size={20} />, title: 'Local & genuine', sub: 'Every item inspected before listing', live: false },
   ];
 
   return (
     <>
-      <div className="grid grid-4 mb-16">
+      <div className="benefit-strip mb-16">
         {benefits.map((b) => (
-          <div className="card card-pad" key={b.title}>
+          <div className="card card-pad benefit-card" key={b.title}>
             <div className="row">
-              <span className="stat-icon" style={{ background: 'linear-gradient(135deg, var(--primary), var(--purple))' }}>{b.icon}</span>
+              <span className={`stat-icon benefit-icon${b.live ? ' benefit-live' : ''}`} style={{ background: 'linear-gradient(135deg, var(--primary), var(--purple))' }}>{b.icon}</span>
               <div>
                 <strong>{b.title}</strong>
                 <div className="muted" style={{ fontSize: 12.5 }}>{b.sub}</div>
