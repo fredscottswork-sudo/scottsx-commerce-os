@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.scottsx.app.data.CartStore
+import com.scottsx.app.data.Session
 import com.scottsx.app.data.domain.BuyerProfile
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.ProductCategory
@@ -58,6 +59,7 @@ import com.scottsx.app.data.preferences.sidebarPaletteFor
 import com.scottsx.app.data.preferences.themeState
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.BottomTab
+import com.scottsx.app.ui.components.BuyerPersonalRail
 import com.scottsx.app.ui.components.BuyerSidebarOverlay
 import com.scottsx.app.ui.components.CategoryRow
 import com.scottsx.app.ui.components.FeedEmptyCard
@@ -102,6 +104,8 @@ import com.scottsx.app.ui.components.navBarSpacer
 fun BuyerHomeScreen(
     profile: BuyerProfile,
     onNavigateToCart: () -> Unit,
+    onNavigateToMyOrders: () -> Unit = {},
+    onTrackOrder: (String) -> Unit = {},
     onNavigateToCategory: (ProductCategory) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToNearby: () -> Unit,
@@ -348,6 +352,20 @@ fun BuyerHomeScreen(
                             )
                         }
                     }
+                }
+            }
+
+            // 2.5 Personal rail — mirrors the web buyer dashboard
+            // (stats / on-the-way / sellers you follow). Only for signed-in users.
+            item {
+                if (Session.tokenOrNull() != null) {
+                    Spacer(Modifier.height(14.dp))
+                    BuyerPersonalRail(
+                        onOpenOrders = onNavigateToMyOrders,
+                        onTrackOrder = onTrackOrder,
+                        onOpenStore = onOpenStore,
+                        savedCount = wishlistIds.size,
+                    )
                 }
             }
 

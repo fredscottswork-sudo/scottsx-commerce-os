@@ -1823,6 +1823,8 @@ object V2Client {
         val quantity: Int,
         val status: String,
         val createdAt: String,
+        val imageUrl: String,
+        val storeName: String,
     ) {
         val displayStatus: String
             get() = status.replaceFirstChar { it.uppercase() }
@@ -1843,6 +1845,8 @@ object V2Client {
                         quantity = r.optInt("quantity", 1),
                         status = r.optString("status", "pending"),
                         createdAt = r.optString("createdAt"),
+                        imageUrl = r.optString("imageUrl"),
+                        storeName = r.optString("storeName"),
                     )
                 }
             }

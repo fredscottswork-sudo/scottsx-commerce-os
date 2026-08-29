@@ -363,6 +363,8 @@ fun AppNavigation() {
             BuyerHomeScreen(
                 profile = profile,
                 onNavigateToCart = { navController.navigate(Routes.CART) },
+                onNavigateToMyOrders = { navController.navigate(Routes.MY_ORDERS) },
+                onTrackOrder = { id -> navController.navigate(Routes.TRACK_ORDER.replace("{orderId}", URLEncoder.encode(id, "UTF-8"))) },
                 onNavigateToCategory = { navController.navigate(Routes.CATEGORIES) },
                 onNavigateToSearch = { navController.navigate(Routes.SEARCH) },
                 onNavigateToNearby = { navController.navigate(Routes.NEARBY) },
