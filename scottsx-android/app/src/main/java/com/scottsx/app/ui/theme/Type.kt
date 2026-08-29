@@ -31,12 +31,14 @@ private val gmsFontProvider = GoogleFont.Provider(
 private val soraGoogleFont = GoogleFont("Sora")
 private val interGoogleFont = GoogleFont("Inter")
 
+// NOTE: no `bestEffort` param — that flag was added in Compose 1.7 and
+// this module pins BOM 2023.10.01. The 1.5.x overload already resolves
+// asynchronously with the system sans as its initial/failed-load face.
 private fun gmsFont(face: GoogleFont, weight: FontWeight) = Font(
     googleFont = face,
     fontProvider = gmsFontProvider,
     weight = weight,
     style = FontStyle.Normal,
-    bestEffort = true,
 )
 
 /** Sora — the brand display face (hero words, panel titles, prices). */
