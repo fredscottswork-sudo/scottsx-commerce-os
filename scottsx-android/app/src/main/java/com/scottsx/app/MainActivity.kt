@@ -15,6 +15,7 @@ import com.scottsx.app.ui.theme.ColorContext
 import com.scottsx.app.ui.theme.LocalColorContext
 import com.scottsx.app.ui.theme.ScottsTechXTheme
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 /**
