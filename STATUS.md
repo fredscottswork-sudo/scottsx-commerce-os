@@ -16,6 +16,19 @@ cd web         && npm install && npm run dev    # website on :5173 (proxies /api
 
 Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / `Seller123!`
 
+## CI green + artifacts (2026-08-29)
+
+* Run **33254997531** (commit `104a4d6`) — all three jobs green:
+  backend-and-web, android (compileDebugKotlin + APK), scottsx-android-v2.
+  Artifacts: `scottsx-test-apk` (36.7 MB) + `scottsx-v2-test-apk` (30.7 MB).
+* Two compile errors slipped through the local syntax gate (it suppresses
+  reference-resolution diagnostics without the Android SDK) and were fixed
+  from CI annotations: `List` → `MutableList` in BulkImport writeback,
+  an invalid `Modifier…androidx.compose.foundation` qualified chain in the
+  inventory edit sheet, wrong legacy `OrderStatus` members in
+  SellerOrdersScreen, and an FQN-qualified `kotlinx.coroutines.launch` in
+  BuyerPersonalRail (extensions can't resolve via FQN).
+
 ## Buyer personal rail + order payload parity (2026-08-29, fourth pass)
 
 * New `BuyerPersonalRail` on the buyer home — mirrors the web buyer
