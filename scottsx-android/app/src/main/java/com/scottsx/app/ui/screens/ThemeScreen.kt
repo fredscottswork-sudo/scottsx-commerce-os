@@ -97,7 +97,7 @@ fun ThemeScreen(onBack: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "Choose how ScottsTechX looks",
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
             )
