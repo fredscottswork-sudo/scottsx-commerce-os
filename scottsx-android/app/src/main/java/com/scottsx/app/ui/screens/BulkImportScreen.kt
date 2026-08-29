@@ -256,7 +256,7 @@ fun BulkImportScreen(onBack: () -> Unit, onInventory: () -> Unit = {}) {
                             .background(ScottsTechXColors.BluePrimary)
                             .clickable(enabled = !busy && !done) {
                                 if (busy) return@clickable
-                                val toImport = rows.map { it.copy() }
+                                val toImport = rows.map { it.copy() }.toMutableList()
                                 busy = true
                                 summary = null
                                 scope.launch {
