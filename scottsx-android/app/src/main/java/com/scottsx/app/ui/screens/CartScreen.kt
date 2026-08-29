@@ -139,7 +139,7 @@ fun CartScreen(
                     Spacer(Modifier.size(16.dp))
                     Text(
                         text = "Your cart is waiting for something great.",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp,
                     )

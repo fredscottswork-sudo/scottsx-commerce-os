@@ -132,7 +132,7 @@ fun SettingsBlankHint(text: String) {
     ) {
         Text(
             text,
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnPanelSecondary,
             fontSize = 13.sp,
         )
     }
