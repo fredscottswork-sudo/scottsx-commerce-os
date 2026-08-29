@@ -243,7 +243,7 @@ fun SearchScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = if (flashOnly) "No flash deals right now" else "Browse categories",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                     )
@@ -252,7 +252,7 @@ fun SearchScreen(
                             "Sellers haven't published deals yet — check back soon, deals drop daily."
                         else
                             "Tap a category on the home screen to see products in that category.",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 12.sp,
                     )
                 }
