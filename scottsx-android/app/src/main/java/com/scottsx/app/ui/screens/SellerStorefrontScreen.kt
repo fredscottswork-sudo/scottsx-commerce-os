@@ -372,7 +372,7 @@ private fun androidx.compose.foundation.layout.RowScope.TabPill(
 @Composable
 private fun ProductsTab(products: List<Product>, onOpen: (String) -> Unit, isOwner: Boolean = false) {
     if (products.isEmpty()) {
-        Text("No products yet", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
+        Text("No products yet", color = ScottsTechXColors.OnPanelSecondary, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
         return
     }
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
@@ -402,7 +402,7 @@ private fun ProductsTab(products: List<Product>, onOpen: (String) -> Unit, isOwn
 @Composable
 private fun CategoriesTab(rows: List<com.scottsx.app.data.domain.SellerCategoryRow>) {
     if (rows.isEmpty()) {
-        Text("No categories yet", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
+        Text("No categories yet", color = ScottsTechXColors.OnPanelSecondary, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
         return
     }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
