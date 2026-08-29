@@ -422,3 +422,16 @@ been tested.
 - Buyer/Seller home strips + BrandedAuth card now use the pre-shaped logo tile
   directly at 36dp (rounded 11dp clip) — inner gradient box removed.
 - Gates: wiring ✓ compose-contract ✓ layout ✓ resources ✓
+
+## 2026-08-29 — Cinematic STX splash opening
+- Official monogram pre-sliced into splash_s / splash_t / splash_x PNGs on ONE
+  shared 1613x506 transparent canvas (letters generated in the official racing
+  style: brushed royal-blue S & T, chrome silver X with spikes) so each letter
+  animates independently and reassembles perfectly.
+- New SplashScreen: frame-clock timeline — space-bloom → S slams in L (overshoot+
+  un-rotate) → T drops from top → X slashes in R (stretch-spin) → impact flash +
+  2 energy rings → double chrome shimmer sweep (offscreen layer + SrcIn so the
+  beam lights only the letters) → breathing emblem + 26 twinkling sparks →
+  4.2x zoom-through-camera exit. Tap skips to exit. Splash never waits on the
+  network (LiveMarketplace.warm + CartStore.warm still race the window).
+- Gates: wiring ✓ compose-contract ✓ layout ✓ resources ✓
