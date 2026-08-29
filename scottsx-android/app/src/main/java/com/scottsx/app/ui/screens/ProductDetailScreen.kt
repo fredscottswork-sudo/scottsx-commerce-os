@@ -155,9 +155,11 @@ fun ProductDetailScreen(
                     LiveMarketplace.ensureLoaded()
                     val relIds = mutableSetOf(productId)
                     recommended = LiveMarketplace.products.value
-                        .filter { it.id != productId && it.category == fetchedCategory }
+                        .filter { p: com.scottsx.app.data.domain.Product ->
+                            p.id != productId && p.category == fetchedCategory
+                        }
                         .take(20)
-                        .also { list -> LiveMarketplace.cache(list) }
+                        .also { list: List<com.scottsx.app.data.domain.Product> -> LiveMarketplace.cache(list) }
                 } catch (_: Throwable) { }
             }
             launch {
