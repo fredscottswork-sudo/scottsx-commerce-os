@@ -16,6 +16,27 @@ cd web         && npm install && npm run dev    # website on :5173 (proxies /api
 
 Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / `Seller123!`
 
+## Following feed + Support parity (2026-08-29, fifth pass)
+
+* **Seller-side remained complete** — verified the app seller dashboard
+  already covers every web SellerDashboard.tsx feature (attention chips,
+  4 stat cards + hints, revenue sparkline, store controls, listing
+  status badges, best sellers, recent orders) and that the seller
+  sidebar mirrors the web's 10 nav destinations.
+* **Buyer home "From sellers you follow" rail** — the web dashboard's
+  fourth feed tab (``GET /api/v1/me/favorites/feed``). Rendered only
+  when the signed-in buyer actually follows sellers with live listings.
+* **Buyer home "Sellers you follow" strip** — real logos, ratings and
+  product counts, deep-links to storefronts; "Manage" goes to the saved
+  sellers screen — web's /buyer/saved equivalent.
+* **Support/Help Center rebuilt to web parity**:
+  FAQ accordion (``GET /api/v1/me/faqs`` — same public payload),
+  "Your tickets" list with real status badges (open/pending/resolved),
+  open-ticket dialog (subject + message) that posts to
+  ``POST /api/v1/me/support/tickets`` and refreshes the list after send.
+  The five dead topic rows (My Orders, Payments, Account & Security,
+  Shipping, Selling) are now wired to the real screens instead of no-ops.
+
 ## CI green + artifacts (2026-08-29)
 
 * Run **33254997531** (commit `104a4d6`) — all three jobs green:

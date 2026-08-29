@@ -364,6 +364,7 @@ fun AppNavigation() {
                 profile = profile,
                 onNavigateToCart = { navController.navigate(Routes.CART) },
                 onNavigateToMyOrders = { navController.navigate(Routes.MY_ORDERS) },
+                onNavigateToSavedSellers = { navController.navigate(Routes.SAVED_SELLERS) },
                 onTrackOrder = { id -> navController.navigate(Routes.TRACK_ORDER.replace("{orderId}", URLEncoder.encode(id, "UTF-8"))) },
                 onNavigateToCategory = { navController.navigate(Routes.CATEGORIES) },
                 onNavigateToSearch = { navController.navigate(Routes.SEARCH) },
@@ -954,6 +955,9 @@ fun AppNavigation() {
                 onTerms = { navController.navigate(Routes.cmsPath("terms")) },
                 onPrivacy = { navController.navigate(Routes.cmsPath("privacy")) },
                 onReport = { navController.navigate(Routes.REPORT) },
+                onOpenOrders = { navController.navigate(Routes.MY_ORDERS) },
+                onOpenPayments = { navController.navigate(Routes.PAYMENT_METHODS) },
+                onOpenAccount = { navController.navigate(Routes.SETTINGS) },
             )
         }
         composable(Routes.CONTACT) { ContactScreen(onBack = { navController.popBackStack() }) }

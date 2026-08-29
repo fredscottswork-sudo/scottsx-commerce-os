@@ -757,6 +757,26 @@ object V2Client {
         parse = { o -> o.optBoolean("ok", false) || o.optBoolean("following") },
     ) ?: false
 
+    /**
+     * Products from stores the buyer follows — the web buyer dashboard's
+     * "From sellers you follow" feed tab.
+     */
+    suspend fun fetchFavoritesFeed(): List<com.scottsx.app.data.domain.Product>? {
+        val obj = apiCall(
+            method = "GET",
+            path = "/api/v1/me/favorites/feed?pageSize=24",
+            body = null,
+            parse = { it },
+        ) ?: return null
+        val arr = obj.optJSONArray("products") ?: return null
+        val out = ArrayList<com.scottsx.app.data.domain.Product>(arr.length())
+        for (i in 0 until arr.length()) {
+            val row = arr.optJSONObject(i) ?: continue
+            out += jsonToProduct(row)
+        }
+        return out
+    }
+
     suspend fun unsaveSeller(sellerId: String): Boolean = apiCall(
         method = "DELETE", path = "/api/v1/me/favorites/$sellerId", body = null,
         parse = { o -> o.optBoolean("ok", false) || !o.optBoolean("following", true) },
@@ -787,6 +807,12 @@ object V2Client {
     suspend fun fetchTickets(): JSONArray? = apiCall(
         method = "GET", path = "/api/v1/me/support/tickets", body = null,
         parse = { o -> o.optJSONArray("tickets") },
+    )
+
+    /** FAQ entries for the help center (same payload as the web). */
+    suspend fun fetchFaqs(): JSONArray? = apiCall(
+        method = "GET", path = "/api/v1/me/faqs", body = null,
+        parse = { o -> o.optJSONArray("faqs") },
     )
 
     suspend fun createTicket(category: String, subject: String, message: String, attachmentUrl: String? = null): String? = apiCall(

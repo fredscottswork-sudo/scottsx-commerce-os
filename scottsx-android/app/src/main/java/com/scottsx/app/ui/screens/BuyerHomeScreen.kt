@@ -105,6 +105,7 @@ fun BuyerHomeScreen(
     profile: BuyerProfile,
     onNavigateToCart: () -> Unit,
     onNavigateToMyOrders: () -> Unit = {},
+    onNavigateToSavedSellers: () -> Unit = {},
     onTrackOrder: (String) -> Unit = {},
     onNavigateToCategory: (ProductCategory) -> Unit,
     onNavigateToSearch: () -> Unit,
@@ -140,6 +141,8 @@ fun BuyerHomeScreen(
 
     // ---- Live feed state ---------------------------------------------------
     var products by remember { mutableStateOf<List<Product>>(emptyList()) }
+    var followingFeed by remember { mutableStateOf<List<Product>>(emptyList()) }
+    var followedSellers by remember { mutableStateOf<List<com.scottsx.app.data.remote.V2Client.FavoriteSeller>>(emptyList()) }
     var feedState by remember { mutableStateOf(FeedState.Loading) }
     var refreshTick by remember { mutableIntStateOf(0) }
     var unread by remember { mutableIntStateOf(0) }
@@ -150,7 +153,20 @@ fun BuyerHomeScreen(
             var feed: List<Product>? = null
             val feedJob = launch { feed = V2Client.fetchProductsListOrNull() }
             val badgeJob = launch { unread = V2Client.fetchUnreadNotificationCount() }
-            feedJob.join(); badgeJob.join()
+            // Signed-in extras: "from sellers you follow" tab + the
+            // sellers-you-follow strip (same endpoints the web dashboard uses).
+            var followFeed: List<Product>? = null
+            var sellers: List<com.scottsx.app.data.remote.V2Client.FavoriteSeller>? = null
+            val signedIn = com.scottsx.app.data.Session.tokenOrNull() != null
+            val followJob = launch {
+                if (signedIn) {
+                    followFeed = V2Client.fetchFavoritesFeed()
+                    sellers = V2Client.fetchFavoriteSellers()
+                }
+            }
+            feedJob.join(); badgeJob.join(); followJob.join()
+            followingFeed = followFeed ?: emptyList()
+            followedSellers = sellers ?: emptyList()
             val result = feed
             if (result == null) {
                 FeedState.Error
@@ -478,6 +494,119 @@ fun BuyerHomeScreen(
                                             // backend saved-products endpoints.
                                             onToggleWishlist = { com.scottsx.app.data.WishlistStore.toggleBookmark(product.id) },
                                         )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 5b. From sellers you follow — web feed-tab parity
+                        if (followingFeed.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(20.dp))
+                                Reveal(index = 3) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Box(Modifier.weight(1f)) {
+                                            SectionTitle(
+                                                title = "From sellers you follow",
+                                                viewAll = null,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            item {
+                                Spacer(Modifier.height(10.dp))
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    items(followingFeed.take(8), key = { it.id }) { product ->
+                                        ProductCard(
+                                            product = product,
+                                            onClick = { onOpenProduct(product) },
+                                            onAddToCart = { CartStore.add(product.id) },
+                                            wished = product.id in wishlistIds,
+                                            onToggleWishlist = { com.scottsx.app.data.WishlistStore.toggleBookmark(product.id) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 5c. Sellers you follow — real avatars + ratings
+                        if (followedSellers.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(20.dp))
+                                Reveal(index = 3) {
+                                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                        SectionTitle(
+                                            title = "Sellers you follow",
+                                            viewAll = "Manage",
+                                            onViewAll = { /* deep-link */ },
+                                        )
+                                    }
+                                }
+                            }
+                            item {
+                                Spacer(Modifier.height(10.dp))
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    items(followedSellers, key = { it.id }) { seller ->
+                                        Column(
+                                            modifier = Modifier
+                                                .width(90.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(ScottsTechXColors.SurfacePanelDark)
+                                                .clickable { onOpenStore(seller.id) }
+                                                .padding(vertical = 10.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                        ) {
+                                            if (!seller.logoUrl.isNullOrBlank()) {
+                                                AsyncImage(
+                                                    model = seller.logoUrl,
+                                                    contentDescription = seller.storeName,
+                                                    modifier = Modifier
+                                                        .size(46.dp)
+                                                        .clip(CircleShape)
+                                                        .background(ScottsTechXColors.SurfaceElevatedDark),
+                                                    contentScale = ContentScale.Crop,
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(46.dp)
+                                                        .background(ScottsTechXColors.BluePrimary, CircleShape),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    Text(
+                                                        (seller.storeName.firstOrNull() ?: 'S').uppercase(),
+                                                        color = Color.White, fontWeight = FontWeight.ExtraBold,
+                                                        fontSize = 18.sp,
+                                                    )
+                                                }
+                                            }
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(
+                                                seller.storeName,
+                                                color = ScottsTechXColors.OnDark,
+                                                fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                "★ ${"%.1f".format(seller.rating)} · ${seller.productCount}",
+                                                color = ScottsTechXColors.OnDarkSecondary, fontSize = 9.5.sp,
+                                                maxLines = 1,
+                                            )
+                                        }
                                     }
                                 }
                             }
