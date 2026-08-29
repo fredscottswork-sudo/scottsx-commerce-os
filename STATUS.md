@@ -1,5 +1,51 @@
 # ScottsTechX — build status
 
+## Big-fix sweep (2026-08-29, sixth pass) — CI 33262479551 ✅ GREEN, both APKs
+
+**The single root cause behind "dashboard blank / messaging broken / no notifications":** the app never stored a backend JWT. Firebase
+sign-in succeeded but no client ever called `/auth/firebase/sign-in` to exchange
+the Firebase ID token for a `/api/v1` bearer token, and even the code that
+WAS meant to store it (`Session.jwt`) never ran. Every authenticated call
+went out without `Authorization` and silently 401'd. Fixed:
+
+- `AuthRepository.syncBackendSession()` runs on every sign-in (password,
+  Google-via-Firebase, sign-up) → both session caches get the JWT + backend
+  user id. Cold starts re-exchange automatically in `MainActivity`.
+- `Session.tokenOrNull()/userIdOrNull()` fall back to the root cache so no
+  caller can write to the wrong store again. Chat bubbles now resolve
+  "mine vs theirs" correctly.
+
+**Notifications:** `POST_NOTIFICATIONS` permission + runtime prompt, FCM
+service finally DECLARED in the manifest, device token registers on every
+sign-in, a local welcome notification posts on every fresh login, and a
+foreground `ChatWatcher` polls conversations so new messages notify even
+while browsing. `windowSoftInputMode=adjustResize` + `imePadding` on the
+composer fixes the "AI/chat screen doesn't fit" bug.
+
+**Google-only auth:** Login + Sign-Up are now ONE authentic Google button
+(drawn G, no asset). Silent sign-in auto-resume on open — returning users
+land on the dashboard with zero taps. Email/password + Apple removed.
+All colours fixed (theme-contrast invisible-text bugs impossible).
+
+**Chat works exactly like the web:** ✓/✓✓ read receipts via
+`otherLastReadAt`, "typing…" presence via the typing endpoint, read marked
+on open and on every new inbound message, optimistic send + refresh.
+
+**Buyer sidebar logout hidden:** the sidebar overlay rendered UNDER the
+floating bottom bar (Compose z-order), so the bar covered the sticky
+Log-out row. It now renders after the bar, same as the seller home.
+
+**Store settings all real:** the form wrote keys the backend ignores
+(`logoUrl`, `whatsapp`, `addressLine1`) so "saved" silently dropped data.
+Now every section (profile, business, location, delivery, payments,
+notifications, security w/ real `changePassword`, policies) PATCHes the
+fields the backend maps and round-trips on reload.
+
+**Cart photos:** product thumbnails now render via Coil AsyncImage.
+**Seller-home resilience:** 4 parallel fetches run under `supervisorScope`
+with per-fetch `runCatching` — one failure can never strand the tab on the
+Loading skeleton again.
+
 One backend, two clients. Web is built and verified; both Android modules
 (v1 flagship + v2) compile in CI on every push and upload APK artifacts
 (`scottsx-test-apk`, `scottsx-v2-test-apk`). Both apps default to the same
