@@ -177,7 +177,7 @@ fun NotificationsScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     loadError ?: "No notifications yet — order updates and messages will appear here.",
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnPanelSecondary,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(32.dp),
                 )

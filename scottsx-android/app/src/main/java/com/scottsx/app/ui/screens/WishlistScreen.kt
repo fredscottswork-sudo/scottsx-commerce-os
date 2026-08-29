@@ -136,13 +136,13 @@ fun WishlistScreen(
                     androidx.compose.foundation.layout.Spacer(Modifier.size(16.dp))
                     Text(
                         text = "Your wishlist is empty.",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp,
                     )
                     Text(
                         text = "Tap the heart on any product to save it here.",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 12.sp,
                     )
                 }

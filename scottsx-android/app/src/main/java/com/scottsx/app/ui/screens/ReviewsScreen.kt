@@ -115,7 +115,7 @@ fun ReviewsScreen(
             }
             loadError != null && ratingsPage == null -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(loadError ?: "", color = ScottsTechXColors.OnLightSecondary,
+                    Text(loadError ?: "", color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 13.sp, modifier = Modifier.padding(24.dp))
                 }
             }

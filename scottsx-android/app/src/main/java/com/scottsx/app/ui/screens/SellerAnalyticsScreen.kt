@@ -106,7 +106,7 @@ fun SellerAnalyticsScreen(
         }
         if (dashboard == null && loadError != null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(loadError ?: "", color = ScottsTechXColors.OnLightSecondary,
+                Text(loadError ?: "", color = ScottsTechXColors.OnPanelSecondary,
                     fontSize = 13.sp, modifier = Modifier.padding(24.dp))
             }
         } else if (dashboard == null) {
