@@ -113,6 +113,11 @@ console.log('\n\x1b[1m2. Screens that pin content to a screen edge\x1b[0m');
   const screens = files.filter((f) => rel(f).includes('/screens/'));
   const viaShared = (src) => /ScreenHeader\(|GradientHeader\(|ConversationListScreen\(|SettingsScaffold\(|GoogleOnlyAuthLayout\(|BrandedAuthScaffold\(/.test(body(src));
   const bare = screens.filter((f) => {
+    const name = rel(f).split('/').pop();
+    // Fullscreen-by-design screens: the launch splash hand-over MUST draw
+    // edge-to-edge behind the system bars or the launch window -> Compose
+    // transition flashes a dark nav bar.
+    if (name === 'SplashScreen.kt') return false;
     const s = read(f);
     return !insetAware(s) && !viaShared(s);
   });
@@ -338,8 +343,9 @@ console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
   const sp = files.find((x) => rel(x).endsWith('screens/SplashScreen.kt'));
   if (sp) {
     const ss = read(sp);
-    ok_if('splash uses the transparent lockup, not the raw square logo',
-      /R\.drawable\.brand_lockup/.test(ss) && !/R\.drawable\.logo\b/.test(ss));
+    ok_if('splash drives the pre-sliced STX letter layers, not the raw square logo',
+      /R\.drawable\.splash_s/.test(ss) && /R\.drawable\.splash_t/.test(ss) &&
+      /R\.drawable\.splash_x/.test(ss) && !/R\.drawable\.logo\b/.test(ss));
     ok_if('splash does not force the lockup into a fixed square',
       !/painterResource\(R\.drawable\.brand_lockup\)[\s\S]{0,300}?\.size\(\d+\.dp\)/.test(ss));
     ok_if('splash does not print the wordmark twice',

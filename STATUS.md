@@ -439,3 +439,24 @@ been tested.
 ## 2026-08-29 — STX splash shipped
 - CI fix b963dc8 (KDoc brackets) — run 33276055595 SUCCESS, artifacts:
   scottsx-test-apk 35,101,367 B + scottsx-v2-test-apk 30,679,709 B.
+
+## 2026-08-29 — Launch-window STX + loading-hold splash + login fixes
+- STX visible from the icon TAP: Android 12+ windowSplashScreenAnimatedIcon
+  (launch_stx.png) + pre-31 windowBackground layer-list (launch_center.png
+  monogram on surface_dark), both theme variants updated. Compose splash frame
+  0 is pixel-identical (letters assembled) -> zero seam at handover.
+- Splash choreography v2: assembled hold -> burst scatter (S/T/X fly apart) ->
+  spring fusion -> impact flash + rings -> double chrome shimmer -> IGNITION
+  HOLD (breathing, sparks, ripple every 1.7s, shimmer every 1.9s) that SUSTAINS
+  until LiveMarketplace.state leaves Idle/Loading (min 3.2s, hard cap 8.5s,
+  tap skips) -> zoom-exit. Network never gates the handoff.
+- Login bugfixes: V2Client warmPost/apiCallWarm (28-42s budgets + one retry)
+  for auth/login, auth/register, auth/verify/request + Firebase hand-off —
+  kills the "No connection" false alarm while the free-tier API wakes; honest
+  cold-server copy; GoogleSignInHelper double-picker guard (orphaned
+  continuation/spinner-stuck) with cancellation cleanup + describeFailure
+  already maps DEVELOPER_ERROR (google-services.json has NO android OAuth
+  client yet — one-tap Google needs SHA-1 registered in Firebase Console;
+  email login is the reliable path until then).
+- layout-check gate: fullscreen exemption for SplashScreen + assertion now
+  matches the letter-slice design.

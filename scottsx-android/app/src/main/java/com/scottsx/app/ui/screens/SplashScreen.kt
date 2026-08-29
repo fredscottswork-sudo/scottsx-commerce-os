@@ -35,42 +35,44 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * SPLASH — the cinematic STX opening.
+ * SPLASH — the cinemapic STX opening that owns the WHOLE load window.
  *
- * The official monogram is pre-sliced into three perfectly aligned
- * letter layers (splash_s / splash_t / splash_x, all on one identical
- * canvas) so each letter can be choreographed on its own:
+ * From the instant the icon is tapped the platform shows the STX
+ * monogram (Android 12 SplashScreen icon / pre-31 window layer-list —
+ * both render the same assembled art). The first Compose frame is
+ * pixel-identical: letters already fused at full strength, then:
  *
- *   0.00–0.12  deep-space bloom fades up behind the stage
- *   0.06–0.30  S slams in from the left   (overshoot + un-rotate)
- *   0.14–0.38  T drops in from the top    (overshoot + un-rotate)
- *   0.22–0.52  X slashes in from the right (stretch + spin-down)
- *   0.49–0.60  IMPACT flash + two expanding energy rings
- *   0.55–0.95  chrome shimmer beams sweep the assembled STX, twice
- *   0.50–1.00  emblem breathes, spark field twinkles
- *   exit       emblem zooms through the camera and fades → app
+ *   0.00–0.35  STX sits assembled on the rising engine bloom (seamless)
+ *   0.35–0.95  energy burst — S / T / X scatter apart at speed
+ *   0.95–1.75  fusion flight — letters spring back together (overshoot)
+ *   1.70       impact flash + energy rings ripple outward
+ *   2.05–3.25  chrome shimmer sweeps the fused metal letters, twice
+ *   3.25+      IGNITION HOLD — breathing emblem, sparks, ripples and a
+ *              shimmer pass every ~1.9 s — sustained for as long as the
+ *              live catalogue is still loading (capped at 8.5 s), never
+ *              held up by the network: tap skips, slow fetch hands over.
+ *   exit       STX zooms through the camera and fades -> the app.
  *
- * A single frame clock drives everything, so a tap can instantly skip
- * to the exit phase without cancelling any coroutine mid-animation.
- * The network warm-up still races this window — the splash NEVER
- * waits on the network.
+ * A single frame clock drives everything, so nothing can be cancelled
+ * mid-animation and the jump to the exit beat is always instantaneous.
  */
 
-private const val INTRO_MS = 3000L
-private const val EXIT_MS = 720L
+private const val MIN_SHOW_S = 3.2f     // brand beat minimum on screen
+private const val HARD_CAP_S = 8.5f     // never trap users on a cold server
+private const val EXIT_S = 0.75f
 private const val MONOGRAM_ASPECT = 3.1877f   // W/H of the shared letter canvas
 
-/** Normalised 0..1 progress of the stage window (a to b) inside the global clock. */
+/** Normalised 0..1 progress of the stage window (a to b) inside the clock. */
 private fun stage(t: Float, a: Float, b: Float): Float =
     ((t - a) / (b - a)).coerceIn(0f, 1f)
 
-/** 1 - (1-x)^3 — cinematic ease-out. */
+/** 1 - (1-x)^3 ease-out. */
 private fun easeOut(x: Float): Float {
     val d = 1f - x.coerceIn(0f, 1f)
     return 1f - d * d * d
 }
 
-/** OvershootInterpolator — lands past 1 then settles (tension 2.4). */
+/** OvershootInterpolator (tension 2.4) — passes the target, then settles. */
 private fun overshoot(x: Float): Float {
     val d = x.coerceIn(0f, 1f) - 1f
     return d * d * (3.4f * d + 2.4f) + 1f
@@ -86,7 +88,7 @@ private data class Spark(
 fun SplashScreen(
     onFinished: () -> Unit,
 ) {
-    var t by remember { mutableFloatStateOf(0f) }
+    var clock by remember { mutableFloatStateOf(0f) }   // seconds since frame 0
     var exit by remember { mutableFloatStateOf(0f) }
     var skipped by remember { mutableStateOf(false) }
 
@@ -103,47 +105,70 @@ fun SplashScreen(
     }
 
     LaunchedEffect(Unit) {
-        // warm window: pull catalog + cart while the brand plays
+        // The warm window: kick the catalogue + cart fetches; the splash
+        // holds (ignition loop) until the catalogue reaches a terminal
+        // state or the hard cap — whichever comes first.
         com.scottsx.app.data.LiveMarketplace.warm()
         com.scottsx.app.data.CartStore.warm()
         var start = -1L
         while (true) {
             withFrameNanos { now ->
                 if (start < 0L) start = now
-                t = ((now - start) / (INTRO_MS * 1_000_000f)).coerceAtMost(1f)
+                clock = (now - start) / 1_000_000_000f
             }
-            if (t >= 1f || skipped) break
+            val market = com.scottsx.app.data.LiveMarketplace.state.value
+            val loaded = market != com.scottsx.app.data.LiveMarketplace.State.Idle &&
+                market != com.scottsx.app.data.LiveMarketplace.State.Loading
+            if ((loaded && clock >= MIN_SHOW_S) || skipped || clock >= HARD_CAP_S) break
         }
         start = -1L
         while (true) {
             withFrameNanos { now ->
                 if (start < 0L) start = now
-                exit = ((now - start) / (EXIT_MS * 1_000_000f)).coerceAtMost(1f)
+                exit = ((now - start) / 1_000_000_000f / EXIT_S).coerceAtMost(1f)
             }
             if (exit >= 1f) break
         }
         onFinished()
     }
 
-    // ── letter choreography (derived from the master clock) ─────────────
-    val sIn = stage(t, 0.06f, 0.30f)          // S flight
-    val tIn = stage(t, 0.14f, 0.38f)          // T drop
-    val xIn = stage(t, 0.22f, 0.52f)          // X slash
-    val sEase = easeOut(sIn); val tEase = easeOut(tIn); val xEase = easeOut(xIn)
-    val sAlpha = easeOut(stage(t, 0.06f, 0.20f))
-    val tAlpha = easeOut(stage(t, 0.14f, 0.30f))
-    val xAlpha = easeOut(stage(t, 0.22f, 0.38f))
+    // ── burst + fusion choreography ─────────────────────────────────────
+    // scatterAmt: 0 assembled -> 1 scattered (0.35-0.95s) -> springs back
+    // through 0 (overshoot, 0.95-1.75s). One driver for all three letters.
+    val scatterAmt = when {
+        clock < 0.35f -> 0f
+        clock < 0.95f -> easeOut(stage(clock, 0.35f, 0.95f))
+        else -> 1f - overshoot(stage(clock, 0.95f, 1.75f))
+    }
+    val letterAlpha = (1f - 0.55f * scatterAmt.coerceAtLeast(0f)).coerceIn(0f, 1f)
+    val sc = scatterAmt                          // shorthand below
+    val holdClock = (clock - 3.25f).coerceAtLeast(0f)
 
-    // impact flash, rings, shimmer, breathing
-    val flashF = stage(t, 0.49f, 0.60f)
+    // impact flash + rings
+    val flashF = stage(clock, 1.70f, 1.92f)
     val flash = if (flashF < 0.22f) flashF / 0.22f else 1f - (flashF - 0.22f) / 0.78f
-    val ring1 = stage(t, 0.50f, 0.80f)
-    val ring2 = stage(t, 0.56f, 0.90f)
-    val breathe = if (t > 0.55f) 1f + 0.016f * sin((t - 0.55f) * 4f * PI.toFloat()) * (1f - exit) else 1f
-    val pop = 0.90f + 0.10f * overshoot(stage(t, 0.46f, 0.60f))
-    val bloom = easeOut(stage(t, 0.0f, 0.14f)) * (1f - exit)
+    val ring1 = stage(clock, 1.72f, 2.45f)
+    val ring2 = stage(clock, 1.95f, 2.70f)
+    // ignition-loop ripple, every 1.7 s while holding
+    val rippleF = (holdClock % 1.7f) / 1.1f
+    val ripple = if (clock > 3.25f && rippleF <= 1f) rippleF else 0f
+
+    val breathe = if (clock > 1.75f) 1f + 0.015f * sin(clock * 2.2f * PI.toFloat() / 2f) else 1f
+    val pop = if (clock < 0.35f) 1f else 0.93f + 0.07f * overshoot(stage(clock, 1.55f, 1.78f))
+    val bloom = easeOut(stage(clock, 0.0f, 0.7f)) * (1f - exit)
     val emblemScale = breathe * pop * (1f + 4.2f * exit)
     val emblemAlpha = (1f - exit) * (1f - exit)
+
+    // shimmer schedule: 2.05-2.60, 2.80-3.25, then one pass every 1.9 s
+    // in the hold loop.
+    val shimmerPasses = buildList<Float> {
+        add(stage(clock, 2.05f, 2.60f))
+        add(stage(clock, 2.80f, 3.25f))
+        if (clock > 3.4f) {
+            val f = (holdClock % 1.9f) / 0.75f
+            add(if (f <= 1f) f else 0f)
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -157,9 +182,6 @@ fun SplashScreen(
         CinematicBackground()
 
         Box(
-            // shimmer + spark + rings draw *behind* the letters but above
-            // the aurora backdrop; this box is deliberately NOT clipped so
-            // the energy rings can overflow the letter frame.
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .aspectRatio(MONOGRAM_ASPECT)
@@ -168,9 +190,9 @@ fun SplashScreen(
                     val cy = size.height / 2f
                     val baseR = min(size.width, size.height)
 
-                    // deep-space bloom engine glow
+                    // engine bloom rising behind the emblem
                     if (bloom > 0f) {
-                        val gAlpha = (0.32f + 0.10f * sin(t * 9f)) * bloom
+                        val gAlpha = (0.30f + 0.10f * sin(clock * 5.3f)) * bloom
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -185,7 +207,7 @@ fun SplashScreen(
                         )
                     }
 
-                    // impact flash — white-blue radial, dies fast
+                    // fusion impact flash
                     if (flash > 0f) {
                         drawCircle(
                             brush = Brush.radialGradient(
@@ -202,23 +224,23 @@ fun SplashScreen(
                         )
                     }
 
-                    // two expanding energy rings
-                    for ((rs, wMul) in listOf(ring1 to 1f, ring2 to 0.6f)) {
+                    // impact rings + ignition ripples
+                    for (rs in listOf(ring1, ring2, ripple)) {
                         if (rs > 0f && rs < 1f) {
                             drawCircle(
                                 color = ScottsTechXColors.BlueGlow.copy(alpha = (1f - rs) * 0.5f * (1f - exit)),
                                 radius = baseR * (0.35f + rs * 1.15f),
                                 center = androidx.compose.ui.geometry.Offset(cx, cy),
-                                style = Stroke(width = (2f + (1f - rs) * 14f) * wMul),
+                                style = Stroke(width = 2f + (1f - rs) * 12f),
                             )
                         }
                     }
 
-                    // twinkling spark field (appears after the impact)
-                    val sparkMaster = stage(t, 0.50f, 0.58f) * (1f - exit)
+                    // twinkling spark field (from the impact onward)
+                    val sparkMaster = stage(clock, 1.80f, 2.10f) * (1f - exit)
                     if (sparkMaster > 0f) {
                         for (sp in sparks) {
-                            val tw = 0.35f + 0.65f * sin(t * 26f + sp.phase * 6.28f)
+                            val tw = 0.35f + 0.65f * sin(clock * 7.4f + sp.phase * 6.28f)
                             drawCircle(
                                 color = (if (sp.blue) Color(0xFF8FC4FF) else Color(0xFFEAF4FF))
                                     .copy(alpha = sparkMaster * tw * 0.85f),
@@ -232,10 +254,8 @@ fun SplashScreen(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            // ── offscreen letter layer: the SrcIn shimmer only lights up
-            // the letters themselves, never the background. Compositing
-            // happens on one graphics layer, so breathing/zoom move the
-            // whole STX as a unit. ──────────────────────────────────────
+            // offscreen letter layer — the SrcIn shimmer lights only the
+            // letters; breathing + zoom move the whole STX as one unit.
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -246,7 +266,7 @@ fun SplashScreen(
                         alpha = emblemAlpha
                     },
             ) {
-                // S — slams in from the left
+                // S — scatters left, springs back
                 Image(
                     painter = painterResource(R.drawable.splash_s),
                     contentDescription = null,
@@ -254,15 +274,13 @@ fun SplashScreen(
                     modifier = Modifier
                         .matchParentSize()
                         .graphicsLayer {
-                            translationX = -size.width * 0.55f * (1f - sEase)
-                            translationY = size.height * 0.25f * (1f - sEase)
-                            rotationZ = -16f * (1f - sEase)
-                            val sc = 0.55f + 0.45f * (sEase + 0.18f * (overshoot(sIn) - sEase))
-                            scaleX = sc; scaleY = sc
-                            alpha = sAlpha
+                            translationX = -size.width * 0.55f * sc
+                            translationY = size.height * 0.22f * sc
+                            rotationZ = -18f * sc
+                            alpha = letterAlpha
                         },
                 )
-                // T — drops in from the top
+                // T — scatters up
                 Image(
                     painter = painterResource(R.drawable.splash_t),
                     contentDescription = null,
@@ -270,15 +288,13 @@ fun SplashScreen(
                     modifier = Modifier
                         .matchParentSize()
                         .graphicsLayer {
-                            translationY = -size.height * 0.9f * (1f - tEase)
-                            translationX = size.width * 0.06f * (1f - tEase)
-                            rotationZ = 10f * (1f - tEase)
-                            val sc = 0.60f + 0.40f * (tEase + 0.18f * (overshoot(tIn) - tEase))
-                            scaleX = sc; scaleY = sc
-                            alpha = tAlpha
+                            translationY = -size.height * 0.85f * sc
+                            translationX = size.width * 0.05f * sc
+                            rotationZ = 9f * sc
+                            alpha = letterAlpha
                         },
                 )
-                // X — slashes in from the right with a stretch-spin
+                // X — scatters right with a stretch-spin
                 Image(
                     painter = painterResource(R.drawable.splash_x),
                     contentDescription = "ScottsTechX",
@@ -286,24 +302,21 @@ fun SplashScreen(
                     modifier = Modifier
                         .matchParentSize()
                         .graphicsLayer {
-                            translationX = size.width * 0.75f * (1f - xEase)
-                            translationY = -size.height * 0.35f * (1f - xEase)
-                            rotationZ = 26f * (1f - xEase)
-                            scaleX = (1f + 0.9f * (1f - xEase)) * (0.7f + 0.3f * xEase)
-                            scaleY = 0.7f + 0.3f * xEase
-                            alpha = xAlpha
+                            translationX = size.width * 0.70f * sc
+                            translationY = -size.height * 0.30f * sc
+                            rotationZ = 26f * sc
+                            scaleX = 1f + 0.55f * sc.coerceAtLeast(0f)
+                            alpha = letterAlpha
                         },
                 )
 
-                // chrome shimmer beams — twice across the assembled STX;
-                // a sibling drawn ON TOP of the letters inside the same
-                // offscreen layer, so SrcIn lights up only the letters.
+                // chrome shimmer beams — drawn on top inside the offscreen
+                // layer, SrcIn keeps them inside the letter metal only.
                 Box(
                     Modifier
                         .matchParentSize()
                         .drawBehind {
-                            for ((a, b) in listOf(0.55f to 0.72f, 0.78f to 0.95f)) {
-                                val f = stage(t, a, b)
+                            for (f in shimmerPasses) {
                                 if (f <= 0f || f >= 1f) continue
                                 val sweep = easeOut(f) * (1f - exit)
                                 val cx = -size.width * 0.3f + size.width * 1.6f * sweep
