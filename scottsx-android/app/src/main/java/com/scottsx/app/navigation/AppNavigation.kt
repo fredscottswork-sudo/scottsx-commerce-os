@@ -116,7 +116,15 @@ fun AppNavigation() {
         composable(Routes.SPLASH) {
             BackHandler { /* splash blocks back */ }
             SplashHost(onContinue = {
-                navController.navigate(Routes.ONBOARDING) {
+                // The intro slides are a FIRST-RUN experience: once the
+                // user has seen them, later cold starts go straight to
+                // role select (and from there a signed-in session fast-
+                // forwards to its dashboard). Without this gate every
+                // app launch replays all three welcome screens.
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val seen = com.scottsx.app.data.preferences.UserPrefs.get(ctx).hasSeenOnboarding()
+                navController.navigate(if (seen) Routes.ROLE else Routes.ONBOARDING) {
+                    popUpTo(Routes.SPLASH) { inclusive = true }
                     launchSingleTop = true
                 }
             })
@@ -125,6 +133,11 @@ fun AppNavigation() {
         composable(Routes.ONBOARDING) {
             BackHandler { /* onboarding blocks back */ }
             OnboardingFlow(onFinish = {
+                // Persist BEFORE navigating so a process death between
+                // the two calls cannot replay the intro on next launch.
+                com.scottsx.app.data.preferences.UserPrefs
+                    .get(androidx.compose.ui.platform.LocalContext.current)
+                    .markOnboardingSeen()
                 navController.navigate(Routes.ROLE) {
                     popUpTo(Routes.ONBOARDING) { inclusive = true }
                     launchSingleTop = true

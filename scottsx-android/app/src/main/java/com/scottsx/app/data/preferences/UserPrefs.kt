@@ -18,6 +18,10 @@ class UserPrefs private constructor(private val sp: SharedPreferences) {
 fun themeMode(): String = sp.getString("theme_mode", "dark") ?: "dark"
         fun setThemeMode(mode: String) { sp.edit().putString("theme_mode", mode).apply() }
 
+    /** First-run gate — the welcome intro must play exactly ONCE. */
+    fun hasSeenOnboarding(): Boolean = sp.getBoolean("onboarding_seen", false)
+    fun markOnboardingSeen() { sp.edit().putBoolean("onboarding_seen", true).apply() }
+
     companion object {
         @Volatile private var instance: UserPrefs? = null
         fun get(context: Context): UserPrefs = instance ?: synchronized(this) {
