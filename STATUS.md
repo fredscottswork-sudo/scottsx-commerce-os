@@ -1,5 +1,34 @@
 # ScottsTechX — build status
 
+## Eighth pass (2026-08-29, late evening) — CI 33266437921 ✅ GREEN
+
+Full auth + home + AI rebuild per the owner's directive:
+
+- **Manual login back for everyone** — email/phone + password, calling
+  `POST /auth/login` (the web's own credential store), so accounts made
+  on the website sign in natively. Google one-tap kept. NO Apple.
+- **Create form back** — name, email, phone, password, confirm (+ store
+  name for sellers) → `POST /auth/register` with store seeding.
+- **Password reset screen** — request the reset email, then redeem the
+  emailed token natively with a new password (`/auth/forgot-password` +
+  `/auth/reset-password`); the email's web link keeps working too.
+- **Verification screen** — the 6-digit code the web mails, typed into
+  six brand boxes → `/auth/verify/confirm`; resend with 60 s cooldown,
+  auto-submit on the last digit.
+- **Role mismatch AUTO-RESET** — a seller tapping "Buyer" is signed out
+  and the Gmail account picker opens instantly for a switch.
+- **Branding** — new `BrandedAuthScaffold` (navy→blue gradient, drifting
+  glow orbs, sweeping beam, brand lockup, role pill, staggered field
+  entrances) under login/sign-up/reset/verify; brand strip (mark +
+  wordmark + tagline / Seller Center) pinned on both home screens.
+- **Buyer home de-squeezed** — the analytics/personal rail removed
+  entirely; ambient drifting orbs animate the background instead.
+- **AI screen** — gradient avatar + online dot, per-message entrances,
+  gradient send button, brand-tinted user bubbles, no raw model/provider
+  leak; picker-cancel can no longer kill the sign-in coroutine.
+
+Artifacts: both `scottsx-test-apk` and `scottsx-v2-test-apk` produced.
+
 ## Seventh pass (2026-08-29, evening) — CI 33263315249 & 33263525942 ✅ GREEN ×3 in a row
 
 Deep parity hardening on top of the sixth pass:
