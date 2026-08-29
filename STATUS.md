@@ -1,5 +1,30 @@
 # ScottsTechX — build status
 
+## Seventh pass (2026-08-29, evening) — CI 33263315249 & 33263525942 ✅ GREEN ×3 in a row
+
+Deep parity hardening on top of the sixth pass:
+
+- **Web-edited profiles appear in the app.** `AccountSettingsScreen` now
+  re-reads `GET /api/v1/auth/me` on open and syncs both session caches —
+  name/phone/city/photo/verified changed on the web show up in the app.
+- **Notification settings are cross-device.** The web stores
+  `notifyOrderUpdates / notifyMessages / notifyMarketing` server-side at
+  `GET/PATCH /me/preferences`; the app's toggles now hydrate from the
+  server on open and write back on every change — app and web never
+  disagree. `V2Client.Settings` gained `notifyMarketing`.
+- **Copy fix:** product-photo upload status no longer says "uploaded to
+  Firebase Storage" (uploads flow through `V2Client.uploadImage` → the
+  backend media route).
+- **Parity audits (no code gaps found):** seller→buyer chat entry passes
+  the counterparty uid like the web (`chat.open(otherPartyId)`); seller
+  dashboard home renders the same sections as the web (stats/alerts/
+  14-day revenue chart/top products/recent orders) from the same
+  `GET /seller/dashboard/stats` contract; buyer Orders / Refunds /
+  Returns / Disputes / ratings are all live V2Client calls — no stub or
+  fake data anywhere in the swept screens.
+
+Artifacts (run 33263525942): `scottsx-test-apk` 36.7 MB, `scottsx-v2-test-apk` 30.7 MB.
+
 ## Big-fix sweep (2026-08-29, sixth pass) — CI 33262479551 ✅ GREEN, both APKs
 
 **The single root cause behind "dashboard blank / messaging broken / no notifications":** the app never stored a backend JWT. Firebase
