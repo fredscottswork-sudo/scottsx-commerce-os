@@ -5,7 +5,6 @@ import com.scottsx.app.data.domain.Role
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -138,10 +137,7 @@ fun RoleSelectionScreen(
                     .height(56.dp)
                     .clip(RoundedCornerShape(28.dp))
                     .border(1.dp, ScottsTechXColors.BlueGlow.copy(alpha = 0.55f), RoundedCornerShape(28.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = androidx.compose.material3.ripple(color = ScottsTechXColors.BlueGlow.copy(alpha = 0.2f)),
-                    ) { onLogin(selected) },
+                    .clickable { onLogin(selected) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -201,12 +197,7 @@ private fun SelectableRoleCard(
             .clip(RoundedCornerShape(20.dp))
             .background(brush = fillBrush)
             .border(1.5.dp, borderColor, RoundedCornerShape(20.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = androidx.compose.material3.ripple(
-                    color = Color.White.copy(alpha = 0.15f),
-                ),
-            ) { onSelect() }
+            .clickable { onSelect() }
             .padding(20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
