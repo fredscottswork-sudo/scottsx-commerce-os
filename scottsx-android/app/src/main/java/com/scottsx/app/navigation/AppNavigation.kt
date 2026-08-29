@@ -20,6 +20,7 @@ import com.scottsx.app.data.domain.SessionCache
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.screens.AiAssistantScreen
 import com.scottsx.app.ui.screens.RealAiChatScreen
+import com.scottsx.app.ui.screens.ResetPasswordScreen
 import com.scottsx.app.ui.screens.AiPersonalizationScreen
 import com.scottsx.app.ui.screens.BuyerHomeScreen
 import com.scottsx.app.ui.screens.CartScreen

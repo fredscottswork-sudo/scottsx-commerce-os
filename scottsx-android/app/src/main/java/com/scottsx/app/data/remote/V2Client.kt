@@ -604,7 +604,7 @@ object V2Client {
     suspend fun loginEmail(identifier: String, password: String): EmailLoginResult {
         val body = JSONObject().put("email", identifier).put("password", password)
         val (code, json) = rawPost("/api/v1/auth/login", body)
-        if (json == null) return EmailLoginResult(EmailLoginStatus.NETWORK)
+            ?: return EmailLoginResult(EmailLoginStatus.NETWORK)
         if (code in 200..299) {
             val token = json.optString("token")
             val u = parseUserJson(json.optJSONObject("user"))
@@ -674,20 +674,21 @@ object V2Client {
     /** POST /api/v1/auth/forgot-password {identifier} — mails a reset
      * token (single use, 30 min). Always {ok:true} server-side. */
     suspend fun forgotPassword(identifier: String): Boolean {
-        val (_, json) = rawPost(
+        val pair = rawPost(
             "/api/v1/auth/forgot-password",
             JSONObject().put("identifier", identifier),
         ) ?: return false
-        return json.optBoolean("ok", true)
+        return pair.second.optBoolean("ok", true)
     }
 
     /** POST /api/v1/auth/reset-password {token, password} — redeems the
      * emailed token natively (no browser round-trip). */
     suspend fun resetPasswordWithToken(token: String, newPassword: String): Pair<Boolean, String?> {
-        val (code, json) = rawPost(
+        val pair = rawPost(
             "/api/v1/auth/reset-password",
             JSONObject().put("token", token).put("password", newPassword),
         ) ?: return false to "No connection. Try again."
+        val (code, json) = pair
         if (code in 200..299 && json.optBoolean("ok", false)) return true to null
         val msg = json.optString("message").ifBlank { json.optString("error") }
         return false to msg.ifBlank { "That reset link is invalid or expired — request a new one." }
@@ -695,7 +696,8 @@ object V2Client {
 
     /** POST /api/v1/auth/verify/request (auth) — resend the 6-digit code. */
     suspend fun requestVerificationCode(): Boolean {
-        val (code, json) = rawPost("/api/v1/auth/verify/request", JSONObject()) ?: return false
+        val (code, json) = rawPost("/api/v1/auth/verify/request", JSONObject())
+            ?: return false
         return code in 200..299 && (json.optBoolean("sent", false) || json.optBoolean("alreadyVerified", true))
     }
 

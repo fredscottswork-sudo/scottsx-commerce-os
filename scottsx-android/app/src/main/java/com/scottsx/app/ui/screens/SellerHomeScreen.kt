@@ -277,12 +277,52 @@ fun SellerHomeScreen(
                 .padding(bottom = 96.dp),
             contentPadding = PaddingValues(bottom = 16.dp),
         ) {
+            // Brand strip — company identity first (same as buyer home).
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 26.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(ScottsTechXColors.BrandGradient),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "S",
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp,
+                        )
+                    }
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        text = "ScottsTechX",
+                        color = ScottsTechXColors.OnDark,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp,
+                        letterSpacing = 0.2.sp,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = "· Seller Center",
+                        color = ScottsTechXColors.OnDarkMuted,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+
             // Header
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 16.dp, top = 34.dp),
+                        .padding(start = 12.dp, end = 16.dp, top = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
