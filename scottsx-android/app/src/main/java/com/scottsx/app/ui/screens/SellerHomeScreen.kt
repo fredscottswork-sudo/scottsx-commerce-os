@@ -3,6 +3,7 @@ package com.scottsx.app.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +29,9 @@ import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.TrendingUp
@@ -56,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.data.domain.SellerDashboardData
+import com.scottsx.app.data.domain.SellerStats
 import com.scottsx.app.data.domain.StoreStatus
 import com.scottsx.app.data.preferences.sidebarPaletteFor
 import com.scottsx.app.data.preferences.themeState
@@ -109,6 +115,7 @@ fun SellerHomeScreen(
     onOpenStoreSettings: () -> Unit = {},
     onOpenProfileSettings: () -> Unit = {},
     onOpenMessages: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
     onOpenProduct: (Product) -> Unit = {},
     onNavigateToTransactions: () -> Unit = {},
     onNavigateToReceipts: () -> Unit = {},
@@ -127,6 +134,10 @@ fun SellerHomeScreen(
     // ---- Live state --------------------------------------------------------
     var dash by remember { mutableStateOf<SellerDashboardData?>(null) }
     var open by remember { mutableStateOf<Boolean?>(null) }
+    var sharing by remember { mutableStateOf(false) }
+    var lastFix by remember { mutableStateOf<String?>(null) }
+    var locBusy by remember { mutableStateOf(false) }
+    var locHint by remember { mutableStateOf<String?>(null) }
     var storeName by remember { mutableStateOf<String?>(null) }
     var sellerId by remember { mutableStateOf<String?>(null) }
     var unread by remember { mutableIntStateOf(0) }
@@ -137,7 +148,13 @@ fun SellerHomeScreen(
         state = kotlinx.coroutines.coroutineScope {
             var feed: SellerDashboardData? = null
             val d = launch { feed = V2Client.fetchSellerDashboard() }
-            val l = launch { open = V2Client.fetchStoreOpenState() }
+            val l = launch {
+                open = V2Client.fetchStoreOpenState()
+                V2Client.fetchSellerLocationState()?.let { loc ->
+                    sharing = loc.sharing
+                    lastFix = loc.updatedAt
+                }
+            }
             val n = launch { unread = V2Client.fetchUnreadNotificationCount() }
             val p = launch {
                 V2Client.fetchSellerProfile()?.let { prof ->
@@ -170,6 +187,71 @@ fun SellerHomeScreen(
             val accepted = V2Client.setStoreOpen(next)
             if (accepted == null) open = !next
         }
+    }
+
+    // ---- Live location (web dashboard "Store controls" parity) ------------
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val sharePermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) { locHint = "Location permission is required to share your store." }
+        else {
+            locBusy = true
+            runCatching {
+                val client = com.google.android.gms.location.LocationServices
+                    .getFusedLocationProviderClient(ctx)
+                val cts = com.google.android.gms.tasks.CancellationTokenSource()
+                @Suppress("MissingPermission")
+                client.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                    cts.token,
+                ).addOnSuccessListener { fix ->
+                    scope.launch {
+                        if (fix != null) {
+                            val ok = V2Client.updateSellerLocation(fix.latitude, fix.longitude)
+                            sharing = ok
+                            lastFix = java.text.SimpleDateFormat(
+                                "d MMM HH:mm", java.util.Locale.getDefault(),
+                            ).format(java.util.Date())
+                            locHint = if (ok) "Buyers can now see your store live."
+                            else "Could not publish the fix — try again."
+                        } else {
+                            locHint = "GPS returned nothing — step outside or try again."
+                        }
+                        locBusy = false
+                    }
+                }.addOnFailureListener {
+                    scope.launch {
+                        locHint = "GPS failed — try again."
+                        locBusy = false
+                    }
+                }
+            }.onFailure {
+                locHint = "Location services unavailable on this device."
+                locBusy = false
+            }
+        }
+    }
+
+    fun toggleSharing(next: Boolean) {
+        if (locBusy) return
+        if (!next) {
+            locBusy = true
+            locHint = null
+            scope.launch {
+                if (V2Client.stopSellerLocationSharing()) {
+                    sharing = false
+                    locHint = "Live sharing off — store stays at its last known pin."
+                } else {
+                    locHint = "Could not stop sharing — try again."
+                }
+                locBusy = false
+            }
+            return
+        }
+        locHint = null
+        // The system permission dialog handles both granted+denied flows.
+        sharePermLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
     Box(
@@ -289,6 +371,50 @@ fun SellerHomeScreen(
                     }
                 }
                 SellerFeedState.Ready -> if (stats != null) {
+                    // 0. Attention chips — the web's alert row
+                    //    (pending approval / out of stock / low stock /
+                    //    unread messages), deep-linked to the real screens.
+                    if (stats.pendingApproval > 0 || stats.outOfStock > 0 ||
+                        stats.lowStock > 0 || stats.unreadMessages > 0
+                    ) {
+                        item {
+                            Reveal(index = 0) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    if (stats.pendingApproval > 0) {
+                                        AttentionChip(
+                                            "${stats.pendingApproval} awaiting approval",
+                                            ChipTone.Amber, onClick = onOpenInventory,
+                                        )
+                                    }
+                                    if (stats.outOfStock > 0) {
+                                        AttentionChip(
+                                            "${stats.outOfStock} out of stock",
+                                            ChipTone.Red, onClick = onOpenInventory,
+                                        )
+                                    }
+                                    if (stats.lowStock > 0) {
+                                        AttentionChip(
+                                            "${stats.lowStock} low on stock",
+                                            ChipTone.Amber, onClick = onOpenInventory,
+                                        )
+                                    }
+                                    if (stats.unreadMessages > 0) {
+                                        AttentionChip(
+                                            "${stats.unreadMessages} unread message${if (stats.unreadMessages > 1) "s" else ""}",
+                                            ChipTone.Blue, onClick = onOpenSellerMessages,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // 1. Stat cards — real numbers, web-parity set
                     item {
                         Reveal(index = 0) {
@@ -298,17 +424,19 @@ fun SellerHomeScreen(
                             ) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     StatCard(
-                                        label = "Revenue",
+                                        label = "Revenue (all time)",
                                         value = stats.revenueUgx,
                                         // Abbreviated ("UGX 45.0M") — the raw
                                         // figure is up to 13 chars wide.
                                         format = { formatUgxCompact(it) },
                                         icon = Icons.Filled.AttachMoney,
+                                        hint = "${formatUgxCompact(stats.revenue30Ugx)} last 30 days",
                                         accent = ScottsTechXColors.SuccessGreen,
                                         modifier = Modifier.weight(1f),
                                     )
                                     StatCard(
-                                        label = "Paid orders",
+                                        label = "Orders",
+                                        hint = "${stats.orders30} in last 30 days",
                                         value = stats.orders.toLong(),
                                         format = { compactCount(it) },
                                         icon = Icons.Filled.ShoppingBag,
@@ -318,9 +446,10 @@ fun SellerHomeScreen(
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     StatCard(
-                                        label = "Live products",
-                                        value = stats.totalProducts.toLong(),
-                                        format = { compactCount(it) },
+                                        label = "Avg order value",
+                                        value = stats.avgOrderValueUgx,
+                                        format = { formatUgxCompact(it) },
+                                        hint = "${stats.totalProducts} products listed",
                                         icon = Icons.Filled.Inventory2,
                                         accent = ScottsTechXColors.PurpleAccent,
                                         modifier = Modifier.weight(1f),
@@ -329,6 +458,7 @@ fun SellerHomeScreen(
                                         label = "Followers",
                                         value = stats.followers.toLong(),
                                         format = { compactCount(it) },
+                                        hint = "${compactCount(stats.totalViews.toLong())} product views",
                                         icon = Icons.Filled.Group,
                                         accent = ScottsTechXColors.CyanAccent,
                                         modifier = Modifier.weight(1f),
@@ -370,9 +500,28 @@ fun SellerHomeScreen(
                         }
                     }
 
-                    // 4. Listing health — real status counts
+                    // 3b. Store controls — web parity: accepting-orders
+                    //     switch, live-location sharing, listing badges.
                     item {
                         Reveal(index = 3) {
+                            StoreControlsCard(
+                                acceptingOrders = open != false,
+                                onToggleOrders = { toggleOpen() },
+                                sharing = sharing,
+                                locBusy = locBusy,
+                                locHint = locHint,
+                                lastFix = lastFix,
+                                onToggleSharing = { next -> toggleSharing(next) },
+                                statusCounts = stats,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+
+                    // 4. Listing health — real status counts
+                    item {
+                        Reveal(index = 4) {
                             ListingHealthCard(
                                 approved = stats.approved,
                                 pending = stats.pending + stats.pendingApproval,
@@ -492,8 +641,10 @@ fun SellerHomeScreen(
                     SellerSidebarDestination.Orders -> onManageOrders()
                     SellerSidebarDestination.Products -> onOpenInventory()
                     SellerSidebarDestination.BulkImport -> onOpenBulkImport()
+                    SellerSidebarDestination.AddProduct -> onAddProduct()
                     SellerSidebarDestination.Customers -> Unit
                     SellerSidebarDestination.Messages -> onOpenMessages()
+                    SellerSidebarDestination.Notifications -> onOpenNotifications()
                     SellerSidebarDestination.Promotions -> onOpenMarketplaceTools()
                     SellerSidebarDestination.Analytics -> onOpenAnalytics()
                     SellerSidebarDestination.SellerAi -> onOpenSellerAi()
@@ -588,6 +739,7 @@ private fun StatCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     accent: Color,
     modifier: Modifier = Modifier,
+    hint: String? = null,
 ) {
     Column(
         modifier = modifier
@@ -621,6 +773,13 @@ private fun StatCard(
             text = label, color = ScottsTechXColors.OnDarkSecondary, fontSize = 11.5.sp,
             maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
         )
+        if (hint != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = hint, color = ScottsTechXColors.OnDarkMuted, fontSize = 10.sp,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -772,6 +931,176 @@ private fun ListingHealthCard(
             HealthChip("Rejected", rejected, ScottsTechXColors.ErrorRed, Modifier.weight(1f))
             HealthChip("Suspended", suspended, ScottsTechXColors.PinkAccent, Modifier.weight(1f))
             HealthChip("Out of stock", outOfStock, ScottsTechXColors.WarningAmber, Modifier.weight(1f))
+        }
+    }
+}
+
+private enum class ChipTone { Amber, Red, Blue }
+
+/** Web-parity alert chip — color coding matches the web's alert-chip rows. */
+@Composable
+private fun AttentionChip(label: String, tone: ChipTone, onClick: () -> Unit) {
+    val (bg, fg) = when (tone) {
+        ChipTone.Amber -> Pair(Color(0x26F59E0B), Color(0xFFFBBF24))
+        ChipTone.Red -> Pair(Color(0x26EF4444), Color(0xFFF87171))
+        ChipTone.Blue -> Pair(Color(0x261E6FFF), Color(0xFF7BACFF))
+    }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(fg),
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(label, color = fg, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/**
+ * Web dashboard "Store controls" card — accepting-orders switch, live
+ * location sharing, and listing-status badges, all against the same
+ * backend the web toggles (`/seller/open-state`, `/seller/location`).
+ */
+@Composable
+private fun StoreControlsCard(
+    acceptingOrders: Boolean,
+    onToggleOrders: () -> Unit,
+    sharing: Boolean,
+    locBusy: Boolean,
+    locHint: String?,
+    lastFix: String?,
+    onToggleSharing: (Boolean) -> Unit,
+    statusCounts: SellerStats,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(ScottsTechXColors.SurfacePanelDark)
+            .padding(14.dp),
+    ) {
+        // header
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.Storefront,
+                contentDescription = null,
+                tint = ScottsTechXColors.BluePrimary,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Store controls",
+                color = ScottsTechXColors.OnDark,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.5.sp,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // row 1: accepting orders
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Accepting orders", color = ScottsTechXColors.OnDark, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Closed stores stay listed but marked closed.",
+                    color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp,
+                )
+            }
+            androidx.compose.material3.Switch(
+                checked = acceptingOrders,
+                onCheckedChange = { onToggleOrders() },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+
+        // row 2: live location
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (sharing) Icons.Filled.MyLocation else Icons.Filled.LocationOff,
+                        contentDescription = null,
+                        tint = if (sharing) ScottsTechXColors.SuccessGreen else ScottsTechXColors.OnDarkSecondary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Live location", color = ScottsTechXColors.OnDark, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Text(
+                    if (sharing) "Buyers see your store move in real time."
+                    else "Off — buyers see only your last pinned position.",
+                    color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp,
+                )
+                if (lastFix != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text("Last fix: $lastFix", color = ScottsTechXColors.OnDarkMuted, fontSize = 10.sp)
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (sharing) Color(0x33EF4444) else ScottsTechXColors.BluePrimary)
+                    .clickable(enabled = !locBusy) { onToggleSharing(!sharing) }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+            ) {
+                Text(
+                    when {
+                        locBusy -> "Working…"
+                        sharing -> "Turn off"
+                        else -> "Turn on"
+                    },
+                    color = if (sharing) Color(0xFFF87171) else Color.White,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        if (locHint != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(locHint, color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp)
+        }
+
+        // row 3: listing status badges (web productsByStatus strip)
+        val counts = listOf(
+            "approved" to statusCounts.approved,
+            "pending" to (statusCounts.pending + statusCounts.pendingApproval),
+            "draft" to statusCounts.draft,
+            "rejected" to statusCounts.rejected,
+        ).filter { it.second > 0 }
+        if (counts.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text("Listing status", color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                counts.forEach { (status, n) ->
+                    val tone = when (status) {
+                        "approved" -> Pair(Color(0x2622C55E), Color(0xFF4ADE80))
+                        "pending" -> Pair(Color(0x26F59E0B), Color(0xFFFBBF24))
+                        "rejected" -> Pair(Color(0x26EF4444), Color(0xFFF87171))
+                        else -> Pair(Color(0x1F94A3C4), ScottsTechXColors.OnDarkSecondary)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(tone.first)
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                    ) {
+                        Text("$n $status", color = tone.second, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
         }
     }
 }

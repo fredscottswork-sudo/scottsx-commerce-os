@@ -147,12 +147,12 @@ fun MessagesScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Filled.Search, contentDescription = null,
-                tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(18.dp))
+                tint = ScottsTechXColors.OnCardSecondary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             androidx.compose.foundation.text.BasicTextField(
                 value = query,
@@ -160,13 +160,13 @@ fun MessagesScreen(
                 singleLine = true,
                 modifier = Modifier.weight(1f),
                 textStyle = androidx.compose.ui.text.TextStyle(
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                     fontSize = 14.sp,
                 ),
                 decorationBox = { inner ->
                     if (query.isEmpty()) {
                         Text("Search conversations",
-                            color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
+                            color = ScottsTechXColors.OnCardSecondary, fontSize = 13.sp)
                     }
                     inner()
                 },

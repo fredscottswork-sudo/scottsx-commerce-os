@@ -310,7 +310,7 @@ private fun ThreadHeader(
                 modifier = Modifier
                     .padding(horizontal = 4.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .clickable { onOpenProduct(product.id) }
                     .padding(10.dp),
             ) {
@@ -337,8 +337,8 @@ private fun ThreadHeader(
                     }
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Product context", color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                        Text(product.name, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Product context", color = ScottsTechXColors.OnCardSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Text(product.name, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(com.scottsx.app.ui.util.formatUgx(product.priceUgx), color = ScottsTechXColors.BluePrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -348,7 +348,7 @@ private fun ThreadHeader(
             modifier = Modifier
                 .padding(top = 8.dp, start = 4.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .clickable { onViewStore(sellerId) }
                 .padding(10.dp),
         ) {
@@ -364,8 +364,8 @@ private fun ThreadHeader(
                 }
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("About the seller", color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                    Text(sellerName, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("About the seller", color = ScottsTechXColors.OnCardSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    Text(sellerName, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
             }
         }
@@ -375,8 +375,8 @@ private fun ThreadHeader(
 @Composable
 private fun MessageBubble(msg: UiMessage) {
     val align = if (msg.isFromBuyer) Alignment.End else Alignment.Start
-    val bg = if (msg.isFromBuyer) ScottsTechXColors.BluePrimary else Color.White
-    val fg = if (msg.isFromBuyer) Color.White else ScottsTechXColors.OnLight
+    val bg = if (msg.isFromBuyer) ScottsTechXColors.BluePrimary else ScottsTechXColors.CardSurface
+    val fg = if (msg.isFromBuyer) Color.White else ScottsTechXColors.OnCard
     val radius = RoundedCornerShape(
         topStart = 14.dp,
         topEnd = 14.dp,
@@ -418,7 +418,7 @@ private fun ComposerBar(onSend: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             // Clear BOTH: the keyboard (imePadding — zero when it's closed)
             // and the gesture pill (navBarSpacer). The small double-lift when
             // the keyboard is open is the accepted trade-off for never hiding
@@ -513,11 +513,11 @@ private fun ComposerBar(onSend: (String) -> Unit) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color.White)
+                        .background(ScottsTechXColors.CardSurface)
                         .clickable { text = reply },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(reply, fontSize = 13.sp, color = ScottsTechXColors.OnLight,
+                    Text(reply, fontSize = 13.sp, color = ScottsTechXColors.OnCard,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                 }
             }

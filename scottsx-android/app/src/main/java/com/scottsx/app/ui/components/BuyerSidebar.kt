@@ -215,7 +215,7 @@ fun BuyerSidebarOverlay(
                     )
                     .clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp))
                     .background(brush = Brush.linearGradient(
-                        colors = listOf(Color.White, Color(0xFFFAFBFE)),
+                        colors = listOf(ScottsTechXColors.PanelLight, ScottsTechXColors.CardSurface),
                     )),
                 profile = profile,
                 cartCount = cartCount,

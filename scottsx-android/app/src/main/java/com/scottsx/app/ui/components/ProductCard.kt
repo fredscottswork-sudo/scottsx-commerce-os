@@ -235,7 +235,7 @@ fun ProductCard(
             Spacer(Modifier.width(2.dp))
             Text(
                 text = "%.1f".format(product.rating),
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnCardSecondary,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
             )

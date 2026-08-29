@@ -512,6 +512,7 @@ object V2Client {
             location = o.optString("location").ifEmpty { "Kampala" },
             images = parseProductImages(o, imageUrl, title),
             status = status,
+            rejectionReason = o.optString("rejectionReason").takeIf { it.isNotBlank() },
         )
     }
 
@@ -1174,6 +1175,43 @@ object V2Client {
             parse = { o -> o.optJSONObject("location")?.optBoolean("isOpen") },
         )
 
+    /** Full location object (sharing state + last fix) for the store controls. */
+    data class SellerLocationState(
+        val isOpen: Boolean,
+        val sharing: Boolean,
+        val updatedAt: String?,
+    )
+
+    /**
+     * `GET /api/v1/seller/location` → `{ location: { lat, lng, sharing,
+     * isOpen, updatedAt } | null }` — state behind the web dashboard's
+     * "Live location" control.
+     */
+    suspend fun fetchSellerLocationState(): SellerLocationState? =
+        apiCall(
+            method = "GET",
+            path = "/api/v1/seller/location",
+            body = null,
+            parse = { o ->
+                o.optJSONObject("location")?.let { loc ->
+                    SellerLocationState(
+                        isOpen = loc.optBoolean("isOpen", true),
+                        sharing = loc.optBoolean("sharing", false),
+                        updatedAt = loc.optString("updatedAt").ifBlank { null },
+                    )
+                }
+            },
+        )
+
+    /** DELETE /api/v1/seller/location — stop live sharing (pin stays put). */
+    suspend fun stopSellerLocationSharing(): Boolean =
+        apiCall(
+            method = "DELETE",
+            path = "/api/v1/seller/location",
+            body = null,
+            parse = { true },
+        ) ?: false
+
     /** `PATCH /api/v1/seller/open-state` — flip the store open/closed. */
     suspend fun setStoreOpen(isOpen: Boolean): Boolean? =
         apiCall(
@@ -1778,6 +1816,8 @@ object V2Client {
     data class MyOrder(
         val id: String,
         val sellerId: String,
+        /** Needed to file a review — backend exposes it as productId. */
+        val productId: String?,
         val title: String,
         val amountUgx: Long,
         val quantity: Int,
@@ -1797,6 +1837,7 @@ object V2Client {
                     MyOrder(
                         id = r.optString("id"),
                         sellerId = r.optString("sellerId"),
+                        productId = r.optString("productId").takeIf { it.isNotBlank() },
                         title = r.optString("title"),
                         amountUgx = r.optLong("amount", 0L),
                         quantity = r.optInt("quantity", 1),

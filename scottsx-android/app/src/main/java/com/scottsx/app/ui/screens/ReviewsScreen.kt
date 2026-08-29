@@ -129,14 +129,14 @@ fun ReviewsScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White)
+                        .background(ScottsTechXColors.CardSurface)
                         .padding(16.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(80.dp)) {
                             Text(
                                 text = "%.1f".format(average),
-                                color = ScottsTechXColors.OnLight,
+                                color = ScottsTechXColors.OnCard,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 32.sp,
                             )
@@ -151,7 +151,7 @@ fun ReviewsScreen(
                                 }
                             }
                             Text("${page.summary.count} reviews",
-                                color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp)
+                                color = ScottsTechXColors.OnCardSecondary, fontSize = 10.sp)
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {

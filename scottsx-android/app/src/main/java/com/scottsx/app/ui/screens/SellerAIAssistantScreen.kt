@@ -236,7 +236,7 @@ fun SellerAIAssistantScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(ScottsTechXColors.OnLightSecondary.copy(alpha = 0.12f)),
+                    .background(ScottsTechXColors.OnCardSecondary.copy(alpha = 0.12f)),
             )
 
             // Chat messages
@@ -281,7 +281,7 @@ fun SellerAIAssistantScreen(onBack: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -373,7 +373,7 @@ private fun QuickTool(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = ScottsTechXColors.CardSurface),
         shape = RoundedCornerShape(14.dp),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -399,8 +399,8 @@ private fun QuickTool(
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Text(label, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text(subtitle, color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+            Text(label, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(subtitle, color = ScottsTechXColors.OnCardSecondary, fontSize = 11.sp)
         }
     }
 }
@@ -420,10 +420,10 @@ private fun SellerMessageBubble(msg: SellerAiMessage) {
             )
         } else {
             Brush.linearGradient(
-                colors = listOf(Color.White, Color(0xFFF8F8FB)),
+                colors = listOf(ScottsTechXColors.CardSurface, ScottsTechXColors.CardSurfaceAlt),
             )
         }
-        val textColor = if (msg.isUser) Color.White else ScottsTechXColors.OnLight
+        val textColor = if (msg.isUser) Color.White else ScottsTechXColors.OnCard
 
         if (!msg.isUser) {
             Box(

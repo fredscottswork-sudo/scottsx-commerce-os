@@ -690,7 +690,7 @@ private fun HeroSpotlight(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color.White)
+                        .background(ScottsTechXColors.CardSurface)
                         .padding(horizontal = 12.dp, vertical = 5.dp),
                 ) {
                     Text(

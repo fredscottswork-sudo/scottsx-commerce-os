@@ -163,7 +163,7 @@ private fun Item(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    titleColor: Color = ScottsTechXColors.OnLight,
+    titleColor: Color = ScottsTechXColors.OnCard,
     onClick: () -> Unit,
 ) {
     SettingsRow(icon = icon, title = title, subtitle = subtitle, titleColor = titleColor, onClick = onClick)

@@ -92,7 +92,7 @@ private fun CategoryChip(
         label = "chip-ring",
     )
     val labelColor by animateColorAsState(
-        targetValue = if (selected) ScottsTechXColors.BluePrimary else ScottsTechXColors.OnLightSecondary,
+        targetValue = if (selected) ScottsTechXColors.BluePrimary else ScottsTechXColors.OnCardSecondary,
         label = "chip-label",
     )
     val iconBgBrush = if (selected) {
@@ -104,7 +104,7 @@ private fun CategoryChip(
             colors = listOf(Color(0xFFF1F3F7), Color(0xFFF8FAFC)),
         )
     }
-    val iconTint = if (selected) Color.White else ScottsTechXColors.OnLightSecondary
+    val iconTint = if (selected) Color.White else ScottsTechXColors.OnCardSecondary
 
     Column(
         modifier = Modifier

@@ -28,16 +28,33 @@ import kotlinx.coroutines.launch
  * stage timeline from the server status.
  */
 @Composable
-fun MyOrdersScreen(onBack: () -> Unit, onTrack: (String) -> Unit, onOpenReturn: (String) -> Unit, onOpenRefund: (String) -> Unit) {
+fun MyOrdersScreen(
+    onBack: () -> Unit,
+    onTrack: (String) -> Unit,
+    onOpenReturn: (String) -> Unit,
+    onOpenRefund: (String) -> Unit,
+    onMessageSeller: (V2Client.MyOrder) -> Unit = {},
+) {
     var orders by remember { mutableStateOf<List<V2Client.MyOrder>?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var ratingOrder by remember { mutableStateOf<V2Client.MyOrder?>(null) }
+    var toast by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
+    // Buyer orders must know the product id to submit a review — the web
+    // derives it from the same /me/orders payload.
     LaunchedEffect(Unit) {
         try {
             orders = V2Client.fetchMyOrders()
             if (orders == null) loadError = "Couldn't load your orders — pull to try again."
         } catch (t: Throwable) {
             loadError = "Couldn't load your orders: ${t.message ?: "unknown error"}"
+        }
+    }
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            kotlinx.coroutines.delay(1800)
+            toast = null
         }
     }
 
@@ -62,16 +79,16 @@ fun MyOrdersScreen(onBack: () -> Unit, onTrack: (String) -> Unit, onOpenReturn: 
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White)
+                            .background(ScottsTechXColors.CardSurface)
                             .padding(12.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Order #${order.id.takeLast(6).uppercase()}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("Product: ${order.title}", fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
+                                Text("Product: ${order.title}", fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary)
                                 Text(
                                     "${order.quantity} × ${com.scottsx.app.ui.util.formatUgx(order.amountUgx)}",
-                                    fontSize = 12.sp, color = ScottsTechXColors.OnLight,
+                                    fontSize = 12.sp, color = ScottsTechXColors.OnCard,
                                 )
                                 Text(
                                     "Status: ${order.displayStatus}",
@@ -84,12 +101,80 @@ fun MyOrdersScreen(onBack: () -> Unit, onTrack: (String) -> Unit, onOpenReturn: 
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("Track", color = ScottsTechXColors.BluePrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { onTrack(order.id) })
+                            Text("Message seller", color = ScottsTechXColors.BluePrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { onMessageSeller(order) })
+                            // Rate a delivered/paid order — web Orders.tsx parity
+                            if (order.status.lowercase() in setOf("delivered", "paid", "shipped")) {
+                                Text("Rate", color = Color(0xFF16A34A), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { ratingOrder = order })
+                            }
                             Text("Refund", color = Color(0xFFDC2626), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { onOpenRefund(order.id) })
                         }
                     }
                 }
+                if (toast != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(toast!!, color = ScottsTechXColors.OnPanel, fontSize = 12.sp)
+                }
             }
         }
+    }
+
+    // Review dialog — stars + comment, POST /products/:id/ratings (same
+    // endpoint as web productService.rate).
+    ratingOrder?.let { ro ->
+        var stars by remember { mutableStateOf(5) }
+        var comment by remember { mutableStateOf("") }
+        var busy by remember { mutableStateOf(false) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { if (!busy) ratingOrder = null },
+            title = { Text("Rate \"${ro.title}\"", fontWeight = FontWeight.Bold, maxLines = 1) },
+            text = {
+                Column {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(5) { i ->
+                            androidx.compose.material3.Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Filled.Star,
+                                contentDescription = "${i + 1} star",
+                                tint = if (i < stars) Color(0xFFFBBF24) else ScottsTechXColors.CardSurfaceAlt,
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .clickable(enabled = !busy) { stars = i + 1 },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = comment,
+                        onValueChange = { comment = it },
+                        placeholder = { Text("How was it? (optional)", fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Text(
+                    if (busy) "Submitting…" else "Submit review",
+                    color = ScottsTechXColors.BluePrimary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(enabled = !busy) {
+                        val productId = ro.productId
+                        if (productId.isNullOrBlank()) {
+                            ratingOrder = null
+                            toast = "Could not rate — this order isn't linked to a product."
+                        } else {
+                            busy = true
+                            scope.launch {
+                                val ok = V2Client.rateProduct(productId, stars, comment.trim())
+                                ratingOrder = null
+                                toast = if (ok) "Thanks for the review!" else "Could not save your rating."
+                            }
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                Text("Cancel", color = ScottsTechXColors.OnCardSecondary, modifier = Modifier.clickable(enabled = !busy) { ratingOrder = null })
+            },
+        )
     }
 }
 
@@ -124,13 +209,13 @@ fun TrackOrderScreen(orderId: String, onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(16.dp),
         ) {
             Text("Order #${tx.id.takeLast(6).uppercase()}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text(tx.displayStatus, fontSize = 14.sp, color = ScottsTechXColors.BluePrimary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
-            Text(tx.title, fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
+            Text(tx.title, fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary)
             Spacer(Modifier.height(12.dp))
             // pending → paid → shipped → delivered on the backend.
             val placed = true
@@ -157,7 +242,7 @@ fun TrackOrderScreen(orderId: String, onBack: () -> Unit) {
                             .background(if (done) ScottsTechXColors.BluePrimary else Color(0xFFE5E7EB)),
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(stage, color = if (done) ScottsTechXColors.OnLight else ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
+                    Text(stage, color = if (done) ScottsTechXColors.OnCard else ScottsTechXColors.OnCardSecondary, fontSize = 13.sp)
                 }
             }
         }
@@ -171,7 +256,7 @@ fun SecurityScreen(onBack: () -> Unit, onSignOut: () -> Unit = {}) {
         Text(
             "Your account is secured with Firebase Auth. Use the Sign out button to end this session on this device.",
             fontSize = 13.sp,
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnCardSecondary,
             modifier = Modifier.padding(bottom = 12.dp),
         )
         Box(
@@ -196,7 +281,7 @@ fun DeleteAccountScreen(onBack: () -> Unit, onConfirm: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(16.dp),
         ) {
             Column {
@@ -212,7 +297,7 @@ fun DeleteAccountScreen(onBack: () -> Unit, onConfirm: () -> Unit) {
                             "  - Support tickets\n\n" +
                             "This action cannot be undone.",
                     fontSize = 13.sp,
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                 )
                 Spacer(Modifier.height(16.dp))
                 Box(

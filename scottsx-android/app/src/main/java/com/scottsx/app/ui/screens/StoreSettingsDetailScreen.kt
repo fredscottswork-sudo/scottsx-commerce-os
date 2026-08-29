@@ -334,24 +334,24 @@ private fun Field(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label, color = ScottsTechXColors.OnLight) },
-        placeholder = if (hint != null) { { Text(hint, color = ScottsTechXColors.OnLightSecondary) } } else null,
+        label = { Text(label, color = ScottsTechXColors.OnCard) },
+        placeholder = if (hint != null) { { Text(hint, color = ScottsTechXColors.OnCardSecondary) } } else null,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         textStyle = androidx.compose.ui.text.TextStyle(
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnCard,
             fontSize = 15.sp,
         ),
         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-            focusedTextColor = ScottsTechXColors.OnLight,
-            unfocusedTextColor = ScottsTechXColors.OnLight,
+            focusedTextColor = ScottsTechXColors.OnCard,
+            unfocusedTextColor = ScottsTechXColors.OnCard,
             focusedBorderColor = ScottsTechXColors.BluePrimary,
-            unfocusedBorderColor = ScottsTechXColors.OnLightSecondary.copy(alpha = 0.3f),
+            unfocusedBorderColor = ScottsTechXColors.OnCardSecondary.copy(alpha = 0.3f),
             cursorColor = ScottsTechXColors.BluePrimary,
             focusedContainerColor = Color.White,
             unfocusedContainerColor = Color.White,
             focusedLabelColor = ScottsTechXColors.BluePrimary,
-            unfocusedLabelColor = ScottsTechXColors.OnLightSecondary,
+            unfocusedLabelColor = ScottsTechXColors.OnCardSecondary,
         ),
     )
 }

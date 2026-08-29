@@ -108,10 +108,10 @@ fun LogoutConfirmDialog(
             Text(
                 text = "You will need to sign in again to access your account.",
                 fontSize = 14.sp,
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnCardSecondary,
             )
         },
-        containerColor = Color.White,
+        containerColor = ScottsTechXColors.CardSurface,
         shape = RoundedCornerShape(20.dp),
         tonalElevation = 6.dp,
     )

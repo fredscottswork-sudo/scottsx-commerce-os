@@ -94,6 +94,8 @@ data class Product(
      *  Public catalogue listings are always approved, which is the default;
      *  seller-scoped rows carry their real moderation state. */
     val status: String = "approved",
+    /** Why a listing was rejected (backend rejection_reason). */
+    val rejectionReason: String? = null,
 )
 
 data class HeroBanner(

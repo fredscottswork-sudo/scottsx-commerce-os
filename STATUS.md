@@ -16,6 +16,17 @@ cd web         && npm install && npm run dev    # website on :5173 (proxies /api
 
 Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / `Seller123!`
 
+## Identical-twin theming + dashboard parity (2026-08-29, third pass)
+
+| Area | What changed |
+|------|--------------|
+| **Dark theme = web dark theme** | New mutable tokens (`CardSurface`, `CardSurfaceAlt`, `OnCard`, `OnCardSecondary`, `OnCardTertiary`, `CardTintSelected`) that swap with `applyThemePalette` — the same mechanism the web's `[data-theme]` flip uses on `--surface`/`--text`. ~50 screens had hardcoded white cards + dark ink hardcodes swept to those tokens, so dark mode now renders the web's dark palette card-for-card and light mode renders pixel-identical to before. Auth/onboarding chrome is deliberately excluded (always-light/dark by design). |
+| Seller dashboard | Added the web's attention-chip row (pending approval / out of stock / low stock / unread messages, deep-linked), the web's exact stat set (Revenue-all-time + 30-day hint, Orders + hint, **Avg order value**, Followers + views hint), and the full **Store controls** card: accepting-orders switch (`/seller/open-state`), **Live location** toggle (GPS → `/seller/location` POST/DELETE with last-fix timestamp + permission handling), and listing-status badges. Sidebar gains **Add product** and **Notifications** entries. |
+| Seller orders screen | Rebuilt to web parity: stats strip (needs action + pending value, in transit, delivered, revenue), tab groups with counts, product/buyer search filter, refresh, and **Message the buyer** per row (opens the real thread). |
+| Buyer orders | Per-row **Message seller**, plus the web's **Rate the product** flow (star dialog → `POST /products/:id/ratings`). Backend `/me/orders` now returns `productId` so ratings can actually link (previously always undefined, which is why the web warned "no linked product"). |
+| Refunds | The app's refund dialog posted `amountMinor/transactionId` — a shape the backend rejects. Now it mirrors the web form: pick one of your real orders + reason → `POST /me/refunds { orderId, reason }`. |
+| Product model | `Product.rejectionReason` is now mapped (backend `rejection_reason`); the inventory screen shows it on rejected rows like the web does. |
+
 ## Seller/buyer web-parity wave (2026-08-29, second pass)
 
 | Area | What changed |

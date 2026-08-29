@@ -156,7 +156,8 @@ export default async function registerUserFullRoute(app: FastifyInstance) {
   app.get('/api/v1/me/orders', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     const { rows } = await pool.query(
-      `SELECT id, seller_id AS "sellerId", product_title AS title, price_minor::int AS amount,
+      `SELECT id, seller_id AS "sellerId", product_id AS "productId",
+              product_title AS title, price_minor::int AS amount,
               quantity, status, created_at AS "createdAt",
               COALESCE((SELECT url FROM product_media pm WHERE pm.product_id = o.product_id ORDER BY sort_order LIMIT 1),
                        (SELECT image_url FROM products p2 WHERE p2.id = o.product_id)) AS "imageUrl",

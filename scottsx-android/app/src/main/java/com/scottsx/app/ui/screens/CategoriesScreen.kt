@@ -122,7 +122,7 @@ fun CategoriesScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(18.dp))
-                                .background(Color.White)
+                                .background(ScottsTechXColors.CardSurface)
                                 .clickable {
                                     selectedCategory = cat
                                 }
@@ -150,7 +150,7 @@ fun CategoriesScreen(
                             Spacer(Modifier.size(8.dp))
                             Text(
                                 text = cat.displayName,
-                                color = ScottsTechXColors.OnLight,
+                                color = ScottsTechXColors.OnCard,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -185,7 +185,7 @@ fun CategoriesScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White)
+                            .background(ScottsTechXColors.CardSurface)
                             .clickable { selectedCategory = null }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
@@ -199,7 +199,7 @@ fun CategoriesScreen(
                     Spacer(Modifier.width(12.dp))
                     Text(
                         text = selectedCategory!!.displayName,
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnCard,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 16.sp,
                     )

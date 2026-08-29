@@ -37,7 +37,24 @@ object ScottsTechXColors {
     // swapped to true light values when the user picks LIGHT/SYSTEM mode.
     var PanelLight = Color(0xFF0B1020)      // web --surface (dark)
     var BackgroundLight = Color(0xFF05070D)  // web --bg (dark)
-    var PanelInputLight = Color(0xFF121A2F)  // web --surface-2 (dark)
+    var PanelInputLight = Color(0xFF121A2F)    // web --surface-2 (dark)
+
+    // ---- Card surfaces + inks — MUTABLE (see applyThemePalette) ---------
+    // The web styles every card with --surface/--surface-2 and its body ink
+    // with --text/--text-2/--text-3, all of which flip under [data-theme].
+    // Screens hardcoded those cards as Color.White and their ink as the
+    // constant OnLight family, so in dark mode they stayed white-on-dark
+    // (and, wherever ink leaked onto a swapping panel, dark-on-dark =
+    // invisible). These tokens mirror the web ones: light mode renders
+    // pixel-identical to the old hardcodes, dark mode follows the web's
+    // dark palette exactly.
+    var CardSurface = Color(0xFF0B1020)        // web --surface (dark)
+    var CardSurfaceAlt = Color(0xFF121A2F)     // web --surface-2 (dark)
+    var OnCard = Color(0xFFEEF2FB)             // web --text (dark)
+    var OnCardSecondary = Color(0xFF94A3C4)    // web --text-2 (dark)
+    var OnCardTertiary = Color(0xFF64748B)     // web --text-3 (dark)
+    /** "Selected" tinted card — light: pale brand blue, dark: --surface-hover. */
+    var CardTintSelected = Color(0xFF16203A)   // web --surface-hover (dark)
     val PanelBorderHint = Color(0xFFDFE6F2)  // web --border (light)
 
     // ---- Text ON the swappable panels (the "black icons" fix) -------
@@ -131,12 +148,24 @@ object ScottsTechXColors {
             PanelInputLight = Color(0xFFF3F6FC)   // web --surface-2 (light)
             OnPanel = Color(0xFF08122A)           // web --text (light)
             OnPanelSecondary = Color(0xFF55627D)  // web --text-2 (light)
+            CardSurface = Color(0xFFFFFFFF)       // web --surface (light)
+            CardSurfaceAlt = Color(0xFFF3F6FC)    // web --surface-2 (light)
+            OnCard = Color(0xFF08122A)            // web --text (light)
+            OnCardSecondary = Color(0xFF55627D)   // web --text-2 (light)
+            OnCardTertiary = Color(0xFF8492AD)    // web --text-3 (light)
+            CardTintSelected = Color(0xFFE3F2FD)  // pale brand blue (light)
         } else {
             PanelLight = Color(0xFF0B1020)        // web --surface (dark)
             BackgroundLight = Color(0xFF05070D)   // web --bg (dark)
             PanelInputLight = Color(0xFF121A2F)   // web --surface-2 (dark)
             OnPanel = Color(0xFFEEF2FB)           // web --text (dark)
             OnPanelSecondary = Color(0xFF94A3C4)  // web --text-2 (dark)
+            CardSurface = Color(0xFF0B1020)       // web --surface (dark)
+            CardSurfaceAlt = Color(0xFF121A2F)    // web --surface-2 (dark)
+            OnCard = Color(0xFFEEF2FB)            // web --text (dark)
+            OnCardSecondary = Color(0xFF94A3C4)   // web --text-2 (dark)
+            OnCardTertiary = Color(0xFF64748B)    // web --text-3 (dark)
+            CardTintSelected = Color(0xFF16203A)  // web --surface-hover (dark)
         }
     }
 }

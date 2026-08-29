@@ -178,7 +178,7 @@ fun AuthSheet(
                     ambientColor = Color.Transparent,
                 )
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(Color.White),
+                .background(ScottsTechXColors.CardSurface),
         ) {
             // Drag indicator — the sheet reads as a sheet.
             Box(
@@ -230,7 +230,7 @@ fun AuthFilledField(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = label,
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnCard,
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 8.dp),

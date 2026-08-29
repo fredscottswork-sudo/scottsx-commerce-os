@@ -58,14 +58,14 @@ private fun ToggleRow(title: String, subtitle: String?, checked: Boolean, onChan
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable { onChange(!checked) }
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            subtitle?.let { Text(it, fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary) }
+            subtitle?.let { Text(it, fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary) }
         }
         Switch(checked = checked, onCheckedChange = onChange)
     }
@@ -94,13 +94,13 @@ fun LanguageScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .clickable { current = code; prefs.setLanguage(code) }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text(code.uppercase(), fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
+                Text(code.uppercase(), fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary)
                 if (sel) {
                     Spacer(Modifier.width(8.dp))
                     Icon(Icons.Filled.Check, null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(20.dp))
@@ -136,7 +136,7 @@ fun CurrencyScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .clickable { current = code; prefs.setCurrency(code) }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -180,9 +180,9 @@ fun AuditScreen(onBack: () -> Unit) {
             modifier = Modifier.padding(bottom = 8.dp),
         )
         if (loading) {
-            Text("Loading...", fontSize = 13.sp, color = ScottsTechXColors.OnLightSecondary)
+            Text("Loading...", fontSize = 13.sp, color = ScottsTechXColors.OnCardSecondary)
         } else if (items.isEmpty()) {
-            Text("No recent activity.", fontSize = 13.sp, color = ScottsTechXColors.OnLightSecondary)
+            Text("No recent activity.", fontSize = 13.sp, color = ScottsTechXColors.OnCardSecondary)
         } else {
             items.forEach { item ->
                 Column(
@@ -190,13 +190,13 @@ fun AuditScreen(onBack: () -> Unit) {
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White)
+                        .background(ScottsTechXColors.CardSurface)
                         .padding(10.dp),
                 ) {
                     Text(item.optString("action"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text(item.optString("createdAt"), fontSize = 11.sp, color = ScottsTechXColors.OnLightSecondary)
+                    Text(item.optString("createdAt"), fontSize = 11.sp, color = ScottsTechXColors.OnCardSecondary)
                     if (!item.isNull("resource")) {
-                        Text(item.optString("resource"), fontSize = 11.sp, color = ScottsTechXColors.OnLightSecondary)
+                        Text(item.optString("resource"), fontSize = 11.sp, color = ScottsTechXColors.OnCardSecondary)
                     }
                 }
             }

@@ -159,7 +159,7 @@ private fun ToolTile(
         modifier = modifier
             .height(120.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable(onClick = onClick)
             .padding(14.dp),
     ) {
@@ -174,8 +174,8 @@ private fun ToolTile(
                 Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.weight(1f))
-            Text(title, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Text(subtitle, color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+            Text(title, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(subtitle, color = ScottsTechXColors.OnCardSecondary, fontSize = 11.sp)
         }
     }
 }
@@ -187,7 +187,7 @@ private fun ActivePromoRow(title: String, subtitle: String, bg: Color, fg: Color
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -200,6 +200,6 @@ private fun ActivePromoRow(title: String, subtitle: String, bg: Color, fg: Color
             Text(subtitle, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.width(8.dp))
-        Text(title, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Text(title, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, modifier = Modifier.weight(1f))
     }
 }

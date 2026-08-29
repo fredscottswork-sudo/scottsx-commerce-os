@@ -45,7 +45,7 @@ fun SectionTitle(
             }
             Text(
                 text = title,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnCard,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 17.sp,
             )

@@ -142,11 +142,11 @@ fun BecomeSellerScreen(
             }
             Spacer(Modifier.height(16.dp))
             Text("Start selling on ScottsTechX",
-                color = if (isDark) ScottsTechXColors.OnDark else ScottsTechXColors.OnLight,
+                color = if (isDark) ScottsTechXColors.OnDark else ScottsTechXColors.OnCard,
                 fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
             Spacer(Modifier.height(6.dp))
             Text("Reach thousands of buyers across Uganda. No monthly fee, no listing limits.",
-                color = if (isDark) ScottsTechXColors.OnDarkSecondary else ScottsTechXColors.OnLightSecondary,
+                color = if (isDark) ScottsTechXColors.OnDarkSecondary else ScottsTechXColors.OnCardSecondary,
                 fontSize = 13.sp,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
@@ -207,7 +207,7 @@ fun BecomeSellerScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 "By upgrading you agree to the seller terms. You can switch back to buyer mode anytime in Settings.",
-                color = if (isDark) ScottsTechXColors.OnDarkSecondary else ScottsTechXColors.OnLightSecondary,
+                color = if (isDark) ScottsTechXColors.OnDarkSecondary else ScottsTechXColors.OnCardSecondary,
                 fontSize = 11.sp,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )

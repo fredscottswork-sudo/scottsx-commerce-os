@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Inventory2
@@ -84,7 +86,7 @@ import com.scottsx.app.data.domain.SessionCache
 
 /** What a seller sidebar tap wants to do. */
 enum class SellerSidebarDestination {
-    Dashboard, Orders, Products, BulkImport, Customers, Messages, Promotions, Analytics,
+    Dashboard, Orders, Products, AddProduct, BulkImport, Customers, Messages, Notifications, Promotions, Analytics,
     SellerAi, MarketingTools,
     StoreProfile, StoreSettings, Settings,
     SwitchToBuyer, Logout, ViewStore,
@@ -121,6 +123,7 @@ data class SellerSidebarData(
     val followers: Int,
     val productsTotal: Int,
     val unreadMessages: Int,
+    val unreadNotifications: Int = 0,
 )
 
 @Composable
@@ -183,7 +186,7 @@ fun SellerSidebarOverlay(
                         clip = false,
                     )
                     .clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp))
-                    .background(Brush.linearGradient(colors = listOf(Color.White, Color(0xFFFAFBFE)))),
+                    .background(Brush.linearGradient(colors = listOf(ScottsTechXColors.CardSurface, ScottsTechXColors.CardSurfaceAlt))),
                 data = data,
                 themeMode = themeMode,
                 themePref = themePref,
@@ -243,9 +246,11 @@ fun SellerSidebarCard(
                     SellerSidebarItem(SellerSidebarDestination.Receipts, "Receipts", Icons.Filled.Receipt, null),
                     SellerSidebarItem(SellerSidebarDestination.AiPersonalization, "AI Personalization", Icons.Filled.SmartToy, null),
                     SellerSidebarItem(SellerSidebarDestination.Products, "Products", Icons.Filled.Store, data.productsTotal),
+                    SellerSidebarItem(SellerSidebarDestination.AddProduct, "Add product", Icons.Filled.AddCircle, null),
                     SellerSidebarItem(SellerSidebarDestination.BulkImport, "Bulk import", Icons.Filled.FileUpload, null),
                     SellerSidebarItem(SellerSidebarDestination.Customers, "Customers", Icons.Filled.Group, data.followers),
                     SellerSidebarItem(SellerSidebarDestination.Messages, "Messages", Icons.Filled.Message, data.unreadMessages),
+                    SellerSidebarItem(SellerSidebarDestination.Notifications, "Notifications", Icons.Filled.Notifications, data.unreadNotifications),
                     SellerSidebarItem(SellerSidebarDestination.Promotions, "Promotions", Icons.Filled.LocalOffer, null),
                     SellerSidebarItem(
                         SellerSidebarDestination.Analytics,

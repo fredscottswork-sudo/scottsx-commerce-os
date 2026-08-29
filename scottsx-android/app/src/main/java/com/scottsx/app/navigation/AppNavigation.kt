@@ -442,6 +442,7 @@ fun AppNavigation() {
                 onOpenStoreSettings = { navController.navigate(Routes.SELLER_STORE_SETTINGS) },
                 onOpenProfileSettings = { navController.navigate(Routes.SELLER_PROFILE_SETTINGS) },
                 onOpenMessages = { navController.navigate(Routes.SELLER_MESSAGES) },
+                onOpenNotifications = { navController.navigate(Routes.NOTIFICATIONS) },
                 onOpenProduct = { product -> navController.navigate(Routes.product(product.id)) },
                 onNavigateToTransactions = { navController.navigate(Routes.TRANSACTIONS) },
                 onNavigateToReceipts = { navController.navigate(Routes.RECEIPTS_HISTORY) },
@@ -673,7 +674,15 @@ fun AppNavigation() {
         // =====================================================================
 
         composable(Routes.SELLER_ORDERS) {
-            SellerOrdersScreen(onBack = { navController.popBackStack() })
+            SellerOrdersScreen(
+                onBack = { navController.popBackStack() },
+                onMessageBuyer = { order ->
+                    // Web parity: chatService.open(buyerId) then thread —
+                    // the thread screen resolves the peer by sellerId
+                    // argument, which is really "the other party's uid".
+                    navController.navigate("thread/${order.buyerId}")
+                },
+            )
         }
         composable(Routes.SELLER_ADD_PRODUCT) {
             AddProductScreen(
@@ -701,9 +710,15 @@ fun AppNavigation() {
             SellerInventoryScreen(
                 onBack = { navController.popBackStack() },
                 onAddProduct = { navController.navigate(Routes.SELLER_ADD_PRODUCT) },
+                onBulkImport = { navController.navigate(Routes.SELLER_BULK_IMPORT) },
             )
         }
-        composable(Routes.SELLER_BULK_IMPORT) { BulkImportScreen(onBack = { navController.popBackStack() }) }
+        composable(Routes.SELLER_BULK_IMPORT) {
+            BulkImportScreen(
+                onBack = { navController.popBackStack() },
+                onInventory = { navController.navigate(Routes.SELLER_INVENTORY) },
+            )
+        }
         composable(Routes.SELLER_TOOLS) {
             MarketplaceToolsScreen(onBack = { navController.popBackStack() })
         }

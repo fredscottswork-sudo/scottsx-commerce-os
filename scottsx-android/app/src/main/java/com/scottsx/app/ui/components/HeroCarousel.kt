@@ -192,7 +192,7 @@ private fun HeroSlide(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .clickable { onCtaClick() }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,

@@ -335,7 +335,7 @@ private fun TabBar(selected: StorefrontTab, onSelect: (StorefrontTab) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         StorefrontTab.values().forEach { t ->
@@ -411,7 +411,7 @@ private fun CategoriesTab(rows: List<com.scottsx.app.data.domain.SellerCategoryR
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -427,14 +427,14 @@ private fun CategoriesTab(rows: List<com.scottsx.app.data.domain.SellerCategoryR
                 Spacer(Modifier.width(10.dp))
                 Text(
                     text = row.category.displayName,
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     text = "${row.productCount} product${if (row.productCount == 1) "" else "s"}",
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                     fontSize = 12.sp,
                 )
             }
@@ -455,13 +455,13 @@ private fun ReviewsTab(seller: com.scottsx.app.data.domain.Seller, onViewAll: (S
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = "%.1f".format(seller.rating),
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnCard,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.ExtraBold,
             )
@@ -474,7 +474,7 @@ private fun ReviewsTab(seller: com.scottsx.app.data.domain.Seller, onViewAll: (S
                             modifier = Modifier.size(12.dp))
                     }
                 }
-                Text("$reviewCount reviews across all products", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+                Text("$reviewCount reviews across all products", color = ScottsTechXColors.OnCardSecondary, fontSize = 11.sp)
             }
             Spacer(Modifier.weight(1f))
             if (reviewCount > 0) {
@@ -508,31 +508,31 @@ private fun AboutTab(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(14.dp),
         ) {
             Column {
-                Text("About", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("About", color = ScottsTechXColors.OnCard, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Spacer(Modifier.height(6.dp))
-                Text(description, color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, lineHeight = 18.sp)
+                Text(description, color = ScottsTechXColors.OnCardSecondary, fontSize = 12.sp, lineHeight = 18.sp)
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.LocationOn, contentDescription = null, tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.LocationOn, contentDescription = null, tint = ScottsTechXColors.OnCardSecondary, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(seller.location, color = ScottsTechXColors.OnLight, fontSize = 12.sp)
+                    Text(seller.location, color = ScottsTechXColors.OnCard, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Star, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("${"%.1f".format(seller.rating)} rating", color = ScottsTechXColors.OnLight, fontSize = 12.sp)
+                    Text("${"%.1f".format(seller.rating)} rating", color = ScottsTechXColors.OnCard, fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(4.dp))
                 if (joinedLabel.isNotBlank()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Storefront, contentDescription = null, tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Filled.Storefront, contentDescription = null, tint = ScottsTechXColors.OnCardSecondary, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(joinedLabel, color = ScottsTechXColors.OnLight, fontSize = 12.sp)
+                        Text(joinedLabel, color = ScottsTechXColors.OnCard, fontSize = 12.sp)
                     }
                 }
             }

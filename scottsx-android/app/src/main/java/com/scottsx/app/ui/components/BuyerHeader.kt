@@ -145,8 +145,8 @@ private fun FloatingIconButton(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = ScottsTechXColors.OnLight,
-                // Note: should be dark icon on glass — ScottsTechXColors.OnLight
+                tint = ScottsTechXColors.OnCard,
+                // Note: should be dark icon on glass — ScottsTechXColors.OnCard
                 // is dark in our light theme. Use the dark color explicitly.
                 modifier = Modifier.size(20.dp),
             )

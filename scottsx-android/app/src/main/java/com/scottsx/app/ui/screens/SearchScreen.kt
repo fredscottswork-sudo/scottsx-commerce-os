@@ -166,7 +166,7 @@ fun SearchScreen(
                         .weight(1f)
                         .height(44.dp)
                         .clip(RoundedCornerShape(22.dp))
-                        .background(Color.White),
+                        .background(ScottsTechXColors.CardSurface),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Row(
@@ -178,7 +178,7 @@ fun SearchScreen(
                         Icon(
                             imageVector = Icons.Filled.Search,
                             contentDescription = null,
-                            tint = ScottsTechXColors.OnLightSecondary,
+                            tint = ScottsTechXColors.OnCardSecondary,
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(8.dp))
@@ -188,7 +188,7 @@ fun SearchScreen(
                             placeholder = {
                                 Text(
                                     text = if (flashOnly) "Search flash deals..." else "Search for products, brands, categories...",
-                                    color = ScottsTechXColors.OnLightSecondary,
+                                    color = ScottsTechXColors.OnCardSecondary,
                                     fontSize = 13.sp,
                                 )
                             },
@@ -199,8 +199,8 @@ fun SearchScreen(
                                 unfocusedContainerColor = Color.Transparent,
                                 focusedIndicatorColor = Color.Transparent,
                                 unfocusedIndicatorColor = Color.Transparent,
-                                focusedTextColor = ScottsTechXColors.OnLight,
-                                unfocusedTextColor = ScottsTechXColors.OnLight,
+                                focusedTextColor = ScottsTechXColors.OnCard,
+                                unfocusedTextColor = ScottsTechXColors.OnCard,
                             ),
                         )
                     }
@@ -227,7 +227,7 @@ fun SearchScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
-                                    .background(Color.White)
+                                    .background(ScottsTechXColors.CardSurface)
                                     .clickable { query = tag }
                                     .padding(horizontal = 14.dp, vertical = 8.dp),
                             ) {

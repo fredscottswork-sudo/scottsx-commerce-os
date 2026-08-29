@@ -377,7 +377,7 @@ private fun TopBar(
         Spacer(Modifier.width(8.dp))
         RoundIconButton(
             icon = if (wishlisted) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            tint = if (wishlisted) Color(0xFFE11D48) else ScottsTechXColors.OnLight,
+            tint = if (wishlisted) Color(0xFFE11D48) else ScottsTechXColors.OnCard,
             onClick = onToggleWishlist,
         )
     }
@@ -386,14 +386,14 @@ private fun TopBar(
 @Composable
 private fun RoundIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tint: Color = ScottsTechXColors.OnLight,
+    tint: Color = ScottsTechXColors.OnCard,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .size(40.dp)
             .clip(CircleShape)
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -411,7 +411,7 @@ private fun ProductHeader(
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text(
             text = product.name,
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnCard,
             fontWeight = FontWeight.ExtraBold,
             fontSize = 20.sp,
         )
@@ -430,7 +430,7 @@ private fun ProductHeader(
             Spacer(Modifier.width(6.dp))
             Text(
                 text = "${"%.1f".format(product.rating)} (${product.ratingCount} reviews)",
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnCardSecondary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -438,7 +438,7 @@ private fun ProductHeader(
         Spacer(Modifier.height(4.dp))
         Text(
             text = "${product.purchases}+ sold",
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnCardSecondary,
             fontSize = 11.sp,
         )
     }
@@ -458,7 +458,7 @@ private fun PriceBlock(product: Product, effectivePriceUgx: Long) {
                 Spacer(Modifier.width(10.dp))
                 Text(
                     text = "${formatUgx(product.oldPriceUgx)}",
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                     fontSize = 13.sp,
                     textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
                 )
@@ -489,7 +489,7 @@ private fun VariantsPicker(
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                 Text(
                     text = axis.uppercase(),
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,
@@ -506,7 +506,7 @@ private fun VariantsPicker(
                                     when {
                                         isSelected -> ScottsTechXColors.BluePrimary
                                         isOut -> ScottsTechXColors.PanelInputLight
-                                        else -> Color.White
+                                        else -> ScottsTechXColors.CardSurface
                                     },
                                 )
                                 .clickable(enabled = !isOut) { onSelect(v) }
@@ -516,8 +516,8 @@ private fun VariantsPicker(
                                 text = v.value + if (isOut) " · out" else "",
                                 color = when {
                                     isSelected -> Color.White
-                                    isOut -> ScottsTechXColors.OnLightSecondary
-                                    else -> ScottsTechXColors.OnLight
+                                    isOut -> ScottsTechXColors.OnCardSecondary
+                                    else -> ScottsTechXColors.OnCard
                                 },
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -602,7 +602,7 @@ private fun StepperButton(
         modifier = Modifier
             .size(32.dp)
             .clip(CircleShape)
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -621,7 +621,7 @@ private fun DeliverySection(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -629,7 +629,7 @@ private fun DeliverySection(
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = "Deliver to: $userLocation",
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -651,20 +651,20 @@ private fun DeliverySection(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = opt.label,
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnCard,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
                         modifier = Modifier.weight(1f),
                     )
                     Text(
                         text = opt.etaDaysLabel,
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnCardSecondary,
                         fontSize = 11.sp,
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = if (opt.feeUgx == 0L) "Free" else "${formatUgx(opt.feeUgx)}",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnCard,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -682,7 +682,7 @@ private fun NearbyShoppingCta(onOpen: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .clickable { onOpen() }
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -699,13 +699,13 @@ private fun NearbyShoppingCta(onOpen: () -> Unit) {
             }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Find it in stores near you", color = ScottsTechXColors.OnLight,
+                Text("Find it in stores near you", color = ScottsTechXColors.OnCard,
                     fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 Text("Live seller locations and distances — updated in real time",
-                    color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+                    color = ScottsTechXColors.OnCardSecondary, fontSize = 11.sp)
             }
             Icon(Icons.Filled.ChevronRight, contentDescription = null,
-                tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(18.dp))
+                tint = ScottsTechXColors.OnCardSecondary, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -739,7 +739,7 @@ private fun NearbySellerCard(ns: NearbySeller, onClick: () -> Unit) {
         modifier = Modifier
             .width(220.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable(onClick = onClick)
             .padding(12.dp),
     ) {
@@ -762,7 +762,7 @@ private fun NearbySellerCard(ns: NearbySeller, onClick: () -> Unit) {
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = ns.sellerName,
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp,
                     maxLines = 1,
@@ -779,11 +779,11 @@ private fun NearbySellerCard(ns: NearbySeller, onClick: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.LocationOn, contentDescription = null, tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(11.dp))
+                Icon(Icons.Filled.LocationOn, contentDescription = null, tint = ScottsTechXColors.OnCardSecondary, modifier = Modifier.size(11.dp))
                 Spacer(Modifier.width(2.dp))
                 Text(
                     text = "${"%.1f".format(ns.distanceKm)} km · ${ns.deliveryDaysLabel}",
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                     fontSize = 11.sp,
                 )
             }
@@ -805,7 +805,7 @@ private fun SellerCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -828,7 +828,7 @@ private fun SellerCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = seller.name,
-                            color = ScottsTechXColors.OnLight,
+                            color = ScottsTechXColors.OnCard,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                         )
@@ -844,7 +844,7 @@ private fun SellerCard(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text = "${"%.1f".format(seller.rating)} · ${seller.location}",
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnCardSecondary,
                             fontSize = 11.sp,
                         )
                     }
@@ -905,13 +905,13 @@ private fun AboutSection(product: Product) {
         SectionTitle(title = "About this product", modifier = Modifier.padding(start = 0.dp))
         Text(
             text = product.description,
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnCard,
             fontSize = 13.sp,
             lineHeight = 19.sp,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(14.dp),
         )
     }
@@ -925,7 +925,7 @@ private fun SpecificationsSection(specs: List<ProductSpec>) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(horizontal = 14.dp, vertical = 6.dp),
         ) {
             specs.forEachIndexed { i, spec ->
@@ -937,13 +937,13 @@ private fun SpecificationsSection(specs: List<ProductSpec>) {
                 ) {
                     Text(
                         text = spec.key,
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnCardSecondary,
                         fontSize = 12.sp,
                         modifier = Modifier.weight(1f),
                     )
                     Text(
                         text = spec.value,
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnCard,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -979,14 +979,14 @@ private fun RatingsAndReviews(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(70.dp)) {
                     Text(
                         text = "%.1f".format(product.rating),
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnCard,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 30.sp,
                     )
@@ -997,7 +997,7 @@ private fun RatingsAndReviews(
                     }
                     Text(
                         text = "${reviews.size} reviews",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnCardSecondary,
                         fontSize = 10.sp,
                     )
                 }
@@ -1017,7 +1017,7 @@ private fun RatingsAndReviews(
 @Composable
 internal fun RatingBarRow(stars: Int, percent: Float) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-        Text(text = "$stars", color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp, modifier = Modifier.width(10.dp))
+        Text(text = "$stars", color = ScottsTechXColors.OnCardSecondary, fontSize = 10.sp, modifier = Modifier.width(10.dp))
         Spacer(Modifier.width(4.dp))
         Box(
             modifier = Modifier
@@ -1036,7 +1036,7 @@ internal fun RatingBarRow(stars: Int, percent: Float) {
         Spacer(Modifier.width(4.dp))
         Text(
             text = "${(percent * 100).toInt()}%",
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnCardSecondary,
             fontSize = 10.sp,
             modifier = Modifier.width(28.dp),
         )
@@ -1050,7 +1050,7 @@ internal fun ReviewRow(r: Review) {
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(12.dp),
     ) {
         Column {
@@ -1062,12 +1062,12 @@ internal fun ReviewRow(r: Review) {
                         .background(ScottsTechXColors.PanelInputLight),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(r.authorName.first().uppercase(), color = ScottsTechXColors.OnLight, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(r.authorName.first().uppercase(), color = ScottsTechXColors.OnCard, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(r.authorName, color = ScottsTechXColors.OnLight, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(r.authorName, color = ScottsTechXColors.OnCard, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         if (r.verifiedPurchase) {
                             Spacer(Modifier.width(6.dp))
                             Box(
@@ -1085,17 +1085,17 @@ internal fun ReviewRow(r: Review) {
                             Icon(Icons.Filled.Star, contentDescription = null, tint = if (it < r.rating) Color(0xFFFBBF24) else Color(0xFFD1D5DB), modifier = Modifier.size(10.dp))
                         }
                         Spacer(Modifier.width(4.dp))
-                        Text(r.dateLabel, color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp)
+                        Text(r.dateLabel, color = ScottsTechXColors.OnCardSecondary, fontSize = 10.sp)
                     }
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Text(r.text, color = ScottsTechXColors.OnLight, fontSize = 12.sp, lineHeight = 17.sp)
+            Text(r.text, color = ScottsTechXColors.OnCard, fontSize = 12.sp, lineHeight = 17.sp)
             if (r.variantLabel != null) {
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = "Purchased: ${r.variantLabel}",
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -1157,7 +1157,7 @@ private fun ActionBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
@@ -1174,7 +1174,7 @@ private fun ActionBar(
                 Icon(
                     imageVector = if (isWishlisted) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     contentDescription = "Wishlist",
-                    tint = if (isWishlisted) Color(0xFFE11D48) else ScottsTechXColors.OnLight,
+                    tint = if (isWishlisted) Color(0xFFE11D48) else ScottsTechXColors.OnCard,
                     modifier = Modifier.size(22.dp),
                 )
             }

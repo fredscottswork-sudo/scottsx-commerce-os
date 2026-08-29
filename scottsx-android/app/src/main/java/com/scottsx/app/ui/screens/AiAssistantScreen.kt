@@ -280,7 +280,7 @@ fun AiAssistantScreen(
                         .weight(1f)
                         .height(48.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color.White),
+                        .background(ScottsTechXColors.CardSurface),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     androidx.compose.foundation.layout.Row(
@@ -302,7 +302,7 @@ fun AiAssistantScreen(
                             placeholder = {
                                 Text(
                                     text = "Ask me anything...",
-                                    color = ScottsTechXColors.OnLightSecondary,
+                                    color = ScottsTechXColors.OnCardSecondary,
                                     fontSize = 14.sp,
                                 )
                             },
@@ -313,8 +313,8 @@ fun AiAssistantScreen(
                                 unfocusedContainerColor = Color.Transparent,
                                 focusedBorderColor = Color.Transparent,
                                 unfocusedBorderColor = Color.Transparent,
-                                focusedTextColor = ScottsTechXColors.OnLight,
-                                unfocusedTextColor = ScottsTechXColors.OnLight,
+                                focusedTextColor = ScottsTechXColors.OnCard,
+                                unfocusedTextColor = ScottsTechXColors.OnCard,
                             ),
                         )
                     }
@@ -407,7 +407,7 @@ private fun ChatBubble(message: ChatMessage) {
         ) {
             Text(
                 text = message.text,
-                color = if (message.isFromUser) Color.White else ScottsTechXColors.OnLight,
+                color = if (message.isFromUser) Color.White else ScottsTechXColors.OnCard,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
                 fontWeight = FontWeight.Medium,
@@ -422,7 +422,7 @@ private fun SuggestionChip(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
@@ -436,7 +436,7 @@ private fun SuggestionChip(text: String, onClick: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             Text(
                 text = text,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnCard,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
             )

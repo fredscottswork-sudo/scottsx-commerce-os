@@ -158,7 +158,7 @@ private fun ThemeOption(
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) Color(0xFFE3F2FD) else Color.White,
+            containerColor = if (selected) ScottsTechXColors.CardTintSelected else ScottsTechXColors.CardSurface,
         ),
     ) {
         Row(
@@ -187,12 +187,12 @@ private fun ThemeOption(
                     text = title,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                 )
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                 )
             }
             if (selected) {

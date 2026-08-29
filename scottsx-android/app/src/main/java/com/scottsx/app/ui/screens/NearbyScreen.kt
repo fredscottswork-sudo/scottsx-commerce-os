@@ -304,7 +304,7 @@ fun NearbyScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .border(1.dp, ScottsTechXColors.Divider, RoundedCornerShape(16.dp))
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -320,7 +320,7 @@ fun NearbyScreen(
             }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Your location", color = ScottsTechXColors.OnLightTertiary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                Text("Your location", color = ScottsTechXColors.OnCardTertiary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
                 Text(
                     when {
                         locating -> "Detecting your location…"
@@ -328,7 +328,7 @@ fun NearbyScreen(
                         center != null -> "Location detected"
                         else -> "Location unavailable"
                     },
-                    color = ScottsTechXColors.OnLight, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    color = ScottsTechXColors.OnCard, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 place?.let { p ->
@@ -336,7 +336,7 @@ fun NearbyScreen(
                     if (parts.isNotEmpty()) {
                         Text(
                             parts.joinToString(" · "),
-                            color = ScottsTechXColors.OnLightTertiary, fontSize = 10.5.sp,
+                            color = ScottsTechXColors.OnCardTertiary, fontSize = 10.5.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -369,9 +369,9 @@ fun NearbyScreen(
                 Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("We could not detect your location", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("We could not detect your location", color = ScottsTechXColors.OnCard, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     Text("Allow location access — you'll see every store, sorted by distance, anywhere in the world.",
-                        color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+                        color = ScottsTechXColors.OnCardSecondary, fontSize = 11.sp)
                 }
                 Box(
                     modifier = Modifier
@@ -395,20 +395,20 @@ fun NearbyScreen(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 10.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .border(1.dp, ScottsTechXColors.Divider, RoundedCornerShape(16.dp))
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.Search, contentDescription = null, tint = ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(18.dp))
+            Icon(Icons.Filled.Search, contentDescription = null, tint = ScottsTechXColors.OnCardTertiary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Box(modifier = Modifier.weight(1f)) {
-                if (query.isEmpty()) Text("Filter stores…", color = ScottsTechXColors.OnLightTertiary, fontSize = 13.sp)
+                if (query.isEmpty()) Text("Filter stores…", color = ScottsTechXColors.OnCardTertiary, fontSize = 13.sp)
                 BasicTextField(
                     value = query,
                     onValueChange = { query = it },
                     modifier = Modifier.fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = ScottsTechXColors.OnLight, fontSize = 13.sp),
+                    textStyle = androidx.compose.ui.text.TextStyle(color = ScottsTechXColors.OnCard, fontSize = 13.sp),
                     singleLine = true,
                 )
             }
@@ -429,12 +429,12 @@ fun NearbyScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(if (active) ScottsTechXColors.BluePrimary else Color.White)
+                        .background(if (active) ScottsTechXColors.BluePrimary else ScottsTechXColors.CardSurface)
                         .border(1.dp, if (active) ScottsTechXColors.BluePrimary else ScottsTechXColors.Divider, RoundedCornerShape(50))
                         .clickable { sort = key }
                         .padding(horizontal = 14.dp, vertical = 9.dp),
                 ) {
-                    Text(label, color = if (active) Color.White else ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(label, color = if (active) Color.White else ScottsTechXColors.OnCardSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
             item {
@@ -442,16 +442,16 @@ fun NearbyScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(if (active) Color(0xFF16A34A) else Color.White)
+                        .background(if (active) Color(0xFF16A34A) else ScottsTechXColors.CardSurface)
                         .border(1.dp, if (active) Color(0xFF16A34A) else ScottsTechXColors.Divider, RoundedCornerShape(50))
                         .clickable { verifiedOnly = !verifiedOnly }
                         .padding(horizontal = 14.dp, vertical = 9.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Verified, contentDescription = null,
-                            tint = if (active) Color.White else ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(13.dp))
+                            tint = if (active) Color.White else ScottsTechXColors.OnCardTertiary, modifier = Modifier.size(13.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Verified", color = if (active) Color.White else ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Verified", color = if (active) Color.White else ScottsTechXColors.OnCardSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -460,12 +460,12 @@ fun NearbyScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(if (active) ScottsTechXColors.PurpleAccent else Color.White)
+                        .background(if (active) ScottsTechXColors.PurpleAccent else ScottsTechXColors.CardSurface)
                         .border(1.dp, if (active) ScottsTechXColors.PurpleAccent else ScottsTechXColors.Divider, RoundedCornerShape(50))
                         .clickable { openOnly = !openOnly }
                         .padding(horizontal = 14.dp, vertical = 9.dp),
                 ) {
-                    Text("Open now", color = if (active) Color.White else ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Open now", color = if (active) Color.White else ScottsTechXColors.OnCardSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -586,7 +586,7 @@ private fun SellerCard(seller: V2Client.NearbySeller, onOpen: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .border(1.dp, ScottsTechXColors.Divider, RoundedCornerShape(18.dp))
             .clickable { onOpen() }
             .padding(14.dp),
@@ -621,7 +621,7 @@ private fun SellerCard(seller: V2Client.NearbySeller, onOpen: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     seller.storeName,
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.5.sp,
                     maxLines = 1,
@@ -641,7 +641,7 @@ private fun SellerCard(seller: V2Client.NearbySeller, onOpen: () -> Unit) {
                 ) {
                     Text(
                         if (seller.isOpen) "Open" else "Closed",
-                        color = if (seller.isOpen) Color(0xFF16A34A) else ScottsTechXColors.OnLightTertiary,
+                        color = if (seller.isOpen) Color(0xFF16A34A) else ScottsTechXColors.OnCardTertiary,
                         fontSize = 10.sp, fontWeight = FontWeight.Bold,
                     )
                 }
@@ -651,7 +651,7 @@ private fun SellerCard(seller: V2Client.NearbySeller, onOpen: () -> Unit) {
                 Icon(Icons.Filled.Star, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(12.dp))
                 Text(
                     " ${"%.1f".format(seller.rating)} · ${seller.productCount} products",
-                    color = ScottsTechXColors.OnLightSecondary, fontSize = 11.5.sp,
+                    color = ScottsTechXColors.OnCardSecondary, fontSize = 11.5.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 if (seller.newThisWeek > 0) {
@@ -660,10 +660,10 @@ private fun SellerCard(seller: V2Client.NearbySeller, onOpen: () -> Unit) {
             }
             // Real place label for the store pin (as the web shows it)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                Icon(Icons.Filled.Place, contentDescription = null, tint = ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(12.dp))
+                Icon(Icons.Filled.Place, contentDescription = null, tint = ScottsTechXColors.OnCardTertiary, modifier = Modifier.size(12.dp))
                 Text(
                     " " + seller.placeLabel.ifBlank { seller.address ?: seller.city ?: "—" },
-                    color = ScottsTechXColors.OnLightTertiary, fontSize = 11.sp,
+                    color = ScottsTechXColors.OnCardTertiary, fontSize = 11.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -689,7 +689,7 @@ private fun SellerCard(seller: V2Client.NearbySeller, onOpen: () -> Unit) {
                         bg = ScottsTechXColors.CyanAccent.copy(alpha = 0.10f), fg = ScottsTechXColors.CyanAccent,
                     )
                 } else {
-                    NearbyPill(text = "Outside delivery zone", bg = ScottsTechXColors.Divider, fg = ScottsTechXColors.OnLightTertiary)
+                    NearbyPill(text = "Outside delivery zone", bg = ScottsTechXColors.Divider, fg = ScottsTechXColors.OnCardTertiary)
                 }
                 if (seller.codEnabled) {
                     NearbyPill(text = "Pay on delivery", bg = ScottsTechXColors.PurpleAccent.copy(alpha = 0.10f), fg = ScottsTechXColors.PurpleAccent)
@@ -701,11 +701,11 @@ private fun SellerCard(seller: V2Client.NearbySeller, onOpen: () -> Unit) {
             Icon(Icons.Filled.Navigation, contentDescription = null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(14.dp))
             Text(
                 if (seller.distanceKm < Double.MAX_VALUE) "${"%.1f".format(seller.distanceKm)} km" else "—",
-                color = ScottsTechXColors.OnLight, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp,
+                color = ScottsTechXColors.OnCard, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp,
                 maxLines = 1, softWrap = false,
             )
             if (seller.etaMinutes > 0) {
-                Text("~${seller.etaMinutes} min", color = ScottsTechXColors.OnLightTertiary, fontSize = 10.5.sp, maxLines = 1, softWrap = false)
+                Text("~${seller.etaMinutes} min", color = ScottsTechXColors.OnCardTertiary, fontSize = 10.5.sp, maxLines = 1, softWrap = false)
             }
         }
     }

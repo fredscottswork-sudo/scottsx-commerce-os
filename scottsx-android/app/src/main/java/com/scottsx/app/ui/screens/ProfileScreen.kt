@@ -301,7 +301,7 @@ private fun SectionGroup(title: String, content: @Composable () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.White),
+                .background(ScottsTechXColors.CardSurface),
         ) {
             content()
         }
@@ -342,20 +342,20 @@ private fun Setting(icon: ImageVector, title: String, subtitle: String, onClick:
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnCard,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
             )
             Text(
                 text = subtitle,
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnCardSecondary,
                 fontSize = 11.sp,
             )
         }
         Icon(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
-            tint = ScottsTechXColors.OnLightSecondary,
+            tint = ScottsTechXColors.OnCardSecondary,
             modifier = Modifier.size(18.dp),
         )
     }

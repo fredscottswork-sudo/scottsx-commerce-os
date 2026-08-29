@@ -464,7 +464,7 @@ fun AddProductScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color.White)
+                            .background(ScottsTechXColors.CardSurface)
                             .padding(14.dp),
                     ) {
                         Column {
@@ -528,14 +528,14 @@ fun AddProductScreen(
                             Text(
                                 text = "Draft -> Checking -> ${if (safety.requiresAdminReview) "Admin Review" else "Approved"} -> Live",
                                 fontSize = 11.sp,
-                                color = ScottsTechXColors.OnLightSecondary,
+                                color = ScottsTechXColors.OnCardSecondary,
                             )
                         }
                     }
                     if (safety.issues.isNotEmpty()) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color.White),
+                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = ScottsTechXColors.CardSurface),
                             shape = RoundedCornerShape(12.dp),
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -568,7 +568,7 @@ fun AddProductScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -700,8 +700,8 @@ private fun ReviewRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(label, color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, modifier = Modifier.width(110.dp))
+        Text(label, color = ScottsTechXColors.OnCardSecondary, fontSize = 12.sp, modifier = Modifier.width(110.dp))
         Spacer(Modifier.width(8.dp))
-        Text(value, color = ScottsTechXColors.OnLight, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(value, color = ScottsTechXColors.OnCard, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
     }
 }

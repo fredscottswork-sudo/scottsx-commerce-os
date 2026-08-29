@@ -61,12 +61,12 @@ fun CmsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .padding(16.dp),
             ) {
                 Text(
                     content!!,
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                     fontSize = 14.sp,
                     lineHeight = 22.sp,
                 )
@@ -181,7 +181,7 @@ fun FieldRow(
     ) {
         Text(
             label,
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnCardSecondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
@@ -190,13 +190,13 @@ fun FieldRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             if (value.isEmpty()) {
                 Text(
                     hint ?: "Enter $label",
-                    color = ScottsTechXColors.OnLightSecondary.copy(alpha = 0.5f),
+                    color = ScottsTechXColors.OnCardSecondary.copy(alpha = 0.5f),
                     fontSize = 14.sp,
                 )
             } else {
@@ -204,7 +204,7 @@ fun FieldRow(
                     value = value,
                     onValueChange = onChange,
                     textStyle = androidx.compose.ui.text.TextStyle(
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnCard,
                         fontSize = 14.sp,
                     ),
                     singleLine = lines == 1,

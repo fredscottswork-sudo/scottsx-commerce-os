@@ -126,13 +126,13 @@ fun CartScreen(
                         modifier = Modifier
                             .size(80.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE5E7EB)),
+                            .background(ScottsTechXColors.CardSurfaceAlt),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Filled.ShoppingCart,
                             contentDescription = null,
-                            tint = ScottsTechXColors.OnLightSecondary,
+                            tint = ScottsTechXColors.OnCardSecondary,
                             modifier = Modifier.size(36.dp),
                         )
                     }
@@ -157,7 +157,7 @@ fun CartScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Color.White)
+                                .background(ScottsTechXColors.CardSurface)
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -175,7 +175,7 @@ fun CartScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = product.name,
-                                    color = ScottsTechXColors.OnLight,
+                                    color = ScottsTechXColors.OnCard,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
                                     maxLines = 1,
@@ -192,7 +192,7 @@ fun CartScreen(
                                     modifier = Modifier
                                         .size(28.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFFF1F3F7))
+                                        .background(ScottsTechXColors.CardSurfaceAlt)
                                         .clickable {
                                             CartStore.setQuantity(product.id, qty - 1)
                                         },
@@ -201,13 +201,13 @@ fun CartScreen(
                                     Icon(
                                         imageVector = Icons.Filled.Remove,
                                         contentDescription = "Decrease",
-                                        tint = ScottsTechXColors.OnLight,
+                                        tint = ScottsTechXColors.OnCard,
                                         modifier = Modifier.size(14.dp),
                                     )
                                 }
                                 Text(
                                     text = qty.toString(),
-                                    color = ScottsTechXColors.OnLight,
+                                    color = ScottsTechXColors.OnCard,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
                                     modifier = Modifier.padding(horizontal = 8.dp),
@@ -259,7 +259,7 @@ fun CartScreen(
                             .background(
                                 if (resolved.isEmpty() || placingOrder) {
                                     Brush.horizontalGradient(
-                                        colors = listOf(ScottsTechXColors.OnLightSecondary.copy(alpha = 0.4f), ScottsTechXColors.OnLightSecondary.copy(alpha = 0.4f)),
+                                        colors = listOf(ScottsTechXColors.OnCardSecondary.copy(alpha = 0.4f), ScottsTechXColors.OnCardSecondary.copy(alpha = 0.4f)),
                                     )
                                 } else {
                                     Brush.horizontalGradient(

@@ -158,7 +158,7 @@ private fun PeriodRow(period: Int, onChange: (Int) -> Unit) {
             ) {
                 Text(
                     text = label,
-                    color = if (period == i) Color.White else ScottsTechXColors.OnLight,
+                    color = if (period == i) Color.White else ScottsTechXColors.OnCard,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp,
                 )
@@ -214,15 +214,15 @@ private fun ChartCard(points: List<Pair<String, Long>>) {
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(14.dp),
     ) {
         if (points.isEmpty()) {
-            Text("No sales yet", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
+            Text("No sales yet", color = ScottsTechXColors.OnCardSecondary, fontSize = 13.sp)
             return
         }
         Column {
-            Text("Sales trend", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text("Sales trend", color = ScottsTechXColors.OnCard, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Spacer(Modifier.height(8.dp))
             Box(
                 modifier = Modifier
@@ -279,7 +279,7 @@ private fun ChartCard(points: List<Pair<String, Long>>) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 points.forEach { (label, _) ->
-                    Text(label, color = ScottsTechXColors.OnLightSecondary, fontSize = 9.sp)
+                    Text(label, color = ScottsTechXColors.OnCardSecondary, fontSize = 9.sp)
                 }
             }
         }
@@ -293,15 +293,15 @@ private fun BestProducts(best: List<com.scottsx.app.data.domain.SellerTopProduct
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(14.dp),
     ) {
         Column {
-            Text("Best products", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text("Best products", color = ScottsTechXColors.OnCard, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Spacer(Modifier.height(8.dp))
             if (best.isEmpty()) {
                 Text("No sales yet — your best products will appear here once orders come in.",
-                    color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp)
+                    color = ScottsTechXColors.OnCardSecondary, fontSize = 12.sp)
             }
             best.forEachIndexed { idx, p ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
@@ -317,7 +317,7 @@ private fun BestProducts(best: List<com.scottsx.app.data.domain.SellerTopProduct
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = p.title,
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnCard,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
                         modifier = Modifier.weight(1f),

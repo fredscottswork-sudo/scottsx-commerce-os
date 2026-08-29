@@ -115,7 +115,7 @@ fun OrDivider(modifier: Modifier = Modifier, label: String = "or") {
             label,
             modifier = Modifier.padding(horizontal = 12.dp),
             fontSize = 12.5.sp,
-            color = ScottsTechXColors.OnLightTertiary,
+            color = ScottsTechXColors.OnCardTertiary,
         )
         Divider(modifier = Modifier.weight(1f), color = ScottsTechXColors.Divider)
     }

@@ -73,7 +73,7 @@ fun ContactScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(16.dp),
         ) {
             Column {
@@ -104,7 +104,7 @@ fun ContactScreen(onBack: () -> Unit) {
                         if (ok) "Message sent. We'll respond within 24 hours."
                         else if (it == "failed") "Failed to send. Try again."
                         else "Sending...",
-                        color = if (ok) ScottsTechXColors.BluePrimary else ScottsTechXColors.OnLightSecondary,
+                        color = if (ok) ScottsTechXColors.BluePrimary else ScottsTechXColors.OnCardSecondary,
                         fontSize = 12.sp,
                     )
                 }
@@ -132,11 +132,11 @@ fun ReportProblemScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(16.dp),
         ) {
             Column {
-                Text("Type", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
+                Text("Type", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     resourceTypes.forEachIndexed { i, t ->
@@ -150,7 +150,7 @@ fun ReportProblemScreen(onBack: () -> Unit) {
                         ) {
                             Text(
                                 t.replaceFirstChar { it.uppercase() },
-                                color = if (sel) Color.White else ScottsTechXColors.OnLight,
+                                color = if (sel) Color.White else ScottsTechXColors.OnCard,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )

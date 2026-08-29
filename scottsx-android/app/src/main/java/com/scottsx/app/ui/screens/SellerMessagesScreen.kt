@@ -141,7 +141,7 @@ private fun ConversationRow(convo: V2Client.Conversation, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -162,11 +162,11 @@ private fun ConversationRow(convo: V2Client.Conversation, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(otherName, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Text(lastMsg, color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, maxLines = 1)
+            Text(otherName, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(lastMsg, color = ScottsTechXColors.OnCardSecondary, fontSize = 12.sp, maxLines = 1)
         }
         Column(horizontalAlignment = Alignment.End) {
-            if (lastTime.isNotBlank()) Text(lastTime, color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp)
+            if (lastTime.isNotBlank()) Text(lastTime, color = ScottsTechXColors.OnCardSecondary, fontSize = 10.sp)
             if (unread > 0) {
                 Spacer(Modifier.width(2.dp))
                 Box(

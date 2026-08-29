@@ -37,14 +37,14 @@ fun SettingsRow(
     title: String,
     subtitle: String? = null,
     iconBackground: Brush = Brush.horizontalGradient(listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight)),
-    titleColor: Color = ScottsTechXColors.OnLight,
+    titleColor: Color = ScottsTechXColors.OnCard,
     onClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable(onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -62,9 +62,9 @@ fun SettingsRow(
         androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
             Text(title, color = titleColor, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             if (subtitle != null) {
-                Text(subtitle, color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+                Text(subtitle, color = ScottsTechXColors.OnCardSecondary, fontSize = 11.sp)
             }
         }
-        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = ScottsTechXColors.OnLightSecondary, modifier = Modifier.size(18.dp))
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = ScottsTechXColors.OnCardSecondary, modifier = Modifier.size(18.dp))
     }
 }
