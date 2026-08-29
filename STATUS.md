@@ -435,3 +435,7 @@ been tested.
   4.2x zoom-through-camera exit. Tap skips to exit. Splash never waits on the
   network (LiveMarketplace.warm + CartStore.warm still race the window).
 - Gates: wiring ✓ compose-contract ✓ layout ✓ resources ✓
+
+## 2026-08-29 — STX splash shipped
+- CI fix b963dc8 (KDoc brackets) — run 33276055595 SUCCESS, artifacts:
+  scottsx-test-apk 35,101,367 B + scottsx-v2-test-apk 30,679,709 B.
