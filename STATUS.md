@@ -41,6 +41,9 @@ Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / 
 - `36db114` sidebar+chip ink — green
 - `b6ccd0d` AuthKit/settings components — green
 - `99fbf8c` page-level residues (16 screens) — green
+- `2989d70` docs ledger — green
+- `5c46cd3` BecomeSeller feature-row ink — green
+- `076e74b` web: payment feature card removed, remaining benefits reorganized as an animated strip (staggered entrance, floating icons, hover sheen, gradient underline, live-ring on AI; reduced-motion honoured) — green; verified end-to-end with the real seeded backend (web UI suite 201/201)
 
 
 ## Verify it
