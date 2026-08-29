@@ -652,7 +652,9 @@ object V2Client {
      */
     suspend fun fetchStoreSettings(): org.json.JSONObject? = apiCall(
         method = "GET", path = "/api/v1/seller/store-settings", body = null,
-        parse = { it },
+        // The backend wraps in { settings: {...} } — unwrap so callers
+        // read fields directly (optString("storeName") etc.).
+        parse = { o -> o.optJSONObject("settings") ?: o },
     )
 
     /**

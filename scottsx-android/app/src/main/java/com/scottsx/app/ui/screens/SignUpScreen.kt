@@ -115,7 +115,7 @@ fun SignUpScreen(
             } catch (t: Throwable) {
                 AuthResult.Failure(t.message ?: "Google sign-up failed")
             }
-            val stillActive = coroutineContext[kotlinx.coroutines.Job]?.isActive ?: true
+            val stillActive = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]?.isActive ?: true
             if (!stillActive) return@launch
             loading = false
             statusMsg = null
