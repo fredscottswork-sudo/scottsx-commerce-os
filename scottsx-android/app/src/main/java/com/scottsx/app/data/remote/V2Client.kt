@@ -1586,6 +1586,67 @@ object V2Client {
         return list
     }
 
+    /** ✓✓ read receipts + typing indicator metadata for a thread. */
+    data class ThreadStatus(
+        /** ISO timestamp of the other party's last read — our messages at/before show "Seen". */
+        val otherLastReadAt: String?,
+        /** True while the other party is composing (server TTL ~6s). */
+        val otherTyping: Boolean,
+    )
+
+    /**
+     * GET the whole thread AND the read/typing state in one round-trip
+     * (the canonical route already returns both — fetchMessages threw the
+     * status half away). The thread screen polls this to draw ✓✓ and the
+     * "typing…" presence line like the web does.
+     */
+    suspend fun fetchMessagesWithStatus(
+        conversationId: String,
+        limit: Int = 200,
+    ): Pair<List<ChatMessage>, ThreadStatus>? {
+        val obj = apiCall(
+            method = "GET",
+            path = "/api/v1/conversations/$conversationId/messages",
+            body = null,
+            parse = { it },
+        ) ?: return null
+        val arr = obj.optJSONArray("messages")
+        var list = if (arr == null) emptyList() else (0 until arr.length()).mapNotNull { i ->
+            arr.optJSONObject(i)?.let { chatMessageFromJson(it, conversationId) }
+        }
+        if (list.size > limit) list = list.takeLast(limit)
+        fun statusStr(vararg keys: String): String? {
+            for (k in keys) {
+                val v = obj.optString(k)
+                if (v.isNotBlank() && v != "null") return v
+            }
+            return null
+        }
+        val status = ThreadStatus(
+            otherLastReadAt = statusStr("otherLastReadAt", "otherLastRead", "otherReadAt"),
+            otherTyping = obj.optBoolean("otherTyping", obj.optBoolean("typing", false)),
+        )
+        return list to status
+    }
+
+    /** POST /conversations/:id/read — flips the other party's ticks to ✓✓. */
+    suspend fun markConversationRead(conversationId: String): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/conversations/$conversationId/read",
+            body = JSONObject(),
+            parse = { o -> o.optBoolean("ok", true) },
+        ) ?: false
+
+    /** POST /conversations/:id/typing — the other party sees "typing…" for ~6s. */
+    suspend fun postTyping(conversationId: String, typing: Boolean = true): Boolean =
+        apiCall(
+            method = "POST",
+            path = "/api/v1/conversations/$conversationId/typing",
+            body = if (typing) JSONObject() else JSONObject().put("typing", false),
+            parse = { true },
+        ) ?: false
+
     /**
      * Inbox summary — the caller's conversations with the most recent
      * message preview, unread count, and the other party's display

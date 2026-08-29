@@ -109,6 +109,9 @@ fun MessageThreadScreen(
         }
     }
 
+    var otherLastReadAt by remember { mutableStateOf<String?>(null) }
+    var otherTyping by remember { mutableStateOf(false) }
+
     val convId = conversationId
     val messagesFlow = remember(convId) {
         if (convId != null) MessageStream.messagesFor(convId)
@@ -116,8 +119,37 @@ fun MessageThreadScreen(
     }
     val messages by messagesFlow.collectAsState()
 
-    val uiMessages = remember(messages, myUid) {
-        messages.map { UiMessage.from(it, myUid) }.sortedBy { it.sortKey }
+    // Timestamp of the latest inbound message — drives the "mark read
+    // when a new message arrives while I'm looking at the thread" effect.
+    val lastInboundKey = remember(messages, myUid) {
+        messages.lastOrNull { it.senderUid != myUid }?.createdAt ?: ""
+    }
+
+    // ✓✓ receipts + typing presence: mark this thread read when it opens
+    // and every time a NEW inbound message lands, then poll the other
+    // party's read/typing state on the MessageStream cadence so the ui
+    // always reflects the web chat exactly.
+    LaunchedEffect(convId) {
+        if (convId == null) return@LaunchedEffect
+        V2Client.markConversationRead(convId)
+        while (true) {
+            kotlinx.coroutines.delay(4000)
+            val withStatus = try {
+                V2Client.fetchMessagesWithStatus(convId)
+            } catch (_: Throwable) { null } ?: continue
+            otherLastReadAt = withStatus.second.otherLastReadAt
+            otherTyping = withStatus.second.otherTyping
+        }
+    }
+
+    LaunchedEffect(convId, lastInboundKey) {
+        if (convId != null && lastInboundKey.isNotBlank()) {
+            V2Client.markConversationRead(convId)
+        }
+    }
+
+    val uiMessages = remember(messages, myUid, otherLastReadAt) {
+        messages.map { UiMessage.from(it, myUid, otherLastReadAt) }.sortedBy { it.sortKey }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
@@ -191,22 +223,40 @@ fun MessageThreadScreen(
                     }
                 }
 
-                ComposerBar(onSend = { text ->
-                    if (text.isNotBlank()) {
-                        scope.launch {
-                            val sent = try {
-                                V2Client.sendMessage(convId, text, productId = productId)
-                            } catch (_: Throwable) { null }
-                            if (sent != null) {
-                                MessageStream.pushLocal(convId, sent)
-                            } else {
-                                // Surface failures by re-fetching — never echo a
-                                // message the server rejected as if it had been sent.
-                                MessageStream.refreshNow(convId)
+                // "typing…" — mirrors the web: shown under the last message
+                // while the other party is composing (server TTL ~6 s).
+                if (otherTyping) {
+                    Text(
+                        text = "$sellerName is typing…",
+                        color = ScottsTechXColors.OnPanelSecondary,
+                        fontSize = 11.sp,
+                        modifier = Modifier
+                            .padding(horizontal = 14.dp)
+                            .fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(2.dp))
+                }
+
+                ComposerBar(
+                    onTyping = { scope.launch { V2Client.postTyping(convId, true) } },
+                    onSend = { text ->
+                        if (text.isNotBlank()) {
+                            scope.launch { V2Client.postTyping(convId, false) }
+                            scope.launch {
+                                val sent = try {
+                                    V2Client.sendMessage(convId, text, productId = productId)
+                                } catch (_: Throwable) { null }
+                                if (sent != null) {
+                                    MessageStream.pushLocal(convId, sent)
+                                } else {
+                                    // Surface failures by re-fetching — never echo a
+                                    // message the server rejected as if it had been sent.
+                                    MessageStream.refreshNow(convId)
+                                }
                             }
                         }
-                    }
-                })
+                    },
+                )
             }
         }
     }
@@ -220,15 +270,21 @@ private data class UiMessage(
     val isFromBuyer: Boolean,
     val timeLabel: String,
     val sortKey: String,
+    /** True when the other party has read this (their lastReadAt is at/after this message). */
+    val isRead: Boolean,
 ) {
     companion object {
-        fun from(m: V2Client.ChatMessage, myUid: String): UiMessage = UiMessage(
+        fun from(m: V2Client.ChatMessage, myUid: String, otherLastReadAt: String? = null): UiMessage = UiMessage(
             id = m.id.ifBlank { "${m.createdAt}-${m.senderUid}" },
             body = m.content,
             attachmentUrl = m.attachmentUrl,
             isFromBuyer = m.senderUid == myUid,
             timeLabel = m.createdAt.replace('T', ' ').take(16),
             sortKey = m.createdAt,
+            // ✓✓ shown on MY messages once the other party has read up to here.
+            isRead = otherLastReadAt != null &&
+                m.senderUid == myUid &&
+                m.createdAt <= otherLastReadAt,
         )
     }
 }
@@ -402,19 +458,34 @@ private fun MessageBubble(msg: UiMessage) {
             )
         }
         Spacer(Modifier.height(2.dp))
-        Text(
-            text = msg.timeLabel,
-            color = ScottsTechXColors.OnPanelSecondary,
-            fontSize = 9.sp,
+        Row(
             modifier = Modifier.padding(horizontal = 6.dp),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = msg.timeLabel,
+                color = ScottsTechXColors.OnPanelSecondary,
+                fontSize = 9.sp,
+            )
+            // ✓ delivered / ✓✓ seen — only on MY messages, mirroring the web.
+            if (msg.isFromBuyer) {
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = if (msg.isRead) "✓✓" else "✓",
+                    color = if (msg.isRead) Color(0xFF34A853) else ScottsTechXColors.OnPanelSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun ComposerBar(onSend: (String) -> Unit) {
+private fun ComposerBar(onSend: (String) -> Unit, onTyping: () -> Unit = {}) {
     var text by remember { mutableStateOf("") }
     var showQuickReplies by remember { mutableStateOf(false) }
+    var lastTypingPingAt by remember { mutableStateOf(0L) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -459,7 +530,16 @@ private fun ComposerBar(onSend: (String) -> Unit) {
             }
             BasicTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = {
+                    text = it
+                    // Throttled "typing…" ping — the server TTL is 6 s, so
+                    // again at most every 4 s while the user types.
+                    val now = System.currentTimeMillis()
+                    if (it.isNotBlank() && now - lastTypingPingAt > 4000) {
+                        lastTypingPingAt = now
+                        onTyping()
+                    }
+                },
                 textStyle = TextStyle(color = ScottsTechXColors.OnPanel, fontSize = 13.sp),
                 modifier = Modifier.fillMaxWidth(),
             )
