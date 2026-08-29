@@ -242,13 +242,13 @@ fun CartScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Total",
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnPanelSecondary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                         )
                         Text(
                             text = formatUgx(total),
-                            color = ScottsTechXColors.OnLight,
+                            color = ScottsTechXColors.OnPanel,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 20.sp,
                         )

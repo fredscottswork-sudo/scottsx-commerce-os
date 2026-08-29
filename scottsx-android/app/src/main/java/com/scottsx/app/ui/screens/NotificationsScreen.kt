@@ -232,7 +232,7 @@ fun NotificationsScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = item.title,
-                                color = ScottsTechXColors.OnLight,
+                                color = ScottsTechXColors.OnPanel,
                                 fontWeight = if (item.read) FontWeight.Medium else FontWeight.SemiBold,
                                 fontSize = 14.sp,
                                 modifier = Modifier.weight(1f),
@@ -251,7 +251,7 @@ fun NotificationsScreen(
                         Spacer(Modifier.height(4.dp))
                         Text(
                             text = item.body,
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnPanelSecondary,
                             fontSize = 12.sp,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -259,7 +259,7 @@ fun NotificationsScreen(
                         Spacer(Modifier.height(4.dp))
                         Text(
                             text = item.time,
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnPanelSecondary,
                             fontSize = 11.sp,
                         )
                     }

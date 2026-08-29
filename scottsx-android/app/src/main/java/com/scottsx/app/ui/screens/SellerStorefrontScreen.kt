@@ -111,7 +111,7 @@ fun SellerStorefrontScreen(
             modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight),
             contentAlignment = Alignment.Center,
         ) {
-            Text("Store unavailable", color = ScottsTechXColors.OnLight)
+            Text("Store unavailable", color = ScottsTechXColors.OnPanel)
         }
         return
     }
@@ -362,7 +362,7 @@ private fun androidx.compose.foundation.layout.RowScope.TabPill(
     ) {
         Text(
             text = label,
-            color = if (selected) Color.White else ScottsTechXColors.OnLightSecondary,
+            color = if (selected) Color.White else ScottsTechXColors.OnPanelSecondary,
             fontWeight = FontWeight.SemiBold,
             fontSize = 13.sp,
         )
@@ -491,7 +491,7 @@ private fun ReviewsTab(seller: com.scottsx.app.data.domain.Seller, onViewAll: (S
         }
         if (reviewCount == 0) {
             Text("No reviews yet — ratings from your product pages will roll up here.",
-                color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp,
+                color = ScottsTechXColors.OnPanelSecondary, fontSize = 13.sp,
                 modifier = Modifier.padding(vertical = 8.dp))
         }
     }

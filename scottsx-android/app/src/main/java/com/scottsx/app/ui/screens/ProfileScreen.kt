@@ -291,7 +291,7 @@ private fun SectionGroup(title: String, content: @Composable () -> Unit) {
     ) {
         Text(
             text = title,
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnPanelSecondary,
             fontWeight = FontWeight.Bold,
             fontSize = 11.sp,
             letterSpacing = 1.sp,

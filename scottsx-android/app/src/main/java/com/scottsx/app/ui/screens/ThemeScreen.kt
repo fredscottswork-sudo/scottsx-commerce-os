@@ -177,7 +177,7 @@ private fun ThemeOption(
                 Icon(
                     icon,
                     contentDescription = null,
-                    tint = if (selected) Color.White else ScottsTechXColors.OnLightSecondary,
+                    tint = if (selected) Color.White else ScottsTechXColors.OnPanelSecondary,
                     modifier = Modifier.size(20.dp),
                 )
             }

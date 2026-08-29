@@ -244,7 +244,7 @@ fun AiAssistantScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             text = "Try asking:",
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnPanelSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(start = 4.dp),

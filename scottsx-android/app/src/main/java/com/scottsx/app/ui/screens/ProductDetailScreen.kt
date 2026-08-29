@@ -1237,9 +1237,9 @@ private fun ProductNotFound(onBack: () -> Unit) {
     ) {
         Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(48.dp))
         Spacer(Modifier.height(12.dp))
-        Text("Product unavailable", color = ScottsTechXColors.OnLight, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Product unavailable", color = ScottsTechXColors.OnPanel, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
-        Text("It may have been removed or is no longer in stock.", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
+        Text("It may have been removed or is no longer in stock.", color = ScottsTechXColors.OnPanelSecondary, fontSize = 13.sp)
         Spacer(Modifier.height(16.dp))
         Box(
             modifier = Modifier

@@ -174,7 +174,7 @@ fun ReviewsScreen(
                         item("empty") {
                             Text(
                                 "No reviews yet for${product?.let { " ${it.name}" } ?: " this product"} — be the first to rate it.",
-                                color = ScottsTechXColors.OnLightSecondary,
+                                color = ScottsTechXColors.OnPanelSecondary,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(16.dp),
                             )

@@ -180,7 +180,7 @@ fun MessageThreadScreen(
                         item("empty") {
                             Text(
                                 "No messages yet — say hello and ask about the product.",
-                                color = ScottsTechXColors.OnLightSecondary,
+                                color = ScottsTechXColors.OnPanelSecondary,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                             )
@@ -404,7 +404,7 @@ private fun MessageBubble(msg: UiMessage) {
         Spacer(Modifier.height(2.dp))
         Text(
             text = msg.timeLabel,
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnPanelSecondary,
             fontSize = 9.sp,
             modifier = Modifier.padding(horizontal = 6.dp),
         )

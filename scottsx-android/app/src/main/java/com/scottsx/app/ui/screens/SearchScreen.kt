@@ -216,7 +216,7 @@ fun SearchScreen(
                 ) {
                     Text(
                         text = "Trending searches",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                     )

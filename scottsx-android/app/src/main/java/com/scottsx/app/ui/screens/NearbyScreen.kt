@@ -505,9 +505,9 @@ fun NearbyScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(Icons.Filled.CloudOff, contentDescription = null, tint = ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(42.dp))
+                    Icon(Icons.Filled.CloudOff, contentDescription = null, tint = ScottsTechXColors.OnPanelSecondary, modifier = Modifier.size(42.dp))
                     Spacer(Modifier.height(10.dp))
-                    Text(error!!, color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
+                    Text(error!!, color = ScottsTechXColors.OnPanelSecondary, fontSize = 13.sp)
                     Spacer(Modifier.height(14.dp))
                     Box(
                         modifier = Modifier
@@ -530,11 +530,11 @@ fun NearbyScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(Icons.Filled.Store, contentDescription = null, tint = ScottsTechXColors.OnLightTertiary, modifier = Modifier.size(42.dp))
+                    Icon(Icons.Filled.Store, contentDescription = null, tint = ScottsTechXColors.OnPanelSecondary, modifier = Modifier.size(42.dp))
                     Spacer(Modifier.height(10.dp))
-                    Text("No stores match", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("No stores match", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     Text("Clear the filters to see every store, sorted by distance from you.",
-                        color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp)
+                        color = ScottsTechXColors.OnPanelSecondary, fontSize = 12.sp)
                     Spacer(Modifier.height(14.dp))
                     Box(
                         modifier = Modifier

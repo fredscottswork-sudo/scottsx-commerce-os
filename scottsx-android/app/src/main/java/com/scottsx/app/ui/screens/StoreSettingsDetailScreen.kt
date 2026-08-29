@@ -254,22 +254,22 @@ fun StoreSettingsDetailScreen(
                 "help" -> {
                     Text(
                         "Need help managing your store? Reach out to ScottsTechX Seller Support.",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontSize = 14.sp,
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Email: [email protected]",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 12.sp,
                     )
                     Text(
                         "Phone: +256 800 100 100",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 12.sp,
                     )
                 }
-                else -> Text("Unknown section: $section", color = ScottsTechXColors.OnLightSecondary)
+                else -> Text("Unknown section: $section", color = ScottsTechXColors.OnPanelSecondary)
             }
 
             Spacer(Modifier.height(20.dp))
@@ -364,7 +364,7 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     ) {
         Text(
             label,
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnPanel,
             fontSize = 14.sp,
             modifier = Modifier.weight(1f),
         )
