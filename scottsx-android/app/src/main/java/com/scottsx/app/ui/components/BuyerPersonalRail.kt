@@ -36,6 +36,7 @@ import com.scottsx.app.data.Session
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import kotlinx.coroutines.launch
 
 private data class RailData(
     val orders: List<V2Client.MyOrder>,
@@ -60,8 +61,8 @@ fun BuyerPersonalRail(
         val ready = kotlinx.coroutines.coroutineScope {
             var orders: List<V2Client.MyOrder>? = null
             var following: List<V2Client.FavoriteSeller>? = null
-            val j1 = kotlinx.coroutines.launch { orders = V2Client.fetchMyOrders() }
-            val j2 = kotlinx.coroutines.launch { following = V2Client.fetchFavoriteSellers() }
+            val j1 = launch { orders = V2Client.fetchMyOrders() }
+            val j2 = launch { following = V2Client.fetchFavoriteSellers() }
             j1.join(); j2.join()
             if (orders == null && following == null) null else RailData(orders ?: emptyList(), following ?: emptyList())
         }

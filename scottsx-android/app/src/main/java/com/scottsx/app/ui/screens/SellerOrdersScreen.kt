@@ -309,12 +309,12 @@ private fun SellerApiOrder.toLegacyOrder(): SellerOrder = SellerOrder(
     totalUgx = amount * quantity,
     placedAtLabel = createdAt.take(16).replace('T', ' '),
     status = when (status) {
-        "pending" -> OrderStatus.PENDING
-        "paid", "processing" -> OrderStatus.READY
-        "shipped" -> OrderStatus.SHIPPED
-        "delivered" -> OrderStatus.DELIVERED
-        "cancelled" -> OrderStatus.CANCELLED
-        else -> OrderStatus.PENDING
+        "pending" -> OrderStatus.Pending
+        "paid", "processing" -> OrderStatus.Ready
+        "shipped" -> OrderStatus.Processing
+        "delivered", "completed" -> OrderStatus.Completed
+        "cancelled" -> OrderStatus.Cancelled
+        else -> OrderStatus.Pending
     },
     buyerName = buyerName,
 )
@@ -406,11 +406,11 @@ private fun OrderRow(o: SellerOrder, onClick: () -> Unit, onMessage: () -> Unit)
 @Composable
 private fun StatusPill(status: OrderStatus) {
     val (bg, fg) = when (status) {
-        OrderStatus.PENDING -> Color(0xFFFFFBEB) to Color(0xFFB45309)
-        OrderStatus.READY -> Color(0xFFEFF6FF) to Color(0xFF1D4ED8)
-        OrderStatus.SHIPPED -> Color(0xFFF5F3FF) to Color(0xFF6D28D9)
-        OrderStatus.DELIVERED -> Color(0xFFECFDF5) to Color(0xFF047857)
-        OrderStatus.CANCELLED -> Color(0xFFFEF2F2) to Color(0xFFB91C1C)
+        OrderStatus.Pending -> Color(0xFFFFFBEB) to Color(0xFFB45309)
+        OrderStatus.Ready -> Color(0xFFEFF6FF) to Color(0xFF1D4ED8)
+        OrderStatus.Processing -> Color(0xFFF5F3FF) to Color(0xFF6D28D9)
+        OrderStatus.Completed -> Color(0xFFECFDF5) to Color(0xFF047857)
+        OrderStatus.Cancelled -> Color(0xFFFEF2F2) to Color(0xFFB91C1C)
     }
     Box(
         modifier = Modifier
