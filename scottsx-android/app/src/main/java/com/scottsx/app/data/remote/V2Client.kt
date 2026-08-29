@@ -1064,6 +1064,8 @@ object V2Client {
         val theme: String,
         val language: String,
         val notificationsEnabled: Boolean,
+        /** Server-side notifyMarketing — powers the Promotions toggle + web parity. */
+        val notifyMarketing: Boolean = false,
         val notificationSound: Boolean,
         val locationSharing: String,
         val privacyShowReceipts: Boolean,
@@ -1085,6 +1087,7 @@ object V2Client {
                     theme = p.optString("theme", "system"),
                     language = p.optString("language", "en"),
                     notificationsEnabled = p.optBoolean("notifyMessages", true) || p.optBoolean("notifyOrderUpdates", true),
+                    notifyMarketing = p.optBoolean("notifyMarketing", false),
                     notificationSound = true,
                     locationSharing = "approximate",
                     privacyShowReceipts = true,
