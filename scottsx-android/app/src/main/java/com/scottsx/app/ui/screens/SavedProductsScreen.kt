@@ -69,6 +69,7 @@ fun SavedProductsScreen(onBack: () -> Unit, onOpenProduct: (String) -> Unit = {}
                                 if (ScottsTechXColors.isLightPalette) Color(0xFFE5E7EB)
                                 else ScottsTechXColors.PanelInputLight,
                             ),
+                        )
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(p.optString("title"), maxLines = 2, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
