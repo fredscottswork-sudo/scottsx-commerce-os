@@ -33,6 +33,14 @@ Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / 
 | Bottom nav (seller) | Orders stared from the bar entirely; Messages/Analytics kept the bar; badge states corrected. |
 | Blank states | `SettingsBlankHint` family + cart/wishlist/notifications/analytics/reviews empty or error text now legible in dark mode. |
 | Compile regression | `ProductDetailScreen` "category vs CharCategory" — pending CI-lurker (would have been a fifth red run); fixed by typing the filter lambda. Verified by the local kotlinc-frontend gate over all 128 files. CI back to green at 36e008c. |
+| Ink wave extended | Same dark-ink-on-dark-panel bug class swept through every `PanelInputLight` chip/field (36db114, b6ccd0d) and then through page-level residues in 16 more screens (99fbf8c): cart footer totals, notification rows, section headers, error/empty states in nearby/thread/reviews/storefront/PDP pages. Verified Baselines stayed put: white card rows, white search/composer pills, always-light auth sheets, amber banner, blue-gradient headers. |
+
+## CI ledger (ink-wave completion)
+
+- `92516ac` docs ledger — green
+- `36db114` sidebar+chip ink — green
+- `b6ccd0d` AuthKit/settings components — green
+- `99fbf8c` page-level residues (16 screens) — green
 
 
 ## Verify it
