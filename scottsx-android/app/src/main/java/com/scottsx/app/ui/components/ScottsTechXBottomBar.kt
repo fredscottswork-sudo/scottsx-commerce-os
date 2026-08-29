@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
@@ -135,10 +136,13 @@ fun ScottsTechXBottomBar(
 
 enum class BottomTab(val label: String, val icon: ImageVector) {
     // Parity with the web's mobile bottom nav (web/src/components/MainNav.tsx):
-    // Home / Nearby / Cart / Chats / Alerts — the three badged destinations
-    // carry live counts exactly like the web's icon-badge.
+    // Home / Nearby / AI / Cart / Chats / Alerts — the three badged destinations
+    // carry live counts exactly like the web's icon-badge. The AI tab is the
+    // one-tap assistant entry point the web has; the tab reads "Nearby" (the
+    // old "Explore" label never matched the route it opens).
     Home("Home", Icons.Filled.Home),
-    Nearby("Explore", Icons.Filled.LocationOn),
+    Nearby("Nearby", Icons.Filled.LocationOn),
+    Ai("AI", Icons.Filled.SmartToy),
     Cart("Cart", Icons.Filled.ShoppingCart),
     Chats("Chats", Icons.Filled.ChatBubble),
     Alerts("Alerts", Icons.Filled.Notifications),

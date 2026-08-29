@@ -1023,6 +1023,9 @@ private fun onBuyerTab(navController: NavHostController, tab: BottomTab) {
         BottomTab.Nearby -> navController.navigate(Routes.NEARBY) {
             launchSingleTop = true
         }
+        BottomTab.Ai -> navController.navigate(Routes.AI) {
+            launchSingleTop = true
+        }
         BottomTab.Chats -> navController.navigate(Routes.MESSAGES) {
             launchSingleTop = true
         }
@@ -1045,6 +1048,11 @@ private fun onSellerTab(navController: NavHostController, tab: BottomTab) {
             launchSingleTop = true
         }
         BottomTab.Nearby -> navController.navigate(Routes.NEARBY) {
+            launchSingleTop = true
+        }
+        // Sellers get the SELLER assistant (the buyer AI would route them
+        // to the wrong persona) — same one-tap promise as the web.
+        BottomTab.Ai -> navController.navigate(Routes.SELLER_AI) {
             launchSingleTop = true
         }
         BottomTab.Chats -> navController.navigate(Routes.MESSAGES) {
@@ -1089,7 +1097,11 @@ object Routes {
     const val PRODUCT = "product/{productId}"
     const val STOREFRONT = "storefront/{sellerId}"
     const val REVIEWS = "reviews/{productId}"
-    const val THREAD = "thread/{sellerId}/{productId}"
+    // productId is OPTIONAL (a bare "thread/{sellerId}" URL still matches)
+    // — encoding an empty productId used to produce a trailing-slash URL
+    // ("thread/abc/") that matched NOTHING and crashed navigation whenever
+    // a message row was tapped from the inbox.
+    const val THREAD = "thread/{sellerId}?productId={productId}"
     // ---- Stage 3 seller side routes ----
     const val SELLER_ORDERS = "seller/orders"
     const val SELLER_ADD_PRODUCT = "seller/add-product"
@@ -1154,7 +1166,12 @@ object Routes {
     fun storefront(id: String) = "storefront/${URLEncoder.encode(id, "UTF-8")}"
     fun reviews(id: String) = "reviews/${URLEncoder.encode(id, "UTF-8")}"
     fun thread(sellerId: String, productId: String? = null) =
-        "thread/${URLEncoder.encode(sellerId, "UTF-8")}/${URLEncoder.encode(productId ?: "", "UTF-8")}"
+        buildString {
+            append("thread/").append(URLEncoder.encode(sellerId, "UTF-8"))
+            if (!productId.isNullOrBlank()) {
+                append("?productId=").append(URLEncoder.encode(productId, "UTF-8"))
+            }
+        }
 
     fun login(role: Role) = "login/${role.name}"
     fun signup(role: Role) = "signup/${role.name}"

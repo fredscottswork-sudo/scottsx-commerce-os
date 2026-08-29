@@ -103,7 +103,7 @@ fun AiAssistantScreen(
         )
     }
     var input by remember { mutableStateOf("") }
-    var bottomTab by remember { mutableStateOf(BottomTab.Home) }
+    var bottomTab by remember { mutableStateOf(BottomTab.Ai) }
 
     // Warm the live catalogue so keyword recommendations feel instant.
     LaunchedEffect(Unit) {

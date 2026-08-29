@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Search, ShoppingBag, Sparkles } from 'lucide-react';
+import { MapPin, Search, Sparkles } from 'lucide-react';
 import { productService, aiService } from '../api/services';
 import type { Product } from '../api/types';
 import { ProductCard } from '../components/ProductCard';
@@ -35,13 +35,13 @@ export default function Home() {
   );
   const flash = products.filter((p) => p.isFlashDeal).slice(0, 6);
 
-  // Benefits strip — payment card REMOVED per product direction; the
-  // remaining trio is reorganized as an animated strip (staggered entrance,
-  // floating icons, hover sheen + gradient underline, live-ring on AI).
+  // Benefits strip — payment + local cards REMOVED per product direction;
+  // only the two differentiators remain (Nearby sellers, AI assistant),
+  // now a two-up animated strip (staggered entrance, floating icons,
+  // hover sheen + gradient underline, live-ring on AI).
   const benefits = [
     { icon: <MapPin size={20} />, title: 'Nearby sellers', sub: 'Kampala · Entebbe · Jinja · Mbarara · Gulu · Mbale', live: false },
     { icon: <Sparkles size={20} />, title: 'AI assistant', sub: 'Answers from the live catalog', live: true },
-    { icon: <ShoppingBag size={20} />, title: 'Local & genuine', sub: 'Every item inspected before listing', live: false },
   ];
 
   return (
