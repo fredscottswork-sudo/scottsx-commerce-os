@@ -289,23 +289,17 @@ fun SellerHomeScreen(
                         .padding(start = 16.dp, end = 16.dp, top = 26.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(
+                    // The OFFICIAL company logo picture — pre-shaped
+                    // rounded tile, no wrapper needed. First thing on screen.
+                    Image(
+                        painter = painterResource(R.drawable.brand_mark),
+                        contentDescription = "ScottsTechX logo",
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier
-                            .size(30.dp)
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(ScottsTechXColors.BrandGradient),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        // The COMPANY LOGO picture — brand identification,
-                        // always the first thing on screen.
-                        Image(
-                            painter = painterResource(R.drawable.brand_mark),
-                            contentDescription = "ScottsTechX logo",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(9.dp))
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(11.dp)),
+                    )
+                    Spacer(Modifier.width(10.dp))
                     Text(
                         text = "ScottsTechX",
                         color = ScottsTechXColors.OnDark,

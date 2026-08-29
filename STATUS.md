@@ -409,3 +409,16 @@ been tested.
 
 **Payments** are cash-on-delivery only. Nylon Pay is wired but unconfigured, so
 `/orders/checkout` returns 503; the web cart deliberately uses the COD route.
+
+## 2026-08-29 — Official STX logo installed + shaped
+- User supplied the official ScottsTechX logo (blue ST + silver X monogram on
+  near-black, "SCOTTSTECHX / ENTERPRISES (U) LTD / INNOVATE. INTEGRATE. ELEVATE.").
+  Upload file wasn't on disk → art faithfully regenerated (two shapes) and
+  post-processed with PIL.
+- brand_mark.png: square center-crop, rounded-corner alpha tile (512px) →
+  installed to `res/drawable-nodpi/brand_mark.png` + `logo.png` (nodpi + default).
+- brand_lockup.png: content-cropped, edge-feathered transparent blend (1400×731)
+  → `res/drawable-nodpi/brand_lockup.png` for auth top + splash (dissolves into navy).
+- Buyer/Seller home strips + BrandedAuth card now use the pre-shaped logo tile
+  directly at 36dp (rounded 11dp clip) — inner gradient box removed.
+- Gates: wiring ✓ compose-contract ✓ layout ✓ resources ✓

@@ -253,21 +253,15 @@ fun BrandedAuthScaffold(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
+                Image(
+                    painter = painterResource(R.drawable.brand_mark),
+                    contentDescription = "ScottsTechX logo",
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .size(30.dp)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(ScottsTechXColors.BrandGradient),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.brand_mark),
-                        contentDescription = "ScottsTechX logo",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(21.dp),
-                    )
-                }
-                Spacer(modifier = Modifier.width(9.dp))
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(11.dp)),
+                )
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = "ScottsTechX",
                     color = Color(0xFFEFF4FF),
