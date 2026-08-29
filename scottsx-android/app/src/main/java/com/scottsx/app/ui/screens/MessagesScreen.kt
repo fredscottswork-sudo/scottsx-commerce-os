@@ -186,12 +186,12 @@ fun MessagesScreen(
             // Empty / error state. When the buyer follows stores we
             // surface those (live) so they can start a real chat.
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Text(loadError ?: "", color = ScottsTechXColors.OnLightSecondary,
+                Text(loadError ?: "", color = ScottsTechXColors.OnPanelSecondary,
                     fontSize = 13.sp)
                 if (favoriteSellers.isNotEmpty()) {
                     Spacer(Modifier.height(16.dp))
                     Text("Message a store you follow:",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(Modifier.height(8.dp))
                     favoriteSellers.take(12).forEach { seller ->
@@ -214,14 +214,14 @@ fun MessagesScreen(
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(seller.storeName, color = ScottsTechXColors.OnLight,
+                                Text(seller.storeName, color = ScottsTechXColors.OnPanel,
                                     fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                 Text(
                                     listOfNotNull(
                                         seller.city.takeIf { it.isNotBlank() },
                                         "${seller.productCount} products",
                                     ).joinToString(" · ") + " · Tap to chat",
-                                    color = ScottsTechXColors.OnLightSecondary,
+                                    color = ScottsTechXColors.OnPanelSecondary,
                                     fontSize = 12.sp,
                                 )
                             }
@@ -269,7 +269,8 @@ private fun ConversationRow(
             contentAlignment = Alignment.Center,
         ) {
             // Real counterparty avatar (web parity) — gradient initial only
-            // until the account has a photo.
+            // until the account has a photo. The box stays the brand blue
+            // so unread/read rows read consistently in both themes.
             if (!conversation.otherPartyPhotoUrl.isNullOrBlank()) {
                 coil.compose.AsyncImage(
                     model = conversation.otherPartyPhotoUrl,
@@ -289,20 +290,20 @@ private fun ConversationRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = conversation.otherPartyDisplayName,
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnPanel,
                     fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 conversation.lastMessageAt?.let { ts ->
                     Text(ts.take(10),
-                        color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+                        color = ScottsTechXColors.OnPanelSecondary, fontSize = 11.sp)
                 }
             }
             Spacer(Modifier.height(2.dp))
             Text(
                 text = conversation.lastMessagePreview ?: "Tap to chat",
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnPanelSecondary,
                 fontSize = 12.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )

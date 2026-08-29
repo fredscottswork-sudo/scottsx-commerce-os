@@ -140,7 +140,7 @@ fun SignUpScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        color = ScottsTechXColors.PanelLight,
+                        color = Color.White,
                         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
                     )
                     .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))
@@ -504,7 +504,7 @@ private fun BusinessTypePicker(selected: BusinessType, onSelect: (BusinessType) 
                         .clip(RoundedCornerShape(50))
                         .background(
                             if (isSelected) ScottsTechXColors.BluePrimary
-                            else ScottsTechXColors.PanelInputLight,
+                            else Color(0xFFF3F6FC),
                         )
                         .clickable { onSelect(type) }
                         .padding(horizontal = 14.dp, vertical = 8.dp),

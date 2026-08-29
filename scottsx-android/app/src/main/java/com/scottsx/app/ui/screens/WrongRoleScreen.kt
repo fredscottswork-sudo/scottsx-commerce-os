@@ -61,7 +61,7 @@ fun WrongRoleScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.PanelLight)
+            .background(Color.White)
             .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         // Header — back button + brand banner.
@@ -173,7 +173,7 @@ fun WrongRoleScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(50))
-                    .background(ScottsTechXColors.PanelInputLight)
+                    .background(Color(0xFFF3F6FC))
                     .clickable { onUseDifferentAccount() }
                     .padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center,

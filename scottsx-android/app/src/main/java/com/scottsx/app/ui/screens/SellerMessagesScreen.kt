@@ -81,7 +81,7 @@ fun SellerMessagesScreen(
         }
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Loading...", color = ScottsTechXColors.OnLightSecondary)
+                Text("Loading...", color = ScottsTechXColors.OnPanelSecondary)
             }
             conversations.isEmpty() -> EmptyMessagesHint(modifier = Modifier.padding(bottom = 96.dp))
             else -> LazyColumn(
@@ -125,7 +125,7 @@ private fun EmptyMessagesHint(modifier: Modifier = Modifier) {
             Text(
                 "When buyers message you about a product, you'll see the conversation here.",
                 fontSize = 12.sp,
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnPanelSecondary,
             )
         }
     }

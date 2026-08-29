@@ -139,7 +139,7 @@ fun LoginScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        color = ScottsTechXColors.PanelLight,
+                        color = Color.White,
                         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
                     )
                     .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))

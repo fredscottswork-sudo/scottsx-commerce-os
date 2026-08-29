@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -111,7 +112,13 @@ fun VerifyEmailPendingScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 100.dp, start = 24.dp, end = 24.dp)
+                .padding(top = 100.dp)
+                .background(
+                    color = Color.White,
+                    shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+                )
+                .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))
+                .padding(start = 24.dp, end = 24.dp)
                 .systemBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
