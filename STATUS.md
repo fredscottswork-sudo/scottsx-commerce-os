@@ -28,6 +28,11 @@ Seed logins: `admin@scottstechx.ug` / `Admin123!` · `techhub@scottstechx.ug` / 
 | Pictures | API-relative image URLs (`/api/v1/uploads/images/…`) could never load in Coil — every ingestion point now absolutizes via `absoluteMediaUrl()`. |
 | Avatars | Profile header + chat rows render REAL photos (they rendered initials forever). Account settings gains web-parity profile editing (photo/name/phone/city via `PATCH /auth/me`). |
 | Speed | Splash 1500→1000 ms and warms catalog + cart during the beat; Coil respects cache headers again (50 MB disk cache reuse instead of re-downloading every image on cold start). |
+| Sidebar ink | Root cause of the "black icons" complaint: `OnLight` ink painted directly on the mutable-dark `PanelLight` surface — now uses the swappable `OnPanel*` tokens in both sidebars + all page-level rows/state text. |
+| Auth light-sheet | Login/Sign-up/Verify email/Wrong-role sheets forced to the always-light design (web parity) — they were rendering dark-navy with dark text in dark mode. |
+| Bottom nav (seller) | Orders stared from the bar entirely; Messages/Analytics kept the bar; badge states corrected. |
+| Blank states | `SettingsBlankHint` family + cart/wishlist/notifications/analytics/reviews empty or error text now legible in dark mode. |
+| Compile regression | `ProductDetailScreen` "category vs CharCategory" — pending CI-lurker (would have been a fifth red run); fixed by typing the filter lambda. Verified by the local kotlinc-frontend gate over all 128 files. CI back to green at 36e008c. |
 
 
 ## Verify it
