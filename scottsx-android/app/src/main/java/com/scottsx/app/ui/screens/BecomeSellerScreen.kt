@@ -235,7 +235,7 @@ private fun FeatureRow(label: String, icon: androidx.compose.ui.graphics.vector.
                 tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(16.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Text(label, color = ScottsTechXColors.OnLight,
+        Text(label, color = ScottsTechXColors.OnPanel,
             fontWeight = FontWeight.Medium, fontSize = 14.sp)
     }
 }
