@@ -192,7 +192,11 @@ fun AppNavigation() {
                         launchSingleTop = true
                     }
                 },
-                onForgotPassword = { /* Stage 3 — reset link email (TBD) */ },
+                onForgotPassword = {
+                    navController.navigate(Routes.resetPassword(role)) {
+                        launchSingleTop = true
+                    }
+                },
                 onRoleMismatch = { actualRole ->
                     navController.navigate(Routes.wrongRole(picked = role, actual = actualRole)) {
                         launchSingleTop = true
@@ -262,6 +266,18 @@ fun AppNavigation() {
                         launchSingleTop = true
                     }
                 },
+            )
+        }
+
+        composable(
+            Routes.RESET_PASSWORD,
+            arguments = listOf(navArgument("role") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val role = Routes.roleFromBackStack(backStackEntry.arguments?.getString("role"))
+            ResetPasswordScreen(
+                role = role,
+                onBack = { navController.popBackStack() },
+                onDone = { navController.popBackStack() },
             )
         }
 
@@ -1115,6 +1131,7 @@ object Routes {
     const val SIGNUP = "signup/{role}"
     const val WRONG_ROLE = "wrongRole/{picked}/{actual}"
     const val VERIFY_EMAIL_PENDING = "verify-email-pending/{email}"
+    const val RESET_PASSWORD = "reset-password/{role}"
     const val HOME = "home/{role}"
     const val BUYER_HOME = "buyer_home/{displayName}/{email}"
     const val SELLER_HOME = "seller_home/{displayName}/{email}"
@@ -1216,6 +1233,8 @@ object Routes {
     fun wrongRole(picked: Role, actual: Role) = "wrongRole/${picked.name}/${actual.name}"
     fun verifyEmailPending(email: String): String =
         "verify-email-pending/${URLEncoder.encode(email, "UTF-8")}"
+    fun resetPassword(role: Role): String =
+        "reset-password/${role.name.lowercase()}"
     /**
      * Build the dashboard route for the given [role]. Falls back to
      * "Buyer" / "Seller" / a single non-empty placeholder when

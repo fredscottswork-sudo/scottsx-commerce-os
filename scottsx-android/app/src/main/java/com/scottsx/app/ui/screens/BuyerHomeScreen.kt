@@ -17,6 +17,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,7 +65,6 @@ import com.scottsx.app.data.preferences.sidebarPaletteFor
 import com.scottsx.app.data.preferences.themeState
 import com.scottsx.app.data.remote.V2Client
 import com.scottsx.app.ui.components.BottomTab
-import com.scottsx.app.ui.components.BuyerPersonalRail
 import com.scottsx.app.ui.components.BuyerSidebarOverlay
 import com.scottsx.app.ui.components.CategoryRow
 import com.scottsx.app.ui.components.FeedEmptyCard
@@ -237,18 +242,97 @@ fun BuyerHomeScreen(
             .background(ScottsTechXColors.BackgroundDark)
             .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
+        // Ambient brand-vibe background: THREE slow-drifting glow orbs
+        // (blue/cyan/violet — the company palette) floating behind the
+        // feed. Pure ambience; every interactive layer sits above it.
+        run {
+            val orbDrift by rememberInfiniteTransition(label = "home-orbs").animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    tween(9000, easing = androidx.compose.animation.core.EaseInOutSine),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "home-orb-drift",
+            )
+            Box(
+                modifier = Modifier
+                    .size(300.dp)
+                    .align(Alignment.TopEnd)
+                    .offset(x = 110.dp, y = (-90 + orbDrift * 30).dp)
+                    .clip(CircleShape)
+                    .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.10f)),
+            )
+            Box(
+                modifier = Modifier
+                    .size(220.dp)
+                    .align(Alignment.TopStart)
+                    .offset(x = (-90 + orbDrift * 22).dp, y = 160.dp)
+                    .clip(CircleShape)
+                    .background(ScottsTechXColors.CyanAccent.copy(alpha = 0.06f)),
+            )
+            Box(
+                modifier = Modifier
+                    .size(260.dp)
+                    .align(Alignment.CenterStart)
+                    .offset(x = (-120).dp, y = (120 - orbDrift * 26).dp)
+                    .clip(CircleShape)
+                    .background(ScottsTechXColors.PurpleAccent.copy(alpha = 0.05f)),
+            )
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = 88.dp),
             contentPadding = PaddingValues(bottom = 16.dp),
         ) {
-            // 1. Header — greeting + real badges
+            // 1. Brand strip — company identity, always the first thing
+            //    on screen: mark + wordmark + tagline.
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 16.dp, top = 34.dp),
+                        .padding(start = 16.dp, end = 16.dp, top = 26.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(ScottsTechXColors.BrandGradient),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "S",
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp,
+                        )
+                    }
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        text = "ScottsTechX",
+                        color = ScottsTechXColors.OnDark,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp,
+                        letterSpacing = 0.2.sp,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = "· Shop smart, sell fast",
+                        color = ScottsTechXColors.OnDarkMuted,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+            // 2. Header — greeting + real badges
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 16.dp, top = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
@@ -371,19 +455,6 @@ fun BuyerHomeScreen(
                 }
             }
 
-            // 2.5 Personal rail — mirrors the web buyer dashboard
-            // (stats / on-the-way / sellers you follow). Only for signed-in users.
-            item {
-                if (Session.tokenOrNull() != null) {
-                    Spacer(Modifier.height(14.dp))
-                    BuyerPersonalRail(
-                        onOpenOrders = onNavigateToMyOrders,
-                        onTrackOrder = onTrackOrder,
-                        onOpenStore = onOpenStore,
-                        savedCount = wishlistIds.size,
-                    )
-                }
-            }
 
             when (feedState) {
                 FeedState.Loading -> {

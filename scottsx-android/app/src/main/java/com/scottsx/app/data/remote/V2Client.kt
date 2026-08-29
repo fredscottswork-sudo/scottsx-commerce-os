@@ -584,6 +584,175 @@ object V2Client {
     }
 
     // ============================================================
+    // EMAIL / PASSWORD AUTH (backend-native — THE web accounts)
+    //
+    // These hit /api/v1/auth/* directly — the SAME credential store the
+    // website uses. A shopper who registered on the web with email +
+    // password can sign in here byte-for-byte; Firebase is never asked.
+    // ============================================================
+
+    enum class EmailLoginStatus { SUCCESS, INVALID_CREDENTIALS, DISABLED, NETWORK }
+
+    /** Outcome of POST /auth/login — token+user on success, reason otherwise. */
+    data class EmailLoginResult(
+        val status: EmailLoginStatus,
+        val token: String? = null,
+        val user: GoogleUser? = null,
+    )
+
+    /** POST /api/v1/auth/login {email, password} — identifier may be a phone. */
+    suspend fun loginEmail(identifier: String, password: String): EmailLoginResult {
+        val body = JSONObject().put("email", identifier).put("password", password)
+        val (code, json) = rawPost("/api/v1/auth/login", body)
+        if (json == null) return EmailLoginResult(EmailLoginStatus.NETWORK)
+        if (code in 200..299) {
+            val token = json.optString("token")
+            val u = parseUserJson(json.optJSONObject("user"))
+            if (token.isNotBlank() && u != null) {
+                return EmailLoginResult(EmailLoginStatus.SUCCESS, token, u)
+            }
+        }
+        val msg = (json.optString("message") + " " + json.optString("error")).lowercase()
+        return when {
+            code == 403 || msg.contains("disabled") || msg.contains("deactivat") ->
+                EmailLoginResult(EmailLoginStatus.DISABLED)
+            code == 401 || msg.contains("invalid") ->
+                EmailLoginResult(EmailLoginStatus.INVALID_CREDENTIALS)
+            else -> EmailLoginResult(EmailLoginStatus.NETWORK)
+        }
+    }
+
+    /** Outcome of POST /auth/register. */
+    data class EmailRegisterResult(
+        val ok: Boolean,
+        val token: String? = null,
+        val user: GoogleUser? = null,
+        /** True when the email already exists — the UI should offer "Sign in instead". */
+        val emailTaken: Boolean = false,
+        /** Server could not send mail (misconfigured) — surface the message. */
+        val serviceMessage: String? = null,
+    )
+
+    /** POST /api/v1/auth/register — creates the web-compatible account AND
+     * returns a live JWT, so the app is signed in immediately while the
+     * verification email flies. */
+    suspend fun registerEmail(
+        email: String,
+        password: String,
+        displayName: String,
+        phone: String,
+        role: String,
+        storeName: String? = null,
+        city: String? = null,
+    ): EmailRegisterResult {
+        val body = JSONObject()
+            .put("email", email)
+            .put("password", password)
+            .put("displayName", displayName)
+            .put("phone", phone)
+            .put("role", role)
+            .put("storeName", storeName ?: "")
+            .put("city", city ?: "")
+        val (code, json) = rawPost("/api/v1/auth/register", body)
+            ?: return EmailRegisterResult(ok = false, serviceMessage = "No connection. Try again.")
+        if (code in 200..299) {
+            val token = json.optString("token")
+            val u = parseUserJson(json.optJSONObject("user"))
+            if (token.isNotBlank() && u != null) {
+                return EmailRegisterResult(ok = true, token = token, user = u)
+            }
+        }
+        val msg = json.optString("message")
+            .ifBlank { json.optString("error") }
+        return if (code == 409 || msg.contains("already", ignoreCase = true)) {
+            EmailRegisterResult(ok = false, emailTaken = true, serviceMessage = msg.ifBlank { "Email already registered" })
+        } else {
+            EmailRegisterResult(ok = false, serviceMessage = msg.ifBlank { "Could not create the account right now. Try again." })
+        }
+    }
+
+    /** POST /api/v1/auth/forgot-password {identifier} — mails a reset
+     * token (single use, 30 min). Always {ok:true} server-side. */
+    suspend fun forgotPassword(identifier: String): Boolean {
+        val (_, json) = rawPost(
+            "/api/v1/auth/forgot-password",
+            JSONObject().put("identifier", identifier),
+        ) ?: return false
+        return json.optBoolean("ok", true)
+    }
+
+    /** POST /api/v1/auth/reset-password {token, password} — redeems the
+     * emailed token natively (no browser round-trip). */
+    suspend fun resetPasswordWithToken(token: String, newPassword: String): Pair<Boolean, String?> {
+        val (code, json) = rawPost(
+            "/api/v1/auth/reset-password",
+            JSONObject().put("token", token).put("password", newPassword),
+        ) ?: return false to "No connection. Try again."
+        if (code in 200..299 && json.optBoolean("ok", false)) return true to null
+        val msg = json.optString("message").ifBlank { json.optString("error") }
+        return false to msg.ifBlank { "That reset link is invalid or expired — request a new one." }
+    }
+
+    /** POST /api/v1/auth/verify/request (auth) — resend the 6-digit code. */
+    suspend fun requestVerificationCode(): Boolean {
+        val (code, json) = rawPost("/api/v1/auth/verify/request", JSONObject()) ?: return false
+        return code in 200..299 && (json.optBoolean("sent", false) || json.optBoolean("alreadyVerified", true))
+    }
+
+    /** POST /api/v1/auth/verify/confirm {code} (auth) → verified. */
+    suspend fun confirmVerificationCode(code: String): Boolean {
+        val (httpCode, json) = rawPost(
+            "/api/v1/auth/verify/confirm",
+            JSONObject().put("code", code),
+        ) ?: return false
+        return httpCode in 200..299 && json.optBoolean("verified", false)
+    }
+
+    /** Minimal POST that returns (HTTP status, parsed body) so auth
+     * surfaces can read backend error messages instead of just null. */
+    private suspend fun rawPost(path: String, body: JSONObject): Pair<Int, JSONObject>? =
+        withContext(Dispatchers.IO) {
+            try {
+                val url = java.net.URL(baseUrl.trimEnd('/') + path)
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 6000
+                conn.readTimeout = 12000
+                conn.setRequestProperty("Accept", "application/json")
+                Session.tokenOrNull()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()?.readText() ?: ""
+                conn.disconnect()
+                code to (if (text.isBlank()) JSONObject() else JSONObject(text))
+            } catch (t: Throwable) {
+                android.util.Log.w(TAG, "POST $path failed: ${t.message}")
+                null
+            }
+        }
+
+    /** Parse a backend `users` row (camelCase publicUser shape). */
+    private fun parseUserJson(u: JSONObject?): GoogleUser? {
+        if (u == null) return null
+        val id = u.optString("id")
+        if (id.isBlank()) return null
+        return GoogleUser(
+            id = id,
+            email = u.optString("email"),
+            displayName = u.optString("displayName"),
+            phone = u.optString("phone"),
+            role = u.optString("role", "buyer"),
+            emailVerified = u.optBoolean("emailVerified", false),
+            profilePhotoUrl = u.optString("profilePhotoUrl")
+                .takeIf { it.isNotBlank() && it != "null" },
+            city = u.optString("city"),
+        )
+    }
+
+    // ============================================================
     // USER PROFILE / ADDRESSES / PAYMENT METHODS / ETC.
     // ============================================================
 

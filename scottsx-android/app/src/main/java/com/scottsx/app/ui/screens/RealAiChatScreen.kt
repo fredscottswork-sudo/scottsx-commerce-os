@@ -1,5 +1,7 @@
 package com.scottsx.app.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -54,6 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +73,7 @@ import com.scottsx.app.ui.components.navBarSpacer
 import com.scottsx.app.ui.components.statusBarSpacer
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -197,7 +201,31 @@ fun RealAiChatScreen(
                         tint = ScottsTechXColors.OnDark, modifier = Modifier.size(18.dp),
                     )
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
+                // Brand: gradient sparkle avatar — company AI identity.
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    ScottsTechXColors.BluePrimary,
+                                    ScottsTechXColors.CyanAccent,
+                                    ScottsTechXColors.PurpleAccent,
+                                ),
+                                start = Offset.Zero,
+                                end = Offset(140f, 140f),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.AutoAwesome, contentDescription = null,
+                        tint = Color.White, modifier = Modifier.size(16.dp),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "ScottsTechX AI",
@@ -205,14 +233,23 @@ fun RealAiChatScreen(
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
                     )
-                    Text(
-                        if (agentLabel.isBlank()) "Grounded on the live catalog"
-                        else "$agentLabel · grounded on the live catalog",
-                        color = ScottsTechXColors.OnDarkMuted,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF22C55E)),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            if (agentLabel.isBlank()) "Online · answers from the live catalog"
+                            else "$agentLabel · online",
+                            color = ScottsTechXColors.OnDarkMuted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 if (turns.isNotEmpty()) {
                     Box(
@@ -250,13 +287,15 @@ fun RealAiChatScreen(
                     }
                 }
                 items(turns) { turn ->
-                    if (turn.role == "user") {
-                        UserBubble(turn.content)
-                    } else {
-                        AssistantTurn(
-                            turn = turn,
-                            onOpenProductId = onOpenProductId,
-                        )
+                    AiTurnReveal {
+                        if (turn.role == "user") {
+                            UserBubble(turn.content)
+                        } else {
+                            AssistantTurn(
+                                turn = turn,
+                                onOpenProductId = onOpenProductId,
+                            )
+                        }
                     }
                 }
                 if (isSending) {
@@ -321,7 +360,11 @@ fun RealAiChatScreen(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
-                        .background(if (canSend) ScottsTechXColors.BluePrimary else ScottsTechXColors.DarkPanelHover)
+                        .background(
+                            if (canSend) Brush.linearGradient(
+                                listOf(ScottsTechXColors.BluePrimaryDark, ScottsTechXColors.BluePrimary),
+                            ) else SolidColor(ScottsTechXColors.DarkPanelHover),
+                        )
                         .clickable(enabled = canSend) { send(input) },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -348,7 +391,15 @@ private fun UserBubble(text: String) {
             modifier = Modifier
                 .widthIn(max = 300.dp)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp))
-                .background(ScottsTechXColors.DarkPanelHover)
+                .background(
+                    // Brand-tinted bubble — reads as "mine" instantly.
+                    Brush.linearGradient(
+                        listOf(
+                            ScottsTechXColors.BluePrimaryDark,
+                            Color(0xFF1D4ED8),
+                        ),
+                    ),
+                )
                 .padding(horizontal = 15.dp, vertical = 11.dp),
         ) {
             Text(text, color = ScottsTechXColors.OnDark, fontSize = 14.5.sp)
@@ -406,14 +457,6 @@ private fun AssistantTurn(
                 .fillMaxWidth()
                 .padding(start = 40.dp),
         )
-        if (turn.model.isNotBlank() || turn.provider.isNotBlank()) {
-            Text(
-                listOf(turn.model, turn.provider).filter { it.isNotBlank() }.joinToString(" · "),
-                color = ScottsTechXColors.OnDarkMuted,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(start = 40.dp, top = 4.dp),
-            )
-        }
         if (turn.products.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             LazyRow(
@@ -675,4 +718,24 @@ private fun AiEmptyState(
             }
         }
     }
+}
+
+
+/** Per-message entrance — fade + gentle rise, ChatGPT-feel as turns land. */
+@Composable
+private fun AiTurnReveal(content: @Composable () -> Unit) {
+    val fade = remember { Animatable(0f) }
+    val rise = remember { Animatable(14f) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.coroutineScope {
+            launch { fade.animateTo(1f, tween(380, easing = EaseOutCubic)) }
+            launch { rise.animateTo(0f, tween(380, easing = EaseOutCubic)) }
+        }
+    }
+    Box(
+        modifier = Modifier.graphicsLayer {
+            alpha = fade.value
+            translationY = rise.value.dp.toPx()
+        },
+    ) { content() }
 }
