@@ -60,7 +60,7 @@ private const val INTRO_MS = 3000L
 private const val EXIT_MS = 720L
 private const val MONOGRAM_ASPECT = 3.1877f   // W/H of the shared letter canvas
 
-/** Normalised 0..1 progress of stage [a..b] inside a global 0..1 clock. */
+/** Normalised 0..1 progress of the stage window (a to b) inside the global clock. */
 private fun stage(t: Float, a: Float, b: Float): Float =
     ((t - a) / (b - a)).coerceIn(0f, 1f)
 
