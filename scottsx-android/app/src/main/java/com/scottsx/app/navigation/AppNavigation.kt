@@ -115,14 +115,16 @@ fun AppNavigation() {
     NavHost(navController = navController, startDestination = Routes.SPLASH) {
         composable(Routes.SPLASH) {
             BackHandler { /* splash blocks back */ }
+            // LocalContext reads must live in the composable scope, not
+            // inside the plain callback lambdas below.
+            val splashCtx = androidx.compose.ui.platform.LocalContext.current
             SplashHost(onContinue = {
                 // The intro slides are a FIRST-RUN experience: once the
                 // user has seen them, later cold starts go straight to
                 // role select (and from there a signed-in session fast-
                 // forwards to its dashboard). Without this gate every
                 // app launch replays all three welcome screens.
-                val ctx = androidx.compose.ui.platform.LocalContext.current
-                val seen = com.scottsx.app.data.preferences.UserPrefs.get(ctx).hasSeenOnboarding()
+                val seen = com.scottsx.app.data.preferences.UserPrefs.get(splashCtx).hasSeenOnboarding()
                 navController.navigate(if (seen) Routes.ROLE else Routes.ONBOARDING) {
                     popUpTo(Routes.SPLASH) { inclusive = true }
                     launchSingleTop = true
@@ -132,11 +134,12 @@ fun AppNavigation() {
 
         composable(Routes.ONBOARDING) {
             BackHandler { /* onboarding blocks back */ }
+            val onboardingCtx = androidx.compose.ui.platform.LocalContext.current
             OnboardingFlow(onFinish = {
                 // Persist BEFORE navigating so a process death between
                 // the two calls cannot replay the intro on next launch.
                 com.scottsx.app.data.preferences.UserPrefs
-                    .get(androidx.compose.ui.platform.LocalContext.current)
+                    .get(onboardingCtx)
                     .markOnboardingSeen()
                 navController.navigate(Routes.ROLE) {
                     popUpTo(Routes.ONBOARDING) { inclusive = true }
