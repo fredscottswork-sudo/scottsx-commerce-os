@@ -114,7 +114,7 @@ fun SettingsScaffold(
 fun SettingsSectionHeader(label: String) {
     Text(
         text = label.uppercase(),
-        color = ScottsTechXColors.OnLightSecondary,
+        color = ScottsTechXColors.OnPanelSecondary,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.2.sp,

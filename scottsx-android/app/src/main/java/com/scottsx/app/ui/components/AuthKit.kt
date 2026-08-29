@@ -242,7 +242,7 @@ fun AuthFilledField(
                 modifier = Modifier.fillMaxSize(),
                 singleLine = true,
                 placeholder = {
-                    Text(placeholder, color = Color(0xFF8A94A8), fontSize = 15.sp)
+                    Text(placeholder, color = ScottsTechXColors.OnPanelSecondary, fontSize = 15.sp)
                 },
                 visualTransformation =
                     if (isPassword && !visible) PasswordVisualTransformation() else VisualTransformation.None,
@@ -258,7 +258,7 @@ fun AuthFilledField(
                             Icon(
                                 if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                                 contentDescription = if (visible) "Hide password" else "Show password",
-                                tint = Color(0xFF5A6478),
+                                tint = ScottsTechXColors.OnPanelSecondary,
                                 modifier = Modifier.size(22.dp),
                             )
                         }
@@ -273,8 +273,8 @@ fun AuthFilledField(
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = ScottsTechXColors.PanelInputLight,
                     unfocusedContainerColor = ScottsTechXColors.PanelInputLight,
-                    focusedTextColor = ScottsTechXColors.OnLight,
-                    unfocusedTextColor = ScottsTechXColors.OnLight,
+                    focusedTextColor = ScottsTechXColors.OnPanel,
+                    unfocusedTextColor = ScottsTechXColors.OnPanel,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                 ),
