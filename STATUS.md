@@ -1,6 +1,37 @@
 # ScottsTechX — build status
 
+## Ninth pass (2026-08-30) — welcome → selector → login → dashboard chain re-fixed
+
+Owner report: "first three screens don't show what they should, the
+selectors don't work, login doesn't work, dashboards don't show." Root
+cause: an earlier user-requested revert had removed the un-freeze fix
+for exactly these symptoms. Re-applied, now at the owner's request:
+
+- **Role selector** — cards are selection-only (blue glow + border +
+  check badge); Log in / Sign up live in clean bottom-row buttons.
+  No more clickable-inside-a-clickable, which read as dead/mis-firing
+  taps on real devices.
+- **Login** — `/auth/login`, `/auth/register`, `/auth/verify` and the
+  `/auth/firebase/sign-in` exchange ride cold-server-safe lanes: wide
+  budgets + one transport-level retry, so the sleeping production API
+  (Render free tier) stops presenting as "login broken". Network error
+  copy tells the user the server is waking. Google sign-in re-gains
+  the double-tap guard (second picker launch no longer orphans the
+  first continuation into a stuck spinner).
+- **Dashboards** — all idempotent GETs (buyer feed, seller dashboard
+  stats, orders, products, profile) now retry once on transport
+  failure with 30 s/45 s budgets, so the first screen after login
+  loads data instead of an error card while the API wakes.
+- **Welcome videos** — the three slides keep their videos; the player
+  now auto-retries once on a decoder error, drops to a branded
+  gradient instead of a black hole when a clip truly cannot decode,
+  uses a transparent shutter while the first frame loads, and stops
+  before release on teardown (no mid-decode release crash).
+
+The STX opening splash is untouched.
+
 ## Eighth pass (2026-08-29, late evening) — CI 33266437921 ✅ GREEN
+
 
 Full auth + home + AI rebuild per the owner's directive:
 

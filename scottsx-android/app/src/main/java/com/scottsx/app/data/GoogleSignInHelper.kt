@@ -96,8 +96,14 @@ class GoogleSignInHelper(context: Context) {
     suspend fun signInWithInteractive(
         launcher: ActivityResultLauncher<Intent>,
     ): String {
+        // Double-tap guard: a second launch while a picker is already in
+        // flight used to OVERWRITE `pending`, orphaning the first
+        // continuation for the full 180 s timeout while the UI sat with
+        // a spinner. Refuse the second launch instantly instead.
+        if (pending != null) throw IllegalStateException("Google sign-in already in flight")
         return suspendCancellableCoroutine<String> { cont ->
             pending = cont
+            cont.invokeOnCancellation { if (pending === cont) pending = null }
             launcher.launch(client.signInIntent)
         }
     }
