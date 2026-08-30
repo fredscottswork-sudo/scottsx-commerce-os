@@ -469,3 +469,11 @@ been tested.
   LoginScreen restored byte-for-byte to b963dc8 (pre-fix state).
 - KEPT: the STX opening (c3d5b90) — launch-window icon/layer-list, letter
   flight splash, hold-while-loading — untouched, per user instruction.
+
+## 2026-08-29 — locked to the validated base (615ef16) + STX opening only
+- User validated run #141 (615ef16 "official STX logo") as nearly-successful.
+  Verified tree == 615ef16 EXCEPT the opening sequence (SplashScreen letter
+  choreography + launch-window icon/layer-list + themes + gate) — nothing else.
+- Bug sweep at this locked state: wiring ✓ (56 screens routed) contracts ✓
+  layout ✓ (63 checks: insets, contrast, overflow, bars) resources ✓; zero
+  TODO/TBD stubs; zero empty onClick handlers anywhere in screens/components.
