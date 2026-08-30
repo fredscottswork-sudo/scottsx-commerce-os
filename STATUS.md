@@ -477,3 +477,10 @@ been tested.
 - Bug sweep at this locked state: wiring ✓ (56 screens routed) contracts ✓
   layout ✓ (63 checks: insets, contrast, overflow, bars) resources ✓; zero
   TODO/TBD stubs; zero empty onClick handlers anywhere in screens/components.
+
+## 2026-08-29 — welcome-video crash/black-screen hardening
+- VideoBackground: player errors no longer leave a full-screen black
+  PlayerView swallowing the slide (onPlayerError + prepare guard →
+  drop the video, keep the branded overlay slide); stop() before
+  release() prevents decoder-teardown crashes on leave/rotate.
+- All binaries audited (12 drawables + 4 mp4 H.264 verified intact).
