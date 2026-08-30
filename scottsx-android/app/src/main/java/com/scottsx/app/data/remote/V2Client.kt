@@ -98,36 +98,13 @@ object V2Client {
         path: String,
         body: JSONObject? = null,
         parse: (JSONObject) -> T,
-    ): T? {
-        // GETs are idempotent: give them the wide cold-server lane with
-        // one automatic retry so dashboards "just work" while the API
-        // wakes from idle sleep. Mutating calls keep the tight budget
-        // and never replay.
-        val wideLane = method == "GET" || path == "/api/v1/auth/firebase/sign-in"
-        if (wideLane) {
-            return apiCallInternal(method, path, body, parse, 30000, 45000)
-                ?: run {
-                    kotlinx.coroutines.delay(1200)
-                    apiCallInternal(method, path, body, parse, 30000, 45000)
-                }
-        }
-        return apiCallInternal(method, path, body, parse, 6000, 12000)
-    }
-
-    private suspend fun <T> apiCallInternal(
-        method: String,
-        path: String,
-        body: JSONObject? = null,
-        parse: (JSONObject) -> T,
-        connectTimeoutMs: Int,
-        readTimeoutMs: Int,
     ): T? = withContext(Dispatchers.IO) {
         try {
             val url = java.net.URL(baseUrl.trimEnd('/') + path)
             val conn = url.openConnection() as java.net.HttpURLConnection
             conn.requestMethod = method
-            conn.connectTimeout = connectTimeoutMs
-            conn.readTimeout = readTimeoutMs
+            conn.connectTimeout = 6000
+            conn.readTimeout = 12000
             conn.setRequestProperty("Accept", "application/json")
             Session.tokenOrNull()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
             if (body != null) {
@@ -735,36 +712,14 @@ object V2Client {
 
     /** Minimal POST that returns (HTTP status, parsed body) so auth
      * surfaces can read backend error messages instead of just null. */
-    /**
-     * Cold-server-safe transport. The production API sleeps when idle
-     * (Render free tier) and its wake-up interstitial burns 20-60 s, so
-     * the old 6 s budget turned a waking server into "everything is
-     * broken" across the app. Auth-critical routes ride wider budgets
-     * with one retry; transport failures only — HTTP responses (incl.
-     * errors) never replay, so idempotency stays intact.
-     */
-    private suspend fun rawPost(path: String, body: JSONObject): Pair<Int, JSONObject>? {
-        val authCritical = path.startsWith("/api/v1/auth/login") ||
-            path.startsWith("/api/v1/auth/register") ||
-            path.startsWith("/api/v1/auth/verify/request")
-        if (!authCritical) return rawPostInternal(path, body, 6000, 12000)
-        return rawPostInternal(path, body, 30000, 45000)
-            ?: run { kotlinx.coroutines.delay(1200); rawPostInternal(path, body, 30000, 45000) }
-    }
-
-    private suspend fun rawPostInternal(
-        path: String,
-        body: JSONObject,
-        connectTimeoutMs: Int,
-        readTimeoutMs: Int,
-    ): Pair<Int, JSONObject>? =
+    private suspend fun rawPost(path: String, body: JSONObject): Pair<Int, JSONObject>? =
         withContext(Dispatchers.IO) {
             try {
                 val url = java.net.URL(baseUrl.trimEnd('/') + path)
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.connectTimeout = connectTimeoutMs
-                conn.readTimeout = readTimeoutMs
+                conn.connectTimeout = 6000
+                conn.readTimeout = 12000
                 conn.setRequestProperty("Accept", "application/json")
                 Session.tokenOrNull()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
                 conn.doOutput = true
