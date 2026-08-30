@@ -1,4 +1,6 @@
 import java.io.ByteArrayOutputStream
+import java.io.FileInputStream
+import java.util.Properties
 
 // ── API origin resolution ────────────────────────────────────────────────
 // -PapiBaseUrl comes from the release workflow / CI dispatch and MUST end
@@ -16,6 +18,24 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.google.services)
 }
+
+// ── Release keystore resolution ─────────────────────────────────────────
+// A release build with NO signingConfig produces an UNSIGNED APK that
+// Android refuses to install ("There was a problem parsing the package").
+// When the workflow (or a local keystore.properties) supplies a real
+// keystore we sign with it; otherwise the build falls back to the shared
+// debug key so every release APK is at least installable. Sources, in
+// order:
+//   1. keystore.properties  (storeFile/storePassword/keyAlias/keyPassword)
+//   2. ANDROID_KEYSTORE_PATH + ANDROID_KEYSTORE_PASSWORD +
+//      ANDROID_KEY_ALIAS + ANDROID_KEY_PASSWORD   (what CI exports)
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) FileInputStream(f).use { load(it) }
+}
+val releaseStorePath: String? = keystoreProperties.getProperty("storeFile")
+    ?: System.getenv("ANDROID_KEYSTORE_PATH")
+val releaseStoreFile: File? = releaseStorePath?.let { file(it) }?.takeIf { it.exists() }
 
 android {
     namespace = "com.scottsx.app"
@@ -56,10 +76,25 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = keystoreProperties.getProperty("storePassword")
+                    ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                    ?: System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                    ?: System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
+            // Always sign: the real release key when one was supplied, the
+            // shared debug key otherwise. Never ship an unsigned APK.
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

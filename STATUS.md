@@ -25,6 +25,16 @@ problems, and the logo should be gone. This pass:
   `BuildConfig.API_BASE_URL` (suffix `/api/v1` stripped — route paths
   carry it) and `V2Client` reads it. Default remains the production
   Render origin when no property is set.
+- **Release signing restored.** The release buildType had NO
+  signingConfig, so `assembleRelease` produced an unsigned APK that
+  fails `apksigner verify` and refuses to install ("There was a problem
+  parsing the package") — this is what killed the previous release run.
+  Restored the lost signing logic from the last green release build
+  (run 32499024955): real keystore from `keystore.properties` or the
+  `ANDROID_KEYSTORE_*` env vars the workflow exports, falling back to
+  the shared repo debug key when neither is present. Every release APK
+  is now signed and installable; a real Play-Store key drops in via
+  repo secrets with no code change.
 - **versionCode 2 / versionName 1.0.1** so the rebuilt APK installs as
   a clean update over the previously shipped version-1 APKs.
 - **Gate 7 (parser harness) repaired.** The harness sliced
