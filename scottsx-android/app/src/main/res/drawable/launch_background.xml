@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pre-Android-12 launch window: the platform can't run the SplashScreen
+     API, so the window background itself carries the assembled STX monogram
+     dead-centre on the app's dark stage — visually identical to what API
+     31+ shows via windowSplashScreenAnimatedIcon. The Compose splash then
+     takes over seamlessly. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/surface_dark" />
+    <item
+        android:width="1080px"
+        android:height="1080px"
+        android:gravity="center">
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/launch_center" />
+    </item>
+</layer-list>

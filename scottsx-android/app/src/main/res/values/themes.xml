@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.ScottsTechX" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@color/surface_dark</item>
+        <item name="android:navigationBarColor">@color/surface_dark</item>
         <item name="android:windowTranslucentStatus">false</item>
-        <item name="android:windowBackground">@color/surface_dark</item>
+        <!-- Pre-31 fallback: monogram layer-list (matches Compose splash frame 0). -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <!-- Android 12+ SplashScreen API: STX visible from the very first tap. -->
+        <item name="android:windowSplashScreenBackground">@color/surface_dark</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_stx</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/surface_dark</item>
+        <item name="android:windowSplashScreenAnimationDuration">450</item>
     </style>
 </resources>
