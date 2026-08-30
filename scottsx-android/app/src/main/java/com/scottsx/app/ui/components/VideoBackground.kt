@@ -146,7 +146,7 @@ fun VideoBackground(
                     resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     // Transparent shutter: while the first frame decodes
                     // the brand background shows through instead of black.
-                    setShutterBackgroundColor(Color.TRANSPARENT)
+                    setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
