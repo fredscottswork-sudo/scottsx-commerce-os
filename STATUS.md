@@ -484,3 +484,15 @@ been tested.
   drop the video, keep the branded overlay slide); stop() before
   release() prevents decoder-teardown crashes on leave/rotate.
 - All binaries audited (12 drawables + 4 mp4 H.264 verified intact).
+
+## 2026-08-29 — ROOT CAUSE of "everything is not working": sleeping backend
+- Diff 615ef16..HEAD proves dashboards/selector/logins byte-identical to the
+  validated state; probing https://scottstechx-api.onrender.com returned
+  Render's "Application loading" interstitial (free-tier sleep): every API
+  call spun out of its 6-12s budget → empty dashboards, login stalls,
+  buttons appearing dead app-wide. After the probe, /api/v1/products
+  returns live JSON again (4 products, Kampala).
+- V2Client network layer hardened invisibly (UI untouched): GET lane +
+  Firebase hand-off + auth POST trio get 30s/45s budgets with ONE retry;
+  mutating calls keep tight budgets & never replay. First call after a
+  server nap may still take ~30-60s once; everything after is instant.
