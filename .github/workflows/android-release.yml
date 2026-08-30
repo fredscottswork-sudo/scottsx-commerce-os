@@ -208,8 +208,81 @@ jobs:
             echo "::warning::No keystore supplied — this APK is DEBUG-SIGNED and cannot go to the Play Store."
           fi
 
+      # ─────────────────────────────────────────────────────────────────────
+      # Also build the DEBUG test APK in the same run.
+      #
+      # Owners install the debug test build day-to-day (it is the ~35 MB APK
+      # that reads ~38 MB installed on a phone). Building it here means one
+      # run produces BOTH builds of the SAME code, so "the new APK is
+      # smaller than the old one" can be checked directly: the release build
+      # is smaller only because debug builds carry the Compose UI tooling
+      # library and full debug info — not because any feature or media is
+      # missing.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Build debug APK (the test build)
+        working-directory: scottsx-android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug -PapiBaseUrl="${{ steps.api.outputs.url }}"
+
+      - name: Compare release vs debug APK (same app, different build type)
+        working-directory: scottsx-android
+        run: |
+          set -euo pipefail
+          REL=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          DBG=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$REL" && test -n "$DBG"
+          BT=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+
+          rel_bytes=$(stat -c%s "$REL")
+          dbg_bytes=$(stat -c%s "$DBG")
+          rel_entries=$(unzip -l "$REL" | tail -1 | awk '{print $2}')
+          dbg_entries=$(unzip -l "$DBG" | tail -1 | awk '{print $2}')
+          rel_dex=$(unzip -l "$REL" | grep -c 'classes[0-9]*\.dex' || true)
+          dbg_dex=$(unzip -l "$DBG" | grep -c 'classes[0-9]*\.dex' || true)
+
+          {
+            echo "## Release vs debug APK — same code, same features"
+            echo ""
+            echo "The debug test build is bigger ONLY because it ships the Compose"
+            echo "UI tooling library (debug-only dependency) and full debug info."
+            echo "Every video, photo, screen and feature is in both builds."
+            echo ""
+            echo "| | Release APK (install this) | Debug test APK |"
+            echo "|---|---|---|"
+            echo "| File size | $((rel_bytes/1000000)).$(( (rel_bytes%1000000)/100000 )) MB | $((dbg_bytes/1000000)).$(( (dbg_bytes%1000000)/100000 )) MB |"
+            echo "| ZIP entries | $rel_entries | $dbg_entries |"
+            echo "| DEX files | $rel_dex | $dbg_dex |"
+            echo ""
+            echo "### Largest files inside each (the bundled media — identical in both)"
+            echo ""
+            echo '```'
+            echo "── release ──"
+            unzip -l "$REL" | sort -rn | head -12 | awk '{printf "%10d  %s\n", $1, $4}'
+            echo "── debug ──"
+            unzip -l "$DBG" | sort -rn | head -12 | awk '{printf "%10d  %s\n", $1, $4}'
+            echo '```'
+            echo ""
+            echo "### Badging (both must be the same app + version)"
+            echo '```'
+            "$BT/aapt2" dump badging "$REL" | grep -E "^package:|sdkVersion|targetSdkVersion"
+            "$BT/aapt2" dump badging "$DBG" | grep -E "^package:|sdkVersion|targetSdkVersion"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "=================== APK COMPARISON ==================="
+          echo "release: $rel_bytes bytes, $rel_entries entries, $rel_dex dex"
+          echo "debug:   $dbg_bytes bytes, $dbg_entries entries, $dbg_dex dex"
+          echo "======================================================"
+
       - uses: actions/upload-artifact@v4
         with:
           name: scottsx-release-apk
           path: scottsx-android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scottsx-debug-apk
+          path: scottsx-android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

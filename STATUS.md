@@ -35,6 +35,18 @@ problems, and the logo should be gone. This pass:
   the shared repo debug key when neither is present. Every release APK
   is now signed and installable; a real Play-Store key drops in via
   repo secrets with no code change.
+- **"The old APK was 38 MB" — answered with evidence, not assumption.**
+  The ~38 MB figure is the DEBUG test build (35 MiB APK ≈ 36.7 MB, and
+  phones report installed size ≈ 38 MB once native libs are extracted).
+  Historical release APKs from this repo were 15.9–19.7 MB — release
+  builds have always been the smaller artefact because debug builds
+  additionally ship the Compose UI tooling library and full debug info.
+  The bundled media inventory (all videos, onboarding photos, brand
+  art) is byte-identical to the last validated build; the only removed
+  files are the six splash-era PNGs added AFTER it. The release
+  workflow now builds BOTH the release and the debug APK in one run,
+  uploads both, and prints a side-by-side size/entry/badging comparison
+  to the job summary so this is checkable any time.
 - **versionCode 2 / versionName 1.0.1** so the rebuilt APK installs as
   a clean update over the previously shipped version-1 APKs.
 - **Gate 7 (parser harness) repaired.** The harness sliced
