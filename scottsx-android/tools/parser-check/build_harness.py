@@ -23,9 +23,23 @@ def slice_between(text, start, end):
 # jsonToProduct refers to the domain classes with a fully-qualified
 # com.scottsx.app.data.domain prefix; the sliced classes below land in the
 # harness's default package, so strip the prefix to bind them together.
+#
+# The decoder grew siblings that must ship with it:
+#   - parseProductImages  (full media gallery — mediaUrls/media/images)
+#   - absoluteMediaUrl    (API-relative media paths -> absolute URLs)
+# currentBaseUrl() is stubbed with the harness origin so the shipping
+# absoluteMediaUrl logic itself stays under test.
 json_to_product = slice_between(
-    client, 'private fun jsonToProduct(', '    suspend fun fetchUserProfile',
+    client, 'fun jsonToProduct(', '    /** Full media gallery',
 ).replace('com.scottsx.app.data.domain.', '')
+
+parse_product_images = slice_between(
+    client, 'private fun parseProductImages(', '    // EMAIL / PASSWORD AUTH',
+).replace('com.scottsx.app.data.domain.', '')
+
+absolute_media_url = slice_between(
+    client, 'fun absoluteMediaUrl(url: String?): String? {', '\n    /**\n     * REAL image upload',
+)
 
 parts = [
     # Domain types the decoder needs: ProductCategory (+ fromApiName),
@@ -34,8 +48,12 @@ parts = [
     # The Stage-3 nested types Product references by default:
     # ProductImage, ProductVariant, ProductSpec.
     slice_between(models, 'data class ProductImage(', 'data class Review('),
-    # The shipping catalogue decoder, straight out of V2Client.
-    json_to_product.rstrip() + '\n',
+    # Media origin resolution + the shipping catalogue decoder + gallery
+    # parser, straight out of V2Client.
+    'fun currentBaseUrl(): String = "http://127.0.0.1:3001"\n\n' +
+    absolute_media_url + '\n\n' +
+    json_to_product.rstrip() + '\n\n' +
+    parse_product_images.rstrip() + '\n',
 ]
 
 harness = '''import org.json.JSONArray
@@ -105,6 +123,16 @@ fun main(args: Array<String>) {
 
         if (p.stock < 0) flag("row $i: negative stock")
         if (p.discountPercent !in 0..100) flag("row $i: discount ${p.discountPercent} out of range")
+
+        // Gallery contract: every row must yield at least its primary
+        // photo, and every URL must be absolute (Coil cannot load a
+        // scheme-less API-relative path).
+        if (p.images.isEmpty()) flag("row $i (${p.name}): empty gallery")
+        p.images.forEach { img ->
+            if (img.url.isBlank()) flag("row $i (${p.name}): blank gallery URL")
+            if (!img.url.startsWith("http://") && !img.url.startsWith("https://"))
+                flag("row $i (${p.name}): gallery URL not absolute — ${img.url}")
+        }
     }
 
     if (!sawSeller) flag("no row carried the nested seller object — feed contract changed?")
