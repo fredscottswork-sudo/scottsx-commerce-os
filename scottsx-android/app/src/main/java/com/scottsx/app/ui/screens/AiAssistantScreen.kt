@@ -49,7 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ai.ScottsTechAi
-import com.scottsx.app.data.MarketplaceDataSource
+import com.scottsx.app.data.LiveMarketplace
 import com.scottsx.app.data.domain.Product
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ProductCard
@@ -65,6 +65,8 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 /**
  * Stage-2 AI Assistant landing screen.
@@ -101,7 +103,12 @@ fun AiAssistantScreen(
         )
     }
     var input by remember { mutableStateOf("") }
-    var bottomTab by remember { mutableStateOf(BottomTab.Home) }
+    var bottomTab by remember { mutableStateOf(BottomTab.Ai) }
+
+    // Warm the live catalogue so keyword recommendations feel instant.
+    LaunchedEffect(Unit) {
+        try { LiveMarketplace.ensureLoaded() } catch (_: Throwable) { }
+    }
 
     val suggestions = listOf(
         "Phones under UGX 800,000",
@@ -114,7 +121,8 @@ fun AiAssistantScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Column(
             modifier = Modifier
@@ -236,7 +244,7 @@ fun AiAssistantScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             text = "Try asking:",
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnPanelSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(start = 4.dp),
@@ -272,7 +280,7 @@ fun AiAssistantScreen(
                         .weight(1f)
                         .height(48.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color.White),
+                        .background(ScottsTechXColors.CardSurface),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     androidx.compose.foundation.layout.Row(
@@ -294,7 +302,7 @@ fun AiAssistantScreen(
                             placeholder = {
                                 Text(
                                     text = "Ask me anything...",
-                                    color = ScottsTechXColors.OnLightSecondary,
+                                    color = ScottsTechXColors.OnCardSecondary,
                                     fontSize = 14.sp,
                                 )
                             },
@@ -305,8 +313,8 @@ fun AiAssistantScreen(
                                 unfocusedContainerColor = Color.Transparent,
                                 focusedBorderColor = Color.Transparent,
                                 unfocusedBorderColor = Color.Transparent,
-                                focusedTextColor = ScottsTechXColors.OnLight,
-                                unfocusedTextColor = ScottsTechXColors.OnLight,
+                                focusedTextColor = ScottsTechXColors.OnCard,
+                                unfocusedTextColor = ScottsTechXColors.OnCard,
                             ),
                         )
                     }
@@ -346,6 +354,7 @@ fun AiAssistantScreen(
 
         Box(
             modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
         ) {
@@ -398,7 +407,7 @@ private fun ChatBubble(message: ChatMessage) {
         ) {
             Text(
                 text = message.text,
-                color = if (message.isFromUser) Color.White else ScottsTechXColors.OnLight,
+                color = if (message.isFromUser) Color.White else ScottsTechXColors.OnCard,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
                 fontWeight = FontWeight.Medium,
@@ -413,7 +422,7 @@ private fun SuggestionChip(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
@@ -427,7 +436,7 @@ private fun SuggestionChip(text: String, onClick: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             Text(
                 text = text,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnCard,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
             )
@@ -436,42 +445,38 @@ private fun SuggestionChip(text: String, onClick: () -> Unit) {
 }
 
 /**
- * Local keyword-based recommender. Returns real products from
- * [MarketplaceDataSource] that match the user's query. Replace
- * with a backend call when available.
+ * Keyword recommender over the LIVE catalogue cache — the same rows
+ * the home feed shows. Nothing is hardcoded: matches come from real
+ * product text matches.
  */
 private fun recommend(query: String): Pair<String, List<Product>> {
-    val q = query.lowercase()
-    val all = MarketplaceDataSource.allProducts
-    val matches = when {
-        "phone" in q || "iphone" in q || "samsung" in q || "vivo" in q ->
-            all.filter { p ->
-                val lc = (p.name + " " + p.shortDescription).lowercase()
-                "phone" in lc || "iphone" in lc || "samsung" in lc || "vivo" in lc
-            }
-        "shoe" in q || "sneaker" in q || "nike" in q || "adidas" in q || "balance" in q ->
-            all.filter { p ->
-                val lc = (p.name + " " + p.shortDescription).lowercase()
-                "shoe" in lc || "sneaker" in lc || "nike" in lc || "adidas" in lc || "balance" in lc
-            }
-        "laptop" in q || "work" in q || "study" in q ->
-            all.filter { p ->
-                val lc = (p.name + " " + p.shortDescription + " " + p.description).lowercase()
-                "laptop" in lc || "study" in lc || "work" in lc
-            }
-        "grocery" in q || "groceries" in q || "rice" in q || "oil" in q || "food" in q ->
-            all.filter { p -> p.category.displayName.lowercase().contains("grocery") }
-        "beauty" in q || "lipstick" in q || "soap" in q || "cosmetic" in q ->
-            all.filter { p -> p.category.displayName.lowercase().contains("beauty") }
-        else -> all.filter { it.rating >= 4.5f }.take(4)
+    val q = query.lowercase().trim()
+    val all = LiveMarketplace.products.value
+    if (all.isEmpty()) {
+        return "The catalogue is still loading — ask me again in a moment." to emptyList()
     }
-    val response = when {
-        matches.isEmpty() ->
-            "I couldn't find anything matching \"$query\". Try one of the suggested categories below."
-        else ->
-            "Here are ${matches.take(4).size} products I found for \"" + query + "\":"
+    if (q.isBlank()) {
+        val top = all.sortedByDescending { it.rating }.take(4)
+        return "Here are some of our top-rated products right now:" to top
     }
-    return response to matches.take(4)
+    val terms = q.split(Regex("\\s+")).filter { it.length > 2 }
+    val scored = mutableListOf<Pair<Product, Int>>()
+    all.forEach { p ->
+        val hay = (p.name + " " + p.shortDescription + " " + p.description + " " +
+            p.brand.name + " " + p.category.displayName).lowercase()
+        var score = 0
+        terms.forEach { t -> if (t in hay) score += 1 }
+        if (score > 0) scored.add(Pair(p, score))
+    }
+    scored.sortWith(compareByDescending<Product> { it.rating }.let { cmp ->
+        compareByDescending<Pair<Product, Int>> { it.second }.thenBy { pair -> -pair.first.rating }
+    })
+    val matches = scored.map { it.first }.take(8)
+    if (matches.isEmpty()) {
+        val fallback = all.sortedByDescending { it.rating }.take(4)
+        return "I couldn't find an exact match for that — here are some top picks instead:" to fallback
+    }
+    return "Here are products from the live marketplace that match:" to matches
 }
 
 /**

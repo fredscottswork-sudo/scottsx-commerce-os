@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -14,6 +15,8 @@ import com.scottsx.app.ui.theme.ColorContext
 import com.scottsx.app.ui.theme.LocalColorContext
 import com.scottsx.app.ui.theme.ScottsTechXTheme
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 /**
  * Seed activity. Hosts the NavHost and supplies the [ThemePreference]
@@ -33,9 +36,29 @@ import com.google.firebase.auth.FirebaseAuth
  * and taps "I've verified — continue".
  */
 class MainActivity : ComponentActivity() {
+
+    /** Runtime permission prompt for POST_NOTIFICATIONS (Android 13+).
+     *  On older API levels the permission is install-time and this
+     *  launch is a silent no-op. */
+    private val notificationPermissionLauncher =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { /* result ignored — posting is guarded */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Draw behind the system bars — targetSdk 35 makes this mandatory, so
+        // declare it explicitly: every screen handles its own insets via the
+        // ScreenScaffold/statusBarSpacer/navBarSpacer helpers.
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         handleDeepLinkVerification(intent)
+        refreshBackendSession()
+        // Android 13+ requires a runtime grant before any notification —
+        // sign-in ping, chat alerts, order updates — reaches the phone.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        // Register this device for pushes + create channels even before
+        // a sign-in completes this launch (channels are cheap and idempotent).
+        com.scottsx.app.data.push.ScottsMessagingService.ensureChannels(this)
         setContent {
             val themePref = remember { ThemePreference.get(applicationContext) }
             // Stage 5: cross-device theme sync — pull the saved theme
@@ -86,5 +109,54 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleDeepLinkVerification(intent)
+    }
+
+    /**
+     * COLD-START SESSION RESTORE. Firebase Auth persists its credential
+     * across process death, but the backend JWT does not — so after a
+     * cold start every authenticated /api/v1 call would go out with no
+     * Authorization header and the user would see empty dashboards,
+     * blank messages and dead notifications until they sign in again.
+     * If a Firebase session survived, silently re-exchange it for a
+     * backend session on app launch (fire-and-forget; the screens that
+     * need auth retry via their load paths, and each subsequent apiCall
+     * picks the token up the moment it lands).
+     */
+    private fun refreshBackendSession() {
+        if (com.scottsx.app.data.Session.tokenOrNull() != null) return
+        val user = FirebaseAuth.getInstance().currentUser ?: return
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val firebaseToken = user.getIdToken(false).await().token ?: return@launch
+                val result = com.scottsx.app.data.remote.V2Client
+                    .signInWithFirebase(idToken = firebaseToken) ?: return@launch
+                SessionCache.save(
+                    result.token,
+                    CurrentUser(
+                        id = result.user.id,
+                        email = result.user.email,
+                        displayName = result.user.displayName,
+                        phone = result.user.phone,
+                        role = result.user.role,
+                        emailVerified = result.user.emailVerified,
+                        profilePhotoUrl = result.user.profilePhotoUrl,
+                        city = result.user.city,
+                    ),
+                )
+                com.scottsx.app.data.Session.adoptSession(
+                    token = result.token,
+                    userId = result.user.id,
+                    role = if (result.user.role.equals("seller", true))
+                        com.scottsx.app.data.domain.Role.SELLER
+                    else com.scottsx.app.data.domain.Role.BUYER,
+                    displayName = result.user.displayName,
+                    email = result.user.email,
+                    avatarUrl = result.user.profilePhotoUrl,
+                    storeLocation = result.user.city,
+                )
+            } catch (t: Throwable) {
+                android.util.Log.w("MainActivity", "Cold-start session restore failed; will retry on next launch.", t)
+            }
+        }
     }
 }

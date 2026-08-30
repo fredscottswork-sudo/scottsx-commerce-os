@@ -63,8 +63,11 @@ fun SettingsScaffold(
                             ScottsTechXColors.BluePrimary,
                         ),
                     ),
-                )
-                .padding(start = 4.dp, end = 16.dp, top = 30.dp, bottom = 12.dp),
+                        )
+                // Content clears the real status bar height; the gradient
+                // keeps bleeding to the top edge (edge-to-edge design).
+                .statusBarSpacer()
+                .padding(start = 4.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -111,7 +114,7 @@ fun SettingsScaffold(
 fun SettingsSectionHeader(label: String) {
     Text(
         text = label.uppercase(),
-        color = ScottsTechXColors.OnLightSecondary,
+        color = ScottsTechXColors.OnPanelSecondary,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.2.sp,
@@ -129,7 +132,7 @@ fun SettingsBlankHint(text: String) {
     ) {
         Text(
             text,
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnPanelSecondary,
             fontSize = 13.sp,
         )
     }

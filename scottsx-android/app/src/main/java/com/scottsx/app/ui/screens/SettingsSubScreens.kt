@@ -29,6 +29,7 @@ import org.json.JSONObject
 @Composable
 fun NotificationSettingsScreen(onBack: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     val prefs = remember { NotificationPrefs.get(ctx) }
     val push by prefs.pushFlow.collectAsState()
     val email by prefs.emailFlow.collectAsState()
@@ -36,18 +37,46 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
     val orders by prefs.ordersFlow.collectAsState()
     val promos by prefs.promosFlow.collectAsState()
 
+    // Cross-device parity with the WEB (buyerService preferences): the
+    // checkbox answers live server-side at /me/preferences. On first
+    // composition we hydrate the local rows from the server so the app
+    // and website always show the same answer; every toggle writes back.
+    LaunchedEffect(Unit) {
+        val s = runCatching { V2Client.loadSettings() }.getOrNull() ?: return@LaunchedEffect
+        // loadSettings maps server prefs → Settings model; reverse-map
+        // into the notification toggles.
+        prefs.setOrders(s.notificationsEnabled)
+        prefs.setPromos(s.notifyMarketing)
+    }
+
+    fun persist(patch: JSONObject) {
+        scope.launch { runCatching { V2Client.saveSettings(patch) } }
+    }
+
     SettingsScaffold(title = "Notifications", onBack = onBack) {
         SettingsSectionHeader("Channels")
         Spacer(Modifier.height(6.dp))
-        ToggleRow("Push notifications", "Receive push on your device", push) { prefs.setPush(it) }
-        ToggleRow("Email", "Order updates, receipts", email) { prefs.setEmail(it) }
-        ToggleRow("SMS", "Urgent security alerts", sms) { prefs.setSms(it) }
+        ToggleRow("Push notifications", "Receive push on your device", push) {
+            prefs.setPush(it)
+        }
+        ToggleRow("Email", "Order updates, receipts", email) {
+            prefs.setEmail(it)
+        }
+        ToggleRow("SMS", "Urgent security alerts", sms) {
+            prefs.setSms(it)
+        }
 
         Spacer(Modifier.height(16.dp))
         SettingsSectionHeader("What you receive")
         Spacer(Modifier.height(6.dp))
-        ToggleRow("Order updates", "Placed, shipped, delivered", orders) { prefs.setOrders(it) }
-        ToggleRow("Promotions & deals", "Sales, coupons, new arrivals", promos) { prefs.setPromos(it) }
+        ToggleRow("Order updates", "Placed, shipped, delivered", orders) {
+            prefs.setOrders(it)
+            persist(JSONObject().put("notifyOrderUpdates", it))
+        }
+        ToggleRow("Promotions & deals", "Sales, coupons, new arrivals", promos) {
+            prefs.setPromos(it)
+            persist(JSONObject().put("notifyMarketing", it))
+        }
     }
 }
 
@@ -58,14 +87,14 @@ private fun ToggleRow(title: String, subtitle: String?, checked: Boolean, onChan
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable { onChange(!checked) }
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            subtitle?.let { Text(it, fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary) }
+            subtitle?.let { Text(it, fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary) }
         }
         Switch(checked = checked, onCheckedChange = onChange)
     }
@@ -94,13 +123,13 @@ fun LanguageScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .clickable { current = code; prefs.setLanguage(code) }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text(code.uppercase(), fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
+                Text(code.uppercase(), fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary)
                 if (sel) {
                     Spacer(Modifier.width(8.dp))
                     Icon(Icons.Filled.Check, null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(20.dp))
@@ -136,7 +165,7 @@ fun CurrencyScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .clickable { current = code; prefs.setCurrency(code) }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -180,9 +209,9 @@ fun AuditScreen(onBack: () -> Unit) {
             modifier = Modifier.padding(bottom = 8.dp),
         )
         if (loading) {
-            Text("Loading...", fontSize = 13.sp, color = ScottsTechXColors.OnLightSecondary)
+            Text("Loading...", fontSize = 13.sp, color = ScottsTechXColors.OnCardSecondary)
         } else if (items.isEmpty()) {
-            Text("No recent activity.", fontSize = 13.sp, color = ScottsTechXColors.OnLightSecondary)
+            Text("No recent activity.", fontSize = 13.sp, color = ScottsTechXColors.OnCardSecondary)
         } else {
             items.forEach { item ->
                 Column(
@@ -190,13 +219,13 @@ fun AuditScreen(onBack: () -> Unit) {
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White)
+                        .background(ScottsTechXColors.CardSurface)
                         .padding(10.dp),
                 ) {
                     Text(item.optString("action"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text(item.optString("createdAt"), fontSize = 11.sp, color = ScottsTechXColors.OnLightSecondary)
+                    Text(item.optString("createdAt"), fontSize = 11.sp, color = ScottsTechXColors.OnCardSecondary)
                     if (!item.isNull("resource")) {
-                        Text(item.optString("resource"), fontSize = 11.sp, color = ScottsTechXColors.OnLightSecondary)
+                        Text(item.optString("resource"), fontSize = 11.sp, color = ScottsTechXColors.OnCardSecondary)
                     }
                 }
             }

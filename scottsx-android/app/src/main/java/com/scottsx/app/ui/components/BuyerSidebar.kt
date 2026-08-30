@@ -36,6 +36,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.ChatBubble
@@ -43,11 +46,13 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -76,7 +81,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.BuyerProfile
 import com.scottsx.app.data.domain.Role
 import com.scottsx.app.data.domain.SessionCache
@@ -86,10 +90,12 @@ import com.scottsx.app.data.preferences.isSeller
 import com.scottsx.app.data.preferences.sidebarPaletteFor
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import coil.compose.AsyncImage
+import kotlinx.coroutines.async
 
 /** Destination of a sidebar nav item — opaque to the drawer. */
 enum class SidebarDestination {
-    Home, Nearby, Ai, Wishlist, Cart, Orders, Messages, Notifications,
+    Home, Nearby, Deals, Ai, Wishlist, Cart, Orders, Messages, Notifications,
+    Payments, Addresses, Refunds, Support,
     SellerCenter, BecomeSeller, Settings, Theme, Logout, Profile,
     Transactions, Receipts, AiPersonalization,
 }
@@ -120,14 +126,35 @@ fun BuyerSidebarOverlay(
     profile: BuyerProfile,
     cartCount: Int,
     wishlistCount: Int,
-    messagesCount: Int = MarketplaceDataSource.unreadMessagesCount(),
-    notificationsCount: Int = MarketplaceDataSource.unreadNotificationsCount(),
-    ordersCount: Int = MarketplaceDataSource.pendingOrdersCount(),
+    messagesCount: Int = 0,
+    notificationsCount: Int = 0,
+    ordersCount: Int = 0,
     onNavigate: (SidebarDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val palette = sidebarPaletteFor(ThemeMode.SYSTEM) // sidebar theme uses drawer itself
+
+    // Live badges — fetched fresh every time the drawer opens, from the
+    // canonical backend (chat unread, notification unread, pending orders).
+    var liveMessages by remember { androidx.compose.runtime.mutableStateOf(messagesCount) }
+    var liveNotifications by remember { androidx.compose.runtime.mutableStateOf(notificationsCount) }
+    var liveOrders by remember { androidx.compose.runtime.mutableStateOf(ordersCount) }
+    androidx.compose.runtime.LaunchedEffect(open) {
+        if (!open) return@LaunchedEffect
+        val msgs = async {
+            try { com.scottsx.app.data.remote.V2Client.fetchConversationUnreadCount() } catch (_: Throwable) { null }
+        }
+        val notes = async {
+            try { com.scottsx.app.data.remote.V2Client.fetchUnreadNotificationCount() } catch (_: Throwable) { null }
+        }
+        val orders = async {
+            try { com.scottsx.app.data.remote.V2Client.fetchPendingOrderCount() } catch (_: Throwable) { null }
+        }
+        msgs.await()?.let { liveMessages = it }
+        notes.await()?.let { liveNotifications = it }
+        orders.await()?.let { liveOrders = it }
+    }
 
     AnimatedVisibility(
         visible = open,
@@ -188,14 +215,14 @@ fun BuyerSidebarOverlay(
                     )
                     .clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp))
                     .background(brush = Brush.linearGradient(
-                        colors = listOf(Color.White, Color(0xFFFAFBFE)),
+                        colors = listOf(ScottsTechXColors.PanelLight, ScottsTechXColors.CardSurface),
                     )),
                 profile = profile,
                 cartCount = cartCount,
                 wishlistCount = wishlistCount,
-                messagesCount = messagesCount,
-                notificationsCount = notificationsCount,
-                ordersCount = ordersCount,
+                messagesCount = liveMessages,
+                notificationsCount = liveNotifications,
+                ordersCount = liveOrders,
                 onNavigate = { dest ->
                     onNavigate(dest)
                     if (dest != SidebarDestination.Theme) onDismiss()
@@ -258,10 +285,15 @@ fun BuyerSidebarCard(
                 items = listOf(
                     SidebarItem(SidebarDestination.Home, "Home", Icons.Filled.Home, null),
                     SidebarItem(SidebarDestination.Nearby, "Nearby", Icons.Filled.LocationOn, null, featured = FeaturedKind.Nearby),
+                    SidebarItem(SidebarDestination.Deals, "Deals", Icons.Filled.LocalOffer, null),
                     SidebarItem(SidebarDestination.Ai, "AI Assistant", Icons.Filled.AutoAwesome, null, featured = FeaturedKind.Ai),
                     SidebarItem(SidebarDestination.Wishlist, "Wishlist", Icons.Filled.Favorite, wishlistCount),
                     SidebarItem(SidebarDestination.Cart, "Cart", Icons.Filled.ShoppingCart, cartCount),
                     SidebarItem(SidebarDestination.Orders, "My Orders", Icons.Filled.LocalShipping, ordersCount),
+                    SidebarItem(SidebarDestination.Payments, "Payments", Icons.Filled.AccountBalanceWallet, null),
+                    SidebarItem(SidebarDestination.Addresses, "Addresses", Icons.Filled.Place, null),
+                    SidebarItem(SidebarDestination.Refunds, "Refunds", Icons.Filled.Receipt, null),
+                    SidebarItem(SidebarDestination.Support, "Support", Icons.Filled.SupportAgent, null),
                     SidebarItem(SidebarDestination.Transactions, "My Transactions", Icons.Filled.SwapHoriz, null),
                     SidebarItem(SidebarDestination.Receipts, "My Receipts", Icons.Filled.ReceiptLong, null),
                     SidebarItem(SidebarDestination.AiPersonalization, "AI Personalization", Icons.Filled.SmartToy, null),
@@ -418,7 +450,7 @@ private fun ProfileSection(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = profile.displayName.ifBlank { "Buyer" },
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 15.sp,
                 maxLines = 1,
@@ -427,7 +459,7 @@ private fun ProfileSection(
             Spacer(Modifier.height(2.dp))
             Text(
                 text = profile.email.ifBlank { "buyer@scottsx.app" },
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnPanelSecondary,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -456,7 +488,7 @@ private fun ProfileSection(
 private fun SectionLabel(text: String) {
     Text(
         text = text.uppercase(),
-        color = ScottsTechXColors.OnLightSecondary,
+        color = ScottsTechXColors.OnPanelSecondary,
         fontWeight = FontWeight.Bold,
         fontSize = 10.sp,
         letterSpacing = 1.2.sp,
@@ -533,14 +565,14 @@ private fun SidebarRow(
                 Icon(
                     imageVector = item.icon,
                     contentDescription = null,
-                    tint = featuredAccent ?: ScottsTechXColors.OnLight,
+                    tint = featuredAccent ?: ScottsTechXColors.OnPanel,
                     modifier = Modifier.size(20.dp),
                 )
             }
             Spacer(Modifier.width(12.dp))
             Text(
                 text = item.label,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = if (item.featured != null) FontWeight.Bold else FontWeight.SemiBold,
                 fontSize = 14.sp,
                 modifier = Modifier.weight(1f),
@@ -594,12 +626,18 @@ private fun FeaturedDot(featured: FeaturedKind) {
 
 @Composable
 private fun LogOutRow(onClick: () -> Unit) {
+    // Theme-aware destructive row (same fix as the seller sidebar):
+    // pale red card on light, translucent red glow + lighter label on dark.
+    val light = ScottsTechXColors.isLightPalette
+    val rowBg = if (light) Color(0xFFFEE2E2) else Color(0xFFEF4444).copy(alpha = 0.14f)
+    val chipBg = if (light) Color(0xFFFECACA) else Color(0xFFEF4444).copy(alpha = 0.22f)
+    val fg = if (light) Color(0xFFB91C1C) else Color(0xFFFCA5A5)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFFFEE2E2))
+            .background(rowBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -608,20 +646,20 @@ private fun LogOutRow(onClick: () -> Unit) {
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFFECACA)),
+                .background(chipBg),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Filled.Logout,
                 contentDescription = null,
-                tint = Color(0xFFB91C1C),
+                tint = fg,
                 modifier = Modifier.size(18.dp),
             )
         }
         Spacer(Modifier.width(12.dp))
         Text(
             text = "Log Out",
-            color = Color(0xFFB91C1C),
+            color = fg,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
             modifier = Modifier.weight(1f),
@@ -629,7 +667,7 @@ private fun LogOutRow(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
-            tint = Color(0xFFB91C1C),
+            tint = fg,
             modifier = Modifier.size(16.dp),
         )
     }

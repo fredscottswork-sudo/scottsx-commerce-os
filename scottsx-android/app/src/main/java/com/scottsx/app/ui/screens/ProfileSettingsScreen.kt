@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ui.components.SettingsRow
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Profile settings hub. Every row routes to a real destination via
@@ -47,6 +48,7 @@ fun ProfileSettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(ScottsTechXColors.PanelLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar
             .verticalScroll(rememberScrollState()),
     ) {
         Row(
@@ -148,7 +150,7 @@ fun ProfileSettingsScreen(
 private fun SectionHeader(label: String) {
     Text(
         text = label.uppercase(),
-        color = ScottsTechXColors.OnLightSecondary,
+        color = ScottsTechXColors.OnPanelSecondary,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.2.sp,
@@ -161,7 +163,7 @@ private fun Item(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    titleColor: Color = ScottsTechXColors.OnLight,
+    titleColor: Color = ScottsTechXColors.OnCard,
     onClick: () -> Unit,
 ) {
     SettingsRow(icon = icon, title = title, subtitle = subtitle, titleColor = titleColor, onClick = onClick)

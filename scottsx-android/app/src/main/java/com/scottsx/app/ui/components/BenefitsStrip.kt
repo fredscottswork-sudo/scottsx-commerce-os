@@ -68,7 +68,7 @@ private fun BenefitCard(benefit: Benefit) {
             .clip(RoundedCornerShape(18.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color.White, Color(0xFFF8FAFC)),
+                    colors = listOf(ScottsTechXColors.CardSurface, ScottsTechXColors.CardSurfaceAlt),
                 ),
             )
             .padding(12.dp),
@@ -101,14 +101,14 @@ private fun BenefitCard(benefit: Benefit) {
             Spacer(Modifier.height(2.dp))
             Text(
                 text = benefit.title,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnCard,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 10.sp,
                 letterSpacing = 0.5.sp,
             )
             Text(
                 text = benefit.subtitle,
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnCardSecondary,
                 fontSize = 9.sp,
                 textAlign = TextAlign.Start,
                 lineHeight = 12.sp,

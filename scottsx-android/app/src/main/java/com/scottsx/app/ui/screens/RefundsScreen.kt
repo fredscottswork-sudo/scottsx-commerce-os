@@ -76,9 +76,15 @@ fun RefundsScreen(onBack: () -> Unit) {
         }
     }
     if (showDialog) {
-        RefundDialog(onDismiss = { showDialog = false }, onSubmit = { body ->
+        // Web parity: the claim is { orderId, reason } against one of the
+        // buyer's real orders — exactly the buyer/Refunds.tsx form.
+        RefundDialog(onDismiss = { showDialog = false }, onSubmit = { orderId, reason ->
             scope.launch {
-                V2Client.createRefund(body)
+                V2Client.createRefund(
+                    org.json.JSONObject()
+                        .put("orderId", orderId)
+                        .put("reason", reason),
+                )
                 showDialog = false
                 reload()
             }
@@ -97,7 +103,7 @@ private fun RefundCard(r: JSONObject) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -126,47 +132,81 @@ private fun RefundCard(r: JSONObject) {
         Text(
             "Amount: ${formatMinor(r.optLong("amountMinor"), r.optString("currency"))}",
             fontSize = 12.sp,
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnCardSecondary,
         )
     }
 }
 
 @Composable
-private fun RefundDialog(onDismiss: () -> Unit, onSubmit: (JSONObject) -> Unit) {
-    var amount by remember { mutableStateOf("") }
+private fun RefundDialog(onDismiss: () -> Unit, onSubmit: (orderId: String, reason: String) -> Unit) {
+    var orders by remember { mutableStateOf<List<com.scottsx.app.data.remote.V2Client.MyOrder>?>(null) }
+    var selected by remember { mutableStateOf<String?>(null) }
     var reason by remember { mutableStateOf("") }
-    var transactionId by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        orders = V2Client.fetchMyOrders() ?: emptyList()
+    }
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Request refund") },
+        title = { Text("Request a refund", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                FieldRow("Amount (UGX minor)", amount, hint = "e.g. 50000 = 500 UGX") { amount = it }
-                FieldRow("Reason", reason, lines = 2) { reason = it }
-                FieldRow("Transaction ID (optional)", transactionId) { transactionId = it }
-                FieldRow("Notes", notes, lines = 2) { notes = it }
+                if (orders == null) {
+                    Text("Loading your orders…", color = ScottsTechXColors.OnCardSecondary, fontSize = 12.sp)
+                } else if (orders!!.isEmpty()) {
+                    Text(
+                        "You have no orders yet — refunds apply to past orders.",
+                        color = ScottsTechXColors.OnCardSecondary, fontSize = 12.sp,
+                    )
+                } else {
+                    Text("Order", color = ScottsTechXColors.OnCardSecondary, fontSize = 11.sp)
+                    orders!!.take(20).forEach { o ->
+                        val isSel = selected == o.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isSel) ScottsTechXColors.BluePrimary else ScottsTechXColors.CardSurfaceAlt,
+                                )
+                                .clickable(enabled = !busy) { selected = o.id }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    o.title,
+                                    color = if (isSel) Color.White else ScottsTechXColors.OnCard,
+                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    "${o.displayStatus} · ${com.scottsx.app.ui.components.formatUgx(o.amountUgx)}",
+                                    color = if (isSel) Color.White.copy(alpha = 0.85f) else ScottsTechXColors.OnCardSecondary,
+                                    fontSize = 10.sp,
+                                )
+                            }
+                        }
+                    }
+                    FieldRow("Reason", reason, hint = "Item not delivered / not as described…", lines = 2) { reason = it }
+                }
             }
         },
         confirmButton = {
             Text(
-                "Submit",
+                if (busy) "Submitting…" else "Submit claim",
                 color = ScottsTechXColors.BluePrimary,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable {
-                    val body = JSONObject()
-                        .put("amountMinor", amount.toLongOrNull() ?: 0L)
-                        .put("reason", reason)
-                        .put("currency", "UGX")
-                        .put("transactionId", transactionId.takeIf { it.isNotBlank() })
-                        .put("notes", notes.takeIf { it.isNotBlank() })
-                    onSubmit(body)
+                modifier = Modifier.clickable(enabled = !busy && selected != null && reason.trim().length >= 3) {
+                    busy = true
+                    onSubmit(selected!!, reason.trim())
                 },
             )
         },
         dismissButton = {
-            Text("Cancel", color = ScottsTechXColors.OnLightSecondary, modifier = Modifier.clickable(onClick = onDismiss))
+            Text("Cancel", color = ScottsTechXColors.OnCardSecondary, modifier = Modifier.clickable(onClick = onDismiss))
         },
     )
 }
@@ -221,7 +261,7 @@ fun ReturnsScreen(onBack: () -> Unit) {
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White)
+                        .background(ScottsTechXColors.CardSurface)
                         .padding(12.dp),
                 ) {
                     Text("Return request: ${ret.optString("reason")}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -271,7 +311,7 @@ fun ReturnsScreen(onBack: () -> Unit) {
                 )
             },
             dismissButton = {
-                Text("Cancel", color = ScottsTechXColors.OnLightSecondary, modifier = Modifier.clickable { showDialog = false })
+                Text("Cancel", color = ScottsTechXColors.OnCardSecondary, modifier = Modifier.clickable { showDialog = false })
             },
         )
     }

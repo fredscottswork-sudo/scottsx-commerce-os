@@ -37,6 +37,9 @@ import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LocalOffer
@@ -72,7 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.domain.SellerDashboardSnapshot
+import com.scottsx.app.data.domain.StoreStatus
 import com.scottsx.app.data.preferences.LocalThemePreference
 import com.scottsx.app.data.preferences.ThemeMode
 import com.scottsx.app.data.preferences.ThemePreference
@@ -83,7 +86,7 @@ import com.scottsx.app.data.domain.SessionCache
 
 /** What a seller sidebar tap wants to do. */
 enum class SellerSidebarDestination {
-    Dashboard, Orders, Products, Customers, Messages, Promotions, Analytics,
+    Dashboard, Orders, Products, AddProduct, BulkImport, Customers, Messages, Notifications, Promotions, Analytics,
     SellerAi, MarketingTools,
     StoreProfile, StoreSettings, Settings,
     SwitchToBuyer, Logout, ViewStore,
@@ -105,11 +108,29 @@ private enum class SellerFeaturedKind { SellerAi, Analytics }
  * at the bottom and writes to the same [ThemePreference] singleton
  * the buyer side uses, so a theme choice persists across the app.
  */
+/**
+ * Everything the seller sidebar is allowed to show — real numbers only,
+ * assembled from `/api/v1/seller/dashboard/stats` + `/seller/location`
+ * by the screen. The old SellerDashboardSnapshot shape carried sample
+ * deltas no endpoint ever produced; those are gone.
+ */
+data class SellerSidebarData(
+    val displayName: String,
+    val storeName: String,
+    val storeId: String,
+    val status: StoreStatus,
+    val pendingOrders: Int,
+    val followers: Int,
+    val productsTotal: Int,
+    val unreadMessages: Int,
+    val unreadNotifications: Int = 0,
+)
+
 @Composable
 fun SellerSidebarOverlay(
     open: Boolean,
     onDismiss: () -> Unit,
-    snapshot: SellerDashboardSnapshot,
+    data: SellerSidebarData,
     onNavigate: (SellerSidebarDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -165,8 +186,8 @@ fun SellerSidebarOverlay(
                         clip = false,
                     )
                     .clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp))
-                    .background(Brush.linearGradient(colors = listOf(Color.White, Color(0xFFFAFBFE)))),
-                snapshot = snapshot,
+                    .background(Brush.linearGradient(colors = listOf(ScottsTechXColors.CardSurface, ScottsTechXColors.CardSurfaceAlt))),
+                data = data,
                 themeMode = themeMode,
                 themePref = themePref,
                 onNavigate = { dest ->
@@ -184,7 +205,7 @@ fun SellerSidebarOverlay(
 @Composable
 fun SellerSidebarCard(
     modifier: Modifier = Modifier,
-    snapshot: SellerDashboardSnapshot,
+    data: SellerSidebarData,
     themeMode: ThemeMode,
     themePref: ThemePreference,
     onNavigate: (SellerSidebarDestination) -> Unit,
@@ -196,11 +217,11 @@ fun SellerSidebarCard(
             .navigationBarsPadding(),
     ) {
         SellerSidebarHeader(
-            storeName = snapshot.storeName,
-            displayName = snapshot.displayName,
-            storeId = snapshot.storeId,
+            storeName = data.storeName,
+            displayName = data.displayName,
+            storeId = data.storeId,
             avatarUrl = SessionCache.avatarUrl,
-            status = snapshot.status,
+            status = data.status,
             onClose = onDismiss,
         )
 
@@ -210,7 +231,7 @@ fun SellerSidebarCard(
         ) {
             item {
                 SellerProfileHeader(
-                    snapshot = snapshot,
+                    data = data,
                     onViewStore = { onNavigate(SellerSidebarDestination.ViewStore) },
                 )
                 Spacer(Modifier.height(12.dp))
@@ -219,15 +240,18 @@ fun SellerSidebarCard(
             itemsIndexed(
                 items = listOf(
                     SellerSidebarItem(SellerSidebarDestination.Dashboard, "Dashboard", Icons.Filled.Dashboard, null),
-                    SellerSidebarItem(SellerSidebarDestination.Orders, "Orders", Icons.Filled.Inventory2, snapshot.ordersOverview.pending),
+                    SellerSidebarItem(SellerSidebarDestination.Orders, "Orders", Icons.Filled.Inventory2, data.pendingOrders),
                     SellerSidebarItem(SellerSidebarDestination.CreateReceipt, "Create Receipt", Icons.Filled.ReceiptLong, null),
                     SellerSidebarItem(SellerSidebarDestination.Transactions, "Transactions", Icons.Filled.SwapHoriz, null),
                     SellerSidebarItem(SellerSidebarDestination.Receipts, "Receipts", Icons.Filled.Receipt, null),
                     SellerSidebarItem(SellerSidebarDestination.AiPersonalization, "AI Personalization", Icons.Filled.SmartToy, null),
-                    SellerSidebarItem(SellerSidebarDestination.Products, "Products", Icons.Filled.Store, 124),
-                    SellerSidebarItem(SellerSidebarDestination.Customers, "Customers", Icons.Filled.Group, snapshot.customersDelta),
-                    SellerSidebarItem(SellerSidebarDestination.Messages, "Messages", Icons.Filled.Message, 5),
-                    SellerSidebarItem(SellerSidebarDestination.Promotions, "Promotions", Icons.Filled.LocalOffer, 2),
+                    SellerSidebarItem(SellerSidebarDestination.Products, "Products", Icons.Filled.Store, data.productsTotal),
+                    SellerSidebarItem(SellerSidebarDestination.AddProduct, "Add product", Icons.Filled.AddCircle, null),
+                    SellerSidebarItem(SellerSidebarDestination.BulkImport, "Bulk import", Icons.Filled.FileUpload, null),
+                    SellerSidebarItem(SellerSidebarDestination.Customers, "Customers", Icons.Filled.Group, data.followers),
+                    SellerSidebarItem(SellerSidebarDestination.Messages, "Messages", Icons.Filled.Message, data.unreadMessages),
+                    SellerSidebarItem(SellerSidebarDestination.Notifications, "Notifications", Icons.Filled.Notifications, data.unreadNotifications),
+                    SellerSidebarItem(SellerSidebarDestination.Promotions, "Promotions", Icons.Filled.LocalOffer, null),
                     SellerSidebarItem(
                         SellerSidebarDestination.Analytics,
                         "Analytics",
@@ -385,7 +409,7 @@ private fun SellerSidebarHeader(
 
 @Composable
 private fun SellerProfileHeader(
-    snapshot: SellerDashboardSnapshot,
+    data: SellerSidebarData,
     onViewStore: () -> Unit,
 ) {
     Column(
@@ -419,8 +443,8 @@ private fun SellerProfileHeader(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = snapshot.storeName,
-                        color = ScottsTechXColors.OnLight,
+                        text = data.storeName,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                         maxLines = 1,
@@ -436,12 +460,12 @@ private fun SellerProfileHeader(
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Store ID: ${snapshot.storeId}",
-                    color = ScottsTechXColors.OnLightSecondary,
+                    text = "Store ID: ${data.storeId}",
+                    color = ScottsTechXColors.OnPanelSecondary,
                     fontSize = 11.sp,
                 )
                 Spacer(Modifier.height(6.dp))
-                StoreStatusPill(status = snapshot.status)
+                StoreStatusPill(status = data.status)
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -481,13 +505,19 @@ private fun SellerProfileHeader(
 
 @Composable
 private fun StoreStatusPill(status: com.scottsx.app.data.domain.StoreStatus) {
+    // Theme-aware: solid pale pills on light, translucent glow pills on dark.
+    val light = ScottsTechXColors.isLightPalette
     val bg = when (status) {
-        com.scottsx.app.data.domain.StoreStatus.Online -> Color(0xFFDCFCE7)
-        com.scottsx.app.data.domain.StoreStatus.Away -> Color(0xFFFEF3C7)
+        com.scottsx.app.data.domain.StoreStatus.Online ->
+            if (light) Color(0xFFDCFCE7) else Color(0xFF16A34A).copy(alpha = 0.20f)
+        com.scottsx.app.data.domain.StoreStatus.Away ->
+            if (light) Color(0xFFFEF3C7) else Color(0xFFF59E0B).copy(alpha = 0.20f)
     }
     val fg = when (status) {
-        com.scottsx.app.data.domain.StoreStatus.Online -> Color(0xFF15803D)
-        com.scottsx.app.data.domain.StoreStatus.Away -> Color(0xFFB45309)
+        com.scottsx.app.data.domain.StoreStatus.Online ->
+            if (light) Color(0xFF15803D) else Color(0xFF4ADE80)
+        com.scottsx.app.data.domain.StoreStatus.Away ->
+            if (light) Color(0xFFB45309) else Color(0xFFFBBF24)
     }
     Row(
         modifier = Modifier
@@ -516,7 +546,7 @@ private fun StoreStatusPill(status: com.scottsx.app.data.domain.StoreStatus) {
 private fun SectionLabel(text: String) {
     Text(
         text = text.uppercase(),
-        color = ScottsTechXColors.OnLightSecondary,
+        color = ScottsTechXColors.OnPanelSecondary,
         fontWeight = FontWeight.Bold,
         fontSize = 10.sp,
         letterSpacing = 1.2.sp,
@@ -567,7 +597,7 @@ private fun SellerSidebarRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(accent?.copy(alpha = 0.10f) ?: Color.Transparent)
+                .background(accent?.copy(alpha = if (ScottsTechXColors.isLightPalette) 0.10f else 0.18f) ?: Color.Transparent)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -576,20 +606,20 @@ private fun SellerSidebarRow(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(accent?.copy(alpha = 0.25f) ?: ScottsTechXColors.PanelInputLight),
+                    .background(accent?.copy(alpha = if (ScottsTechXColors.isLightPalette) 0.25f else 0.35f) ?: ScottsTechXColors.PanelInputLight),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = item.icon,
                     contentDescription = null,
-                    tint = accent ?: ScottsTechXColors.OnLight,
+                    tint = accent ?: ScottsTechXColors.OnPanel,
                     modifier = Modifier.size(20.dp),
                 )
             }
             Spacer(Modifier.width(12.dp))
             Text(
                 text = item.label,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = if (item.featured != null) FontWeight.Bold else FontWeight.SemiBold,
                 fontSize = 14.sp,
                 modifier = Modifier.weight(1f),
@@ -656,13 +686,13 @@ private fun SellerThemeRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Theme",
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
             )
             Text(
                 text = current.name,
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnPanelSecondary,
                 fontSize = 11.sp,
             )
         }
@@ -683,7 +713,7 @@ private fun SellerThemeRow(
                 ) {
                     Text(
                         text = mode.name.lowercase().replaceFirstChar { it.uppercase() },
-                        color = if (selected) Color.White else ScottsTechXColors.OnLightSecondary,
+                        color = if (selected) Color.White else ScottsTechXColors.OnPanelSecondary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 10.sp,
                     )
@@ -695,12 +725,19 @@ private fun SellerThemeRow(
 
 @Composable
 private fun SellerLogOutRow(onClick: () -> Unit) {
+    // Theme-aware destructive row: pale red card on light, translucent
+    // red glow with a lighter red label on dark (the old hard-coded
+    // light-only colours read as a broken white patch on the dark panel).
+    val light = ScottsTechXColors.isLightPalette
+    val rowBg = if (light) Color(0xFFFEE2E2) else Color(0xFFEF4444).copy(alpha = 0.14f)
+    val chipBg = if (light) Color(0xFFFECACA) else Color(0xFFEF4444).copy(alpha = 0.22f)
+    val fg = if (light) Color(0xFFB91C1C) else Color(0xFFFCA5A5)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFFFEE2E2))
+            .background(rowBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -709,20 +746,20 @@ private fun SellerLogOutRow(onClick: () -> Unit) {
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFFECACA)),
+                .background(chipBg),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Filled.Logout,
                 contentDescription = null,
-                tint = Color(0xFFB91C1C),
+                tint = fg,
                 modifier = Modifier.size(18.dp),
             )
         }
         Spacer(Modifier.width(12.dp))
         Text(
             text = "Log Out",
-            color = Color(0xFFB91C1C),
+            color = fg,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
             modifier = Modifier.weight(1f),
@@ -730,7 +767,7 @@ private fun SellerLogOutRow(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
-            tint = Color(0xFFB91C1C),
+            tint = fg,
             modifier = Modifier.size(16.dp),
         )
     }

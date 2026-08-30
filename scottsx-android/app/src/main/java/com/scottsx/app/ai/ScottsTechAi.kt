@@ -1,6 +1,6 @@
 package com.scottsx.app.ai
 
-import com.scottsx.app.data.MarketplaceDataSource
+import com.scottsx.app.data.LiveMarketplace
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.TransactionStore
 import com.scottsx.app.data.domain.Role
@@ -151,16 +151,16 @@ object ScottsTechAi {
             sb.append("\n# Active context\n\n")
             if (context.screen.isNotBlank()) sb.append("- Screen: ").append(context.screen).append("\n")
             if (context.productId != null) {
-                val p = MarketplaceDataSource.productById(context.productId)
+                val p = LiveMarketplace.byId(context.productId)
                 sb.append("- Product: ${p?.name ?: context.productId}\n")
             }
             if (context.sellerId != null) {
-                val s = MarketplaceDataSource.storefront(context.sellerId)?.seller
+                val s = LiveMarketplace.products.value.firstOrNull { it.seller.id == context.sellerId }?.seller
                 sb.append("- Seller: ${s?.name ?: context.sellerId}\n")
             }
             if (context.threadId != null) {
-                val t = MarketplaceDataSource.threadById(context.threadId)
-                sb.append("- Conversation: ${t?.sellerName ?: context.threadId}\n")
+                val t = com.scottsx.app.data.ChatCache.conversation(context.threadId)
+                sb.append("- Conversation: ${t?.otherPartyDisplayName ?: context.threadId}\n")
             }
             if (context.transactionId != null) {
                 val ag = TransactionStore.agreementById(context.transactionId)

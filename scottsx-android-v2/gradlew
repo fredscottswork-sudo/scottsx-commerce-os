@@ -249,4 +249,23 @@ eval "set -- $(
         tr '\n' ' '
     )" '"$@"'
 
+# ScottsTechX hardening (not stock Gradle): in CI, capture the build output so
+# a failing build can be re-surfaced as ::error annotations. Log and artifact
+# downloads are unreachable from some maintenance environments, and a check-run
+# annotation is the one failure channel that stays readable. Locally nothing
+# changes — without GITHUB_ACTIONS the stock `exec` path runs byte-identically.
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    GRADLE_LOG="${RUNNER_TEMP:-/tmp}/gradle-build.log"
+    "$JAVACMD" "$@" >"$GRADLE_LOG" 2>&1
+    status=$?
+    if [ "$status" -ne 0 ]; then
+        grep -aE '^e: |error:|FAILURE:|What went wrong' "$GRADLE_LOG" | head -25 | while IFS= read -r line; do
+            esc=$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g')
+            printf '::error::%s\n' "$esc"
+        done
+    fi
+    cat "$GRADLE_LOG"
+    exit $status
+fi
+
 exec "$JAVACMD" "$@"

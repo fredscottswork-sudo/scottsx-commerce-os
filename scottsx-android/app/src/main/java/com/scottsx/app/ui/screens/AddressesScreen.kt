@@ -116,13 +116,13 @@ private fun AddressCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 addr.label,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnCard,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
                 modifier = Modifier.weight(1f),
@@ -139,10 +139,10 @@ private fun AddressCard(
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text("${addr.recipient} - ${addr.phone ?: ""}", fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
-        Text(addr.line1, fontSize = 12.sp, color = ScottsTechXColors.OnLight)
-        if (!addr.line2.isNullOrBlank()) Text(addr.line2, fontSize = 12.sp, color = ScottsTechXColors.OnLight)
-        Text("${addr.city}${addr.region?.let { ", $it" }.orEmpty()} ${addr.country}", fontSize = 12.sp, color = ScottsTechXColors.OnLight)
+        Text("${addr.recipient} - ${addr.phone ?: ""}", fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary)
+        Text(addr.line1, fontSize = 12.sp, color = ScottsTechXColors.OnCard)
+        if (!addr.line2.isNullOrBlank()) Text(addr.line2, fontSize = 12.sp, color = ScottsTechXColors.OnCard)
+        Text("${addr.city}${addr.region?.let { ", $it" }.orEmpty()} ${addr.country}", fontSize = 12.sp, color = ScottsTechXColors.OnCard)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Edit", color = ScottsTechXColors.BluePrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onEdit))
@@ -208,7 +208,7 @@ private fun AddressDialog(
             )
         },
         dismissButton = {
-            Text("Cancel", color = ScottsTechXColors.OnLightSecondary, modifier = Modifier.clickable(onClick = onDismiss))
+            Text("Cancel", color = ScottsTechXColors.OnCardSecondary, modifier = Modifier.clickable(onClick = onDismiss))
         },
     )
 }

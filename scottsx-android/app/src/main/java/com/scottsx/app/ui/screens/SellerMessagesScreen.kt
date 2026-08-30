@@ -26,6 +26,7 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Seller inbox. Fetches real conversations where the seller is a
@@ -35,8 +36,10 @@ import org.json.JSONObject
 fun SellerMessagesScreen(
     onBack: () -> Unit,
     onOpenThread: (conversationId: String, peerName: String) -> Unit,
+    sellerTabSelect: (com.scottsx.app.ui.components.SellerBottomTab) -> Unit = {},
 ) {
         val scope = rememberCoroutineScope()
+    var bottomTab by remember { mutableStateOf(com.scottsx.app.ui.components.SellerBottomTab.Messages) }
     var conversations by remember { mutableStateOf<List<V2Client.Conversation>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
@@ -53,7 +56,9 @@ fun SellerMessagesScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -76,12 +81,12 @@ fun SellerMessagesScreen(
         }
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Loading...", color = ScottsTechXColors.OnLightSecondary)
+                Text("Loading...", color = ScottsTechXColors.OnPanelSecondary)
             }
-            conversations.isEmpty() -> EmptyMessagesHint()
+            conversations.isEmpty() -> EmptyMessagesHint(modifier = Modifier.padding(bottom = 96.dp))
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(conversations, key = { it.conversationId }) { convo ->
@@ -94,13 +99,20 @@ fun SellerMessagesScreen(
                 }
             }
         }
+        }  // inner Column
+        }  // weight Box
+        com.scottsx.app.ui.components.SellerBottomBar(
+            selected = bottomTab,
+            onSelect = { tab -> bottomTab = tab; sellerTabSelect(tab) },
+            onAddClicked = { bottomTab = com.scottsx.app.ui.components.SellerBottomTab.Add; sellerTabSelect(com.scottsx.app.ui.components.SellerBottomTab.Add) },
+        )
     }
 }
 
 @Composable
-private fun EmptyMessagesHint() {
+private fun EmptyMessagesHint(modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier.fillMaxSize().padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -113,7 +125,7 @@ private fun EmptyMessagesHint() {
             Text(
                 "When buyers message you about a product, you'll see the conversation here.",
                 fontSize = 12.sp,
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnPanelSecondary,
             )
         }
     }
@@ -129,7 +141,7 @@ private fun ConversationRow(convo: V2Client.Conversation, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -150,11 +162,11 @@ private fun ConversationRow(convo: V2Client.Conversation, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(otherName, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Text(lastMsg, color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, maxLines = 1)
+            Text(otherName, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(lastMsg, color = ScottsTechXColors.OnCardSecondary, fontSize = 12.sp, maxLines = 1)
         }
         Column(horizontalAlignment = Alignment.End) {
-            if (lastTime.isNotBlank()) Text(lastTime, color = ScottsTechXColors.OnLightSecondary, fontSize = 10.sp)
+            if (lastTime.isNotBlank()) Text(lastTime, color = ScottsTechXColors.OnCardSecondary, fontSize = 10.sp)
             if (unread > 0) {
                 Spacer(Modifier.width(2.dp))
                 Box(

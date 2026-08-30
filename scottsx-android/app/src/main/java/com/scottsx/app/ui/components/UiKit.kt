@@ -15,10 +15,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -66,14 +66,14 @@ fun formatUgxCompact(amount: Long): String {
 fun PriceTag(product: Product, large: Boolean = false) {
     Column {
         Text(
-            text = formatUgx(product.priceMinor),
+            text = formatUgx(product.priceUgx),
             fontSize = if (large) 24.sp else 16.sp,
             fontWeight = FontWeight.Bold,
             color = ScottsTechXColors.BluePrimary,
         )
-        if (product.oldPriceMinor != null && product.oldPriceMinor > product.priceMinor) {
+        if (product.oldPriceUgx != null && product.oldPriceUgx > product.priceUgx) {
             Text(
-                text = formatUgx(product.oldPriceMinor),
+                text = formatUgx(product.oldPriceUgx),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textDecoration = TextDecoration.LineThrough,
@@ -168,7 +168,7 @@ fun LoadingRow() {
 
 @Composable
 fun ListDivider() {
-    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
 }
 
 /** Quick reply chip used by AI screens and the thread composer. */
@@ -221,7 +221,7 @@ fun GradientHeader(
         Column {
             if (onBack != null) {
                 Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    Icons.Filled.KeyboardArrowLeft,
                     contentDescription = "Back",
                     tint = Color.White,
                     // Modifier order is evaluation order, innermost last.

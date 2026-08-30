@@ -1,29 +1,43 @@
 # Kotlin model parser check
 
-Runs the app's **real** `fromJson` parsers over **real** captured backend
-responses, using a genuine `org.json` implementation — the same library Android
-ships. This catches the class of bug the syntax checker cannot see: a parser
-that compiles fine but produces wrong values at runtime.
+Runs the app's **shipping** catalogue decoder over **real** captured backend
+responses, using a genuine `org.json` implementation — the same library
+Android ships. This catches the class of bug the syntax checker cannot see:
+a parser that compiles fine but produces wrong values at runtime.
 
-## Why it matters
+## What it validates today
 
-Two defects were found this way and fixed:
+`V2Client.jsonToProduct` (sliced straight out of the shipping V2Client.kt,
+never a copy) plus the domain types it decodes into (`ProductCategory`,
+`Brand`, `Seller`, `Product`, `ProductImage`, ...), run over the live
+`/api/v1/products` envelope:
 
-1. **`optString` returns the literal string `"null"`** for a JSON null.
-   Verified against org.json 1.8:
+* **Envelope shape** — `/products` returns `{ products: [...], total, ... }`,
+  a JSON *object*. The old client parsed the body as a bare `JSONArray`, so
+  the home feed was silently empty against a healthy backend. The harness
+  asserts the envelope so that bug can never come back quietly.
+* **Real field mapping** — every value must come from the response:
+  `priceMinor` (number, not string), the nested `seller` object, `rating`
+  (not the long-removed `productTrustScore` ghost, which previously
+  hard-coded 4.4 onto every card), `imageUrl`, `stockQuantity`,
+  `oldPriceMinor` (JSON null on most rows — must not crash, never below
+  the live price), `isFlashDeal`, `discountPercent`, `location`.
 
-   ```
-   {"lastTime": null}  ->  optString("lastTime") == "null"   // not "" !
-   ```
+## History
 
-   A brand-new conversation has `lastTime: null`, so the inbox would have shown
-   the text `null` as a timestamp. Fixed with `optStringSafe`, which checks
-   `isNull` first.
+Two earlier defects were found this way and fixed:
 
-2. **`chatTimeLabel` crashed on blank input.** The old implementation was
-   `lastTime.substringAfter("T").substring(0, 5)`, which throws
-   `StringIndexOutOfBoundsException` when `lastTime` is empty — i.e. on every
-   freshly created thread.
+1. **`optString` returns the literal string `"null"`** for a JSON null
+   (verified against org.json 1.8) — the inbox showed `null` as a timestamp
+   on brand-new threads.
+2. **`chatTimeLabel` crashed on blank input** — `substring(0, 5)` on an
+   empty timestamp threw `StringIndexOutOfBoundsException` on every fresh
+   thread.
+
+The messaging models those two lived in have since been superseded (the
+shipping chat client speaks `/chat/v2`, which the backend has not yet
+implemented — see the known limits in STATUS.md), so the gate now covers
+the catalogue feed, which the app actually ships with a matching backend.
 
 ## Running it
 
@@ -36,18 +50,10 @@ export PATH="$JAVA_HOME/bin:$PATH"
 tools/parser-check/run.sh
 ```
 
-The script extracts the model classes straight out of `MarketplaceModels.kt`
-(so it always tests the shipping code, never a copy), compiles them against
-org.json, and asserts no field parses to `"null"` and that money values survive
-the round trip.
+The script slices the decoder out of `V2Client.kt` and the domain types out
+of `MarketplaceModels.kt` (so it always tests the shipping code, never a
+copy), compiles them against a real `org.json` jar, executes the harness,
+and fails loudly on any parse anomaly.
 
-## Obtaining org.json without Maven
-
-`maven.google.com` and `repo1.maven.org` are unreachable from some sandboxes.
-A real `org.json` jar ships inside the PySpark wheel:
-
-```bash
-pip download pyspark -d /tmp/ps --no-deps
-tar xzf /tmp/ps/pyspark-*.tar.gz -C /tmp/ps --wildcards '*/deps/jars/json-1.8.jar'
-# -> /tmp/ps/pyspark-*/deps/jars/json-1.8.jar
-```
+No JDK/Kotlin/org.json handy? `tools/fetch-toolchain.sh` restores all three
+without root — see the parent README.

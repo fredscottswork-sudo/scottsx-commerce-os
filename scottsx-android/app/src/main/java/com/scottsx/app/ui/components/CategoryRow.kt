@@ -19,6 +19,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.ChairAlt
+import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Grass
+import androidx.compose.material.icons.filled.Kitchen
+import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.Checkroom
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.DirectionsRun
@@ -57,11 +70,15 @@ fun CategoryRow(
     val ordered = listOf(
         ProductCategory.All,
         ProductCategory.Electronics,
+        ProductCategory.PhonesTablets,
         ProductCategory.Fashion,
         ProductCategory.HomeLiving,
         ProductCategory.Beauty,
-        ProductCategory.Sports,
         ProductCategory.Groceries,
+        ProductCategory.Sports,
+        ProductCategory.Gaming,
+        ProductCategory.Appliances,
+        ProductCategory.Furniture,
         ProductCategory.Automotive,
         ProductCategory.More,
     )
@@ -87,12 +104,16 @@ private fun CategoryChip(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    // Theme-aware: pale-gray circles only in LIGHT mode; on the dark
+    // home the unselected chip is a deep blue-slate circle.
+    val light = ScottsTechXColors.isLightPalette
     val ringColor by animateColorAsState(
-        targetValue = if (selected) ScottsTechXColors.BluePrimary else Color(0xFFE5E7EB),
+        targetValue = if (selected) ScottsTechXColors.BluePrimary
+        else if (light) Color(0xFFE5E7EB) else Color(0xFF1D2B4D),
         label = "chip-ring",
     )
     val labelColor by animateColorAsState(
-        targetValue = if (selected) ScottsTechXColors.BluePrimary else ScottsTechXColors.OnLightSecondary,
+        targetValue = if (selected) ScottsTechXColors.BluePrimary else ScottsTechXColors.OnCardSecondary,
         label = "chip-label",
     )
     val iconBgBrush = if (selected) {
@@ -101,10 +122,11 @@ private fun CategoryChip(
         )
     } else {
         Brush.linearGradient(
-            colors = listOf(Color(0xFFF1F3F7), Color(0xFFF8FAFC)),
+            colors = if (light) listOf(Color(0xFFF1F3F7), Color(0xFFF8FAFC))
+            else listOf(Color(0xFF131F3D), Color(0xFF0E1830)),
         )
     }
-    val iconTint = if (selected) Color.White else ScottsTechXColors.OnLightSecondary
+    val iconTint = if (selected) Color.White else ScottsTechXColors.OnCardSecondary
 
     Column(
         modifier = Modifier
@@ -141,12 +163,26 @@ private fun CategoryChip(
 private fun categoryIconFor(c: ProductCategory): ImageVector = when (c) {
     ProductCategory.All -> Icons.Filled.ExpandMore        // used as 'all' glyph
     ProductCategory.Electronics -> Icons.Filled.Devices
+    ProductCategory.PhonesTablets -> Icons.Filled.Smartphone
+    ProductCategory.Computers -> Icons.Filled.Computer
+    ProductCategory.TvAudio -> Icons.Filled.Tv
     ProductCategory.Fashion -> Icons.Filled.Checkroom
     ProductCategory.HomeLiving -> Icons.Filled.Home
+    ProductCategory.Appliances -> Icons.Filled.Kitchen
+    ProductCategory.Furniture -> Icons.Filled.ChairAlt
     ProductCategory.Beauty -> Icons.Filled.Spa
+    ProductCategory.Health -> Icons.Filled.LocalHospital
     ProductCategory.Sports -> Icons.Filled.DirectionsRun
+    ProductCategory.Gaming -> Icons.Filled.SportsEsports
     ProductCategory.Groceries -> Icons.Filled.LocalGroceryStore
+    ProductCategory.BabyKids -> Icons.Filled.ChildCare
+    ProductCategory.Books -> Icons.Filled.MenuBook
+    ProductCategory.Office -> Icons.Filled.Work
+    ProductCategory.Pets -> Icons.Filled.Pets
     ProductCategory.Automotive -> Icons.Filled.DirectionsCar
+    ProductCategory.Agriculture -> Icons.Filled.Grass
+    ProductCategory.ArtCrafts -> Icons.Filled.Brush
+    ProductCategory.Services -> Icons.Filled.Build
     ProductCategory.More -> Icons.Filled.Brush
 }
 

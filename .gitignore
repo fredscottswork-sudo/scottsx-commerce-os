@@ -10,6 +10,11 @@ scottsx-android/local.properties
 # Android release signing (keystore + passwords)
 *.jks
 *.keystore
+# …except the committed SHARED debug keystores. A debug key carries no
+# privileges and pinning it makes every CI debug APK carry one stable SHA-1,
+# which Google sign-in needs registered exactly once (see keystores/README.md).
+!scottsx-android/keystores/debug.keystore
+!scottsx-android-v2/keystores/debug.keystore
 scottsx-android/keystore.properties
 
 # IDE

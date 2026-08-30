@@ -37,6 +37,65 @@ class AuthRepository(
 ) {
     val currentUser: FirebaseUser? get() = auth.currentUser
 
+    /**
+     * THE critical bridge: AFTER Firebase Auth succeeds, exchange the
+     * Firebase ID token for a backend JWT via
+     * POST /api/v1/auth/firebase/sign-in and store it in BOTH session
+     * caches (root + network mirror). Without this, every authenticated
+     * /api/v1 call sent NO Authorization header and silently 401'd —
+     * which presented to users as "dashboard shows nothing", "messages
+     * don't send", "notifications never arrive".
+     *
+     * Best-effort: a failed exchange must NOT block the user from
+     * reaching Home — a later retry (cold start or next sign-in) fixes
+     * the session. But it is retried eagerly on every fresh sign-in.
+     */
+    private suspend fun syncBackendSession(
+        user: FirebaseUser,
+        role: Role,
+        displayName: String?,
+        phone: String? = null,
+        storeName: String? = null,
+    ) {
+        runCatching {
+            val firebaseToken = user.getIdToken(false).await().token ?: return@runCatching
+            val result = com.scottsx.app.data.remote.V2Client.signInWithFirebase(
+                idToken = firebaseToken,
+                displayName = displayName,
+                phone = phone,
+                role = role.name.lowercase(),
+                storeName = storeName,
+            ) ?: return@runCatching
+            // 1. Root session store (user profile + token).
+            com.scottsx.app.SessionCache.save(
+                result.token,
+                com.scottsx.app.CurrentUser(
+                    id = result.user.id,
+                    email = result.user.email,
+                    displayName = result.user.displayName.ifBlank { displayName ?: "ScottsTechX user" },
+                    phone = result.user.phone.ifBlank { phone ?: "" },
+                    role = result.user.role,
+                    emailVerified = result.user.emailVerified,
+                    profilePhotoUrl = result.user.profilePhotoUrl,
+                    city = result.user.city,
+                ),
+                announce = true,
+            )
+            // 2. Network-session mirror (Bearer token + role/userId).
+            com.scottsx.app.data.Session.adoptSession(
+                token = result.token,
+                userId = result.user.id,
+                role = if (result.user.role.equals("seller", true)) Role.SELLER else role,
+                displayName = result.user.displayName.ifBlank { displayName },
+                email = result.user.email,
+                avatarUrl = result.user.profilePhotoUrl,
+                storeLocation = result.user.city,
+            )
+        }.onFailure {
+            android.util.Log.w("AuthRepository", "Backend session exchange failed (offline?); will retry on next launch.", it)
+        }
+    }
+
     suspend fun signIn(email: String, password: String, expectedRole: Role? = null): AuthResult {
         val res = auth.signInWithEmailAndPassword(email.trim(), password).await()
         val user = res.user ?: return AuthResult.Failure("Sign-in failed")
@@ -67,6 +126,7 @@ class AuthRepository(
             return AuthResult.VerificationPending(email = email.trim())
         }
         SessionCache.set(actualRole, user.displayName, user.email)
+        syncBackendSession(user, actualRole, user.displayName)
         return AuthResult.Success(actualRole)
     }
 
@@ -125,6 +185,13 @@ class AuthRepository(
             )
         }
         SessionCache.set(role, user.displayName, user.email)
+        syncBackendSession(
+            user,
+            role,
+            user.displayName ?: displayName,
+            phone = phone.trim().takeIf { it.isNotBlank() },
+            storeName = sellerExtras?.businessName?.takeIf { it.isNotBlank() },
+        )
         // Always send the Firebase verification email. The user is NOT
         // allowed to enter the app until they tap the link. This avoids
         // the "I created an account but my email was never checked" trap.
@@ -179,6 +246,7 @@ class AuthRepository(
 
         if (existingRole != null) {
             SessionCache.set(existingRole, user.displayName, user.email)
+            syncBackendSession(user, existingRole, user.displayName)
             // Server-side role exists. Enforce separation — never let a
             // user pick a different role at the role selector and walk
             // through to the wrong dashboard. If the Firestore role
@@ -214,6 +282,7 @@ class AuthRepository(
             )
         }
         SessionCache.set(expectedRole, displayName, email)
+        syncBackendSession(user, expectedRole, displayName)
         // Note: we still return Success even if profileWrite failed.
         // The user is authenticated with Firebase Auth; the profile
         // document can be retried later. Blocking sign-in here

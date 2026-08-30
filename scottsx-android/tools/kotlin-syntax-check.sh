@@ -37,7 +37,9 @@ set -uo pipefail
 
 KOTLINC="${1:-${KOTLINC:-kotlinc}}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT/app/src/main/java"
+# SRC_DIR overrides the scan root (e.g. to check the v2 tree:
+#   SRC_DIR=$PWD/../scottsx-android-v2/app/src/main/java tools/kotlin-syntax-check.sh)
+SRC="${SRC_DIR:-$ROOT/app/src/main/java}"
 
 if ! command -v "$KOTLINC" >/dev/null 2>&1 && [ ! -x "$KOTLINC" ]; then
   echo "kotlinc not found at '$KOTLINC'. Pass a path or set \$KOTLINC." >&2
@@ -104,7 +106,7 @@ IGNORE="$IGNORE|expected type mismatch"
 # `scope.launch { … }` is an unresolved symbol without the coroutines artifact,
 # so the compiler cannot tell that suspend calls inside it are legal.
 IGNORE="$IGNORE|can only be called from a coroutine"
-IGNORE="$IGNORE|suspension functions can be called only within coroutine"
+IGNORE="$IGNORE|suspension functions .*coroutine"   # Kotlin ≥1.9 moved the wording (still classpath-cascade noise)
 # Kotlin 1.9.x words the same diagnostic differently. Without the exact string
 # the check drowns in ~80 false positives and stops being readable, which is
 # how a real error hides.
@@ -126,6 +128,28 @@ IGNORE="$IGNORE|no parameter with name"
 IGNORE="$IGNORE|is ambiguous for destructuring"
 IGNORE="$IGNORE|.operator. modifier is required"
 IGNORE="$IGNORE|.when. expression must be exhaustive"
+# Lambda receivers (DrawScope in Canvas { }, GraphicsLayerScope in
+# graphicsLayer { }) are unresolved, so `this` inside them looks undefined.
+IGNORE="$IGNORE|'this' is not defined in this context"
+# @OptIn(ExperimentalX::class): the marker class is unresolved, so the
+# compiler cannot prove the ::class argument is a compile-time constant.
+IGNORE="$IGNORE|annotation argument must be a compile-time constant"
+# `by lazy { FirebaseAuth... }` — the delegate's target type is unresolved.
+IGNORE="$IGNORE|None of the following functions is applicable"
+# Index-gets / comparisons on unresolved types (e.g. the activity-result
+# permission map) leave operands with nonsense types.
+IGNORE="$IGNORE|operator .* cannot be applied to"
+# Destructuring an unresolved receiver property (DrawScope.size is Size and
+# has component1/2 in the real build).
+IGNORE="$IGNORE|requires operator function 'component"
+# SnapshotStateList<JSONObject>.remove(element) collapses without the Compose
+# runtime and resolves to the deprecated MutableList.remove(index: Int).
+# (Local kotlinc 2.4.x raises that as an error; the project's Kotlin 1.9/2.0
+# toolchain never sees it. Parens are escaped — IGNORE is an ERE.)
+IGNORE="$IGNORE|remove\\(index: Int\\): T' is deprecated"
+# Non-local return from an inline Compose lambda (Box/Column) whose inline
+# nature is invisible without the classpath.
+IGNORE="$IGNORE|'return' is prohibited here"
 
 REAL="$(grep -E '\.kt:[0-9]+:[0-9]+: error:' "$RAW" | grep -Ev "$IGNORE" || true)"
 

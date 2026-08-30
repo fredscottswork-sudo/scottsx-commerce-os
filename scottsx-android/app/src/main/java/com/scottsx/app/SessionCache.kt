@@ -35,10 +35,21 @@ object SessionCache {
     @Volatile
     var onSessionChanged: ((signedIn: Boolean) -> Unit)? = null
 
-    fun save(token: String, user: CurrentUser) {
+    /**
+     * Invoked ONLY on a fresh interactive sign-in (never on cold-start
+     * session restore) — used to post the "You're signed in" phone
+     * notification exactly once per login, without spamming on every
+     * app launch.
+     */
+    @Volatile
+    var onFreshSignIn: ((user: CurrentUser) -> Unit)? = null
+
+    fun save(token: String, user: CurrentUser, announce: Boolean = false) {
+        val wasSignedIn = isLoggedIn()
         this.token = token
         _user.value = user
         onSessionChanged?.invoke(true)
+        if (announce && !wasSignedIn) onFreshSignIn?.invoke(user)
     }
 
     fun updateUser(user: CurrentUser) {

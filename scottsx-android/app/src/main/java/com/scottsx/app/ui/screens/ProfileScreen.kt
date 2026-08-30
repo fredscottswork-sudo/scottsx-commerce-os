@@ -58,6 +58,8 @@ import com.scottsx.app.data.domain.BuyerProfile
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 @Composable
 fun ProfileScreen(
@@ -70,12 +72,13 @@ fun ProfileScreen(
     onEditProfile: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var bottomTab by remember { mutableStateOf(BottomTab.Profile) }
+    var bottomTab by remember { mutableStateOf(BottomTab.Home) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         LazyColumn(
             modifier = Modifier
@@ -107,12 +110,23 @@ fun ProfileScreen(
                                 .background(Color.White.copy(alpha = 0.18f)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                text = (profile.displayName.firstOrNull()?.uppercase() ?: "U").toString(),
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 28.sp,
-                            )
+                            // Real profile photo when the account has one
+                            // (web parity) — initial letter only as fallback.
+                            if (!profile.avatarUrl.isNullOrBlank()) {
+                                coil.compose.AsyncImage(
+                                    model = profile.avatarUrl,
+                                    contentDescription = profile.displayName,
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                Text(
+                                    text = (profile.displayName.firstOrNull()?.uppercase() ?: "U").toString(),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 28.sp,
+                                )
+                            }
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -255,9 +269,10 @@ fun ProfileScreen(
             }
         }
 
-        Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        Box(modifier = Modifier.navBarSpacer()  // lift the bottom bar clear of the gesture pill
+                .align(Alignment.BottomCenter).fillMaxWidth()) {
             ScottsTechXBottomBar(
-                selected = bottomTab,
+                selected = null,
                 onSelect = { tab ->
                     bottomTab = tab
                     onTabSelect(tab)
@@ -276,7 +291,7 @@ private fun SectionGroup(title: String, content: @Composable () -> Unit) {
     ) {
         Text(
             text = title,
-            color = ScottsTechXColors.OnLightSecondary,
+            color = ScottsTechXColors.OnPanelSecondary,
             fontWeight = FontWeight.Bold,
             fontSize = 11.sp,
             letterSpacing = 1.sp,
@@ -286,7 +301,7 @@ private fun SectionGroup(title: String, content: @Composable () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.White),
+                .background(ScottsTechXColors.CardSurface),
         ) {
             content()
         }
@@ -327,20 +342,20 @@ private fun Setting(icon: ImageVector, title: String, subtitle: String, onClick:
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnCard,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
             )
             Text(
                 text = subtitle,
-                color = ScottsTechXColors.OnLightSecondary,
+                color = ScottsTechXColors.OnCardSecondary,
                 fontSize = 11.sp,
             )
         }
         Icon(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
-            tint = ScottsTechXColors.OnLightSecondary,
+            tint = ScottsTechXColors.OnCardSecondary,
             modifier = Modifier.size(18.dp),
         )
     }

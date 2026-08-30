@@ -100,23 +100,41 @@ fun StoreSettingsDetailScreen(
     var refundNote by remember { mutableStateOf("") }
     var termsNote by remember { mutableStateOf("") }
 
-    // Load existing values
+    // Load existing values — keys mirror the PATCH schema rowToSettings()
+    // in 12_Backend/src/modules/seller/store-settings.route.ts exactly,
+    // so every field in this editor round-trips with the web.
+
     LaunchedEffect(section) {
         scope.launch {
             val s = V2Client.fetchStoreSettings()
             if (s != null) {
                 name = s.optString("storeName")
                 desc = s.optString("storeDescription")
-                logoUrl = s.optString("logoUrl")
-                address = s.optString("addressLine1")
-                phone = s.optString("phone")
-                email = s.optString("email")
-                momoNumber = s.optString("whatsapp") // simple placeholder
+                logoUrl = s.optString("storeLogoUrl")
+                address = s.optString("address")
+                pickup = s.optString("pickupInstructions")
+                radiusText = s.optInt("serviceRadiusKm", 20).toString()
+                feeText = s.optInt("deliveryFeeUgx", 0).toString()
+                freeAbove = s.optInt("freeAboveUgx", 0).toString()
+                codEnabled = s.optBoolean("codEnabled", true)
+                momoNumber = s.optString("momoNumber")
+                bankName = s.optString("bankName")
+                bankAcct = s.optString("bankAccount")
+                orderUpdates = s.optBoolean("notifOrderUpdates", true)
+                buyerMessages = s.optBoolean("notifBuyerMessages", true)
+                marketing = s.optBoolean("notifMarketing", false)
+                weeklyDigest = s.optBoolean("notifWeeklyDigest", true)
+                twoFA = s.optBoolean("twoFactorEnabled", false)
+                returnsDays = s.optInt("returnsWindowDays", 7).toString()
+                refundNote = s.optString("refundPolicy")
+                termsNote = s.optString("terms")
+                email = s.optString("businessEmail")
+                phone = s.optString("businessPhone")
             }
             val p = V2Client.fetchSellerProfile()
             if (p != null) {
-                legalName = p.optString("businessName", p.optString("business_name"))
-                taxId = p.optString("taxId", p.optString("tax_id"))
+                legalName = p.optString("legalName", p.optString("businessName", p.optString("business_name")))
+                taxId = p.optString("tin", p.optString("taxId", p.optString("tax_id")))
             }
             loaded = true
         }
@@ -126,27 +144,58 @@ fun StoreSettingsDetailScreen(
         saving = true
         errorMessage = null
         scope.launch {
+            // Every section writes PATCH /seller/store-settings keys the
+            // backend actually maps (no unknown/chesstag keys — saved
+            // fields must round-trip, otherwise "Saved" would be a lie).
             val ok = when (section) {
                 "store-profile" -> V2Client.updateStoreSettings(JSONObject()
                     .put("storeName", name)
                     .put("storeDescription", desc)
-                    .put("logoUrl", logoUrl))
-                "business-info" -> V2Client.updateSellerProfile(JSONObject()
-                    .put("businessName", legalName)
-                    .put("taxId", taxId))
+                    .put("storeLogoUrl", logoUrl))
+                "business-info" -> V2Client.updateStoreSettings(JSONObject()
+                    .put("legalName", legalName)
+                    .put("tin", taxId)
+                    .put("businessEmail", email)
+                    .put("businessPhone", phone))
                 "store-location" -> V2Client.updateStoreSettings(JSONObject()
-                    .put("addressLine1", address)
-                    .put("phone", phone))
+                    .put("address", address)
+                    .put("pickupInstructions", pickup)
+                    .put("serviceRadiusKm", radiusText.toIntOrNull() ?: 20))
+                "delivery" -> V2Client.updateStoreSettings(JSONObject()
+                    .put("deliveryFeeUgx", feeText.toIntOrNull() ?: 0)
+                    .put("freeAboveUgx", freeAbove.toIntOrNull() ?: 0)
+                    .put("codEnabled", codEnabled))
                 "payments" -> V2Client.updateStoreSettings(JSONObject()
-                    .put("whatsapp", momoNumber))
-                "help", "delivery", "notifications", "security", "policies" -> true
+                    .put("momoNumber", momoNumber)
+                    .put("bankName", bankName)
+                    .put("bankAccount", bankAcct))
+                "notifications" -> V2Client.updateStoreSettings(JSONObject()
+                    .put("notifOrderUpdates", orderUpdates)
+                    .put("notifBuyerMessages", buyerMessages)
+                    .put("notifMarketing", marketing)
+                    .put("notifWeeklyDigest", weeklyDigest))
+                "security" -> {
+                    var okAll = true
+                    if (newPwd.isNotBlank()) {
+                        okAll = okAll && currentPwd.isNotBlank() &&
+                            V2Client.changePassword(currentPwd, newPwd)
+                    }
+                    okAll = okAll && V2Client.updateStoreSettings(JSONObject().put("twoFactorEnabled", twoFA))
+                    okAll
+                }
+                "policies" -> V2Client.updateStoreSettings(JSONObject()
+                    .put("returnsWindowDays", returnsDays.toIntOrNull() ?: 7)
+                    .put("refundPolicy", refundNote)
+                    .put("terms", termsNote))
+                "help" -> true
                 else -> true
             }
             saving = false
             if (ok) {
                 saveFlash = true
+                if (section == "security") { currentPwd = ""; newPwd = "" }
             } else {
-                errorMessage = "Failed to save — check your connection"
+                errorMessage = "Failed to save — check your details and connection"
             }
         }
     }
@@ -254,22 +303,22 @@ fun StoreSettingsDetailScreen(
                 "help" -> {
                     Text(
                         "Need help managing your store? Reach out to ScottsTechX Seller Support.",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontSize = 14.sp,
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Email: [email protected]",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 12.sp,
                     )
                     Text(
                         "Phone: +256 800 100 100",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 12.sp,
                     )
                 }
-                else -> Text("Unknown section: $section", color = ScottsTechXColors.OnLightSecondary)
+                else -> Text("Unknown section: $section", color = ScottsTechXColors.OnPanelSecondary)
             }
 
             Spacer(Modifier.height(20.dp))
@@ -334,24 +383,24 @@ private fun Field(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label, color = ScottsTechXColors.OnLight) },
-        placeholder = if (hint != null) { { Text(hint, color = ScottsTechXColors.OnLightSecondary) } } else null,
+        label = { Text(label, color = ScottsTechXColors.OnCard) },
+        placeholder = if (hint != null) { { Text(hint, color = ScottsTechXColors.OnCardSecondary) } } else null,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         textStyle = androidx.compose.ui.text.TextStyle(
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnCard,
             fontSize = 15.sp,
         ),
         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-            focusedTextColor = ScottsTechXColors.OnLight,
-            unfocusedTextColor = ScottsTechXColors.OnLight,
+            focusedTextColor = ScottsTechXColors.OnCard,
+            unfocusedTextColor = ScottsTechXColors.OnCard,
             focusedBorderColor = ScottsTechXColors.BluePrimary,
-            unfocusedBorderColor = ScottsTechXColors.OnLightSecondary.copy(alpha = 0.3f),
+            unfocusedBorderColor = ScottsTechXColors.OnCardSecondary.copy(alpha = 0.3f),
             cursorColor = ScottsTechXColors.BluePrimary,
             focusedContainerColor = Color.White,
             unfocusedContainerColor = Color.White,
             focusedLabelColor = ScottsTechXColors.BluePrimary,
-            unfocusedLabelColor = ScottsTechXColors.OnLightSecondary,
+            unfocusedLabelColor = ScottsTechXColors.OnCardSecondary,
         ),
     )
 }
@@ -364,7 +413,7 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     ) {
         Text(
             label,
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnPanel,
             fontSize = 14.sp,
             modifier = Modifier.weight(1f),
         )

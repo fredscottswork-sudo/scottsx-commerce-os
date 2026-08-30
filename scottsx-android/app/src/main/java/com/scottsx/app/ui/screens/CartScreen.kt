@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,12 +37,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.data.CartStore
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.resolve
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
 import com.scottsx.app.ui.util.formatUgx
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 @Composable
 fun CartScreen(
@@ -52,12 +54,23 @@ fun CartScreen(
     val cartItems by CartStore.items.collectAsState()
     val resolved = cartItems.resolve()
     val total = resolved.sumOf { (p, q) -> p.priceUgx * q }
-    var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Home) }
+    var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Cart) }
+
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val snackbar = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() }
+    var placingOrder by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    // Hydrate from the server whenever the cart opens — the canonical
+    // cart lives at /me/cart and is shared with the web app.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        try { CartStore.syncFromServer() } catch (_: Throwable) { }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Column(
             modifier = Modifier
@@ -113,20 +126,20 @@ fun CartScreen(
                         modifier = Modifier
                             .size(80.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE5E7EB)),
+                            .background(ScottsTechXColors.CardSurfaceAlt),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Filled.ShoppingCart,
                             contentDescription = null,
-                            tint = ScottsTechXColors.OnLightSecondary,
+                            tint = ScottsTechXColors.OnCardSecondary,
                             modifier = Modifier.size(36.dp),
                         )
                     }
                     Spacer(Modifier.size(16.dp))
                     Text(
                         text = "Your cart is waiting for something great.",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp,
                     )
@@ -144,25 +157,46 @@ fun CartScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Color.White)
+                                .background(ScottsTechXColors.CardSurface)
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            // Real product photo — the cart previously painted a
+                            // gradient placeholder, so buyers never saw what
+                            // they were paying for.
                             Box(
                                 modifier = Modifier
                                     .size(54.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        Brush.linearGradient(
-                                            colors = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
-                                        ),
-                                    ),
-                            )
+                                    .background(ScottsTechXColors.CardSurfaceAlt),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                val photo = product.imageUrl.ifBlank {
+                                    product.images.firstOrNull()?.url ?: ""
+                                }
+                                if (photo.isNotBlank()) {
+                                    coil.compose.AsyncImage(
+                                        model = photo,
+                                        contentDescription = product.name,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.ShoppingCart,
+                                        contentDescription = null,
+                                        tint = ScottsTechXColors.OnCardSecondary,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = product.name,
-                                    color = ScottsTechXColors.OnLight,
+                                    color = ScottsTechXColors.OnCard,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
                                     maxLines = 1,
@@ -179,7 +213,7 @@ fun CartScreen(
                                     modifier = Modifier
                                         .size(28.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFFF1F3F7))
+                                        .background(ScottsTechXColors.CardSurfaceAlt)
                                         .clickable {
                                             CartStore.setQuantity(product.id, qty - 1)
                                         },
@@ -188,13 +222,13 @@ fun CartScreen(
                                     Icon(
                                         imageVector = Icons.Filled.Remove,
                                         contentDescription = "Decrease",
-                                        tint = ScottsTechXColors.OnLight,
+                                        tint = ScottsTechXColors.OnCard,
                                         modifier = Modifier.size(14.dp),
                                     )
                                 }
                                 Text(
                                     text = qty.toString(),
-                                    color = ScottsTechXColors.OnLight,
+                                    color = ScottsTechXColors.OnCard,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
                                     modifier = Modifier.padding(horizontal = 8.dp),
@@ -229,13 +263,13 @@ fun CartScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Total",
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnPanelSecondary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                         )
                         Text(
                             text = formatUgx(total),
-                            color = ScottsTechXColors.OnLight,
+                            color = ScottsTechXColors.OnPanel,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 20.sp,
                         )
@@ -244,14 +278,30 @@ fun CartScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(14.dp))
                             .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
-                                ),
+                                if (resolved.isEmpty() || placingOrder) {
+                                    Brush.horizontalGradient(
+                                        colors = listOf(ScottsTechXColors.OnCardSecondary.copy(alpha = 0.4f), ScottsTechXColors.OnCardSecondary.copy(alpha = 0.4f)),
+                                    )
+                                } else {
+                                    Brush.horizontalGradient(
+                                        colors = listOf(ScottsTechXColors.BluePrimary, ScottsTechXColors.BluePrimaryLight),
+                                    )
+                                },
                             )
+                            .clickable(enabled = resolved.isNotEmpty() && !placingOrder) {
+                                scope.launch {
+                                    placingOrder = true
+                                    val outcome = try { CartStore.checkout() } catch (_: Throwable) {
+                                        CartStore.CheckoutOutcome(false, "Couldn't place the order — check your connection and try again.", 0, 0L, emptyList())
+                                    }
+                                    placingOrder = false
+                                    snackbar.showSnackbar(outcome.message)
+                                }
+                            }
                             .padding(horizontal = 22.dp, vertical = 12.dp),
                     ) {
                         Text(
-                            text = "Checkout",
+                            text = if (placingOrder) "Placing…" else "Checkout",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -260,6 +310,12 @@ fun CartScreen(
                 }
             }
         }
+
+        androidx.compose.material3.SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.navBarSpacer()  // lift the bottom bar clear of the gesture pill
+                .align(Alignment.BottomCenter),
+        )
 
         Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             ScottsTechXBottomBar(

@@ -21,6 +21,20 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.ChairAlt
+import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Grass
+import androidx.compose.material.icons.filled.Kitchen
+import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.Checkroom
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.DirectionsRun
@@ -44,12 +58,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.domain.ProductCategory
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 @Composable
 fun CategoriesScreen(
@@ -75,7 +90,8 @@ fun CategoriesScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Column(
             modifier = Modifier
@@ -120,7 +136,7 @@ fun CategoriesScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(18.dp))
-                                .background(Color.White)
+                                .background(ScottsTechXColors.CardSurface)
                                 .clickable {
                                     selectedCategory = cat
                                 }
@@ -148,7 +164,7 @@ fun CategoriesScreen(
                             Spacer(Modifier.size(8.dp))
                             Text(
                                 text = cat.displayName,
-                                color = ScottsTechXColors.OnLight,
+                                color = ScottsTechXColors.OnCard,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -157,7 +173,23 @@ fun CategoriesScreen(
                     }
                 }
             } else {
-                val products = MarketplaceDataSource.productsByCategory(selectedCategory!!)
+                // Live category feed from /products/search?category=
+                var catProducts by remember(selectedCategory) {
+                    mutableStateOf<List<com.scottsx.app.data.domain.Product>?>(null)
+                }
+                androidx.compose.runtime.LaunchedEffect(selectedCategory) {
+                    val cat = selectedCategory!!
+                    val remote = try {
+                        com.scottsx.app.data.remote.V2Client.searchProducts(category = cat.displayName)
+                    } catch (_: Throwable) { null }
+                        ?: try {
+                            com.scottsx.app.data.remote.V2Client.searchProducts(category = cat.name)
+                        } catch (_: Throwable) { null }
+                    catProducts = remote
+                        ?: com.scottsx.app.data.LiveMarketplace.products.value.filter { it.category == cat }
+                    if (remote != null) com.scottsx.app.data.LiveMarketplace.cache(remote)
+                }
+                val products = catProducts ?: emptyList()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -167,7 +199,7 @@ fun CategoriesScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White)
+                            .background(ScottsTechXColors.CardSurface)
                             .clickable { selectedCategory = null }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
@@ -181,7 +213,7 @@ fun CategoriesScreen(
                     Spacer(Modifier.width(12.dp))
                     Text(
                         text = selectedCategory!!.displayName,
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnCard,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 16.sp,
                     )
@@ -205,7 +237,8 @@ fun CategoriesScreen(
             }
         }
 
-        Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        Box(modifier = Modifier.navBarSpacer()  // lift the bottom bar clear of the gesture pill
+                .align(Alignment.BottomCenter).fillMaxWidth()) {
             ScottsTechXBottomBar(
                 selected = bottomTab,
                 onSelect = { tab ->
@@ -220,11 +253,25 @@ fun CategoriesScreen(
 private fun iconFor(c: ProductCategory): ImageVector = when (c) {
     ProductCategory.All -> Icons.Filled.LocalGroceryStore
     ProductCategory.Electronics -> Icons.Filled.Devices
+    ProductCategory.PhonesTablets -> Icons.Filled.Smartphone
+    ProductCategory.Computers -> Icons.Filled.Computer
+    ProductCategory.TvAudio -> Icons.Filled.Tv
     ProductCategory.Fashion -> Icons.Filled.Checkroom
     ProductCategory.HomeLiving -> Icons.Filled.Home
+    ProductCategory.Appliances -> Icons.Filled.Kitchen
+    ProductCategory.Furniture -> Icons.Filled.ChairAlt
     ProductCategory.Beauty -> Icons.Filled.Spa
+    ProductCategory.Health -> Icons.Filled.LocalHospital
     ProductCategory.Sports -> Icons.Filled.DirectionsRun
+    ProductCategory.Gaming -> Icons.Filled.SportsEsports
     ProductCategory.Groceries -> Icons.Filled.LocalGroceryStore
+    ProductCategory.BabyKids -> Icons.Filled.ChildCare
+    ProductCategory.Books -> Icons.Filled.MenuBook
+    ProductCategory.Office -> Icons.Filled.Work
+    ProductCategory.Pets -> Icons.Filled.Pets
     ProductCategory.Automotive -> Icons.Filled.DirectionsCar
+    ProductCategory.Agriculture -> Icons.Filled.Grass
+    ProductCategory.ArtCrafts -> Icons.Filled.Brush
+    ProductCategory.Services -> Icons.Filled.Build
     ProductCategory.More -> Icons.Filled.Home
 }

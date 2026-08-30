@@ -68,6 +68,7 @@ object MessageStream {
                 val list = V2Client.fetchMessages(conversationId, limit = 200)
                 if (list.isNotEmpty() || s.messages.value.isEmpty()) {
                     s.messages.value = list
+                    com.scottsx.app.data.ChatCache.rememberMessages(conversationId, list)
                 }
             } catch (_: Throwable) { }
         }
@@ -88,6 +89,7 @@ object MessageStream {
             try {
                 val list = V2Client.fetchMessages(conversationId, limit = 200)
                 flow.value = list
+                if (list.isNotEmpty()) com.scottsx.app.data.ChatCache.rememberMessages(conversationId, list)
             } catch (_: Throwable) { }
             // Poll loop
             var lastSince: String? = null
@@ -105,7 +107,9 @@ object MessageStream {
                         // the latest server message.
                         val serverIds = list.map { it.id }.toHashSet()
                         val local = flow.value.filter { it.id !in serverIds }
-                        flow.value = list + local
+                        val merged = list + local
+                        flow.value = merged
+                        com.scottsx.app.data.ChatCache.rememberMessages(conversationId, merged)
                         lastSince = list.last().createdAt
                     }
                 } catch (_: Throwable) { }

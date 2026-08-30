@@ -55,7 +55,7 @@ fun SavedProductsScreen(onBack: () -> Unit, onOpenProduct: (String) -> Unit = {}
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White)
+                        .background(ScottsTechXColors.CardSurface)
                         .clickable { onOpenProduct(p.optString("productId")) }
                         .padding(10.dp),
                 ) {
@@ -63,7 +63,12 @@ fun SavedProductsScreen(onBack: () -> Unit, onOpenProduct: (String) -> Unit = {}
                         AsyncImage(
                             model = p.optString("imageUrl"),
                             contentDescription = null,
-                            modifier = Modifier.size(54.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE5E7EB)),
+                            modifier = Modifier.size(54.dp).clip(RoundedCornerShape(8.dp)).background(
+                                // Theme-aware placeholder: pale gray on light,
+                                // deep blue-slate on the dark card.
+                                if (ScottsTechXColors.isLightPalette) Color(0xFFE5E7EB)
+                                else ScottsTechXColors.PanelInputLight,
+                            ),
                         )
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -75,7 +80,7 @@ fun SavedProductsScreen(onBack: () -> Unit, onOpenProduct: (String) -> Unit = {}
                                 fontWeight = FontWeight.Bold,
                             )
                             if (!p.isNull("storeName")) {
-                                Text("by ${p.optString("storeName")}", fontSize = 11.sp, color = ScottsTechXColors.OnLightSecondary)
+                                Text("by ${p.optString("storeName")}", fontSize = 11.sp, color = ScottsTechXColors.OnCardSecondary)
                             }
                         }
                         Icon(
@@ -126,7 +131,7 @@ fun SavedSellersScreen(onBack: () -> Unit, onOpenStore: (String) -> Unit = {}) {
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White)
+                        .background(ScottsTechXColors.CardSurface)
                         .clickable { onOpenStore(s.optString("sellerId")) }
                         .padding(12.dp),
                 ) {
@@ -145,7 +150,7 @@ fun SavedSellersScreen(onBack: () -> Unit, onOpenStore: (String) -> Unit = {}) {
                         Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(s.optString("businessName"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text(s.optString("marketName"), fontSize = 12.sp, color = ScottsTechXColors.OnLightSecondary)
+                            Text(s.optString("marketName"), fontSize = 12.sp, color = ScottsTechXColors.OnCardSecondary)
                         }
                         Icon(
                             Icons.Filled.Favorite,

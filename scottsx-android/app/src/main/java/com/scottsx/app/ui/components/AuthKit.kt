@@ -17,7 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -161,7 +161,7 @@ fun AuthSheet(
                 modifier = Modifier.size(44.dp),
             ) {
                 Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
+                    Icons.Filled.ArrowBack,
                     contentDescription = "Go back",
                     tint = Color.White,
                     modifier = Modifier.size(24.dp),
@@ -178,7 +178,7 @@ fun AuthSheet(
                     ambientColor = Color.Transparent,
                 )
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(Color.White),
+                .background(ScottsTechXColors.CardSurface),
         ) {
             // Drag indicator — the sheet reads as a sheet.
             Box(
@@ -230,7 +230,7 @@ fun AuthFilledField(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = label,
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnCard,
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 8.dp),
@@ -242,7 +242,7 @@ fun AuthFilledField(
                 modifier = Modifier.fillMaxSize(),
                 singleLine = true,
                 placeholder = {
-                    Text(placeholder, color = Color(0xFF8A94A8), fontSize = 15.sp)
+                    Text(placeholder, color = ScottsTechXColors.OnPanelSecondary, fontSize = 15.sp)
                 },
                 visualTransformation =
                     if (isPassword && !visible) PasswordVisualTransformation() else VisualTransformation.None,
@@ -258,7 +258,7 @@ fun AuthFilledField(
                             Icon(
                                 if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                                 contentDescription = if (visible) "Hide password" else "Show password",
-                                tint = Color(0xFF5A6478),
+                                tint = ScottsTechXColors.OnPanelSecondary,
                                 modifier = Modifier.size(22.dp),
                             )
                         }
@@ -273,8 +273,8 @@ fun AuthFilledField(
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = ScottsTechXColors.PanelInputLight,
                     unfocusedContainerColor = ScottsTechXColors.PanelInputLight,
-                    focusedTextColor = ScottsTechXColors.OnLight,
-                    unfocusedTextColor = ScottsTechXColors.OnLight,
+                    focusedTextColor = ScottsTechXColors.OnPanel,
+                    unfocusedTextColor = ScottsTechXColors.OnPanel,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                 ),

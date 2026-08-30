@@ -43,11 +43,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
+import com.scottsx.app.data.LiveMarketplace
+import com.scottsx.app.data.remote.V2Client
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 @Composable
 fun SearchScreen(
@@ -55,23 +61,73 @@ fun SearchScreen(
     onOpenProduct: (com.scottsx.app.data.domain.Product) -> Unit = {},
     onTabSelect: (BottomTab) -> Unit,
     modifier: Modifier = Modifier,
+    flashOnly: Boolean = false,
+    screenTitle: String? = null,
 ) {
     var query by remember { mutableStateOf("") }
     var bottomTab by remember { mutableStateOf(BottomTab.Home) }
 
-    val all = MarketplaceDataSource.allProducts
-    val results = if (query.isBlank()) emptyList()
-    else all.filter { p ->
-        (p.name + " " + p.shortDescription + " " + p.brand.name + " " + p.category.displayName).lowercase()
-        .contains(query.lowercase())
+    // Live search — hits the canonical /products/search endpoint with a
+    // short debounce. On failure it degrades to filtering the live
+    // catalogue cache; it never reads the retired seed fixture.
+    var results by remember { mutableStateOf<List<com.scottsx.app.data.domain.Product>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var trending by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        launch { LiveMarketplace.ensureLoaded() }
+        val facets = try { V2Client.fetchCatalogFacets() } catch (_: Throwable) { null }
+        if (facets != null) {
+            trending = (facets.categories.take(6).map { it.name } +
+                facets.brands.take(4).map { it.name }).take(8)
+        }
     }
 
-    val trending = listOf("Phone", "Laptop", "Rice", "Shoes", "Power Bank", "Smart Watch")
+    LaunchedEffect(query) {
+        val q = query.trim()
+        if (q.isBlank()) {
+            if (flashOnly) {
+                // Deals page: every flash-deal listing, biggest discount first
+                // (web parity: /search?flashOnly=1 sorted by discount).
+                searching = true
+                val deals = try {
+                    V2Client.searchProducts(flashOnly = true, pageSize = 80)
+                } catch (_: Throwable) { null }
+                results = (deals
+                    ?: LiveMarketplace.products.value.filter { it.isFlashDeal })
+                    .sortedByDescending { it.discountPercent }
+                searching = false
+            } else {
+                results = emptyList()
+                searching = false
+            }
+            return@LaunchedEffect
+        }
+        searching = true
+        delay(300)
+        val remote = try {
+            V2Client.searchProducts(query = q, flashOnly = flashOnly)
+        } catch (_: Throwable) { null }
+        if (remote != null) {
+            LiveMarketplace.cache(remote)
+            results = if (flashOnly) remote.sortedByDescending { it.discountPercent } else remote
+        } else {
+            val needle = q.lowercase()
+            results = LiveMarketplace.products.value
+                .filter { !flashOnly || it.isFlashDeal }
+                .filter { p ->
+                    (p.name + " " + p.shortDescription + " " + p.brand.name + " " + p.category.displayName)
+                        .lowercase().contains(needle)
+                }
+        }
+        searching = false
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Column(
             modifier = Modifier
@@ -110,7 +166,7 @@ fun SearchScreen(
                         .weight(1f)
                         .height(44.dp)
                         .clip(RoundedCornerShape(22.dp))
-                        .background(Color.White),
+                        .background(ScottsTechXColors.CardSurface),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Row(
@@ -122,7 +178,7 @@ fun SearchScreen(
                         Icon(
                             imageVector = Icons.Filled.Search,
                             contentDescription = null,
-                            tint = ScottsTechXColors.OnLightSecondary,
+                            tint = ScottsTechXColors.OnCardSecondary,
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(8.dp))
@@ -131,8 +187,8 @@ fun SearchScreen(
                             onValueChange = { query = it },
                             placeholder = {
                                 Text(
-                                    text = "Search for products, brands, categories...",
-                                    color = ScottsTechXColors.OnLightSecondary,
+                                    text = if (flashOnly) "Search flash deals..." else "Search for products, brands, categories...",
+                                    color = ScottsTechXColors.OnCardSecondary,
                                     fontSize = 13.sp,
                                 )
                             },
@@ -143,8 +199,8 @@ fun SearchScreen(
                                 unfocusedContainerColor = Color.Transparent,
                                 focusedIndicatorColor = Color.Transparent,
                                 unfocusedIndicatorColor = Color.Transparent,
-                                focusedTextColor = ScottsTechXColors.OnLight,
-                                unfocusedTextColor = ScottsTechXColors.OnLight,
+                                focusedTextColor = ScottsTechXColors.OnCard,
+                                unfocusedTextColor = ScottsTechXColors.OnCard,
                             ),
                         )
                     }
@@ -160,7 +216,7 @@ fun SearchScreen(
                 ) {
                     Text(
                         text = "Trending searches",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                     )
@@ -171,7 +227,7 @@ fun SearchScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
-                                    .background(Color.White)
+                                    .background(ScottsTechXColors.CardSurface)
                                     .clickable { query = tag }
                                     .padding(horizontal = 14.dp, vertical = 8.dp),
                             ) {
@@ -186,14 +242,17 @@ fun SearchScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Browse categories",
-                        color = ScottsTechXColors.OnLight,
+                        text = if (flashOnly) "No flash deals right now" else "Browse categories",
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
                     )
                     Text(
-                        text = "Tap a category on the home screen to see products in that category.",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        text = if (flashOnly)
+                            "Sellers haven't published deals yet — check back soon, deals drop daily."
+                        else
+                            "Tap a category on the home screen to see products in that category.",
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 12.sp,
                     )
                 }
@@ -217,7 +276,8 @@ fun SearchScreen(
             }
         }
 
-        Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        Box(modifier = Modifier.navBarSpacer()  // lift the bottom bar clear of the gesture pill
+                .align(Alignment.BottomCenter).fillMaxWidth()) {
             ScottsTechXBottomBar(
                 selected = bottomTab,
                 onSelect = { tab ->

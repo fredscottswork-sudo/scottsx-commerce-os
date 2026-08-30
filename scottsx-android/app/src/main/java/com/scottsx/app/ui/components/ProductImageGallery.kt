@@ -231,7 +231,7 @@ private fun EmptyGallery(modifier: Modifier) {
             .background(ScottsTechXColors.PanelInputLight),
         contentAlignment = Alignment.Center,
     ) {
-        Text("No image", color = ScottsTechXColors.OnLightSecondary, fontSize = 14.sp)
+        Text("No image", color = ScottsTechXColors.OnPanelSecondary, fontSize = 14.sp)
     }
 }
 
@@ -301,6 +301,7 @@ private fun FullscreenGalleryViewer(
         // Page indicator
         Box(
             modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 24.dp)
                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))

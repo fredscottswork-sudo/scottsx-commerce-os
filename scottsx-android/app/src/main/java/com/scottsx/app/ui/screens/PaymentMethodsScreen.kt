@@ -106,7 +106,7 @@ private fun PaymentCard(pm: V2Client.PaymentMethod, onDelete: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -115,13 +115,13 @@ private fun PaymentCard(pm: V2Client.PaymentMethod, onDelete: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     pm.label,
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                 )
                 Text(
                     pm.account,
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                     fontSize = 12.sp,
                 )
             }
@@ -161,14 +161,14 @@ private fun PaymentMethodDialog(
         title = { Text("Add payment method") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Type", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = ScottsTechXColors.OnLightSecondary)
+                Text("Type", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = ScottsTechXColors.OnCardSecondary)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     kinds.forEachIndexed { i, k ->
                         val sel = kindIndex == i
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (sel) ScottsTechXColors.BluePrimary else Color.White)
+                                .background(if (sel) ScottsTechXColors.BluePrimary else ScottsTechXColors.CardSurface)
                                 .clickable { kindIndex = i }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                         ) {
@@ -179,7 +179,7 @@ private fun PaymentMethodDialog(
                                     "bank" -> "Bank"
                                     else -> "Cash"
                                 },
-                                color = if (sel) Color.White else ScottsTechXColors.OnLight,
+                                color = if (sel) Color.White else ScottsTechXColors.OnCard,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -214,7 +214,7 @@ private fun PaymentMethodDialog(
             )
         },
         dismissButton = {
-            Text("Cancel", color = ScottsTechXColors.OnLightSecondary, modifier = Modifier.clickable(onClick = onDismiss))
+            Text("Cancel", color = ScottsTechXColors.OnCardSecondary, modifier = Modifier.clickable(onClick = onDismiss))
         },
     )
 }

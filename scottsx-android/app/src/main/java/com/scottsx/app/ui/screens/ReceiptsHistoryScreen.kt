@@ -43,6 +43,7 @@ import com.scottsx.app.data.Session
 import com.scottsx.app.data.TransactionStore
 import com.scottsx.app.data.domain.Role
 import com.scottsx.app.data.domain.TransactionStatus
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Stage 4 — Receipts history screen.
@@ -66,7 +67,12 @@ fun ReceiptsHistoryScreen(
             r.sellerStoreName.lowercase().contains(q)
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarSpacer(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),

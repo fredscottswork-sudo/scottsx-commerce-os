@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Marketplace tools — promotes, offers, flash sales, bundles, coupons,
@@ -54,7 +55,7 @@ fun MarketplaceToolsScreen(
     onCreateCoupon: () -> Unit = {},
     onFeatureProduct: () -> Unit = {},
 ) {
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -130,16 +131,16 @@ fun MarketplaceToolsScreen(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            Text("Active promotions", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("Active promotions", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
             ActivePromoRow("Flash Sale: Samsung Galaxy A15", "Ends in 3 days", Color(0xFFFEF3C7), Color(0xFFB45309))
             ActivePromoRow("Discount: Power Bank 20%", "Ends in 5 days", Color(0xFFDBEAFE), Color(0xFF1E40AF))
             Spacer(Modifier.height(12.dp))
-            Text("Scheduled", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("Scheduled", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
             ActivePromoRow("Bundle: iPhone + AirPods", "Starts in 2 weeks", Color(0xFFEDE9FE), Color(0xFF6D28D9))
             Spacer(Modifier.height(12.dp))
-            Text("Completed", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("Completed", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
             ActivePromoRow("Coupon: WELCOME10", "Ended", Color(0xFFD1FAE5), Color(0xFF059669))
         }
@@ -158,7 +159,7 @@ private fun ToolTile(
         modifier = modifier
             .height(120.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .clickable(onClick = onClick)
             .padding(14.dp),
     ) {
@@ -173,8 +174,8 @@ private fun ToolTile(
                 Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.weight(1f))
-            Text(title, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Text(subtitle, color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp)
+            Text(title, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(subtitle, color = ScottsTechXColors.OnCardSecondary, fontSize = 11.sp)
         }
     }
 }
@@ -186,7 +187,7 @@ private fun ActivePromoRow(title: String, subtitle: String, bg: Color, fg: Color
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(ScottsTechXColors.CardSurface)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -199,6 +200,6 @@ private fun ActivePromoRow(title: String, subtitle: String, bg: Color, fg: Color
             Text(subtitle, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.width(8.dp))
-        Text(title, color = ScottsTechXColors.OnLight, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Text(title, color = ScottsTechXColors.OnCard, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, modifier = Modifier.weight(1f))
     }
 }

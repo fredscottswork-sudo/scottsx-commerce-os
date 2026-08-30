@@ -14,13 +14,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.scottsx.app.data.AuthRepository
 import com.scottsx.app.data.GoogleSignInHelper
-import com.scottsx.app.data.MarketplaceDataSource
 import com.scottsx.app.data.Session
 import com.scottsx.app.data.domain.Role
 import com.scottsx.app.data.domain.SessionCache
 import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.screens.AiAssistantScreen
 import com.scottsx.app.ui.screens.RealAiChatScreen
+import com.scottsx.app.ui.screens.ResetPasswordScreen
 import com.scottsx.app.ui.screens.AiPersonalizationScreen
 import com.scottsx.app.ui.screens.BuyerHomeScreen
 import com.scottsx.app.ui.screens.CartScreen
@@ -41,6 +41,8 @@ import com.scottsx.app.ui.screens.RoleSelectionScreen
 import com.scottsx.app.ui.screens.SearchScreen
 import com.scottsx.app.ui.screens.AddProductScreen
 import com.scottsx.app.ui.screens.MarketplaceToolsScreen
+import com.scottsx.app.ui.screens.SellerInventoryScreen
+import com.scottsx.app.ui.screens.BulkImportScreen
 import com.scottsx.app.ui.screens.MessageThreadScreen
 import com.scottsx.app.ui.screens.ProductDetailScreen
 import com.scottsx.app.ui.screens.ProfileSettingsScreen
@@ -116,8 +118,18 @@ fun AppNavigation() {
     NavHost(navController = navController, startDestination = Routes.SPLASH) {
         composable(Routes.SPLASH) {
             BackHandler { /* splash blocks back */ }
+            // LocalContext reads must live in the composable scope, not
+            // inside the plain callback lambdas below.
+            val splashCtx = androidx.compose.ui.platform.LocalContext.current
             SplashHost(onContinue = {
-                navController.navigate(Routes.ONBOARDING) {
+                // The intro slides are a FIRST-RUN experience: once the
+                // user has seen them, later cold starts go straight to
+                // role select (and from there a signed-in session fast-
+                // forwards to its dashboard). Without this gate every
+                // app launch replays all three welcome screens.
+                val seen = com.scottsx.app.data.preferences.UserPrefs.get(splashCtx).hasSeenOnboarding()
+                navController.navigate(if (seen) Routes.ROLE else Routes.ONBOARDING) {
+                    popUpTo(Routes.SPLASH) { inclusive = true }
                     launchSingleTop = true
                 }
             })
@@ -125,7 +137,13 @@ fun AppNavigation() {
 
         composable(Routes.ONBOARDING) {
             BackHandler { /* onboarding blocks back */ }
+            val onboardingCtx = androidx.compose.ui.platform.LocalContext.current
             OnboardingFlow(onFinish = {
+                // Persist BEFORE navigating so a process death between
+                // the two calls cannot replay the intro on next launch.
+                com.scottsx.app.data.preferences.UserPrefs
+                    .get(onboardingCtx)
+                    .markOnboardingSeen()
                 navController.navigate(Routes.ROLE) {
                     popUpTo(Routes.ONBOARDING) { inclusive = true }
                     launchSingleTop = true
@@ -175,7 +193,11 @@ fun AppNavigation() {
                         launchSingleTop = true
                     }
                 },
-                onForgotPassword = { /* Stage 3 — reset link email (TBD) */ },
+                onForgotPassword = {
+                    navController.navigate(Routes.resetPassword(role)) {
+                        launchSingleTop = true
+                    }
+                },
                 onRoleMismatch = { actualRole ->
                     navController.navigate(Routes.wrongRole(picked = role, actual = actualRole)) {
                         launchSingleTop = true
@@ -245,6 +267,18 @@ fun AppNavigation() {
                         launchSingleTop = true
                     }
                 },
+            )
+        }
+
+        composable(
+            Routes.RESET_PASSWORD,
+            arguments = listOf(navArgument("role") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val role = Routes.roleFromBackStack(backStackEntry.arguments?.getString("role"))
+            ResetPasswordScreen(
+                role = role,
+                onBack = { navController.popBackStack() },
+                onDone = { navController.popBackStack() },
             )
         }
 
@@ -319,7 +353,15 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val displayName = backStackEntry.arguments?.getString("displayName")
             val email = backStackEntry.arguments?.getString("email")
-            val profile = MarketplaceDataSource.profileFor(displayName, email)
+            // Real session — never a fabricated profile.
+            val profile = com.scottsx.app.data.domain.BuyerProfile(
+                uid = Session.userIdOrNull().orEmpty(),
+                displayName = displayName?.takeIf { it.isNotBlank() }
+                    ?: Session.displayNameOrEmpty().ifBlank {
+                        (email ?: Session.emailOrEmpty()).substringBefore("@").ifBlank { "Buyer" }
+                    },
+                email = email ?: Session.emailOrEmpty(),
+            )
             // Role-separation gate. If the signed-in session says Seller
             // but the buyer dashboard got requested, bounce to the
             // wrong-role screen so we never show the wrong UI.
@@ -338,6 +380,9 @@ fun AppNavigation() {
             BuyerHomeScreen(
                 profile = profile,
                 onNavigateToCart = { navController.navigate(Routes.CART) },
+                onNavigateToMyOrders = { navController.navigate(Routes.MY_ORDERS) },
+                onNavigateToSavedSellers = { navController.navigate(Routes.SAVED_SELLERS) },
+                onTrackOrder = { id -> navController.navigate(Routes.TRACK_ORDER.replace("{orderId}", URLEncoder.encode(id, "UTF-8"))) },
                 onNavigateToCategory = { navController.navigate(Routes.CATEGORIES) },
                 onNavigateToSearch = { navController.navigate(Routes.SEARCH) },
                 onNavigateToNearby = { navController.navigate(Routes.NEARBY) },
@@ -348,12 +393,23 @@ fun AppNavigation() {
                 onNavigateToAiPersonalization = { navController.navigate(Routes.AI_PERSONALIZATION) },
                 onNavigateToMessages = { navController.navigate(Routes.MESSAGES) },
                 onNavigateToNotifications = { navController.navigate(Routes.NOTIFICATIONS) },
+                onNavigateToPayments = { navController.navigate(Routes.PAYMENT_METHODS) },
+                onNavigateToAddresses = { navController.navigate(Routes.ADDRESSES) },
+                onNavigateToRefunds = { navController.navigate(Routes.REFUNDS) },
+                onNavigateToSupport = { navController.navigate(Routes.HELP) },
                 onNavigateToSellerCenter = {
                     navController.navigate(Routes.SELLER_HOME +
                         "/${java.net.URLEncoder.encode(profile.displayName.ifBlank { "Seller" }, "UTF-8")}/" +
                         "${java.net.URLEncoder.encode(profile.email.ifBlank { "seller" }, "UTF-8")}")
                 },
                 onNavigateToBecomeSeller = { navController.navigate(Routes.BECOME_SELLER) },
+                onNavigateToWishlist = { navController.navigate(Routes.WISHLIST) },
+                onNavigateToDeals = { navController.navigate(Routes.DEALS) },
+                onNavigateToProfile = {
+                    navController.navigate("profile/${
+                        java.net.URLEncoder.encode(profile.displayName.ifBlank { "Buyer" }, "UTF-8")
+                    }/${java.net.URLEncoder.encode(profile.email, "UTF-8")}")
+                },
                 onOpenProduct = { p: com.scottsx.app.data.domain.Product -> navController.navigate(Routes.product(p.id)) },
                 onOpenStore = { sid -> navController.navigate(Routes.storefront(sid)) },
                 onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
@@ -399,12 +455,14 @@ fun AppNavigation() {
                 email = email,
                 onAddProduct = { navController.navigate(Routes.SELLER_ADD_PRODUCT) },
                 onManageOrders = { navController.navigate(Routes.SELLER_ORDERS) },
-                onOpenInventory = { navController.navigate(Routes.SELLER_ORDERS) },
+                onOpenInventory = { navController.navigate(Routes.SELLER_INVENTORY) },
+                onOpenBulkImport = { navController.navigate(Routes.SELLER_BULK_IMPORT) },
                 onOpenAnalytics = { navController.navigate(Routes.SELLER_ANALYTICS) },
                 onOpenMarketplaceTools = { navController.navigate(Routes.SELLER_TOOLS) },
                 onOpenStoreSettings = { navController.navigate(Routes.SELLER_STORE_SETTINGS) },
                 onOpenProfileSettings = { navController.navigate(Routes.SELLER_PROFILE_SETTINGS) },
                 onOpenMessages = { navController.navigate(Routes.SELLER_MESSAGES) },
+                onOpenNotifications = { navController.navigate(Routes.NOTIFICATIONS) },
                 onOpenProduct = { product -> navController.navigate(Routes.product(product.id)) },
                 onNavigateToTransactions = { navController.navigate(Routes.TRANSACTIONS) },
                 onNavigateToReceipts = { navController.navigate(Routes.RECEIPTS_HISTORY) },
@@ -444,9 +502,19 @@ fun AppNavigation() {
                 onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
             )
         }
+        composable(Routes.DEALS) {
+            SearchScreen(
+                onBack = { navController.popBackStack() },
+                onOpenProduct = { p: com.scottsx.app.data.domain.Product -> navController.navigate(Routes.product(p.id)) },
+                onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
+                flashOnly = true,
+                screenTitle = "Deals",
+            )
+        }
         composable(Routes.NEARBY) {
             NearbyScreen(
                 onBack = { navController.popBackStack() },
+                onOpenStore = { sid -> navController.navigate(Routes.storefront(sid)) },
                 onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
             )
         }
@@ -454,6 +522,7 @@ fun AppNavigation() {
             RealAiChatScreen(
                 onBack = { navController.popBackStack() },
                 onOpenProduct = { p: com.scottsx.app.data.domain.Product -> navController.navigate(Routes.product(p.id)) },
+                onOpenProductId = { id -> navController.navigate(Routes.product(id)) },
                 onTabSelect = { tab: BottomTab -> onBuyerTab(navController, tab) },
             )
         }
@@ -490,7 +559,15 @@ fun AppNavigation() {
         ) { backStackEntry ->
             val displayName = backStackEntry.arguments?.getString("displayName")
             val email = backStackEntry.arguments?.getString("email")
-            val profile = MarketplaceDataSource.profileFor(displayName, email)
+            // Real session — never a fabricated profile.
+            val profile = com.scottsx.app.data.domain.BuyerProfile(
+                uid = Session.userIdOrNull().orEmpty(),
+                displayName = displayName?.takeIf { it.isNotBlank() }
+                    ?: Session.displayNameOrEmpty().ifBlank {
+                        (email ?: Session.emailOrEmpty()).substringBefore("@").ifBlank { "Buyer" }
+                    },
+                email = email ?: Session.emailOrEmpty(),
+            )
             val activityContext = androidx.compose.ui.platform.LocalContext.current
             ProfileScreen(
                 profile = profile,
@@ -617,7 +694,15 @@ fun AppNavigation() {
         // =====================================================================
 
         composable(Routes.SELLER_ORDERS) {
-            SellerOrdersScreen(onBack = { navController.popBackStack() })
+            SellerOrdersScreen(
+                onBack = { navController.popBackStack() },
+                onMessageBuyer = { order ->
+                    // Web parity: chatService.open(buyerId) then thread —
+                    // the thread screen resolves the peer by sellerId
+                    // argument, which is really "the other party's uid".
+                    navController.navigate("thread/${order.buyerId}")
+                },
+            )
         }
         composable(Routes.SELLER_ADD_PRODUCT) {
             AddProductScreen(
@@ -627,12 +712,32 @@ fun AppNavigation() {
         }
         composable(Routes.SELLER_MESSAGES) {
             SellerMessagesScreen(
-                onBack = { navController.popBackStack() },
-                onOpenThread = { conversationId, peerName -> navController.navigate(Routes.thread("tech-hub", null)) },
+                onBack = { pushBackToSellerHome(navController) },
+                // Thread route resolves the conversation by PEER user id —
+                // the seller inbox hands back the counterparty's uid in the
+                // second lambda slot (named peerName by the screen contract).
+                onOpenThread = { _, peerId -> navController.navigate(Routes.thread(peerId, null)) },
+                sellerTabSelect = { tab -> onSellerBarTab(navController, tab) },
             )
         }
         composable(Routes.SELLER_ANALYTICS) {
-            SellerAnalyticsScreen(onBack = { navController.popBackStack() })
+            SellerAnalyticsScreen(
+                onBack = { pushBackToSellerHome(navController) },
+                sellerTabSelect = { tab -> onSellerBarTab(navController, tab) },
+            )
+        }
+        composable(Routes.SELLER_INVENTORY) {
+            SellerInventoryScreen(
+                onBack = { navController.popBackStack() },
+                onAddProduct = { navController.navigate(Routes.SELLER_ADD_PRODUCT) },
+                onBulkImport = { navController.navigate(Routes.SELLER_BULK_IMPORT) },
+            )
+        }
+        composable(Routes.SELLER_BULK_IMPORT) {
+            BulkImportScreen(
+                onBack = { navController.popBackStack() },
+                onInventory = { navController.navigate(Routes.SELLER_INVENTORY) },
+            )
         }
         composable(Routes.SELLER_TOOLS) {
             MarketplaceToolsScreen(onBack = { navController.popBackStack() })
@@ -867,6 +972,9 @@ fun AppNavigation() {
                 onTerms = { navController.navigate(Routes.cmsPath("terms")) },
                 onPrivacy = { navController.navigate(Routes.cmsPath("privacy")) },
                 onReport = { navController.navigate(Routes.REPORT) },
+                onOpenOrders = { navController.navigate(Routes.MY_ORDERS) },
+                onOpenPayments = { navController.navigate(Routes.PAYMENT_METHODS) },
+                onOpenAccount = { navController.navigate(Routes.SETTINGS) },
             )
         }
         composable(Routes.CONTACT) { ContactScreen(onBack = { navController.popBackStack() }) }
@@ -925,6 +1033,36 @@ fun AppNavigation() {
 // Google account on demand via the "Use a different Google account"
 // button. AppNavigation does not need to hold a singleton helper.
 
+/** Seller floating-bar navigation shared by the seller sub-screens
+ *  (Messages / Analytics) — mirrors SellerHomeScreen's onSelect switch. */
+private fun onSellerBarTab(navController: NavHostController, tab: com.scottsx.app.ui.components.SellerBottomTab) {
+    when (tab) {
+        com.scottsx.app.ui.components.SellerBottomTab.Home -> {
+            val dn = SessionCache.displayName ?: "Seller"
+            val em = java.net.URLEncoder.encode(SessionCache.email ?: "", "UTF-8")
+            navController.navigate("seller_home/$dn/$em") {
+                popUpTo(Routes.SELLER_HOME) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+        com.scottsx.app.ui.components.SellerBottomTab.Orders -> navController.navigate(Routes.SELLER_ORDERS) { launchSingleTop = true }
+        com.scottsx.app.ui.components.SellerBottomTab.Add -> navController.navigate(Routes.SELLER_ADD_PRODUCT) { launchSingleTop = true }
+        com.scottsx.app.ui.components.SellerBottomTab.Messages -> navController.navigate(Routes.SELLER_MESSAGES) { launchSingleTop = true }
+        com.scottsx.app.ui.components.SellerBottomTab.Analytics -> navController.navigate(Routes.SELLER_ANALYTICS) { launchSingleTop = true }
+    }
+}
+
+private fun pushBackToSellerHome(navController: NavHostController) {
+    if (!navController.popBackStack()) {
+        val dn = SessionCache.displayName ?: "Seller"
+        val em = java.net.URLEncoder.encode(SessionCache.email ?: "", "UTF-8")
+        navController.navigate("seller_home/$dn/$em") {
+            popUpTo(Routes.SELLER_HOME) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+}
+
 private fun onBuyerTab(navController: NavHostController, tab: BottomTab) {
     val dn = SessionCache.displayName ?: "Buyer"
     val em = SessionCache.email ?: ""
@@ -940,10 +1078,13 @@ private fun onBuyerTab(navController: NavHostController, tab: BottomTab) {
         BottomTab.Ai -> navController.navigate(Routes.AI) {
             launchSingleTop = true
         }
-        BottomTab.Wishlist -> navController.navigate(Routes.WISHLIST) {
+        BottomTab.Chats -> navController.navigate(Routes.MESSAGES) {
             launchSingleTop = true
         }
-        BottomTab.Profile -> navController.navigate("profile/$dn/$encoded") {
+        BottomTab.Cart -> navController.navigate(Routes.CART) {
+            launchSingleTop = true
+        }
+        BottomTab.Alerts -> navController.navigate(Routes.NOTIFICATIONS) {
             launchSingleTop = true
         }
     }
@@ -961,13 +1102,18 @@ private fun onSellerTab(navController: NavHostController, tab: BottomTab) {
         BottomTab.Nearby -> navController.navigate(Routes.NEARBY) {
             launchSingleTop = true
         }
-        BottomTab.Ai -> navController.navigate(Routes.AI) {
+        // Sellers get the SELLER assistant (the buyer AI would route them
+        // to the wrong persona) — same one-tap promise as the web.
+        BottomTab.Ai -> navController.navigate(Routes.SELLER_AI) {
             launchSingleTop = true
         }
-        BottomTab.Wishlist -> navController.navigate(Routes.WISHLIST) {
+        BottomTab.Chats -> navController.navigate(Routes.MESSAGES) {
             launchSingleTop = true
         }
-        BottomTab.Profile -> navController.navigate("profile/$dn/$encoded") {
+        BottomTab.Cart -> navController.navigate(Routes.CART) {
+            launchSingleTop = true
+        }
+        BottomTab.Alerts -> navController.navigate(Routes.NOTIFICATIONS) {
             launchSingleTop = true
         }
     }
@@ -975,7 +1121,7 @@ private fun onSellerTab(navController: NavHostController, tab: BottomTab) {
 
 @Composable
 private fun SplashHost(onContinue: () -> Unit) {
-    SplashScreen(onContinue = onContinue)
+    SplashScreen(onFinished = onContinue)
 }
 
 object Routes {
@@ -986,10 +1132,12 @@ object Routes {
     const val SIGNUP = "signup/{role}"
     const val WRONG_ROLE = "wrongRole/{picked}/{actual}"
     const val VERIFY_EMAIL_PENDING = "verify-email-pending/{email}"
+    const val RESET_PASSWORD = "reset-password/{role}"
     const val HOME = "home/{role}"
     const val BUYER_HOME = "buyer_home/{displayName}/{email}"
     const val SELLER_HOME = "seller_home/{displayName}/{email}"
     const val CART = "cart"
+    const val DEALS = "deals"
     const val NEARBY = "nearby"
     const val AI = "ai"
     const val SELLER_AI = "seller/ai"
@@ -1002,13 +1150,19 @@ object Routes {
     const val PRODUCT = "product/{productId}"
     const val STOREFRONT = "storefront/{sellerId}"
     const val REVIEWS = "reviews/{productId}"
-    const val THREAD = "thread/{sellerId}/{productId}"
+    // productId is OPTIONAL (a bare "thread/{sellerId}" URL still matches)
+    // — encoding an empty productId used to produce a trailing-slash URL
+    // ("thread/abc/") that matched NOTHING and crashed navigation whenever
+    // a message row was tapped from the inbox.
+    const val THREAD = "thread/{sellerId}?productId={productId}"
     // ---- Stage 3 seller side routes ----
     const val SELLER_ORDERS = "seller/orders"
     const val SELLER_ADD_PRODUCT = "seller/add-product"
     const val SELLER_MESSAGES = "seller/messages"
     const val SELLER_ANALYTICS = "seller/analytics"
     const val SELLER_TOOLS = "seller/marketplace-tools"
+    const val SELLER_INVENTORY = "seller/inventory"
+    const val SELLER_BULK_IMPORT = "seller/bulk-import"
     const val SELLER_STORE_SETTINGS = "seller/store-settings"
     const val SELLER_STORE_SETTING_DETAIL = "seller/store-settings/{section}"
     const val SELLER_PROFILE_SETTINGS = "seller/profile-settings"
@@ -1024,7 +1178,6 @@ object Routes {
     const val DISPUTE = "dispute/{transactionId}"
     const val AI_PERSONALIZATION = "ai/personalization"
     const val NEARBY_MAP = "nearby/map"
-    const val AGREEMENT_PROPOSAL = "agreement/new/{productId}"
     const val SETTINGS = "settings"
 
     // ---- Stage 5.x communications routes ----
@@ -1068,7 +1221,12 @@ object Routes {
     fun storefront(id: String) = "storefront/${URLEncoder.encode(id, "UTF-8")}"
     fun reviews(id: String) = "reviews/${URLEncoder.encode(id, "UTF-8")}"
     fun thread(sellerId: String, productId: String? = null) =
-        "thread/${URLEncoder.encode(sellerId, "UTF-8")}/${URLEncoder.encode(productId ?: "", "UTF-8")}"
+        buildString {
+            append("thread/").append(URLEncoder.encode(sellerId, "UTF-8"))
+            if (!productId.isNullOrBlank()) {
+                append("?productId=").append(URLEncoder.encode(productId, "UTF-8"))
+            }
+        }
 
     fun login(role: Role) = "login/${role.name}"
     fun signup(role: Role) = "signup/${role.name}"
@@ -1076,6 +1234,8 @@ object Routes {
     fun wrongRole(picked: Role, actual: Role) = "wrongRole/${picked.name}/${actual.name}"
     fun verifyEmailPending(email: String): String =
         "verify-email-pending/${URLEncoder.encode(email, "UTF-8")}"
+    fun resetPassword(role: Role): String =
+        "reset-password/${role.name.lowercase()}"
     /**
      * Build the dashboard route for the given [role]. Falls back to
      * "Buyer" / "Seller" / a single non-empty placeholder when

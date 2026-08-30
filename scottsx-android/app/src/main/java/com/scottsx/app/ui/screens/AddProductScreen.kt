@@ -57,6 +57,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
 import java.util.UUID
+import com.scottsx.app.ui.components.statusBarSpacer
 
 /**
  * Add a new product. Three steps:
@@ -77,6 +78,7 @@ fun AddProductScreen(
     var step by remember { mutableStateOf(0) }
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var brandText by remember { mutableStateOf("") }
     // Stage 5.x AI-generated fields (when seller adds a photo URL)
     var aiSuggestedName by remember { mutableStateOf<String?>(null) }
     var aiSuggestedDesc by remember { mutableStateOf<String?>(null) }
@@ -111,44 +113,37 @@ fun AddProductScreen(
         uploadingImage = true
         scope.launch {
             val uploaded = runCatching {
-                // 1. Resolve MIME type from the ContentResolver so we can
-                //    send the correct Content-Type to the signed URL.
-                val mime = ctx.contentResolver.getType(uri)
-                    ?: "image/jpeg"
-                val ext = when {
-                    mime.endsWith("png") -> "png"
-                    mime.endsWith("webp") -> "webp"
-                    mime.endsWith("heic") || mime.endsWith("heif") -> "heic"
-                    else -> "jpg"
-                }
-                val filename = "${UUID.randomUUID()}.${ext}"
-
-                // 2. Ask the backend for a signed upload URL.
-                val handle = V2Client.requestUploadUrl(
-                    purpose = "product",
-                    filename = filename,
-                    contentType = mime,
-                ) ?: throw IllegalStateException("Could not get upload URL (are you signed in?)")
-
-                // 3. Read the file bytes and PUT them to the signed URL.
-                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                // Real backend route: multipart POST /api/v1/uploads/images
+                // (the old signed-URL flow called a route that does not
+                // exist, so gallery photos could never reach the server).
+                // Compress first — the backend accepts up to 8 MB and the
+                // route notes explicitly that the app compresses.
+                val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: throw IllegalStateException("Could not read selected image")
-                val putConn = java.net.URL(handle.uploadUrl).openConnection() as
-                    java.net.HttpURLConnection
-                putConn.requestMethod = "PUT"
-                putConn.doOutput = true
-                putConn.setRequestProperty("Content-Type", mime)
-                putConn.setFixedLengthStreamingMode(bytes.size)
-                putConn.outputStream.use { it.write(bytes) }
-                val putCode = putConn.responseCode
-                if (putCode !in 200..299) {
-                    throw IllegalStateException("Upload failed: HTTP $putCode")
+                var mime = ctx.contentResolver.getType(uri) ?: "image/jpeg"
+                var bytes = raw
+                if (bytes.size > 3 * 1024 * 1024 || mime !in setOf("image/jpeg", "image/png", "image/webp")) {
+                    val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size)
+                    if (bmp != null) {
+                        val maxSide = 1600
+                        val scale = minOf(1f, maxSide.toFloat() / maxOf(bmp.width, bmp.height))
+                        val scaled = if (scale < 1f)
+                            android.graphics.Bitmap.createScaledBitmap(
+                                bmp, (bmp.width * scale).toInt().coerceAtLeast(1),
+                                (bmp.height * scale).toInt().coerceAtLeast(1), true)
+                        else bmp
+                        val bos = java.io.ByteArrayOutputStream()
+                        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos)
+                        bytes = bos.toByteArray()
+                        mime = "image/jpeg"
+                    }
                 }
-                putConn.disconnect()
-
-                // 4. Return the public download URL the client stores in
-                //    imageUrls. The backend already minted it.
-                handle.publicUrl
+                val ext = when { mime.endsWith("png") -> "png"; mime.endsWith("webp") -> "webp"; else -> "jpg" }
+                val filename = "${UUID.randomUUID()}.$ext"
+                V2Client.uploadImage(bytes, mime, filename)
+                    ?: throw IllegalStateException(
+                        "Image upload failed — sign in and retry (the server accepts JPEG/PNG/WEBP up to 8 MB)."
+                    )
             }
             uploadingImage = false
             uploaded.fold(
@@ -164,7 +159,7 @@ fun AddProductScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight)) {
+    Column(modifier = Modifier.fillMaxSize().background(ScottsTechXColors.PanelLight).statusBarSpacer()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -213,11 +208,13 @@ fun AddProductScreen(
         ) {
             when (step) {
                 0 -> {
-                    Text("Basics", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Basics", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(12.dp))
                     InputField(value = name, onValueChange = { name = it }, label = "Product name")
                     Spacer(Modifier.height(10.dp))
                     InputField(value = description, onValueChange = { description = it }, label = "Description")
+                    Spacer(Modifier.height(10.dp))
+                    InputField(value = brandText, onValueChange = { brandText = it }, label = "Brand (optional)")
                     Spacer(Modifier.height(10.dp))
                     // Stage 5.x: AI helper. Seller enters a short hint (or
                     // uses the first photo URL as context), and we fill
@@ -309,13 +306,13 @@ fun AddProductScreen(
                         // Show preview
                         Text(
                             text = "→ ${aiSuggestedName.orEmpty()}",
-                            color = ScottsTechXColors.OnLight,
+                            color = ScottsTechXColors.OnPanel,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp,
                         )
                         Text(
                             text = aiSuggestedDesc.orEmpty().take(140) + if ((aiSuggestedDesc?.length ?: 0) > 140) "..." else "",
-                            color = ScottsTechXColors.OnLightSecondary,
+                            color = ScottsTechXColors.OnPanelSecondary,
                             fontSize = 11.sp,
                         )
                         Text(
@@ -326,7 +323,7 @@ fun AddProductScreen(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
-                    Text("Category", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Category", color = ScottsTechXColors.OnPanelSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(ProductCategory.values().toList()) { c ->
@@ -341,7 +338,7 @@ fun AddProductScreen(
                             ) {
                                 Text(
                                     text = c.displayName,
-                                    color = if (c == category) Color.White else ScottsTechXColors.OnLight,
+                                    color = if (c == category) Color.White else ScottsTechXColors.OnPanel,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -349,7 +346,7 @@ fun AddProductScreen(
                         }
                     }
                     Spacer(Modifier.height(14.dp))
-                    Text("Location (where the item ships from)", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Location (where the item ships from)", color = ScottsTechXColors.OnPanelSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(listOf("Kampala", "Entebbe", "Jinja", "Gulu", "Mbarara", "Arua")) { loc ->
@@ -364,7 +361,7 @@ fun AddProductScreen(
                             ) {
                                 Text(
                                     text = loc,
-                                    color = if (locationLabel == loc) Color.White else ScottsTechXColors.OnLight,
+                                    color = if (locationLabel == loc) Color.White else ScottsTechXColors.OnPanel,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -373,7 +370,7 @@ fun AddProductScreen(
                     }
                 }
                 1 -> {
-                    Text("Pricing & Stock", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Pricing & Stock", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(12.dp))
                     InputField(value = priceText, onValueChange = { priceText = it.filter { c -> c.isDigit() } }, label = "Price (UGX)", keyboardType = KeyboardType.Number)
                     Spacer(Modifier.height(10.dp))
@@ -381,7 +378,7 @@ fun AddProductScreen(
                     Spacer(Modifier.height(10.dp))
                     InputField(value = stockText, onValueChange = { stockText = it.filter { c -> c.isDigit() } }, label = "Stock quantity", keyboardType = KeyboardType.Number)
                     Spacer(Modifier.height(16.dp))
-                    Text("Product images", color = ScottsTechXColors.OnLightSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Product images", color = ScottsTechXColors.OnPanelSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
                     if (imageUrls.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -455,19 +452,19 @@ fun AddProductScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = imageUrls.size.toString() + " image(s) — uploaded to Firebase Storage",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        text = imageUrls.size.toString() + " image(s) — uploaded to your store media",
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 11.sp,
                     )
                 }
                 2 -> {
-                    Text("Review", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Review", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(12.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color.White)
+                            .background(ScottsTechXColors.CardSurface)
                             .padding(14.dp),
                     ) {
                         Column {
@@ -483,7 +480,7 @@ fun AddProductScreen(
                     }
                 }
                 3 -> {
-                    Text("Safety Check", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Safety Check", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(8.dp))
                     val safety = remember(name, description, category.displayName, priceText, stockText, imageUrls.size, locationLabel) {
                         com.scottsx.app.data.ProductUploadSafety.check(
@@ -531,14 +528,14 @@ fun AddProductScreen(
                             Text(
                                 text = "Draft -> Checking -> ${if (safety.requiresAdminReview) "Admin Review" else "Approved"} -> Live",
                                 fontSize = 11.sp,
-                                color = ScottsTechXColors.OnLightSecondary,
+                                color = ScottsTechXColors.OnCardSecondary,
                             )
                         }
                     }
                     if (safety.issues.isNotEmpty()) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color.White),
+                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = ScottsTechXColors.CardSurface),
                             shape = RoundedCornerShape(12.dp),
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -571,7 +568,7 @@ fun AddProductScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White)
+                .background(ScottsTechXColors.CardSurface)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -585,7 +582,7 @@ fun AddProductScreen(
                         .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Back", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("Back", color = ScottsTechXColors.OnPanel, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
                 Spacer(Modifier.width(8.dp))
             }
@@ -630,7 +627,9 @@ fun AddProductScreen(
                         scope.launch {
                             isUploading = true
                             try {
-                                // Real backend: POST /api/v1/products/v2/create
+                                // Real backend: POST /api/v1/seller/products
+                                // (the old /api/v1/products/v2/create route
+                                // never existed — every publish was a 404).
                                 val newId = V2Client.createProduct(
                                     title = productName,
                                     priceMinor = priceUgx,
@@ -638,7 +637,11 @@ fun AddProductScreen(
                                     currency = "UGX",
                                     stock = stock,
                                     category = category.name,
+                                    brand = brandText.trim(),
                                     imageUrl = firstImage,
+                                    mediaUrls = imageUrls,
+                                    location = locationLabel,
+                                    discountPercent = discount,
                                 )
                                 if (newId != null) {
                                     android.util.Log.i("AddProduct", "created id=$newId")
@@ -697,8 +700,8 @@ private fun ReviewRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(label, color = ScottsTechXColors.OnLightSecondary, fontSize = 12.sp, modifier = Modifier.width(110.dp))
+        Text(label, color = ScottsTechXColors.OnCardSecondary, fontSize = 12.sp, modifier = Modifier.width(110.dp))
         Spacer(Modifier.width(8.dp))
-        Text(value, color = ScottsTechXColors.OnLight, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(value, color = ScottsTechXColors.OnCard, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
     }
 }

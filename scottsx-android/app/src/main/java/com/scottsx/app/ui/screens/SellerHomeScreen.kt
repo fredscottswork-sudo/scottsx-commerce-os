@@ -1,12 +1,14 @@
 package com.scottsx.app.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,29 +17,24 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.ArrowDropUp
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -45,65 +42,68 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.data.MarketplaceDataSource
-import com.scottsx.app.data.SellerDataSource
-import com.scottsx.app.data.domain.OrderStatus
-import com.scottsx.app.data.domain.SalesPoint
-import com.scottsx.app.data.domain.SellerAiInsight
-import com.scottsx.app.data.domain.SellerDashboardSnapshot
-import com.scottsx.app.data.domain.SellerOrder
-import com.scottsx.app.data.domain.SellerOrdersOverview
+import com.scottsx.app.R
+import com.scottsx.app.data.domain.Product
+import com.scottsx.app.data.domain.SellerDashboardData
+import com.scottsx.app.data.domain.SellerStats
 import com.scottsx.app.data.domain.StoreStatus
-import com.scottsx.app.data.preferences.LocalThemePreference
-import com.scottsx.app.data.preferences.ThemeMode
-import com.scottsx.app.data.preferences.ThemePreference
+import com.scottsx.app.data.preferences.sidebarPaletteFor
 import com.scottsx.app.data.preferences.themeState
+import com.scottsx.app.data.remote.V2Client
+import com.scottsx.app.ui.components.AnimatedNumber
+import com.scottsx.app.ui.components.FeedErrorCard
 import com.scottsx.app.ui.components.HamburgerIcon
+import com.scottsx.app.data.preferences.LocalThemePreference
 import com.scottsx.app.ui.components.LogoutConfirmDialog
+import com.scottsx.app.ui.components.PulsingDot
+import com.scottsx.app.ui.components.Reveal
 import com.scottsx.app.ui.components.SellerBottomBar
 import com.scottsx.app.ui.components.SellerBottomTab
+import com.scottsx.app.ui.components.SellerSidebarData
 import com.scottsx.app.ui.components.SellerSidebarDestination
 import com.scottsx.app.ui.components.SellerSidebarOverlay
+import com.scottsx.app.ui.components.ShimmerBox
 import com.scottsx.app.ui.components.ThemeSelectorSheet
+import com.scottsx.app.ui.components.formatUgx
+import com.scottsx.app.ui.components.formatUgxCompact
 import com.scottsx.app.ui.theme.ScottsTechXColors
-import com.scottsx.app.ui.util.formatUgx
+import kotlinx.coroutines.launch
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 /**
- * Premium Seller Dashboard — Stage 3.2.
+ * Seller Home — rebuilt on the web's seller dashboard contract.
  *
- * Sections (vertical order, per the brief):
- *  1. Header — greeting, store name, status pill, hamburger.
- *  2. Today's Overview — 4 stat cards (Sales / Orders / Customers / Rating).
- *  3. Orders Overview — 4 status colors (Pending / Processing / Ready / Completed).
- *  4. Recent Orders — list with view / more controls.
- *  5. Quick Actions — 5 rounded action chips (Add Product off-center prominent).
- *  6. Sales Performance — animated bar chart with period toggle.
- *  7. Seller AI Assistant — premium gradient card with sample insight.
- *  8. Low Stock Alert — at-risk inventory list.
+ * Every figure comes from `GET /api/v1/seller/dashboard/stats`
+ * (Postgres aggregates over the seller's real orders and products —
+ * the same payload web/src/pages/seller/SellerDashboard.tsx renders),
+ * the open/closed pill from `/seller/location` + `PATCH
+ * /seller/open-state`, and the bell from the unread-count endpoint.
  *
- * Floating seller bottom nav (Home / Orders / Add / Messages / Analytics)
- * with the center Add raised as a blue pill FAB.
- *
- * Sidebar overlay (SellerSidebarOverlay) opens on hamburger tap.
- * Theme picker + logout dialog are managed here.
+ * The Stage-3 sample-data snapshot (850,000 UGX days, 42 completed
+ * orders, "sales up 18%" insights) is gone: loading shows shimmer,
+ * failure shows a retry card, and a brand-new store shows honest
+ * zeros with pointers to the next real action.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -113,12 +113,14 @@ fun SellerHomeScreen(
     onAddProduct: () -> Unit = {},
     onManageOrders: () -> Unit = {},
     onOpenInventory: () -> Unit = {},
+    onOpenBulkImport: () -> Unit = {},
     onOpenAnalytics: () -> Unit = {},
     onOpenMarketplaceTools: () -> Unit = {},
     onOpenStoreSettings: () -> Unit = {},
     onOpenProfileSettings: () -> Unit = {},
     onOpenMessages: () -> Unit = {},
-    onOpenProduct: (com.scottsx.app.data.domain.Product) -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+    onOpenProduct: (Product) -> Unit = {},
     onNavigateToTransactions: () -> Unit = {},
     onNavigateToReceipts: () -> Unit = {},
     onCreateReceipt: () -> Unit = {},
@@ -131,118 +133,526 @@ fun SellerHomeScreen(
 ) {
     val themePref = LocalThemePreference.current
     val themeMode by themePref.themeState()
+    val scope = rememberCoroutineScope()
 
-    // Build the snapshot reactively so status toggle / AI insight
-    // future updates recompose the dashboard.
-    val snapshot by remember(displayName, email) {
-        androidx.compose.runtime.derivedStateOf { SellerDataSource.snapshot(displayName, email) }
+    // ---- Live state --------------------------------------------------------
+    var dash by remember { mutableStateOf<SellerDashboardData?>(null) }
+    var open by remember { mutableStateOf<Boolean?>(null) }
+    var sharing by remember { mutableStateOf(false) }
+    var lastFix by remember { mutableStateOf<String?>(null) }
+    var locBusy by remember { mutableStateOf(false) }
+    var locHint by remember { mutableStateOf<String?>(null) }
+    var storeName by remember { mutableStateOf<String?>(null) }
+    var sellerId by remember { mutableStateOf<String?>(null) }
+    var unread by remember { mutableIntStateOf(0) }
+    var state by remember { mutableStateOf(SellerFeedState.Loading) }
+    var refreshTick by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(refreshTick) {
+        // Each of the four fetches is best-effort and exception-isolated:
+        // if ANY of them threw (parse glitch, flaky network, a 4xx the
+        // client maps to an exception), coroutineScope would CANCEL the
+        // other children and the whole block would fail — leaving the
+        // dashboard stuck on the Loading skeleton forever. supervisorScope
+        // + runCatching keeps every failure local so the Home tab always
+        // reaches Ready (or Error only when the main feed itself failed).
+        state = kotlinx.coroutines.supervisorScope {
+            var feed: SellerDashboardData? = null
+            val d = launch { feed = runCatching { V2Client.fetchSellerDashboard() }.getOrNull() }
+            val l = launch {
+                runCatching {
+                    open = V2Client.fetchStoreOpenState()
+                    V2Client.fetchSellerLocationState()?.let { loc ->
+                        sharing = loc.sharing
+                        lastFix = loc.updatedAt
+                    }
+                }
+            }
+            val n = launch { unread = runCatching { V2Client.fetchUnreadNotificationCount() }.getOrDefault(0) }
+            val p = launch {
+                runCatching {
+                    V2Client.fetchSellerProfile()?.let { prof ->
+                        storeName = listOf("businessName", "storeName", "name")
+                            .firstNotNullOfOrNull { key ->
+                                prof.optString(key).takeIf { it.isNotBlank() }
+                            }
+                        sellerId = prof.optString("id").takeIf { it.isNotBlank() }
+                    }
+                }
+            }
+            d.join(); l.join(); n.join(); p.join()
+            dash = feed
+            if (feed == null) SellerFeedState.Error else SellerFeedState.Ready
+        }
     }
 
+    // ---- Chrome state ------------------------------------------------------
     var bottomTab by remember { mutableStateOf(SellerBottomTab.Home) }
     var sidebarOpen by remember { mutableStateOf(false) }
     var themeSheetOpen by remember { mutableStateOf(false) }
     var logoutDialogOpen by remember { mutableStateOf(false) }
-    var salesPeriod by remember { mutableStateOf(SalesPeriod.ThisWeek) }
+
+    val status: StoreStatus =
+        if (open == false) StoreStatus.Away else StoreStatus.Online
+
+    fun toggleOpen() {
+        val next = !(open ?: false)
+        open = next  // optimistic — revert on server refusal
+        scope.launch {
+            val accepted = V2Client.setStoreOpen(next)
+            if (accepted == null) open = !next
+        }
+    }
+
+    // ---- Live location (web dashboard "Store controls" parity) ------------
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val sharePermLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) { locHint = "Location permission is required to share your store." }
+        else {
+            locBusy = true
+            runCatching {
+                val client = com.google.android.gms.location.LocationServices
+                    .getFusedLocationProviderClient(ctx)
+                val cts = com.google.android.gms.tasks.CancellationTokenSource()
+                @Suppress("MissingPermission")
+                client.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                    cts.token,
+                ).addOnSuccessListener { fix ->
+                    scope.launch {
+                        if (fix != null) {
+                            val ok = V2Client.updateSellerLocation(fix.latitude, fix.longitude)
+                            sharing = ok
+                            lastFix = java.text.SimpleDateFormat(
+                                "d MMM HH:mm", java.util.Locale.getDefault(),
+                            ).format(java.util.Date())
+                            locHint = if (ok) "Buyers can now see your store live."
+                            else "Could not publish the fix — try again."
+                        } else {
+                            locHint = "GPS returned nothing — step outside or try again."
+                        }
+                        locBusy = false
+                    }
+                }.addOnFailureListener {
+                    scope.launch {
+                        locHint = "GPS failed — try again."
+                        locBusy = false
+                    }
+                }
+            }.onFailure {
+                locHint = "Location services unavailable on this device."
+                locBusy = false
+            }
+        }
+    }
+
+    fun toggleSharing(next: Boolean) {
+        if (locBusy) return
+        if (!next) {
+            locBusy = true
+            locHint = null
+            scope.launch {
+                if (V2Client.stopSellerLocationSharing()) {
+                    sharing = false
+                    locHint = "Live sharing off — store stays at its last known pin."
+                } else {
+                    locHint = "Could not stop sharing — try again."
+                }
+                locBusy = false
+            }
+            return
+        }
+        locHint = null
+        // The system permission dialog handles both granted+denied flows.
+        sharePermLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.PanelLight),
+            .background(ScottsTechXColors.BackgroundDark)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = 96.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
         ) {
+            // Brand strip — company identity first (same as buyer home).
             item {
-                SellerHeader(
-                    snapshot = snapshot,
-                    onToggleStatus = {
-                        val next = if (snapshot.status == StoreStatus.Online) StoreStatus.Away else StoreStatus.Online
-                        SellerDataSource.setStatus(next)
-                    },
-                    onMenuClicked = { sidebarOpen = true },
-                )
-            }
-            item { Spacer(Modifier.height(16.dp)) }
-
-            // 1. Today's Overview
-            item {
-                TodayOverviewCard(snapshot = snapshot)
-                Spacer(Modifier.height(10.dp))
-            }
-            item {
-                OrdersOverviewCard(overview = snapshot.ordersOverview)
-                Spacer(Modifier.height(20.dp))
-            }
-
-            // 2. Recent Orders
-            item {
-                SectionHeading(
-                    title = "Recent Orders",
-                    actionLabel = "View All",
-                    onAction = onManageOrders,
-                )
-            }
-            items(snapshot.recentOrders, key = { it.id }) { order ->
-                OrderRow(
-                    order = order,
-                    onView = { /* Stage 3.2.1 — open order detail */ },
-                    onMore = { /* Stage 3.2.1 — overflow menu */ },
-                )
-            }
-            item { Spacer(Modifier.height(20.dp)) }
-
-            // 3. Quick Actions
-            item { SectionHeading(title = "Quick Actions") }
-            item {
-                QuickActionsRow(
-                    onAddProduct = onAddProduct,
-                    onManageOrders = onManageOrders,
-                    onCreateOffer = { /* Stage 3.2.1 — promotion screen */ },
-                    onAnalytics = onOpenAnalytics,
-                    onMessages = { /* Stage 3.2.1 — messages */ },
-                )
-                Spacer(Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 26.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // The OFFICIAL company logo picture — pre-shaped
+                    // rounded tile, no wrapper needed. First thing on screen.
+                    Image(
+                        painter = painterResource(R.drawable.brand_mark),
+                        contentDescription = "ScottsTechX logo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(11.dp)),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "ScottsTechX",
+                        color = ScottsTechXColors.OnDark,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp,
+                        letterSpacing = 0.2.sp,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = "· Seller Center",
+                        color = ScottsTechXColors.OnDarkMuted,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
             }
 
-            // 4. Sales Performance
+            // Header
             item {
-                SalesPerformanceCard(
-                    period = salesPeriod,
-                    onPeriod = { salesPeriod = it },
-                    sales = snapshot.sales,
-                )
-                Spacer(Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 16.dp, top = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(ScottsTechXColors.SurfacePanelDark)
+                            .clickable { sidebarOpen = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = HamburgerIcon,
+                            contentDescription = "Menu",
+                            tint = ScottsTechXColors.OnDark,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = storeName ?: "Seller dashboard",
+                            color = ScottsTechXColors.OnDark,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = displayName,
+                            color = ScottsTechXColors.OnDarkSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (open != null) {
+                        OpenStatePill(status = status, onToggle = { toggleOpen() })
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(ScottsTechXColors.SurfacePanelDark)
+                            .clickable { onOpenSellerMessages() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ChatBubble,
+                            contentDescription = "Messages",
+                            tint = ScottsTechXColors.OnDark,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        if (unread > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 2.dp, end = 2.dp)
+                                    .size(14.dp)
+                                    .clip(CircleShape)
+                                    .background(ScottsTechXColors.ErrorRed),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = if (unread > 9) "9+" else unread.toString(),
+                                    color = Color.White,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            // 5. Seller AI Assistant
-            item {
-                SellerAiCard(
-                    insight = snapshot.aiInsight,
-                    onAsk = { /* Stage 3.2.1 — open Seller AI */ },
-                )
-                Spacer(Modifier.height(20.dp))
+            val stats = dash?.stats
+            when (state) {
+                SellerFeedState.Loading -> {
+                    item {
+                        SellerSkeleton(
+                            base = ScottsTechXColors.SurfaceElevatedDark,
+                            highlight = Color(0xFF1B2743),
+                        )
+                    }
+                }
+                SellerFeedState.Error -> {
+                    item {
+                        Spacer(Modifier.height(20.dp))
+                        FeedErrorCard(
+                            onRetry = { refreshTick++ },
+                            modifier = Modifier.padding(16.dp),
+                            surface = ScottsTechXColors.SurfacePanelDark,
+                            foreground = ScottsTechXColors.OnDark,
+                            secondary = ScottsTechXColors.OnDarkSecondary,
+                            accent = ScottsTechXColors.BluePrimary,
+                        )
+                    }
+                }
+                SellerFeedState.Ready -> if (stats != null) {
+                    // 0. Attention chips — the web's alert row
+                    //    (pending approval / out of stock / low stock /
+                    //    unread messages), deep-linked to the real screens.
+                    if (stats.pendingApproval > 0 || stats.outOfStock > 0 ||
+                        stats.lowStock > 0 || stats.unreadMessages > 0
+                    ) {
+                        item {
+                            Reveal(index = 0) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    if (stats.pendingApproval > 0) {
+                                        AttentionChip(
+                                            "${stats.pendingApproval} awaiting approval",
+                                            ChipTone.Amber, onClick = onOpenInventory,
+                                        )
+                                    }
+                                    if (stats.outOfStock > 0) {
+                                        AttentionChip(
+                                            "${stats.outOfStock} out of stock",
+                                            ChipTone.Red, onClick = onOpenInventory,
+                                        )
+                                    }
+                                    if (stats.lowStock > 0) {
+                                        AttentionChip(
+                                            "${stats.lowStock} low on stock",
+                                            ChipTone.Amber, onClick = onOpenInventory,
+                                        )
+                                    }
+                                    if (stats.unreadMessages > 0) {
+                                        AttentionChip(
+                                            "${stats.unreadMessages} unread message${if (stats.unreadMessages > 1) "s" else ""}",
+                                            ChipTone.Blue, onClick = onOpenSellerMessages,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 1. Stat cards — real numbers, web-parity set
+                    item {
+                        Reveal(index = 0) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    StatCard(
+                                        label = "Revenue (all time)",
+                                        value = stats.revenueUgx,
+                                        // Abbreviated ("UGX 45.0M") — the raw
+                                        // figure is up to 13 chars wide.
+                                        format = { formatUgxCompact(it) },
+                                        icon = Icons.Filled.AttachMoney,
+                                        hint = "${formatUgxCompact(stats.revenue30Ugx)} last 30 days",
+                                        accent = ScottsTechXColors.SuccessGreen,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    StatCard(
+                                        label = "Orders",
+                                        hint = "${stats.orders30} in last 30 days",
+                                        value = stats.orders.toLong(),
+                                        format = { compactCount(it) },
+                                        icon = Icons.Filled.ShoppingBag,
+                                        accent = ScottsTechXColors.BluePrimary,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    StatCard(
+                                        label = "Avg order value",
+                                        value = stats.avgOrderValueUgx,
+                                        format = { formatUgxCompact(it) },
+                                        hint = "${stats.totalProducts} products listed",
+                                        icon = Icons.Filled.Inventory2,
+                                        accent = ScottsTechXColors.PurpleAccent,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    StatCard(
+                                        label = "Followers",
+                                        value = stats.followers.toLong(),
+                                        format = { compactCount(it) },
+                                        hint = "${compactCount(stats.totalViews.toLong())} product views",
+                                        icon = Icons.Filled.Group,
+                                        accent = ScottsTechXColors.CyanAccent,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Quick actions — real navigations only
+                    item {
+                        Reveal(index = 1) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                QuickChip("Add product", Icons.Filled.Add, onAddProduct, Modifier.weight(1f))
+                                QuickChip("Orders", Icons.Filled.ShoppingBag, onManageOrders, Modifier.weight(1f))
+                                QuickChip("Promos", Icons.Filled.LocalOffer, onOpenMarketplaceTools, Modifier.weight(1f))
+                                QuickChip("Analytics", Icons.Filled.Analytics, onOpenAnalytics, Modifier.weight(1f))
+                            }
+                        }
+                    }
+
+                    // 3. Sales sparkline — the real 14-day series
+                    if (dash?.salesSeries?.isNotEmpty() == true) {
+                        item {
+                            Reveal(index = 2) {
+                                SalesSparklineCard(
+                                    points = dash!!.salesSeries.map { it.revenue },
+                                    revenue30 = stats.revenue30Ugx,
+                                    orders30 = stats.orders30,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    // 3b. Store controls — web parity: accepting-orders
+                    //     switch, live-location sharing, listing badges.
+                    item {
+                        Reveal(index = 3) {
+                            StoreControlsCard(
+                                acceptingOrders = open != false,
+                                onToggleOrders = { toggleOpen() },
+                                sharing = sharing,
+                                locBusy = locBusy,
+                                locHint = locHint,
+                                lastFix = lastFix,
+                                onToggleSharing = { next -> toggleSharing(next) },
+                                statusCounts = stats,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+
+                    // 4. Listing health — real status counts
+                    item {
+                        Reveal(index = 4) {
+                            ListingHealthCard(
+                                approved = stats.approved,
+                                pending = stats.pending + stats.pendingApproval,
+                                draft = stats.draft,
+                                rejected = stats.rejected,
+                                suspended = stats.suspended,
+                                lowStock = stats.lowStock,
+                                outOfStock = stats.outOfStock,
+                                onInventory = onOpenInventory,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                        }
+                    }
+
+                    // 5. Top products — real sales leaders
+                    if (dash?.topProducts?.isNotEmpty() == true) {
+                        item {
+                            Reveal(index = 4) {
+                                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                                    SellerSectionTitle(title = "Top products", action = null, onAction = {})
+                                }
+                            }
+                        }
+                        items(dash!!.topProducts, key = { it.title }) { top ->
+                            TopProductRow(
+                                title = top.title,
+                                sold = top.sold,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+
+                    // 6. Recent orders — real rows
+                    if (dash?.recentOrders?.isNotEmpty() == true) {
+                        item {
+                            Spacer(Modifier.height(6.dp))
+                            Reveal(index = 5) {
+                                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                    SellerSectionTitle(
+                                        title = "Recent orders",
+                                        action = "View all",
+                                        onAction = onManageOrders,
+                                    )
+                                }
+                            }
+                        }
+                        items(dash!!.recentOrders, key = { it.id }) { order ->
+                            RecentOrderRow(
+                                order = order,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+
+                    // 7. Low-stock alert band — only when real
+                    if (stats.lowStock > 0 || stats.outOfStock > 0) {
+                        item {
+                            Reveal(index = 6) {
+                                LowStockBand(
+                                    low = stats.lowStock,
+                                    out = stats.outOfStock,
+                                    onInventory = onOpenInventory,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            // 6. Low Stock Alerts
-            item {
-                SectionHeading(
-                    title = "Low Stock Alert",
-                    actionLabel = "View All",
-                    onAction = onOpenInventory,
-                )
-            }
-            items(snapshot.lowStock, key = { it.productId }) { alert ->
-                LowStockRow(alert = alert)
-            }
             item { Spacer(Modifier.height(8.dp)) }
         }
 
-        // ---------- Floating bottom nav (seller) ----------
+        // Floating bottom nav
         Box(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
         ) {
             SellerBottomBar(
                 selected = bottomTab,
@@ -250,8 +660,8 @@ fun SellerHomeScreen(
                     bottomTab = tab
                     when (tab) {
                         SellerBottomTab.Home -> Unit
+                        SellerBottomTab.Orders -> onManageOrders()
                         SellerBottomTab.Add -> onAddProduct()
-                        SellerBottomTab.AI -> onOpenSellerAi()
                         SellerBottomTab.Messages -> onOpenSellerMessages()
                         SellerBottomTab.Analytics -> onOpenAnalytics()
                     }
@@ -261,23 +671,36 @@ fun SellerHomeScreen(
             )
         }
 
-        // ---------- Sidebar overlay ----------
+        // Sidebar — fed with real numbers only
+        val statsForSidebar = dash?.stats
         SellerSidebarOverlay(
             open = sidebarOpen,
             onDismiss = { sidebarOpen = false },
-            snapshot = snapshot,
+            data = SellerSidebarData(
+                displayName = displayName,
+                storeName = storeName ?: "My store",
+                storeId = sellerId ?: "",
+                status = status,
+                pendingOrders = dash?.recentOrders?.count { it.status == "pending" } ?: 0,
+                followers = statsForSidebar?.followers ?: 0,
+                productsTotal = statsForSidebar?.totalProducts ?: 0,
+                unreadMessages = statsForSidebar?.unreadMessages ?: unread,
+            ),
             onNavigate = { dest ->
                 when (dest) {
                     SellerSidebarDestination.Dashboard -> Unit
                     SellerSidebarDestination.Orders -> onManageOrders()
                     SellerSidebarDestination.Products -> onOpenInventory()
+                    SellerSidebarDestination.BulkImport -> onOpenBulkImport()
+                    SellerSidebarDestination.AddProduct -> onAddProduct()
                     SellerSidebarDestination.Customers -> Unit
                     SellerSidebarDestination.Messages -> onOpenMessages()
+                    SellerSidebarDestination.Notifications -> onOpenNotifications()
                     SellerSidebarDestination.Promotions -> onOpenMarketplaceTools()
                     SellerSidebarDestination.Analytics -> onOpenAnalytics()
-                    SellerSidebarDestination.SellerAi -> onOpenAnalytics()
+                    SellerSidebarDestination.SellerAi -> onOpenSellerAi()
                     SellerSidebarDestination.MarketingTools -> onOpenMarketplaceTools()
-                    SellerSidebarDestination.StoreProfile -> onOpenStoreSettings()
+                    SellerSidebarDestination.StoreProfile -> onOpenProfileSettings()
                     SellerSidebarDestination.StoreSettings -> onOpenStoreSettings()
                     SellerSidebarDestination.Transactions -> onNavigateToTransactions()
                     SellerSidebarDestination.Receipts -> onNavigateToReceipts()
@@ -288,21 +711,17 @@ fun SellerHomeScreen(
                     SellerSidebarDestination.Logout -> logoutDialogOpen = true
                     SellerSidebarDestination.ViewStore -> Unit
                     SellerSidebarDestination.Theme -> themeSheetOpen = true
-                    SellerSidebarDestination.ToggleOnline -> {
-                        val next = if (snapshot.status == StoreStatus.Online) StoreStatus.Away else StoreStatus.Online
-                        SellerDataSource.setStatus(next)
-                    }
+                    SellerSidebarDestination.ToggleOnline -> toggleOpen()
                 }
             },
         )
 
-        // ---------- Theme selector sheet ----------
         if (themeSheetOpen) {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ModalBottomSheet(
                 onDismissRequest = { themeSheetOpen = false },
                 sheetState = sheetState,
-                containerColor = Color.White,
+                containerColor = sidebarPaletteFor(themeMode).background,
             ) {
                 ThemeSelectorSheet(
                     current = themeMode,
@@ -314,7 +733,6 @@ fun SellerHomeScreen(
             }
         }
 
-        // ---------- Logout confirmation ----------
         if (logoutDialogOpen) {
             LogoutConfirmDialog(
                 onCancel = { logoutDialogOpen = false },
@@ -328,503 +746,410 @@ fun SellerHomeScreen(
     }
 }
 
+private enum class SellerFeedState { Loading, Ready, Error }
+
 // =====================================================================================
-// Header
+// Building blocks
 // =====================================================================================
 
 @Composable
-private fun SellerHeader(
-    snapshot: SellerDashboardSnapshot,
-    onToggleStatus: () -> Unit,
-    onMenuClicked: () -> Unit,
-) {
-    Box(
+private fun OpenStatePill(status: StoreStatus, onToggle: () -> Unit) {
+    val live = status == StoreStatus.Online
+    Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .clip(RoundedCornerShape(50))
             .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        ScottsTechXColors.BluePrimaryDark,
-                        ScottsTechXColors.BluePrimary,
-                        Color(0xFF3B82F6),
-                    ),
-                ),
+                if (live) ScottsTechXColors.SuccessGreen.copy(alpha = 0.14f)
+                else ScottsTechXColors.WarningAmber.copy(alpha = 0.14f),
             )
-            .padding(top = 32.dp, bottom = 22.dp),
+            .clickable(onClickLabel = "Toggle store open state") { onToggle() }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp),
-        ) {
-            // Top row — hamburger + store avatar + notification + message
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.18f))
-                        .clickable(onClick = onMenuClicked),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Menu,
-                        contentDescription = "Open menu",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.18f))
-                        .border1(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Storefront,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                HeaderIcon(icon = Icons.Filled.Notifications, badge = 3, contentDescription = "Notifications")
-                Spacer(Modifier.width(8.dp))
-                HeaderIcon(icon = Icons.Filled.Receipt, badge = 5, contentDescription = "Messages")
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            Text(
-                text = "Good morning, ${snapshot.displayName}",
-                color = Color.White.copy(alpha = 0.95f),
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
-            )
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = snapshot.storeName,
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 22.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Spacer(Modifier.width(8.dp))
-                // Status pill — tappable to toggle Online / Away.
-                SellerStatusPill(
-                    status = snapshot.status,
-                    onToggle = onToggleStatus,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun HeaderIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, badge: Int, contentDescription: String? = null) {
-    Box {
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(8.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.18f))
-                .clickable { /* Stage 3.2.1 — open notifications / messages */ },
+                .background(if (live) ScottsTechXColors.SuccessGreen else ScottsTechXColors.WarningAmber),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = status.label,
+            color = if (live) ScottsTechXColors.SuccessGreen else ScottsTechXColors.WarningAmber,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun StatCard(
+    label: String,
+    value: Long,
+    format: (Long) -> String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    hint: String? = null,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(ScottsTechXColors.SurfacePanelDark)
+            .padding(14.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(accent.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = Color.White,
-                modifier = Modifier.size(20.dp),
+            Icon(imageVector = icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+            AnimatedNumber(
+            target = value,
+            format = format,
+            color = ScottsTechXColors.OnDark,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.ExtraBold,
+            // Hard-clamped to one line: an unexpected figure degrades to
+            // "UGX 9…" instead of wrapping and bursting the tile.
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = label, color = ScottsTechXColors.OnDarkSecondary, fontSize = 11.5.sp,
+            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+        )
+        if (hint != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = hint, color = ScottsTechXColors.OnDarkMuted, fontSize = 10.sp,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
             )
         }
-        if (badge > 0) {
-            Box(
+    }
+}
+
+private fun compactCount(n: Long): String = when {
+    n >= 1_000_000L -> "${"%.1f".format(n / 1_000_000.0)}M"
+    n >= 1_000L -> "${"%.1f".format(n / 1_000.0)}K"
+    else -> n.toString()
+}
+
+@Composable
+private fun QuickChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(ScottsTechXColors.SurfacePanelDark)
+            .clickable(onClickLabel = label) { onClick() }
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.height(5.dp))
+        Text(text = label, color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun SellerSectionTitle(title: String, action: String?, onAction: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = title, color = ScottsTechXColors.OnDark, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+        if (action != null) {
+            Row(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 2.dp, end = 2.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFEF4444))
-                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                    .clip(RoundedCornerShape(50))
+                    .clickable { onAction() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = badge.toString(),
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 9.sp,
+                Text(text = action, color = ScottsTechXColors.BluePrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = ScottsTechXColors.BluePrimary,
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }
     }
 }
 
+/** 14-day revenue sparkline built from the real salesSeries. */
 @Composable
-private fun SellerStatusPill(status: StoreStatus, onToggle: () -> Unit) {
-    val bg = when (status) {
-        StoreStatus.Online -> Color(0xFF15803D)
-        StoreStatus.Away -> Color(0xFFB45309)
+private fun SalesSparklineCard(
+    points: List<Long>,
+    revenue30: Long,
+    orders30: Int,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(ScottsTechXColors.SurfacePanelDark)
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PulsingDot(color = ScottsTechXColors.CyanAccent)
+            Spacer(Modifier.width(6.dp))
+            Text(text = "Sales — last 14 days", color = ScottsTechXColors.OnDark, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "${formatUgx(revenue30)} revenue  ·  $orders30 orders in 30 days",
+            color = ScottsTechXColors.OnDarkSecondary,
+            fontSize = 11.5.sp,
+        )
+        Spacer(Modifier.height(12.dp))
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(70.dp),
+        ) {
+            val max = (points.maxOrNull() ?: 0L).coerceAtLeast(1L)
+            val stepX = size.width / points.size.coerceAtLeast(1)
+            val stepY = size.height * 0.8f
+            val path = Path()
+            var x = stepX / 2f
+            points.forEachIndexed { i, v ->
+                val y = size.height - (v.toFloat() / max.toFloat()) * stepY - size.height * 0.1f
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                x += stepX
+            }
+            drawPath(path, color = Color(0xFF22D3EE), style = Stroke(width = 3.dp.toPx()))
+            // end dot on the latest day
+            drawCircle(color = Color(0xFF22D3EE), radius = 4.dp.toPx(), center = Offset(x - stepX, size.height - (points.last().toFloat() / max.toFloat()) * stepY - size.height * 0.1f))
+        }
+    }
+}
+
+@Composable
+private fun ListingHealthCard(
+    approved: Int,
+    pending: Int,
+    draft: Int,
+    rejected: Int,
+    suspended: Int,
+    lowStock: Int,
+    outOfStock: Int,
+    onInventory: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(ScottsTechXColors.SurfacePanelDark)
+            .padding(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(text = "Listing health", color = ScottsTechXColors.OnDark, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+            Text(
+                text = "Inventory",
+                color = ScottsTechXColors.BluePrimary,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable(onClickLabel = "Open inventory") { onInventory() },
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HealthChip("Approved", approved, ScottsTechXColors.SuccessGreen, Modifier.weight(1f))
+            HealthChip("Pending", pending, ScottsTechXColors.WarningAmber, Modifier.weight(1f))
+            HealthChip("Draft", draft, ScottsTechXColors.OnDarkMuted, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HealthChip("Rejected", rejected, ScottsTechXColors.ErrorRed, Modifier.weight(1f))
+            HealthChip("Suspended", suspended, ScottsTechXColors.PinkAccent, Modifier.weight(1f))
+            HealthChip("Out of stock", outOfStock, ScottsTechXColors.WarningAmber, Modifier.weight(1f))
+        }
+    }
+}
+
+private enum class ChipTone { Amber, Red, Blue }
+
+/** Web-parity alert chip — color coding matches the web's alert-chip rows. */
+@Composable
+private fun AttentionChip(label: String, tone: ChipTone, onClick: () -> Unit) {
+    val (bg, fg) = when (tone) {
+        ChipTone.Amber -> Pair(Color(0x26F59E0B), Color(0xFFFBBF24))
+        ChipTone.Red -> Pair(Color(0x26EF4444), Color(0xFFF87171))
+        ChipTone.Blue -> Pair(Color(0x261E6FFF), Color(0xFF7BACFF))
     }
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(bg)
-            .clickable(onClick = onToggle)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(Color.White),
+                .background(fg),
         )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = status.label,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-        )
+        Spacer(Modifier.width(7.dp))
+        Text(label, color = fg, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
-// Tiny helper so we can chain a border on the avatar in the header.
-private fun Modifier.border1(): Modifier = this
-
-// =====================================================================================
-// Sections
-// =====================================================================================
-
+/**
+ * Web dashboard "Store controls" card — accepting-orders switch, live
+ * location sharing, and listing-status badges, all against the same
+ * backend the web toggles (`/seller/open-state`, `/seller/location`).
+ */
 @Composable
-private fun TodayOverviewCard(snapshot: SellerDashboardSnapshot) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(Color.White)
-            .padding(16.dp),
-    ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Today's Overview",
-                    color = ScottsTechXColors.OnLight,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "Live",
-                    color = Color(0xFF15803D),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                )
-                Box(
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF15803D)),
-                )
-            }
-            Spacer(Modifier.height(14.dp))
-            // 2x2 grid of stat mini-cards.
-            val rows = listOf(
-                listOf(
-                    OverviewStat("Sales", formatUgx(snapshot.salesTodayUgx), "+${"%.1f".format(snapshot.salesTodayDeltaPct)}%", Color(0xFFEA580C)),
-                    OverviewStat("Orders", snapshot.ordersToday.toString(), "+${snapshot.ordersTodayDelta}", ScottsTechXColors.BluePrimary),
-                ),
-                listOf(
-                    OverviewStat("Customers", snapshot.customersTotal.toString(), "+${snapshot.customersDelta}", Color(0xFF059669)),
-                    OverviewStat("Rating", "%.1f".format(snapshot.rating), snapshot.ratingLabel, Color(0xFFFBBF24)),
-                ),
-            )
-            rows.forEach { rowItems ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    rowItems.forEach { stat ->
-                        OverviewStatCard(stat = stat, modifier = Modifier.weight(1f))
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-        }
-    }
-}
-
-private data class OverviewStat(
-    val label: String,
-    val value: String,
-    val delta: String,
-    val tint: Color,
-)
-
-@Composable
-private fun OverviewStatCard(stat: OverviewStat, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(ScottsTechXColors.PanelInputLight)
-            .padding(14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(stat.tint.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.TrendingUp,
-                    contentDescription = null,
-                    tint = stat.tint,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = stat.label,
-                color = ScottsTechXColors.OnLightSecondary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 11.sp,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stat.value,
-            color = ScottsTechXColors.OnLight,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 20.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Filled.ArrowDropUp,
-                contentDescription = null,
-                tint = Color(0xFF059669),
-                modifier = Modifier.size(14.dp),
-            )
-            Text(
-                text = stat.delta,
-                color = Color(0xFF059669),
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 11.sp,
-            )
-        }
-    }
-}
-
-@Composable
-private fun OrdersOverviewCard(overview: SellerOrdersOverview) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(Color.White)
-            .padding(16.dp),
-    ) {
-        Column {
-            Text(
-                text = "Orders Overview",
-                color = ScottsTechXColors.OnLight,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 16.sp,
-            )
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OrderStatusChip("Pending", overview.pending, Color(0xFFEA580C), OrderStatus.Pending, modifier = Modifier.weight(1f))
-                OrderStatusChip("Processing", overview.processing, ScottsTechXColors.BluePrimary, OrderStatus.Processing, modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OrderStatusChip("Ready", overview.ready, Color(0xFF8B5CF6), OrderStatus.Ready, modifier = Modifier.weight(1f))
-                OrderStatusChip("Completed", overview.completed, Color(0xFF059669), OrderStatus.Completed, modifier = Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun OrderStatusChip(
-    label: String,
-    count: Int,
-    tint: Color,
-    status: OrderStatus,
+private fun StoreControlsCard(
+    acceptingOrders: Boolean,
+    onToggleOrders: () -> Unit,
+    sharing: Boolean,
+    locBusy: Boolean,
+    locHint: String?,
+    lastFix: String?,
+    onToggleSharing: (Boolean) -> Unit,
+    statusCounts: SellerStats,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(tint.copy(alpha = 0.10f))
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(ScottsTechXColors.SurfacePanelDark)
             .padding(14.dp),
     ) {
+        // header
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.Storefront,
+                contentDescription = null,
+                tint = ScottsTechXColors.BluePrimary,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Store controls",
+                color = ScottsTechXColors.OnDark,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.5.sp,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // row 1: accepting orders
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Accepting orders", color = ScottsTechXColors.OnDark, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Closed stores stay listed but marked closed.",
+                    color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp,
+                )
+            }
+            androidx.compose.material3.Switch(
+                checked = acceptingOrders,
+                onCheckedChange = { onToggleOrders() },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+
+        // row 2: live location
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (sharing) Icons.Filled.MyLocation else Icons.Filled.LocationOff,
+                        contentDescription = null,
+                        tint = if (sharing) ScottsTechXColors.SuccessGreen else ScottsTechXColors.OnDarkSecondary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Live location", color = ScottsTechXColors.OnDark, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Text(
+                    if (sharing) "Buyers see your store move in real time."
+                    else "Off — buyers see only your last pinned position.",
+                    color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp,
+                )
+                if (lastFix != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text("Last fix: $lastFix", color = ScottsTechXColors.OnDarkMuted, fontSize = 10.sp)
+                }
+            }
             Box(
                 modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(tint),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = label,
-                color = tint,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = count.toString(),
-            color = ScottsTechXColors.OnLight,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 22.sp,
-        )
-    }
-}
-
-@Composable
-private fun SectionHeading(
-    title: String,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            color = ScottsTechXColors.OnLight,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 16.sp,
-            modifier = Modifier.weight(1f),
-        )
-        if (actionLabel != null && onAction != null) {
-            Row(
-                modifier = Modifier.clickable(onClick = onAction),
-                verticalAlignment = Alignment.CenterVertically,
+                    .clip(RoundedCornerShape(50))
+                    .background(if (sharing) Color(0x33EF4444) else ScottsTechXColors.BluePrimary)
+                    .clickable(enabled = !locBusy) { onToggleSharing(!sharing) }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
             ) {
                 Text(
-                    text = actionLabel,
-                    color = ScottsTechXColors.BluePrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.sp,
-                )
-                Spacer(Modifier.width(2.dp))
-                Icon(
-                    imageVector = Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = ScottsTechXColors.BluePrimary,
-                    modifier = Modifier.size(14.dp),
+                    when {
+                        locBusy -> "Working…"
+                        sharing -> "Turn off"
+                        else -> "Turn on"
+                    },
+                    color = if (sharing) Color(0xFFF87171) else Color.White,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }
-    }
-}
+        if (locHint != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(locHint, color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp)
+        }
 
-@Composable
-private fun OrderRow(
-    order: SellerOrder,
-    onView: () -> Unit,
-    onMore: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
-            .padding(14.dp),
-    ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(ScottsTechXColors.PanelInputLight),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.ShoppingBag,
-                        contentDescription = null,
-                        tint = ScottsTechXColors.BluePrimary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "#${order.id}",
-                        color = ScottsTechXColors.OnLightSecondary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.sp,
-                    )
-                    Text(
-                        text = order.productName,
-                        color = ScottsTechXColors.OnLight,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "${order.itemsCount} items  •  ${order.placedAtLabel}",
-                        color = ScottsTechXColors.OnLightSecondary,
-                        fontSize = 11.sp,
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(ScottsTechXColors.PanelInputLight)
-                        .clickable(onClick = onMore),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreHoriz,
-                        contentDescription = "More",
-                        tint = ScottsTechXColors.OnLightSecondary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = formatUgx(order.totalUgx),
-                    color = ScottsTechXColors.OnLight,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 14.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                OrderStatusBadge(status = order.status)
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(ScottsTechXColors.BluePrimary)
-                        .clickable(onClick = onView)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Text(
-                        text = "View Order",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                    )
+        // row 3: listing status badges (web productsByStatus strip)
+        val counts = listOf(
+            "approved" to statusCounts.approved,
+            "pending" to (statusCounts.pending + statusCounts.pendingApproval),
+            "draft" to statusCounts.draft,
+            "rejected" to statusCounts.rejected,
+        ).filter { it.second > 0 }
+        if (counts.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text("Listing status", color = ScottsTechXColors.OnDarkSecondary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                counts.forEach { (status, n) ->
+                    val tone = when (status) {
+                        "approved" -> Pair(Color(0x2622C55E), Color(0xFF4ADE80))
+                        "pending" -> Pair(Color(0x26F59E0B), Color(0xFFFBBF24))
+                        "rejected" -> Pair(Color(0x26EF4444), Color(0xFFF87171))
+                        else -> Pair(Color(0x1F94A3C4), ScottsTechXColors.OnDarkSecondary)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(tone.first)
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                    ) {
+                        Text("$n $status", color = tone.second, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
@@ -832,455 +1157,166 @@ private fun OrderRow(
 }
 
 @Composable
-private fun OrderStatusBadge(status: OrderStatus) {
-    val (bg, fg) = when (status) {
-        OrderStatus.Pending -> Color(0xFFFEF3C7) to Color(0xFFB45309)
-        OrderStatus.Processing -> Color(0xFFDBEAFE) to Color(0xFF1E40AF)
-        OrderStatus.Ready -> Color(0xFFEDE9FE) to Color(0xFF7C3AED)
-        OrderStatus.Completed -> Color(0xFFDCFCE7) to Color(0xFF15803D)
-        OrderStatus.Cancelled -> Color(0xFFFEE2E2) to Color(0xFFB91C1C)
-    }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(bg)
-            .padding(horizontal = 10.dp, vertical = 3.dp),
+private fun HealthChip(label: String, count: Int, accent: Color, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(accent.copy(alpha = 0.10f))
+            .padding(vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = status.label,
-            color = fg,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-        )
+        Text(text = count.toString(), color = accent, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+        Text(text = label, color = ScottsTechXColors.OnDarkSecondary, fontSize = 9.5.sp)
     }
 }
 
 @Composable
-private fun QuickActionsRow(
-    onAddProduct: () -> Unit,
-    onManageOrders: () -> Unit,
-    onCreateOffer: () -> Unit,
-    onAnalytics: () -> Unit,
-    onMessages: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-    ) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            item {
-                QuickActionChip(
-                    label = "Add Product",
-                    icon = Icons.Filled.Add,
-                    onClick = onAddProduct,
-                    primary = true,
-                )
-            }
-            item {
-                QuickActionChip(
-                    label = "Orders",
-                    icon = Icons.Filled.Receipt,
-                    onClick = onManageOrders,
-                )
-            }
-            item {
-                QuickActionChip(
-                    label = "Create Offer",
-                    icon = Icons.Filled.LocalOffer,
-                    onClick = onCreateOffer,
-                )
-            }
-            item {
-                QuickActionChip(
-                    label = "Analytics",
-                    icon = Icons.Filled.Analytics,
-                    onClick = onAnalytics,
-                )
-            }
-            item {
-                QuickActionChip(
-                    label = "Messages",
-                    icon = Icons.Filled.AutoAwesome,
-                    onClick = onMessages,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun QuickActionChip(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-    primary: Boolean = false,
-) {
-    val bg = if (primary) {
-        Brush.linearGradient(
-            colors = listOf(
-                ScottsTechXColors.BluePrimaryLight,
-                ScottsTechXColors.BluePrimary,
-                ScottsTechXColors.BluePrimaryDark,
-            ),
-        )
-    } else {
-        Brush.linearGradient(
-            colors = listOf(Color.White, ScottsTechXColors.PanelInputLight),
-        )
-    }
-    val textColor = if (primary) Color.White else ScottsTechXColors.OnLight
-    val iconTint = if (primary) Color.White else ScottsTechXColors.BluePrimary
+private fun TopProductRow(title: String, sold: Int, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(ScottsTechXColors.SurfacePanelDark)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(
-                    (if (primary) Color.White.copy(alpha = 0.22f)
-                    else ScottsTechXColors.BluePrimary.copy(alpha = 0.12f)),
-                ),
+                .size(30.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(ScottsTechXColors.BluePrimary.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(16.dp),
+            Icon(imageVector = Icons.Filled.TrendingUp, contentDescription = null, tint = ScottsTechXColors.BluePrimary, modifier = Modifier.size(16.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = title,
+            color = ScottsTechXColors.OnDark,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(text = "$sold sold", color = ScottsTechXColors.SuccessGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun RecentOrderRow(
+    order: com.scottsx.app.data.domain.SellerRecentOrder,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(ScottsTechXColors.SurfacePanelDark)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(ScottsTechXColors.PurpleAccent.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = order.buyerInitial, color = ScottsTechXColors.PurpleAccent, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = order.productTitle,
+                color = ScottsTechXColors.OnDark,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "${order.buyerName}  ·  x${order.quantity}  ·  ${order.createdAt.take(10)}",
+                color = ScottsTechXColors.OnDarkMuted,
+                fontSize = 10.5.sp,
             )
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            text = label,
-            color = textColor,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-        )
-    }
-}
-
-@Composable
-private fun SalesPerformanceCard(
-    period: SalesPeriod,
-    onPeriod: (SalesPeriod) -> Unit,
-    sales: List<SalesPoint>,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(Color.White)
-            .padding(16.dp),
-    ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Sales Performance",
-                    color = ScottsTechXColors.OnLight,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = formatUgx(sales.sumOf { it.amountUgx }),
-                color = ScottsTechXColors.OnLight,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 22.sp,
-            )
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.ArrowDropUp,
-                    contentDescription = null,
-                    tint = Color(0xFF059669),
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(
-                    text = "18.5% vs last week",
-                    color = Color(0xFF059669),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.sp,
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                SalesPeriod.values().forEach { p ->
-                    val selected = p == period
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (selected) ScottsTechXColors.BluePrimary
-                                else ScottsTechXColors.PanelInputLight,
-                            )
-                            .clickable { onPeriod(p) }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = p.label,
-                            color = if (selected) Color.White else ScottsTechXColors.OnLight,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            SalesChart(sales = sales)
+        Column(horizontalAlignment = Alignment.End) {
+            Text(text = formatUgx(order.amount), color = ScottsTechXColors.OnDark, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(3.dp))
+            OrderStatusChip(status = order.status, label = order.displayStatus)
         }
     }
 }
 
-private enum class SalesPeriod(val label: String) {
-    ThisWeek("This Week"),
-    ThisMonth("This Month"),
-    ThreeMonths("3 Months"),
+@Composable
+private fun OrderStatusChip(status: String, label: String) {
+    val accent = when (status) {
+        "delivered" -> ScottsTechXColors.SuccessGreen
+        "paid", "shipped" -> ScottsTechXColors.BluePrimary
+        "cancelled", "refunded" -> ScottsTechXColors.ErrorRed
+        else -> ScottsTechXColors.WarningAmber
+    }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(accent.copy(alpha = 0.12f))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Text(text = label, color = accent, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable
-private fun SalesChart(sales: List<SalesPoint>) {
-    val maxAmount = sales.maxOf { it.amountUgx }.coerceAtLeast(1L)
+private fun LowStockBand(low: Int, out: Int, onInventory: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(140.dp),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        sales.forEach { point ->
-            val fraction = (point.amountUgx.toFloat() / maxAmount.toFloat()).coerceIn(0.05f, 1f)
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Bottom,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(0.dp)
-                        .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    ScottsTechXColors.BluePrimaryLight,
-                                    ScottsTechXColors.BluePrimary,
-                                ),
-                            ),
-                        ),
-                )
-            }
-        }
-    }
-    // Render bars + labels as a Canvas for control over the gradient.
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(140.dp),
-    ) {
-        val gap = 8.dp.toPx()
-        val labelH = 18.dp.toPx()
-        val barAreaH = size.height - labelH
-        val barW = (size.width - gap * (sales.size - 1)) / sales.size
-        sales.forEachIndexed { i, point ->
-            val fraction = (point.amountUgx.toFloat() / maxAmount.toFloat()).coerceIn(0.05f, 1f)
-            val barH = barAreaH * fraction
-            val x = i * (barW + gap)
-            val y = barAreaH - barH
-            drawRoundRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        ScottsTechXColors.BluePrimaryLight,
-                        ScottsTechXColors.BluePrimary,
-                    ),
-                    startY = y,
-                    endY = y + barH,
-                ),
-                topLeft = Offset(x, y),
-                size = Size(barW, barH),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx(), 6.dp.toPx()),
-            )
-        }
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        sales.forEach { point ->
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Text(
-                    text = point.label,
-                    color = ScottsTechXColors.OnLightSecondary,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 10.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SellerAiCard(
-    insight: SellerAiInsight,
-    onAsk: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF1E40AF),
-                        Color(0xFF6366F1),
-                        Color(0xFF8B5CF6),
-                    ),
-                ),
-            )
-            .padding(18.dp),
-    ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.22f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = "Seller AI Assistant",
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.White.copy(alpha = 0.18f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                ) {
-                    Text(
-                        text = "Beta",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = insight.headline,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = insight.body,
-                color = Color.White.copy(alpha = 0.92f),
-                fontSize = 12.sp,
-                lineHeight = 18.sp,
-            )
-            Spacer(Modifier.height(14.dp))
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White)
-                    .clickable(onClick = onAsk)
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    tint = ScottsTechXColors.BluePrimary,
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "Ask Seller AI",
-                    color = ScottsTechXColors.BluePrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LowStockRow(alert: com.scottsx.app.data.domain.LowStockAlert) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .clip(RoundedCornerShape(18.dp))
+            .background(ScottsTechXColors.WarningAmber.copy(alpha = 0.10f))
+            .clickable(onClickLabel = "Review low stock") { onInventory() }
             .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFFEF3C7)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Warning,
-                    contentDescription = null,
-                    tint = Color(0xFFB45309),
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = alert.productName,
-                    color = ScottsTechXColors.OnLight,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                )
-                Text(
-                    text = "Only ${alert.remaining} left in stock",
-                    color = Color(0xFFB45309),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.sp,
-                )
-            }
-            Icon(
-                imageVector = Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = ScottsTechXColors.OnLightSecondary,
-                modifier = Modifier.size(18.dp),
+        Icon(imageVector = Icons.Filled.Warning, contentDescription = null, tint = ScottsTechXColors.WarningAmber, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = buildString {
+                    if (low > 0) append("$low listing${if (low == 1) "" else "s"} running low")
+                    if (low > 0 && out > 0) append("  ·  ")
+                    if (out > 0) append("$out out of stock")
+                },
+                color = ScottsTechXColors.OnDark,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Bold,
+                // Long localized strings clamp instead of pushing the
+                // count/chevron out of the band.
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "Restock before they go quiet.", color = ScottsTechXColors.OnDarkSecondary, fontSize = 11.sp,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
             )
         }
+        Icon(imageVector = Icons.Filled.ChevronRight, contentDescription = null, tint = ScottsTechXColors.WarningAmber, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+private fun SellerSkeleton(base: Color, highlight: Color) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(2) { ShimmerBox(modifier = Modifier.weight(1f).height(96.dp), base = base, highlight = highlight) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(2) { ShimmerBox(modifier = Modifier.weight(1f).height(96.dp), base = base, highlight = highlight) }
+        }
+        ShimmerBox(modifier = Modifier.fillMaxWidth().height(130.dp), base = base, highlight = highlight)
+        ShimmerBox(modifier = Modifier.fillMaxWidth().height(96.dp), base = base, highlight = highlight)
+        repeat(3) { ShimmerBox(modifier = Modifier.fillMaxWidth().height(54.dp), base = base, highlight = highlight) }
     }
 }

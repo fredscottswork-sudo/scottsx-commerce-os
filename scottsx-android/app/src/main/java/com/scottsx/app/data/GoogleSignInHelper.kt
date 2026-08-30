@@ -10,6 +10,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.auth.api.signin.GoogleSignInStatusCodes
+import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.tasks.Task
 import com.scottsx.app.R
@@ -94,8 +96,14 @@ class GoogleSignInHelper(context: Context) {
     suspend fun signInWithInteractive(
         launcher: ActivityResultLauncher<Intent>,
     ): String {
+        // Double-tap guard: a second launch while a picker is already in
+        // flight used to OVERWRITE `pending`, orphaning the first
+        // continuation for the full 180 s timeout while the UI sat with
+        // a spinner. Refuse the second launch instantly instead.
+        if (pending != null) throw IllegalStateException("Google sign-in already in flight")
         return suspendCancellableCoroutine<String> { cont ->
             pending = cont
+            cont.invokeOnCancellation { if (pending === cont) pending = null }
             launcher.launch(client.signInIntent)
         }
     }
@@ -114,37 +122,65 @@ class GoogleSignInHelper(context: Context) {
         val cont = pending ?: return
         pending = null
 
-        if (result.resultCode != Activity.RESULT_OK) {
-            // User cancelled or error — resume with cancellation exception
-            cont.resumeWithException(IllegalStateException("Google sign-in cancelled"))
-            return
-        }
-
+        // Decode the intent FIRST and for both paths: a RESULT_CANCELED may
+        // still carry an ApiException status (e.g. DEVELOPER_ERROR), which is
+        // NOT the user cancelling — reporting it as "cancelled" hid the real
+        // misconfiguration from the very first bug report.
         val intent: Intent? = result.data
+        var statusCode: Int? = null
+        var account: GoogleSignInAccount? = null
         try {
             val task: Task<GoogleSignInAccount> =
                 GoogleSignIn.getSignedInAccountFromIntent(intent)
-            val account = task.getResult(ApiException::class.java)
-            val idToken = account?.idToken
-            if (idToken == null) {
-                android.util.Log.w(
-                    "GoogleSignInHelper",
-                    "Google sign-in returned no id_token — silently ignoring.",
-                )
-                cont.resumeWithException(IllegalStateException("Google sign-in returned no id_token"))
-                return
-            }
-            // Resume with the id token
-            try {
-                cont.resume(idToken)
-            } catch (e: Throwable) {
-                // Continuation already cancelled or completed; nothing to do.
-                android.util.Log.w("GoogleSignInHelper", "continuation already done", e)
-            }
-        } catch (e: Throwable) {
-            android.util.Log.w("GoogleSignInHelper", "Google sign-in failed", e)
-            cont.resumeWithException(e)
+            account = task.getResult(ApiException::class.java)
+        } catch (ae: ApiException) {
+            statusCode = ae.status.statusCode
+            android.util.Log.w(
+                "GoogleSignInHelper",
+                "Google sign-in ApiException: ${ae.status.statusCode} (${ae.status.statusMessage})",
+            )
+        } catch (t: Throwable) {
+            android.util.Log.w("GoogleSignInHelper", "Google sign-in failed", t)
+            cont.resumeWithException(t)
+            return
         }
+
+        val idToken = account?.idToken
+        if (result.resultCode == Activity.RESULT_OK) {
+            if (!idToken.isNullOrBlank()) {
+                try {
+                    cont.resume(idToken)
+                } catch (e: Throwable) {
+                    // Continuation already cancelled or completed; nothing to do.
+                    android.util.Log.w("GoogleSignInHelper", "continuation already done", e)
+                }
+            } else {
+                android.util.Log.w("GoogleSignInHelper", "OK result carried no id_token")
+                cont.resumeWithException(IllegalStateException("Google sign-in returned no id_token"))
+            }
+            return
+        }
+
+        cont.resumeWithException(IllegalStateException(describeFailure(statusCode)))
+    }
+
+    /**
+     * Turn a Google status code into a message that says what actually
+     * happened. Only a genuine user dismissal keeps the word "cancelled".
+     */
+    private fun describeFailure(statusCode: Int?): String = when (statusCode) {
+        null, GoogleSignInStatusCodes.SIGN_IN_CANCELLED ->
+            "Google sign-in cancelled."
+        CommonStatusCodes.NETWORK_ERROR ->
+            "Google sign-in needs a working network connection — check connectivity and retry."
+        CommonStatusCodes.DEVELOPER_ERROR ->
+            "Google sign-in is rejected for this build (code 10): its SHA-1 fingerprint is not " +
+                "registered in the Google Cloud project for com.scottsx.app. Register the SHA-1 " +
+                "and SHA-256 printed by the build (keystores/README.md), then retry — no reinstall needed."
+        CommonStatusCodes.INTERNAL_ERROR ->
+            "Google sign-in hit an internal error (code 8) — retry in a moment."
+        else ->
+            "Google sign-in failed (code $statusCode). Try again, or use email sign-in."
     }
 
     fun signOut() {

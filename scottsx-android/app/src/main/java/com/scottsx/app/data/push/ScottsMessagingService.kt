@@ -87,6 +87,91 @@ class ScottsMessagingService : FirebaseMessagingService() {
             "new_product", "price_drop" -> CHANNEL_PRODUCTS
             else -> CHANNEL_GENERAL
         }
+
+        /**
+         * Fires a LOCAL phone notification the moment a sign-in
+         * completes ("You're signed in as …"). Satisfies the
+         * "the app must push a notification to the phone on every
+         * login" requirement even when server-pushed FCM is delayed.
+         * Silent no-op when the POST_NOTIFICATIONS permission has not
+         * been granted yet.
+         */
+        fun notifySignedIn(context: Context, displayName: String) {
+            ensureChannels(context)
+            val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+            if (!allowed) return
+            val name = displayName.ifBlank { "there" }
+            val body = "You're signed in as $name — orders, chats and deal alerts land on this device."
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                System.currentTimeMillis().toInt(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val notification = NotificationCompat.Builder(context, CHANNEL_GENERAL)
+                .setContentTitle("Welcome to ScottsTechX")
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(ContextCompat.getColor(context, R.color.brand_primary))
+                .setColorized(false)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(pendingIntent)
+                .build()
+            try {
+                NotificationManagerCompat.from(context)
+                    .notify(System.currentTimeMillis().toInt(), notification)
+            } catch (e: SecurityException) {
+                // Permission revoked between the check and the post.
+            }
+        }
+
+        /**
+         * Post a message-arrived notification while the app is in the
+         * FOREGROUND (background pushes are delivered to
+         * [onMessageReceived] instead). [name] is the sender display
+         * name, [preview] the first line of their message.
+         */
+        fun notifyMessage(context: Context, name: String, preview: String) {
+            ensureChannels(context)
+            val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+            if (!allowed) return
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("screen", "messages")
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                System.currentTimeMillis().toInt(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val notification = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+                .setContentTitle(name.ifBlank { "New message" })
+                .setContentText(preview)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(ContextCompat.getColor(context, R.color.brand_primary))
+                .setColorized(false)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(pendingIntent)
+                .build()
+            try {
+                NotificationManagerCompat.from(context)
+                    .notify(System.currentTimeMillis().toInt(), notification)
+            } catch (e: SecurityException) {
+                // Permission revoked between the check and the post.
+            }
+        }
     }
 
     /** Fired when FCM issues a new token (fresh install, app data cleared…). */

@@ -58,7 +58,7 @@ fun InputField(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = label,
-            color = ScottsTechXColors.OnLight,
+            color = ScottsTechXColors.OnPanel,
             fontWeight = FontWeight.SemiBold,
             fontSize = 13.sp,
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
@@ -67,7 +67,7 @@ fun InputField(
             value = value,
             onValueChange = onValueChange,
             placeholder = placeholder?.let {
-                @Composable { Text(it, color = ScottsTechXColors.OnLightSecondary, fontSize = 14.sp) }
+                @Composable { Text(it, color = ScottsTechXColors.OnPanelSecondary, fontSize = 14.sp) }
             },
             singleLine = true,
             visualTransformation = if (isPassword && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
@@ -83,13 +83,15 @@ fun InputField(
             // surrounding composition) is white and disappears on
             // the light-gray background.
             textStyle = androidx.compose.ui.text.TextStyle(
-                color = ScottsTechXColors.OnLight,
+                // Ink pairs with the mutable field surface: dark-on-light in
+                // light mode, light-on-dark in dark mode.
+                color = ScottsTechXColors.OnPanel,
                 fontSize = 15.sp,
             ),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = ScottsTechXColors.OnLight,
-                unfocusedTextColor = ScottsTechXColors.OnLight,
-                disabledTextColor = ScottsTechXColors.OnLightSecondary,
+                focusedTextColor = ScottsTechXColors.OnPanel,
+                unfocusedTextColor = ScottsTechXColors.OnPanel,
+                disabledTextColor = ScottsTechXColors.OnPanelSecondary,
                 focusedContainerColor = ScottsTechXColors.PanelInputLight,
                 unfocusedContainerColor = ScottsTechXColors.PanelInputLight,
                 cursorColor = ScottsTechXColors.BluePrimary,
@@ -97,10 +99,10 @@ fun InputField(
                 unfocusedBorderColor = Color.Transparent,
                 disabledBorderColor = Color.Transparent,
                 errorBorderColor = errorRed,
-                focusedLeadingIconColor = ScottsTechXColors.OnLightSecondary,
-                unfocusedLeadingIconColor = ScottsTechXColors.OnLightSecondary,
-                focusedTrailingIconColor = ScottsTechXColors.OnLightSecondary,
-                unfocusedTrailingIconColor = ScottsTechXColors.OnLightSecondary,
+                focusedLeadingIconColor = ScottsTechXColors.OnPanelSecondary,
+                unfocusedLeadingIconColor = ScottsTechXColors.OnPanelSecondary,
+                focusedTrailingIconColor = ScottsTechXColors.OnPanelSecondary,
+                unfocusedTrailingIconColor = ScottsTechXColors.OnPanelSecondary,
             ),
 
             trailingIcon = if (isPassword) {
@@ -109,7 +111,7 @@ fun InputField(
                         Icon(
                             imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                             contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                            tint = ScottsTechXColors.OnLightSecondary,
+                            tint = ScottsTechXColors.OnPanelSecondary,
                         )
                     }
                 }

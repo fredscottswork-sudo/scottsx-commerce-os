@@ -125,6 +125,7 @@ fun HeroCarousel(
         // Pagination dots overlay (inside Box so we can use .align)
         Row(
             modifier = Modifier
+                .navBarSpacer()  // lift the bottom bar clear of the gesture pill
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 8.dp)
                 .wrapContentSize(),
@@ -191,7 +192,7 @@ private fun HeroSlide(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color.White)
+                    .background(ScottsTechXColors.CardSurface)
                     .clickable { onCtaClick() }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,

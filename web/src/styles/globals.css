@@ -208,6 +208,52 @@ img { max-width: 100%; }
 .anim-float { animation: float 3.4s ease-in-out infinite; }
 .anim-pulse { animation: pulse 1.8s ease-in-out infinite; }
 
+/* ═══ ANIMATED BENEFITS STRIP (home) — replaces the static feature cards ═══ */
+@keyframes benefitPing { 0% { transform: scale(1); opacity: 0.65; } 80%, 100% { transform: scale(1.35); opacity: 0; } }
+
+.benefit-strip { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+@media (max-width: 860px) { .benefit-strip { grid-template-columns: 1fr; } }
+
+.benefit-card {
+  position: relative; overflow: hidden;
+  animation: fadeInUp var(--dur-slow) var(--ease-out) both;
+  transition: transform var(--dur) var(--ease-spring), box-shadow var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out);
+}
+.benefit-card:nth-child(2) { animation-delay: 90ms; }
+.benefit-card:nth-child(3) { animation-delay: 180ms; }
+.benefit-card::before { /* sheen sweeping across the card on hover */
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.08) 50%, transparent 70%);
+  background-size: 250% 100%; background-position: 130% 0;
+  transition: background-position 0.9s var(--ease-out);
+  pointer-events: none;
+}
+.benefit-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--border-strong); }
+.benefit-card:hover::before { background-position: -80% 0; }
+.benefit-card::after { /* perpetual animated gradient underline */
+  content: ''; position: absolute; left: 18px; right: 18px; bottom: 0; height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(90deg, var(--primary), var(--purple), var(--primary));
+  background-size: 220% 100%;
+  animation: gradientShift 4.5s ease-in-out infinite;
+  opacity: 0.28;
+  transition: opacity var(--dur) var(--ease-out), height var(--dur) var(--ease-spring);
+}
+.benefit-card:hover::after { opacity: 1; height: 4px; }
+
+.benefit-icon { position: relative; animation: float 4.2s ease-in-out infinite; }
+.benefit-card:nth-child(2) .benefit-icon { animation-delay: 0.7s; }
+.benefit-card:nth-child(3) .benefit-icon { animation-delay: 1.3s; }
+.benefit-live::after { /* pulsing ring on the AI card — draws the eye to the differentiator */
+  content: ''; position: absolute; inset: -5px; border-radius: 15px;
+  border: 2px solid var(--primary);
+  animation: benefitPing 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .benefit-card, .benefit-card::before, .benefit-card::after, .benefit-icon, .benefit-live::after { animation: none !important; transition: none !important; }
+}
+
 /* Cascading list reveal — set style="--i:{index}" on children */
 .stagger > * { animation: fadeInUp var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); }
 .stagger-fast > * { animation: fadeInUp 260ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 26ms); }

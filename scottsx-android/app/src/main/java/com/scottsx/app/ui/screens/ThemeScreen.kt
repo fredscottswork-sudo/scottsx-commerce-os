@@ -97,7 +97,7 @@ fun ThemeScreen(onBack: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "Choose how ScottsTechX looks",
-                color = ScottsTechXColors.OnLight,
+                color = ScottsTechXColors.OnPanel,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
             )
@@ -158,7 +158,7 @@ private fun ThemeOption(
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) Color(0xFFE3F2FD) else Color.White,
+            containerColor = if (selected) ScottsTechXColors.CardTintSelected else ScottsTechXColors.CardSurface,
         ),
     ) {
         Row(
@@ -177,7 +177,7 @@ private fun ThemeOption(
                 Icon(
                     icon,
                     contentDescription = null,
-                    tint = if (selected) Color.White else ScottsTechXColors.OnLightSecondary,
+                    tint = if (selected) Color.White else ScottsTechXColors.OnPanelSecondary,
                     modifier = Modifier.size(20.dp),
                 )
             }
@@ -187,12 +187,12 @@ private fun ThemeOption(
                     text = title,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    color = ScottsTechXColors.OnLight,
+                    color = ScottsTechXColors.OnCard,
                 )
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = ScottsTechXColors.OnLightSecondary,
+                    color = ScottsTechXColors.OnCardSecondary,
                 )
             }
             if (selected) {

@@ -40,6 +40,8 @@ import com.scottsx.app.ui.components.BottomTab
 import com.scottsx.app.ui.components.ProductCard
 import com.scottsx.app.ui.components.ScottsTechXBottomBar
 import com.scottsx.app.ui.theme.ScottsTechXColors
+import com.scottsx.app.ui.components.statusBarSpacer
+import com.scottsx.app.ui.components.navBarSpacer
 
 @Composable
 fun WishlistScreen(
@@ -49,13 +51,18 @@ fun WishlistScreen(
     modifier: Modifier = Modifier,
 ) {
     val ids by WishlistStore.ids.collectAsState()
-    val products = WishlistStore.products()
-    var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Wishlist) }
+    // Server-bookmarks-backed product list — hydrated on entry.
+    val products by WishlistStore.products.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        try { WishlistStore.syncFromServer() } catch (_: Throwable) { }
+    }
+    var bottomTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(BottomTab.Cart) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ScottsTechXColors.BackgroundLight),
+            .background(ScottsTechXColors.BackgroundLight)
+            .statusBarSpacer()  // edge-to-edge: content clears the status bar,
     ) {
         Column(
             modifier = Modifier
@@ -129,13 +136,13 @@ fun WishlistScreen(
                     androidx.compose.foundation.layout.Spacer(Modifier.size(16.dp))
                     Text(
                         text = "Your wishlist is empty.",
-                        color = ScottsTechXColors.OnLight,
+                        color = ScottsTechXColors.OnPanel,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp,
                     )
                     Text(
                         text = "Tap the heart on any product to save it here.",
-                        color = ScottsTechXColors.OnLightSecondary,
+                        color = ScottsTechXColors.OnPanelSecondary,
                         fontSize = 12.sp,
                     )
                 }
@@ -159,7 +166,8 @@ fun WishlistScreen(
             }
         }
 
-        Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        Box(modifier = Modifier.navBarSpacer()  // lift the bottom bar clear of the gesture pill
+                .align(Alignment.BottomCenter).fillMaxWidth()) {
             ScottsTechXBottomBar(
                 selected = bottomTab,
                 onSelect = { tab ->

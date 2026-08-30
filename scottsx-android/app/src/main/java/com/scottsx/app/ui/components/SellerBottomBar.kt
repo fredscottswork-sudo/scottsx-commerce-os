@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,6 +24,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -61,11 +61,13 @@ fun SellerBottomBar(
     modifier: Modifier = Modifier,
 ) {
     Box(
+        // The bar's own surface paints all the way to the bottom edge; below,
+        // navBarSpacer() lifts ONLY the bar's rows clear of the gesture pill.
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .navBarSpacer()
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.BottomCenter,
     ) {
         // Frosted-blue glass bar.
         Box(
@@ -85,14 +87,14 @@ fun SellerBottomBar(
                 .padding(horizontal = 8.dp),
         ) {
             // 4 nav items split into 2 groups (left of FAB / right of FAB)
-            // so the layout is balanced: Home | AI  [FAB]  Messages | Analytics
+            // so the layout is balanced: Home | Orders  [FAB]  Messages | Analytics
             // Each side has equal weight to the right and left, so the FAB
             // is visually centered and the buttons don't crowd it.
             Row(
                 modifier = Modifier.fillMaxWidth().height(64.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Left half: Home + AI
+                // Left half: Home + Orders
                 Row(
                     modifier = Modifier.weight(1f).fillMaxWidth().height(64.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -104,9 +106,9 @@ fun SellerBottomBar(
                         onClick = { onSelect(SellerBottomTab.Home) },
                     )
                     SellerNavItem(
-                        tab = SellerBottomTab.AI,
-                        selected = selected == SellerBottomTab.AI,
-                        onClick = { onSelect(SellerBottomTab.AI) },
+                        tab = SellerBottomTab.Orders,
+                        selected = selected == SellerBottomTab.Orders,
+                        onClick = { onSelect(SellerBottomTab.Orders) },
                     )
                 }
                 // Center FAB spacer (same width as the Add button)
@@ -208,11 +210,13 @@ private fun SellerNavItem(
     }
 }
 
-/** The five seller tabs. The Add tab is reserved for the FAB. */
+/** The seller tabs. The Add tab is reserved for the FAB; AI lives in the
+ * seller sidebar (web parity) — the bar itself is
+ * Home / Orders / [Add] / Messages / Analytics as documented above. */
 enum class SellerBottomTab(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home),
+    Orders("Orders", Icons.Filled.Inventory2),
     Add("Add", Icons.Filled.AddCircle),
-    AI("AI Assistant", Icons.Filled.AutoAwesome),
     Messages("Messages", Icons.Filled.ChatBubble),
     Analytics("Analytics", Icons.Filled.Analytics),
 }
