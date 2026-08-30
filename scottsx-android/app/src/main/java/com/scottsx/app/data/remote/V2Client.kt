@@ -93,20 +93,6 @@ object V2Client {
             } catch (_: Throwable) { null }
         }
 
-    /**
-     * apiCall with cold-server retry — used ONLY by the auth hand-off
-     * (auth/firebase/sign-in): same wake-from-idle problem as warmPost.
-     */
-    private suspend fun <T> apiCallWarm(
-        method: String, path: String, body: JSONObject?,
-        parse: (JSONObject) -> T,
-    ): T? {
-        val first = apiCall(method, path, body, parse)
-        if (first != null) return first
-        kotlinx.coroutines.delay(1400)
-        return apiCall(method, path, body, parse)
-    }
-
     private suspend fun <T> apiCall(
         method: String,
         path: String,
@@ -246,7 +232,7 @@ object V2Client {
         role: String? = null,
         storeName: String? = null,
     ): GoogleSignInResult? =
-        apiCallWarm<GoogleSignInResult?>(
+        apiCall<GoogleSignInResult?>(
             method = "POST",
             path = "/api/v1/auth/firebase/sign-in",
             body = JSONObject()
@@ -617,7 +603,7 @@ object V2Client {
     /** POST /api/v1/auth/login {email, password} — identifier may be a phone. */
     suspend fun loginEmail(identifier: String, password: String): EmailLoginResult {
         val body = JSONObject().put("email", identifier).put("password", password)
-        val (code, json) = warmPost("/api/v1/auth/login", body)
+        val (code, json) = rawPost("/api/v1/auth/login", body)
             ?: return EmailLoginResult(EmailLoginStatus.NETWORK)
         if (code in 200..299) {
             val token = json.optString("token")
@@ -667,8 +653,8 @@ object V2Client {
             .put("role", role)
             .put("storeName", storeName ?: "")
             .put("city", city ?: "")
-        val (code, json) = warmPost("/api/v1/auth/register", body)
-            ?: return EmailRegisterResult(ok = false, serviceMessage = "The server is waking up — retry in a few seconds. If it persists, check your internet.")
+        val (code, json) = rawPost("/api/v1/auth/register", body)
+            ?: return EmailRegisterResult(ok = false, serviceMessage = "No connection. Try again.")
         if (code in 200..299) {
             val token = json.optString("token")
             val u = parseUserJson(json.optJSONObject("user"))
@@ -710,7 +696,7 @@ object V2Client {
 
     /** POST /api/v1/auth/verify/request (auth) — resend the 6-digit code. */
     suspend fun requestVerificationCode(): Boolean {
-        val (code, json) = warmPost("/api/v1/auth/verify/request", JSONObject())
+        val (code, json) = rawPost("/api/v1/auth/verify/request", JSONObject())
             ?: return false
         return code in 200..299 && (json.optBoolean("sent", false) || json.optBoolean("alreadyVerified", true))
     }
@@ -726,44 +712,14 @@ object V2Client {
 
     /** Minimal POST that returns (HTTP status, parsed body) so auth
      * surfaces can read backend error messages instead of just null. */
-    /**
-     * rawPost with COLD-SERVER RESILIENCE for the auth-critical routes.
-     * The production API sleeps when idle (Render free tier): the first
-     * request after a pause often needs ~20-30 s to wake the process,
-     * which the plain 6 s connect timeout mis-reported as "No
-     * connection" — the #1 login complaint. This variant widens the
-     * budget and retries once (after a short pause) on transport-level
-     * failure only; HTTP responses (including errors) never retry, so
-     * idempotency-sensitive POSTs stay safe.
-     */
-    private suspend fun warmPost(
-        path: String,
-        body: JSONObject,
-        connectMs: Int = 28000,
-        readMs: Int = 42000,
-    ): Pair<Int, JSONObject>? {
-        val first = rawPostInternal(path, body, connectMs, readMs)
-        if (first != null) return first
-        kotlinx.coroutines.delay(1400)
-        return rawPostInternal(path, body, connectMs, readMs)
-    }
-
     private suspend fun rawPost(path: String, body: JSONObject): Pair<Int, JSONObject>? =
-        rawPostInternal(path, body, connectMs = 6000, readMs = 12000)
-
-    private suspend fun rawPostInternal(
-        path: String,
-        body: JSONObject,
-        connectMs: Int,
-        readMs: Int,
-    ): Pair<Int, JSONObject>? =
         withContext(Dispatchers.IO) {
             try {
                 val url = java.net.URL(baseUrl.trimEnd('/') + path)
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.connectTimeout = connectMs
-                conn.readTimeout = readMs
+                conn.connectTimeout = 6000
+                conn.readTimeout = 12000
                 conn.setRequestProperty("Accept", "application/json")
                 Session.tokenOrNull()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
                 conn.doOutput = true

@@ -1,5 +1,6 @@
 package com.scottsx.app.ui.screens
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -51,7 +52,7 @@ import com.scottsx.app.R
 import com.scottsx.app.ui.components.PageIndicator
 import com.scottsx.app.ui.components.PhotoMosaicBackground
 import com.scottsx.app.ui.components.PrimaryButton
-import com.scottsx.app.ui.components.KineticBackground
+import com.scottsx.app.ui.components.VideoBackground
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
 /**
@@ -75,7 +76,7 @@ fun OnboardingFlow(
 
     val slides = listOf(
         OnboardingSlide(
-            backgroundKind = BackgroundKind.Kinetic,
+            backgroundKind = BackgroundKind.Video(R.raw.onboard1),
             eyebrow = "THE FUTURE OF UGANDA",
             headlineLines = listOf("Build", "the future."),
             description = "From Kampala to Gulu, from Mbarara to Mbale — ScottsTechX is the network that puts Uganda's buyers and sellers on the map.",
@@ -89,7 +90,7 @@ fun OnboardingFlow(
             cta = "Next",
         ),
         OnboardingSlide(
-            backgroundKind = BackgroundKind.Kinetic,
+            backgroundKind = BackgroundKind.Video(R.raw.onboard3),
             eyebrow = "YOU'RE READY",
             headlineLines = listOf("Your move.", "Your market."),
             description = "Sign in to pick up where you left off, or create a free account and start something new today.",
@@ -105,14 +106,14 @@ fun OnboardingFlow(
             },
             label = "onboarding-bg",
         ) { currentPage ->
-            when (slides[currentPage].backgroundKind) {
-                BackgroundKind.Kinetic -> KineticBackground(
-                    accent = if (currentPage == 0) {
-                        ScottsTechXColors.BlueGlow
-                    } else {
-                        androidx.compose.ui.graphics.Color(0xFF4F7CFF)
-                    },
-                )
+            when (val bg = slides[currentPage].backgroundKind) {
+                is BackgroundKind.Video -> {
+                    val ctx = LocalContext.current
+                    val uri = Uri.parse(
+                        "android.resource://" + ctx.packageName + "/" + bg.resId,
+                    )
+                    VideoBackground(videoUri = uri)
+                }
                 BackgroundKind.PhotoMosaic -> PhotoMosaicBackground()
             }
         }
@@ -146,20 +147,15 @@ fun OnboardingFlow(
             ) {
                 BrandMark(size = 44.dp)
                 Spacer(modifier = Modifier.weight(1f))
-                Box(
+                Text(
+                    text = "Skip",
+                    color = ScottsTechXColors.OnDark,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
                     modifier = Modifier
-                        .clip(CircleShape)
-                        .background(Color(0x33000000))
                         .clickable { onFinish() }
-                        .padding(horizontal = 18.dp, vertical = 10.dp),
-                ) {
-                    Text(
-                        text = "Skip",
-                        color = ScottsTechXColors.OnDark,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp,
-                    )
-                }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
             }
 
             Spacer(modifier = Modifier.weight(1f))
@@ -227,7 +223,7 @@ fun OnboardingFlow(
 }
 
 private sealed class BackgroundKind {
-    object Kinetic : BackgroundKind()
+    data class Video(val resId: Int) : BackgroundKind()
     object PhotoMosaic : BackgroundKind()
 }
 

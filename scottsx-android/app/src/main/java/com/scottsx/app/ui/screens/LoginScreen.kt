@@ -244,9 +244,7 @@ fun LoginScreen(
                 V2Client.EmailLoginStatus.DISABLED ->
                     errorMsg = "This account is disabled. Contact ScottsTechX support."
                 V2Client.EmailLoginStatus.NETWORK ->
-                    // Usually the production API waking from its idle sleep —
-                    // the retry already ran once; a second tap now connects.
-                    errorMsg = "The server is waking up (free tier sleeps when idle) — wait 3–5 seconds and tap Sign in again. If it persists, check your internet."
+                    errorMsg = "No connection. Check your internet and try again."
             }
         }
     }

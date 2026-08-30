@@ -461,15 +461,11 @@ been tested.
 - layout-check gate: fullscreen exemption for SplashScreen + assertion now
   matches the letter-slice design.
 
-## 2026-08-29 — Welcome/selector/login chain un-frozen
-- Onboarding de-video'd: ExoPlayer clip slides (main-thread prepare +
-  decode on first_run screens = frozen "not responsive" onboarding on
-  low-end phones) replaced by KineticBackground — pure-Canvas animated
-  brand-blue orb field + starfield, zero native views, 60fps anywhere.
-  Slide 2 keeps the photo mosaic. Skip button promoted from bare text
-  to a padded pill (proper hit target).
-- RoleSelectionScreen rebuilt: cards are selection-only (glow + border +
-  check badge); the nested Log in / Sign up pills INSIDE a clickable
-  card (mis-firing nested clickables) are gone — bottom row now holds a
-  role-aware PrimaryButton "Sign up as X" + a ripple "I already have an
-  account — Log in" outline button acting on the selected role.
+## 2026-08-29 — user-directed revert of welcome/selector/login changes
+- Reverted d719f84 + 968f1dd: onboarding back to original ExoPlayer video
+  slides 1 & 3 + photo mosaic slide 2; role selector back to the original
+  nested-pill cards; KineticBackground removed.
+- Reverted c3d5b90's login-side edits: V2Client, GoogleSignInHelper and
+  LoginScreen restored byte-for-byte to b963dc8 (pre-fix state).
+- KEPT: the STX opening (c3d5b90) — launch-window icon/layer-list, letter
+  flight splash, hold-while-loading — untouched, per user instruction.

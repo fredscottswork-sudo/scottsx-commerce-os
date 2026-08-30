@@ -3,7 +3,6 @@ package com.scottsx.app.ui.screens
 import com.scottsx.app.data.domain.Role
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,11 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,19 +32,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.scottsx.app.ui.components.PrimaryButton
 import com.scottsx.app.ui.components.UgandaMapBackground
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
 /**
- * Role selection — appears after onboarding.
+ * Role selection screen — appears after onboarding. The user picks
+ * Buyer / Seller and whether they want to log in or sign up.
  *
- * Interaction model (rewritten — the old cards nested Log in / Sign
- * up buttons INSIDE a clickable card, and nested clickables made the
- * selector feel dead/mis-firing on real devices): cards do ONE thing —
- * select. The chosen card gets the blue glow, a border and a check
- * badge. Two clean action buttons at the bottom act on the selected
- * role. Nothing is a clickable-inside-a-clickable anymore.
+ *   ┌─ I am a Buyer  ───────────────┐    ┌─ I am a Seller ──────────────┐
+ *   │  Discover products...          │    │  List products, grow...      │
+ *   │  [Log in]   [Sign up]         │    │  [Log in]   [Sign up]        │
+ *   └───────────────────────────────┘    └──────────────────────────────┘
+ *
+ * The user can switch the active role by tapping either card; the
+ * active card glows in the brand blue, the inactive card is dimmed.
  */
 @Composable
 fun RoleSelectionScreen(
@@ -110,45 +106,25 @@ fun RoleSelectionScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            SelectableRoleCard(
+            RoleCard(
                 role = Role.BUYER,
                 selected = selected == Role.BUYER,
                 onSelect = { selected = Role.BUYER },
+                onLogin = { onLogin(Role.BUYER) },
+                onSignUp = { onSignUp(Role.BUYER) },
             )
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            SelectableRoleCard(
+            RoleCard(
                 role = Role.SELLER,
                 selected = selected == Role.SELLER,
                 onSelect = { selected = Role.SELLER },
+                onLogin = { onLogin(Role.SELLER) },
+                onSignUp = { onSignUp(Role.SELLER) },
             )
 
             Spacer(modifier = Modifier.weight(1f))
-
-            PrimaryButton(
-                text = "Sign up as ${selected.displayName}",
-                onClick = { onSignUp(selected) },
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .border(1.dp, ScottsTechXColors.BlueGlow.copy(alpha = 0.55f), RoundedCornerShape(28.dp))
-                    .clickable { onLogin(selected) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "I already have an account — Log in",
-                    color = ScottsTechXColors.OnDark,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = "By continuing you agree to ScottsTechX's Terms of Service and Privacy Policy.",
@@ -164,10 +140,12 @@ fun RoleSelectionScreen(
 }
 
 @Composable
-private fun SelectableRoleCard(
+private fun RoleCard(
     role: Role,
     selected: Boolean,
     onSelect: () -> Unit,
+    onLogin: () -> Unit,
+    onSignUp: () -> Unit,
 ) {
     val fillBrush = if (selected) {
         Brush.linearGradient(
@@ -185,26 +163,21 @@ private fun SelectableRoleCard(
             ),
         )
     }
-    val borderColor = if (selected) {
-        ScottsTechXColors.BlueGlow
-    } else {
-        Color(0x33FFFFFF)
-    }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(brush = fillBrush)
-            .border(1.5.dp, borderColor, RoundedCornerShape(20.dp))
             .clickable { onSelect() }
             .padding(20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Role badge — circle with initial.
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(50))
                     .background(
                         if (selected) Color.White else Color(0x551E3A8A),
                     ),
@@ -232,22 +205,54 @@ private fun SelectableRoleCard(
                     lineHeight = 16.sp,
                 )
             }
-            if (selected) {
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(Color.White),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Selected",
-                        tint = ScottsTechXColors.BluePrimaryDark,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
+        }
+
+        if (selected) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                PillButton(
+                    text = "Log in",
+                    primary = false,
+                    onClick = onLogin,
+                    modifier = Modifier.weight(1f),
+                )
+                PillButton(
+                    text = "Sign up",
+                    primary = true,
+                    onClick = onSignUp,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun PillButton(
+    text: String,
+    primary: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bg = if (primary) Color.White else Color(0x00000000)
+    val fg = if (primary) ScottsTechXColors.BluePrimaryDark else ScottsTechXColors.OnDark
+    Box(
+        modifier = modifier
+            .height(46.dp)
+            .clip(RoundedCornerShape(23.dp))
+            .background(bg)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = fg,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            letterSpacing = 1.sp,
+        )
     }
 }
