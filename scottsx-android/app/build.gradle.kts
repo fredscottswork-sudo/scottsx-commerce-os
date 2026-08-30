@@ -1,5 +1,16 @@
 import java.io.ByteArrayOutputStream
 
+// ── API origin resolution ────────────────────────────────────────────────
+// -PapiBaseUrl comes from the release workflow / CI dispatch and MUST end
+// with /api/v1 (the workflows enforce it). Strip that suffix and any
+// trailing slash so V2Client gets a bare origin to prepend route paths to.
+// No property → the production origin the website uses.
+fun apiBaseUrlOrigin(): String {
+    val raw = (project.findProperty("apiBaseUrl") as String?)?.trim().orEmpty()
+    val origin = raw.removeSuffix("/api/v1").trimEnd('/')
+    return origin.ifEmpty { "https://scottstechx-api.onrender.com" }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -14,8 +25,20 @@ android {
         applicationId = "com.scottsx.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
+
+        // ── Bake the API origin into the APK ─────────────────────────────
+        // The release workflow and CI pass -PapiBaseUrl=<origin>/api/v1.
+        // The app's route paths already carry the /api/v1 prefix, so only
+        // the ORIGIN is stored. Without this the property was silently
+        // ignored and every APK shipped on the hardcoded default no matter
+        // what URL the workflow said it was building against.
+        buildConfigField(
+            "String",
+            "API_BASE_URL",
+            "\"" + apiBaseUrlOrigin() + "\"",
+        )
     }
 
 
@@ -50,6 +73,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.11"

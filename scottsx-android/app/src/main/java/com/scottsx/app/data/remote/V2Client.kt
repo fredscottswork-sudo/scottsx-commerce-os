@@ -20,13 +20,16 @@ object V2Client {
 
     // Default backend base URL — the REAL production API every shipped APK
     // must reach: the same Render origin the web client falls back to
-    // (web/src/api/client.ts FALLBACK_API) and the release workflow builds
-    // against. Route paths below carry the /api/v1 prefix themselves, so
-    // (unlike the release-build URL) this constant omits it. Dev loops
-    // override with setBaseUrl("http://127.0.0.1:3001"); on a real phone
-    // the old localhost default looped requests back to the phone itself —
-    // the live "can't reach the marketplace" failure on the home feed.
-    private const val DEFAULT_BASE_URL = "https://scottstechx-api.onrender.com"
+    // (web/src/api/client.ts FALLBACK_API). The origin is BAKED IN at
+    // build time from -PapiBaseUrl (see app/build.gradle.kts) so the
+    // release workflow's URL choice actually reaches the shipped APK —
+    // previously the property was ignored and every build silently used
+    // this hardcoded value. Route paths below carry the /api/v1 prefix
+    // themselves, so the baked origin omits it. Dev loops override with
+    // setBaseUrl("http://127.0.0.1:3001"); on a real phone the old
+    // localhost default looped requests back to the phone itself — the
+    // live "can't reach the marketplace" failure on the home feed.
+    private val DEFAULT_BASE_URL: String = com.scottsx.app.BuildConfig.API_BASE_URL
     @Volatile private var baseUrlOverride: String? = null
     fun setBaseUrl(url: String) { baseUrlOverride = url }
 

@@ -1,5 +1,44 @@
 # ScottsTechX — build status
 
+## Tenth pass (2026-08-30) — animated splash reverted + deep verification sweep
+
+Owner report: the app worked well before the animated starting logo was
+added; every version after it had screen / functionality / button
+problems, and the logo should be gone. This pass:
+
+- **Animated STX opening REMOVED.** The startup chain is back to the
+  state the app was validated in (`615ef16`): a plain 1 s brand-lockup
+  warm window (fire-and-forget catalogue/cart warm-up that never blocks
+  on the network), then first-run onboarding or role select. Gone: the
+  letter-flight / ignition-hold animation (3.2–8.5 s hold loop), the
+  Android-12 `windowSplashScreenAnimatedIcon` platform splash, the
+  pre-31 `launch_background` layer-list, and the six splash-era art
+  files. Themes are back to a plain `@color/surface_dark` window.
+- **Everything non-splash from the later passes is KEPT** — cold-server
+  wide lanes + transport retry in V2Client, Google sign-in double-tap
+  guard, the role-selector un-freeze (selection-only cards, no nested
+  clickables), and the PlayerView shutter-color CI fix.
+- **Release URL wiring bug fixed.** `-PapiBaseUrl` (passed by
+  `android-release.yml` and CI) was silently ignored by
+  `app/build.gradle.kts`; every APK shipped on the hardcoded default
+  regardless of what the workflow claimed. The origin is now baked into
+  `BuildConfig.API_BASE_URL` (suffix `/api/v1` stripped — route paths
+  carry it) and `V2Client` reads it. Default remains the production
+  Render origin when no property is set.
+- **versionCode 2 / versionName 1.0.1** so the rebuilt APK installs as
+  a clean update over the previously shipped version-1 APKs.
+- **Gate 7 (parser harness) repaired.** The harness sliced
+  `private fun jsonToProduct(` … `fetchUserProfile`, a shape that no
+  longer exists; it now slices the shipping trio — `jsonToProduct`,
+  `parseProductImages` (media gallery) and `absoluteMediaUrl` — with a
+  stubbed origin accessor, and additionally asserts every parsed
+  gallery URL is absolute.
+- **Full local verification, all green:** backend e2e 279, Google
+  Sign-In 23, Android ⇆ backend contract 105, web UI 201, TypeScript
+  clean (backend + web), Kotlin syntax clean (132 files), wiring
+  (108 call sites / 70 routes / 56 screens), Compose contract 18/18,
+  layout 63/63, resources 9/9, parsers vs live API JSON PASSED.
+
 ## Ninth pass (2026-08-30) — welcome → selector → login → dashboard chain re-fixed
 
 Owner report: "first three screens don't show what they should, the
