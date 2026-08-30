@@ -43,10 +43,11 @@ problems, and the logo should be gone. This pass:
   additionally ship the Compose UI tooling library and full debug info.
   The bundled media inventory (all videos, onboarding photos, brand
   art) is byte-identical to the last validated build; the only removed
-  files are the six splash-era PNGs added AFTER it. The release
-  workflow now builds BOTH the release and the debug APK in one run,
-  uploads both, and prints a side-by-side size/entry/badging comparison
-  to the job summary so this is checkable any time.
+  files are the six splash-era PNGs added AFTER it (0.9 MB). Both
+  builds of the fixed code exist as downloadable artifacts: the release
+  APK (`scottsx-release-apk`, run 33331056304) and the debug test APK
+  (`scottsx-test-apk`, run 33331050771) — the debug one reads ~38 MB
+  installed on a phone, exactly like the build that was there before.
 - **versionCode 2 / versionName 1.0.1** so the rebuilt APK installs as
   a clean update over the previously shipped version-1 APKs.
 - **Gate 7 (parser harness) repaired.** The harness sliced
