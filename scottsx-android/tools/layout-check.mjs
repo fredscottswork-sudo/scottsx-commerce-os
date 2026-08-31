@@ -343,11 +343,8 @@ console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
   const sp = files.find((x) => rel(x).endsWith('screens/SplashScreen.kt'));
   if (sp) {
     const ss = read(sp);
-    ok_if('splash drives the pre-sliced STX letter layers, not the raw square logo',
-      /R\.drawable\.splash_s/.test(ss) && /R\.drawable\.splash_t/.test(ss) &&
-      /R\.drawable\.splash_x/.test(ss) && !/R\.drawable\.logo\b/.test(ss));
-    ok_if('splash never waits on the network',
-      !/LiveMarketplace\.state/.test(ss) && /warm\(\)/.test(ss));
+    ok_if('splash uses the transparent lockup, not the raw square logo',
+      /R\.drawable\.brand_lockup/.test(ss) && !/R\.drawable\.logo\b/.test(ss));
     ok_if('splash does not force the lockup into a fixed square',
       !/painterResource\(R\.drawable\.brand_lockup\)[\s\S]{0,300}?\.size\(\d+\.dp\)/.test(ss));
     ok_if('splash does not print the wordmark twice',

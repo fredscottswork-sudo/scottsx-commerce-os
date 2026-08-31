@@ -1,127 +1,47 @@
 # ScottsTechX — build status
 
-## Fourteenth pass (2026-08-31) — the REAL logo bug found: platform splash overlay removed
+## Fifteenth pass (2026-08-31) — full revert to the last known-good build + screen-by-screen audit
 
-Owner's device symptoms for every logo build (v1.0.2/v1.0.3): after the
-splash, the first welcome screen's logo never shows, Continue feels
-dead, welcome screens 2-3 are BLACK (videos), the role selector can't
-be selected ("the blue moving thing disappears"), the Log in / Sign up
-buttons misfire, and after login the dashboards render EMPTY — the
-whole app behaves differently from before the logo was placed.
+Owner's call after the logo builds (v1.0.2–v1.0.4) broke the app on
+their device: "revert to 3049a1c and build that one again, and analyze
+it from the first screen to the last while fixing bugs and buttons."
 
-Root cause (app-wide, which the timing fix of the thirteenth pass could
-not touch): the logo builds shipped PLATFORM-level splash theme
-changes — `android:windowSplashScreen*` attrs + a launch layer-list as
-`android:windowBackground` on the app theme. On real devices that
-system splash overlay can outlive the launch: it sits over the app,
-swallows touch events (dead buttons, misfiring selector) and leaves
-black/blank areas (welcome videos, missing logo, dashboards that never
-recompose). CI compiles fine — only a real device shows it.
+Done — **the entire app tree is reverted to 3049a1c byte-for-byte**
+(the exact code behind green CI run #161 / v1.0.1): plain 1-second
+splash, v1.0.1 role selector (selection cards + bottom Sign up / Log
+in — the design created to fix the old cards' dead taps on real
+devices), v1.0.1 themes, no STX splash art, no platform-splash attrs,
+no layer-list window background. Every logo-era change is gone.
 
-The fix (v1.0.4):
+Screen-by-screen audit performed on that exact tree (no code defects
+found — every button on the journey is wired):
 
-- **Themes are byte-for-byte the v1.0.1 known-good pair** — no
-  windowSplashScreen*, no launch layer-list. launch_background.xml,
-  launch_center.png and launch_stx.png are deleted. The app's launch
-  window is exactly what shipped in v1.0.1, the version that worked.
-- **The animated STX logo lives entirely inside Compose** (splash_s/t/x
-  letters): full choreography + tap-to-skip + fixed 3.3 s beat + 4.8 s
-  watchdog hand-over + once-only guard + zero network dependence. A
-  Compose screen cannot leak input or rendering artifacts into other
-  screens — when it navigates away it is fully disposed.
-- The previous-version role selectors (615ef16, the design from the
-  build the owner confirms worked) are untouched.
-- Everything else is exactly v1.0.3's code (all gates were green
-  there; the only deltas are the two theme files, the three deleted
-  drawables and the version bump).
+ 1. Splash → onboarding gate (first-run) or role select — wired.
+ 2. Onboarding 1–3: Skip + Continue/Next/Start wired; video + mosaic
+    backgrounds (PlayerView fail-safe fix present).
+ 3. Role select: cards select; bottom Sign-up + Log-in navigate with
+    the chosen role — single clickable per element, no nesting.
+ 4. Login: manual sign-in (loading guard, IME Done), Google one-tap
+    (silent resume + double-tap guard), forgot password, signup link,
+    role-mismatch and verify-email exits — all routed.
+ 5. Signup: submit, sign-in-instead, role mismatch, verification
+    pending — all routed.
+ 6. Buyer dashboard: parallel catalogue/badges/follow fetches;
+    Loading shimmer, Error + retry, honest Empty state, flash deals,
+    product taps → detail.
+ 7. Product detail: wishlist toggle, add-to-cart, buy-now, variant
+    selection (out-of-stock disabled), message seller, reviews.
+ 8. Cart: checkout with placing guard + failure banner.
+ 9. All 6 buyer tabs + 6 seller tabs + seller Add/Analytics/Messages/
+    Orders navigate to real routes; AI chat send guarded; search
+    reactive. No empty/dead click handlers anywhere in the UI package
+    (swept: none).
+10. Wiring gate: 70 routes defined and used, 56 screens referenced.
 
-Local gates: syntax clean (same single known offline false positive),
-wiring ✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
-
-## Thirteenth pass (2026-08-31) — animated STX logo back WITH the bug that broke it fixed
-
-Owner: "I really wanted that logo, but whenever I add it to the app it
-stops working as it was — if you can fix the error that comes with it,
-leave it in."
-
-**The error, found and fixed.** The splash's ignition-hold waited on
-`LiveMarketplace.state` — it held the launch screen until the live
-catalogue reached a terminal state, up to 8.5 s. The backend sleeps
-when idle, so on a real phone the catalogue stays `Loading` on most
-launches → the app sat on the splash for the full 8.5 s looking frozen
-(the plain splash never waits on the network; the animated one broke
-that promise). Second latent defect: the hold's exit condition was
-only re-checked on animation frames, so a stalled frame clock would
-stall the hand-over too.
-
-The fixed splash:
-
-- **Never touches the network**: the catalogue/cart warm-ups are fired
-  at frame zero and RACE the animation (same contract as the plain
-  splash); the beat is a FIXED 3.3 s — every launch behaves
-  identically, cold server or not.
-- **Watchdog hand-over**: a wall-clock deadline (4.8 s) finishes the
-  splash even if the frame clock stalls, and an atomic once-only guard
-  makes the hand-over single-shot no matter how many paths race.
-- Tap anywhere still skips; the full choreography (scatter → fusion →
-  impact → rings → shimmer ×2) plays unchanged; the Android-12+
-  platform splash still shows STX from the very first tap.
-- Themes keep the working version's transparent system bars — only the
-  launch-window attrs (`windowBackground` = STX layer-list +
-  `windowSplashScreen*`) are added.
-- New layout gate: "splash never waits on the network" (fails if the
-  splash reads `LiveMarketplace.state` again).
-
-The previous-version role selectors (in-card Log in / Sign up pills)
-stay. versionCode 4 / versionName 1.0.3.
-
-Local gates: syntax clean (one known offline-checker false positive on
-`for (sp in sparks)` — the identical pattern compiled green in CI),
-wiring ✓, Compose contract 18/18 ✓, layout 64/64 ✓ (incl. the two new
-splash rules), resources 9/9 ✓.
-
-## Twelfth pass (2026-08-31) — splash reverted again by request; selectors keep the previous design
-
-Owner follow-up to the eleventh pass: **remove the animated STX logo,
-keep the restored role selectors.**
-
-- The animated splash (SplashScreen.kt, the 5 STX letter/monogram
-  PNGs, launch_background.xml, the Android-12 `windowSplashScreen*`
-  theme attrs, and the layout-check STX artwork rule) is reverted to
-  the plain pre-splash version — same state as the tenth pass.
-- **The previous-version role selectors stay**: each role card carries
-  its own Log in / Sign up pill buttons and expands with the brand-blue
-  glow when selected.
-- versionCode 4 / versionName 1.0.3.
-- Local gates: Kotlin syntax fully clean (0 problems), wiring 108/70/56
-  ✓, Compose contract 18/18 ✓, layout 63/63 ✓, resources 9/9 ✓.
-
-## Eleventh pass (2026-08-31) — animated STX splash back by request + previous-version role selectors
-
-Owner request (two parts), both done:
-
-- **Animated STX launch logo restored.** The full splash from the last
-  CI-green splash build (d740fa3) is back byte-for-byte: the Android-12
-  `windowSplashScreenAnimatedIcon` platform splash (STX visible from the
-  instant the icon is tapped), the pre-31 `launch_background`
-  layer-list, and the Compose opening — scatter → fusion flight →
-  impact flash + energy rings → chrome shimmer → ignition hold that
-  keeps animating while the catalogue warms (min 3.2 s, hard cap 8.5 s,
-  tap skips, never blocks on the network) → zoom-out exit. All the
-  unrelated fixes stay: cold-server lanes, Google double-tap guard,
-  PlayerView fail-safes, release signing, URL baking.
-- **Role selectors back to the previous design.** The ninth-pass
-  rewrite (selection-only cards + two bottom buttons) is replaced with
-  the previous validated design: each role card carries its own
-  **Log in / Sign up** pill buttons, and tapping a card switches the
-  active role with the brand-blue glow. Restored exactly from the
-  validated base (615ef16).
-- **versionCode 3 / versionName 1.0.2.**
-- Local gates: Kotlin syntax clean (one known offline-checker false
-  positive on the restored splash — the identical file compiled green
-  in CI on branch arena/01a04823), wiring 108/70/56 ✓, Compose contract
-  18/18 ✓, layout 63/63 ✓ (artwork rule flipped back to the STX letter
-  layers), resources 9/9 ✓.
+The only functional deltas vs v1.0.1: versionCode 6 / versionName
+1.0.5 (so it installs cleanly over the broken v1.0.4) and this
+STATUS entry. Local gates: syntax clean, wiring ✓, Compose contract
+18/18 ✓, layout 63/63 ✓ (v1.0.1 rules), resources 9/9 ✓.
 
 ## Tenth pass (2026-08-30) — animated splash reverted + deep verification sweep
 
