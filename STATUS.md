@@ -1,5 +1,23 @@
 # ScottsTechX — build status
 
+## Nineteenth pass (2026-08-31) — launcher icon reverted per owner; instant-on STX splash kept
+
+Owner: "don't change the icon — I just want the logo thing you made to
+show immediately the icon is clicked."
+
+- **All 17 launcher-icon resources restored byte-for-byte** to the
+  original (the v1.0.7 state): adaptive foreground layers, legacy
+  square + round PNGs, every density. The home-screen icon is exactly
+  as it was.
+- **The instant-on STX splash stays** (v1.0.8 behaviour): the chrome-
+  blue STX monogram renders at FULL brightness on the very first app
+  frame — no fade-in — stamps slightly oversized, settles over ~0.45 s
+  while the engine-glow blooms, breathes with a chrome sheen sweep,
+  quick fade at ~2.3 s into the app.
+
+versionCode 10 / versionName 1.0.9. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Eighteenth pass (2026-08-31) — the new STX brand reaches the launcher icon
 
 Continuation of the brand recreation: the home-screen icon — the very
