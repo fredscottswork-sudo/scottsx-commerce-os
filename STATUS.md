@@ -1,5 +1,25 @@
 # ScottsTechX — build status
 
+## Eighteenth pass (2026-08-31) — the new STX brand reaches the launcher icon
+
+Continuation of the brand recreation: the home-screen icon — the very
+thing that is tapped to open the app — now carries the same chrome-blue
+STX monogram as the animated splash.
+
+- Adaptive-icon foreground layers (drawable + all five mipmap
+  densities) rebuilt from the new stx_logo art: STX at 60% canvas
+  width (same layout proportions as the previous icon), transparent
+  background, safe-zone compliant. Round variant at 54%.
+- Background stays the brand dark (#050711, unchanged) — the icon is
+  dark + chrome-blue STX, matching the splash frame-for-frame.
+- Legacy square/round launcher PNGs regenerated for consistency
+  (unused at minSdk 26, where every device uses the adaptive icon).
+- Pure resource swap: no code, no themes, no manifest changes — zero
+  runtime risk.
+
+versionCode 9 / versionName 1.0.8. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Seventeenth pass (2026-08-31) — recreated premium STX logo + branded splash animation
 
 Owner request: "recreate the logo with better styles like the company
