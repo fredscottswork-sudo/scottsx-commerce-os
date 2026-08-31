@@ -1,5 +1,28 @@
 # ScottsTechX — build status
 
+## Twenty-sixth pass (2026-08-31) — the STX monogram rebuilt to the owner's spec
+
+Owner's letterform spec, delivered in new generated art:
+ - **S and T:** deep metallic navy → electric-blue gradients with
+   chrome-like reflections and beveled 3D depth.
+ - **X:** premium polished silver/chrome with subtle electric-blue
+   edge highlights — bright against the two blue letters.
+ - **Letterforms:** bold, heavy, angular, geometric — sharp
+   precision-cut edges, chamfered corners, metallic specular
+   reflections; compact, powerful, symmetrical (1100x450, aspect
+   2.44). No rounded/playful/handwritten/thin strokes.
+ - Verified programmatically: pure black source edges, exactly three
+   letter clusters (S/T/X), left two-thirds blue-dominant, right third
+   silver-dominant, corners fully transparent after processing.
+ - stx_logo.png + the 45% launch-window twin (launch_stx.png) replaced;
+   the layer-list (210x86dp) and the splash aspect match. All
+   animation machinery unchanged: launch-window STX at 45% from the
+   literal tap → form (brighten, settle, light sweep) → hold
+   (breathing, glow bloom, sheen) → exit → app.
+
+versionCode 17 / versionName 1.0.16. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Twenty-fifth pass (2026-08-31) — STX only; the ScottsTechX word art is gone
 
 Owner: "the word scottstechx does not fit the screen — just make it

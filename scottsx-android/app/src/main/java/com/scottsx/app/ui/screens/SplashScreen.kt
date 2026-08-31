@@ -173,7 +173,7 @@ fun SplashScreen(
         Box(
             modifier = Modifier
                 .width(210.dp)
-                .aspectRatio(1100f / 591f)
+                .aspectRatio(1100f / 450f)
                 .graphicsLayer {
                     compositingStrategy = CompositingStrategy.Offscreen
                     scaleX = logoScale
