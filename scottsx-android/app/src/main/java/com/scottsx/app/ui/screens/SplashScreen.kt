@@ -56,7 +56,12 @@ import kotlinx.coroutines.delay
  *   pulses behind it, and a chrome sheen sweeps the letters every
  *   ~1.9 s.
  *
- *   EXIT (~0.35 s) — quick fade, then hand-over to the flow.
+ *   HAND-OFF — the moment the hold ends the first screen takes over
+ *   IMMEDIATELY. There is deliberately NO exit fade here: fading the
+ *   logo out first would leave a beat of empty blue-glow background
+ *   alone on screen before the app appears. The navigation
+ *   transition out of the splash is also instant (see AppNavigation),
+ *   so the app's first frame lands the instant the brand beat ends.
  *
  * The catalogue + cart warm-ups are fired at frame zero and race the
  * brand beat — the splash NEVER waits on the network.
@@ -72,19 +77,12 @@ fun SplashScreen(
     onFinished: () -> Unit,
 ) {
     var forming by remember { mutableStateOf(false) }   // form: brighten + settle
-    var leaving by remember { mutableStateOf(false) }   // exit
 
     // FORM — from the launch-window state (45%) to full strength.
     val formProgress by animateFloatAsState(
         targetValue = if (forming) 1f else 0f,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "stx-form",
-    )
-    // EXIT — quick fade before the hand-over.
-    val exit by animateFloatAsState(
-        targetValue = if (leaving) 1f else 0f,
-        animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing),
-        label = "stx-exit",
     )
     // Continuous brand motion — glow breathing + chrome sheen sweep.
     val motion = rememberInfiniteTransition(label = "stx-motion")
@@ -118,14 +116,14 @@ fun SplashScreen(
         com.scottsx.app.data.CartStore.warm()
         forming = true
         delay(1700)
-        leaving = true
-        delay(360)
+        // NO exit fade: as soon as the brand beat ends the first
+        // screen takes over. A fade-out here would leave a beat of
+        // blue glow alone on screen — exactly what must not happen.
         onFinished()
     }
 
-    val logoAlpha = (0.45f + 0.55f * formProgress) * (1f - exit)
-    val logoScale = (0.97f + 0.03f * formProgress) * (1f - 0.10f * exit) *
-        (0.995f + 0.010f * breathe)
+    val logoAlpha = 0.45f + 0.55f * formProgress
+    val logoScale = (0.97f + 0.03f * formProgress) * (0.995f + 0.010f * breathe)
 
     // NOTE: no systemBarsPadding — the splash centres in the FULL
     // window so the STX sits exactly where the launch window's STX
@@ -173,7 +171,7 @@ fun SplashScreen(
         Box(
             modifier = Modifier
                 .width(210.dp)
-                .aspectRatio(1100f / 450f)
+                .aspectRatio(1100f / 576f)
                 .graphicsLayer {
                     compositingStrategy = CompositingStrategy.Offscreen
                     scaleX = logoScale

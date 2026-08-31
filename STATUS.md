@@ -1,5 +1,38 @@
 # ScottsTechX — build status
 
+## Twenty-seventh pass (2026-08-31) — previous-version letterforms + instant first screen
+
+Owner: "use the same style as the previous version you created but
+don't change the colors or theme, only the way the fonts are — when
+the X is long the ST are joined… also remove the blue that appears
+alone before the first screen opens; after the animation plays the
+first screen comes immediately."
+
+- **Monogram rebuilt with the v1.0.15 letterform structure** (the
+  style the owner liked): at low threshold the whole mark is ONE
+  connected unit; at high threshold it resolves to the JOINED S+T
+  ligature block (392px) + the LONG X (482px — wider than the ST
+  unit), letters aspect 2.14 vs the previous version's 2.15. Colors
+  unchanged from v1.0.16: S+T deep metallic navy → electric blue,
+  X polished chrome silver with electric-blue highlights
+  (verified: left region blue-dominant 14.7k vs 2.8k, right region
+  silver-dominant 5.5k vs 3.7k). New asset 1100x576 (aspect 1.91);
+  layer-list 210x110dp; splash aspect 1100f/576f.
+- **No more blue-alone beat before the first screen.** Two causes
+  removed: (1) the splash's own 360ms exit fade (logo faded out while
+  the blue glow stayed alone) — deleted; onFinished() now fires the
+  instant the hold ends; (2) the NavHost's default 700ms cross-fade
+  on the splash → first-screen navigation — the splash now exits with
+  ExitTransition.None and ONBOARDING/ROLE (the two possible first
+  screens) enter with EnterTransition.None. Result: brand beat ends →
+  first frame of the app is already on screen.
+- First generation attempt rejected programmatically (model rendered
+  a 2910x191 word strip — 12 clusters, aspect 15.2); the second
+  attempt matched the previous monogram's structure.
+
+versionCode 18 / versionName 1.0.17. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Twenty-sixth pass (2026-08-31) — the STX monogram rebuilt to the owner's spec
 
 Owner's letterform spec, delivered in new generated art:

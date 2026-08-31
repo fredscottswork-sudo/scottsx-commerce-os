@@ -10,7 +10,7 @@
     <item android:drawable="@color/surface_dark" />
     <item
         android:width="210dp"
-        android:height="86dp"
+        android:height="110dp"
         android:gravity="center">
         <bitmap
             android:gravity="center"

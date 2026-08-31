@@ -2,6 +2,8 @@ package com.scottsx.app.navigation
 
 import java.net.URLDecoder
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -116,7 +118,14 @@ fun AppNavigation() {
     val scope = rememberCoroutineScope()
 
     NavHost(navController = navController, startDestination = Routes.SPLASH) {
-        composable(Routes.SPLASH) {
+        composable(
+            Routes.SPLASH,
+            // The splash hands over INSTANTLY — no fade-out. A
+            // cross-fade here leaves the splash's blue glow visible
+            // alone on screen while the next screen fades in.
+            exitTransition = { ExitTransition.None },
+            popExitTransition = { ExitTransition.None },
+        ) {
             BackHandler { /* splash blocks back */ }
             // LocalContext reads must live in the composable scope, not
             // inside the plain callback lambdas below.
@@ -135,7 +144,12 @@ fun AppNavigation() {
             })
         }
 
-        composable(Routes.ONBOARDING) {
+        composable(
+            Routes.ONBOARDING,
+            // Entering from the splash must be instant — this is the
+            // app's first screen.
+            enterTransition = { EnterTransition.None },
+        ) {
             BackHandler { /* onboarding blocks back */ }
             val onboardingCtx = androidx.compose.ui.platform.LocalContext.current
             OnboardingFlow(onFinish = {
@@ -151,7 +165,12 @@ fun AppNavigation() {
             })
         }
 
-        composable(Routes.ROLE) {
+        composable(
+            Routes.ROLE,
+            // Entering from the splash must be instant — this is the
+            // app's first screen for returning users.
+            enterTransition = { EnterTransition.None },
+        ) {
             RoleSelectionScreen(
                 onLogin = { role: Role ->
                     navController.navigate(Routes.login(role)) {
