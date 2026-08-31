@@ -1,5 +1,39 @@
 # ScottsTechX — build status
 
+## Twenty-first pass (2026-08-31) — no more black launch gap: the wordmark forms, then STX
+
+Owner: "there should never be a black/blank screen between the app
+being clicked and the STX logo appearing — change that black screen to
+the word ScottsTechX; it forms, then the STX appears."
+
+The black gap was the Android launch window (the window background —
+previously the plain dark colour). Now:
+
+- **Launch window branded.** `windowBackground` =
+  `launch_wordmark_bg` (layer-list: brand dark + the ScottsTechX
+  wordmark at 45% opacity, centred, 280dp wide). From the instant the
+  app is tapped the screen shows the word — never black. Still NO
+  `windowSplashScreen*` attrs: the platform-splash overlay that broke
+  the app on the owner's device (v1.0.2–v1.0.4) stays out; a window
+  background drawable cannot intercept touches.
+- **Wordmark art.** `stx_wordmark.png` rendered in-house (DejaVu
+  Bold, tight tracking): white "Scotts" + chrome-blue gradient
+  "TechX" (#DFF2FF→#2563EB), 1400x164 transparent PNG; 45%-opacity
+  twin `launch_wordmark.png` for the launch window.
+- **Two-beat Compose opening**, frame 1 pixel-matched to the launch
+  window (same art, width, centre — seamless pick-up, no
+  systemBarsPadding so centring matches the window):
+  1. BEAT 1 (~0.5s) — "ScottsTechX" forms: brightens from the 45%
+     launch state to full strength, settles to size; holds to ~0.9s.
+  2. BEAT 2 — the wordmark dissolves (~0.26s) and the chrome-blue STX
+     monogram STAMPS in at full brightness (oversized → settle, glow
+     bloom, breathing + chrome sheen, ~1.1s).
+  3. EXIT (~0.35s) — fade, hand-over. Total ~2.4s.
+- STX launcher icon (twentieth pass) stays in.
+
+versionCode 12 / versionName 1.0.11. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Twentieth pass (2026-08-31) — STX launcher icon back by request
 
 Owner: "put back the icon logo which you found."

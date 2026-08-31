@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch window background: the ScottsTechX wordmark (45% opacity,
+     pre-formed state) dead-centre on the brand dark stage — so the
+     moment the app is tapped the screen shows the brand instead of a
+     black/blank window. The Compose splash's first frame matches this
+     exact state (same art, same 280dp width, same centre) and then
+     animates the wordmark to full strength before the STX monogram
+     stamps in. Plain window background drawable only — no splash-screen
+     API, no overlay machinery. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/surface_dark" />
+    <item
+        android:width="280dp"
+        android:height="33dp"
+        android:gravity="center">
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/launch_wordmark" />
+    </item>
+</layer-list>
