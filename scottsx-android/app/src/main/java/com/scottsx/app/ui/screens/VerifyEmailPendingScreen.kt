@@ -206,7 +206,7 @@ fun VerifyEmailPendingScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Alignment.CenterHorizontally,
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                 ) {
                     Text(
                         text = "Email didn't arrive? ",
