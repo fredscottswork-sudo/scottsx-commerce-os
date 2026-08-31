@@ -16,6 +16,14 @@ STX monogram as the animated splash.
   (unused at minSdk 26, where every device uses the adaptive icon).
 - Pure resource swap: no code, no themes, no manifest changes — zero
   runtime risk.
+- **Instant-on splash.** The STX monogram now renders at FULL
+  brightness on the very first app frame — the fade-in is gone. Frame
+  1: logo fully visible, slightly oversized, faint glow; ~0.45 s: it
+  settles to rest size while the engine-glow blooms; then breathing +
+  chrome sheen as before; ~2.3 s total. Combined with the new STX
+  launcher icon, the brand is on screen from the literal tap (the
+  Android 12+ launch window shows the STX icon) straight through the
+  opening animation — no dark gap, no fade delay.
 
 versionCode 9 / versionName 1.0.8. Local gates: syntax clean, wiring
 ✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.

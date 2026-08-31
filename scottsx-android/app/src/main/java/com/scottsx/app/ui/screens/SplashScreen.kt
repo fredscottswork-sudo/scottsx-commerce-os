@@ -43,14 +43,17 @@ import kotlinx.coroutines.delay
 /**
  * Splash / Launch screen — the STX brand moment on cold-start.
  *
- * The ScottsTechX "STX" monogram (chrome-blue, house style) plays a
- * short branded opening the instant the app opens:
+ * The ScottsTechX "STX" monogram (chrome-blue, house style) is on
+ * screen at FULL brightness from the very first app frame — no
+ * fade-in, no waiting — and then plays a short branded opening:
  *
- *   1. ENTRANCE (~0.7 s) — the logo fades in and settles up to full
- *      size while a blue engine-glow blooms behind it.
- *   2. HOLD (~1.2 s) — the emblem breathes (glow pulses), and a chrome
+ *   1. STAMP (frame 1) — the logo is already fully visible, slightly
+ *      oversized, with a faint engine glow behind it.
+ *   2. SETTLE (~0.45 s) — the emblem settles to rest size while the
+ *      blue engine-glow blooms to full strength behind it.
+ *   3. HOLD (~1.5 s) — the emblem breathes (glow pulses) and a chrome
  *      sheen sweeps across the letters every ~1.9 s.
- *   3. EXIT (~0.35 s) — quick fade, then hand-over to the flow.
+ *   4. EXIT (~0.35 s) — quick fade, then hand-over to the flow.
  *
  * The catalogue + cart warm-ups are fired at frame zero and race the
  * brand beat — the splash NEVER waits on the network.
@@ -68,11 +71,12 @@ fun SplashScreen(
     var shown by remember { mutableStateOf(false) }     // entrance trigger
     var leaving by remember { mutableStateOf(false) }   // exit trigger
 
-    // 1. Entrance — logo fades in (visible faintly from frame one) and
-    // settles up to full size.
+    // 1-2. Stamp + settle — the LOGO ITSELF is at full alpha from frame
+    // one (instantly visible the moment the app opens); this animation
+    // only drives the settle-down scale and the glow bloom behind it.
     val entrance by animateFloatAsState(
-        targetValue = if (shown) 1f else 0.18f,
-        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
         label = "stx-entrance",
     )
 
@@ -119,8 +123,10 @@ fun SplashScreen(
         onFinished()
     }
 
-    val logoAlpha = entrance * (1f - exit)
-    val logoScale = (0.90f + 0.10f * entrance) * (1f - 0.10f * exit) *
+    // Full brightness from the very first frame — only the exit dims it.
+    val logoAlpha = 1f - exit
+    // Stamp slightly oversized on frame 1, then settle to rest size.
+    val logoScale = (1.06f - 0.06f * entrance) * (1f - 0.10f * exit) *
         (0.995f + 0.010f * breathe)
 
     Box(
@@ -146,7 +152,8 @@ fun SplashScreen(
                         brush = Brush.radialGradient(
                             colors = listOf(
                                 ScottsTechXColors.BlueGlow.copy(
-                                    alpha = (0.22f + 0.14f * breathe) * logoAlpha,
+                                    alpha = (0.10f + 0.26f * entrance) *
+                                        (0.55f + 0.45f * breathe) * logoAlpha,
                                 ),
                                 Color.Transparent,
                             ),
