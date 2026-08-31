@@ -1,5 +1,32 @@
 # ScottsTechX — build status
 
+## Eleventh pass (2026-08-31) — animated STX splash back by request + previous-version role selectors
+
+Owner request (two parts), both done:
+
+- **Animated STX launch logo restored.** The full splash from the last
+  CI-green splash build (d740fa3) is back byte-for-byte: the Android-12
+  `windowSplashScreenAnimatedIcon` platform splash (STX visible from the
+  instant the icon is tapped), the pre-31 `launch_background`
+  layer-list, and the Compose opening — scatter → fusion flight →
+  impact flash + energy rings → chrome shimmer → ignition hold that
+  keeps animating while the catalogue warms (min 3.2 s, hard cap 8.5 s,
+  tap skips, never blocks on the network) → zoom-out exit. All the
+  unrelated fixes stay: cold-server lanes, Google double-tap guard,
+  PlayerView fail-safes, release signing, URL baking.
+- **Role selectors back to the previous design.** The ninth-pass
+  rewrite (selection-only cards + two bottom buttons) is replaced with
+  the previous validated design: each role card carries its own
+  **Log in / Sign up** pill buttons, and tapping a card switches the
+  active role with the brand-blue glow. Restored exactly from the
+  validated base (615ef16).
+- **versionCode 3 / versionName 1.0.2.**
+- Local gates: Kotlin syntax clean (one known offline-checker false
+  positive on the restored splash — the identical file compiled green
+  in CI on branch arena/01a04823), wiring 108/70/56 ✓, Compose contract
+  18/18 ✓, layout 63/63 ✓ (artwork rule flipped back to the STX letter
+  layers), resources 9/9 ✓.
+
 ## Tenth pass (2026-08-30) — animated splash reverted + deep verification sweep
 
 Owner report: the app worked well before the animated starting logo was
