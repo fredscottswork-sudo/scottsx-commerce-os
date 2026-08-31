@@ -1,5 +1,34 @@
 # ScottsTechX — build status
 
+## Twenty-fifth pass (2026-08-31) — STX only; the ScottsTechX word art is gone
+
+Owner: "the word scottstechx does not fit the screen — just make it
+STX in the best style you have; remove it from everywhere."
+
+- **The opening is now a single mark: the chrome-blue STX monogram**
+  (the style the owner liked). The long "ScottsTechX" wordmark art
+  (stx_wordmark.png / launch_wordmark.png) is deleted from the repo.
+  The launch window (launch_stx_bg) shows the STX monogram at 45%
+  from the literal tap — never black; the splash picks it up
+  pixel-matched (same art, 210dp width, screen centre) and plays:
+  FORM (~0.5s: brighten to full strength, settle, chrome light sweep)
+  → HOLD (~1.2s: breathing, glow bloom, sheen sweep) → EXIT (~0.35s)
+  → app. ~2.4s total.
+- **The lockup emblem that briefly replaced the monogram in v1.0.14
+  is also gone** — stx_logo.png is again the chrome monogram.
+- **Launcher icon verified byte-identical to the original** (diff
+  against the pre-change commit is empty) — none of the generated
+  icon art exists in the APK. The old logo the owner saw "when
+  installing" comes from stale v1.0.8–v1.0.12 APK files; those old
+  GitHub release pages are deleted so only the newest release is
+  downloadable.
+- No theme/splash-API changes: windowBackground is still a plain
+  layer-list drawable; the platform-splash machinery that broke the
+  app (v1.0.2–v1.0.4) remains absent.
+
+versionCode 16 / versionName 1.0.15. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Twenty-fourth pass (2026-08-31) — beat 2 now uses the REAL company emblem
 
 Completion of the authentic-branding pass: BEAT 2 of the opening (the

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch window background: the chrome-blue STX monogram at 45%
+     opacity, dead-centre on the brand dark stage — from the instant
+     the app is tapped the screen shows the STX mark, never a
+     black/blank window. The Compose splash's first frame matches this
+     exact state (same art, same 210dp width, same centre) and then
+     forms it to full strength. Plain window background drawable only —
+     no splash-screen API, no overlay machinery. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/surface_dark" />
+    <item
+        android:width="210dp"
+        android:height="113dp"
+        android:gravity="center">
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/launch_stx" />
+    </item>
+</layer-list>

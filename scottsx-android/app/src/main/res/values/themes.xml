@@ -4,6 +4,6 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowTranslucentStatus">false</item>
-        <item name="android:windowBackground">@drawable/launch_wordmark_bg</item>
+        <item name="android:windowBackground">@drawable/launch_stx_bg</item>
     </style>
 </resources>
