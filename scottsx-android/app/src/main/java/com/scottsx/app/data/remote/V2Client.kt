@@ -720,7 +720,8 @@ object V2Client {
         return false to msg.ifBlank { "That reset link is invalid or expired — request a new one." }
     }
 
-    /** POST /api/v1/auth/verify/request (auth) — resend the 6-digit code. */
+    /** POST /api/v1/auth/verify/request (auth) — resend the verification
+     * email (the one containing the LINK). */
     suspend fun requestVerificationCode(): Boolean {
         val (code, json) = rawPost("/api/v1/auth/verify/request", JSONObject())
             ?: return false
@@ -734,6 +735,43 @@ object V2Client {
             JSONObject().put("code", code),
         ) ?: return false
         return httpCode in 200..299 && json.optBoolean("verified", false)
+    }
+
+    /**
+     * GET /api/v1/auth/me (auth) — the same poll the website's
+     * verification page runs: "has the emailed verification LINK been
+     * tapped yet?" Returns null when the call fails (the poll simply
+     * keeps going) and false while the address is still unverified.
+     *
+     * The verification email contains a LINK, not a typed code — the
+     * user taps it in their mail app (which verifies the account on
+     * the shared backend) and this screen detects the flip.
+     */
+    suspend fun fetchEmailVerified(): Boolean? {
+        val me = fetchUserProfile() ?: return null
+        return me.optBoolean("emailVerified", false)
+    }
+
+    /**
+     * Fire-and-forget nudge that wakes the production API. The server
+     * sleeps when idle (free tier) and its wake-up burns 20-60 s —
+     * long enough for a sign-in to look frozen. Issuing this cheap
+     * public GET the moment an auth screen appears means the server is
+     * already awake by the time the user taps the button. The response
+     * is irrelevant; the wake is the point.
+     */
+    suspend fun wakeServer() {
+        runCatching {
+            withContext(Dispatchers.IO) {
+                val url = java.net.URL(baseUrl.trimEnd('/') + "/api/v1/products?page=1&limit=1")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                conn.setRequestProperty("Accept", "application/json")
+                runCatching { conn.responseCode }
+                conn.disconnect()
+            }
+        }
     }
 
     /** Minimal POST that returns (HTTP status, parsed body) so auth

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.MarkEmailRead
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,15 +51,20 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
 import kotlinx.coroutines.launch
 
 /**
- * Password reset — two stages, both fully native:
+ * Password reset — LINK-based, exactly like the website.
  *
  *  1. REQUEST: the user types their email (or phone). We call
- *     POST /auth/forgot-password which mails a single-use token
- *     (the same email the website's flow sends — the link in it opens
- *     the web reset page if they'd rather finish there).
- *  2. REDEEM: the token from the email can be pasted (or typed) right
- *     here with a new password → POST /auth/reset-password. No browser
- *     round-trip needed; the account then signs in from Login.
+ *     POST /auth/forgot-password which mails a single-use reset LINK
+ *     (there is deliberately no typed code — the web app redeems the
+ *     link too). Tapping the link opens the secure reset page where
+ *     they choose a new password; that's the primary path.
+ *  2. NATIVE REDEEM (optional): the user can instead paste the whole
+ *     emailed link here with a new password → the app extracts the
+ *     token and redeems it via POST /auth/reset-password. No browser
+ *     round-trip needed.
+ *
+ * Either way the account's password changes on the shared backend —
+ * the new password then works on Login, app and web alike.
  */
 @Composable
 fun ResetPasswordScreen(
@@ -68,13 +74,60 @@ fun ResetPasswordScreen(
 ) {
     var stage by remember { mutableStateOf(1) }              // 1=request, 2=redeem, 3=done
     var identifier by remember { mutableStateOf("") }
-    var token by remember { mutableStateOf("") }
+    var linkPaste by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    // Wake the API while the user reads the form, so the request
+    // answers instantly instead of racing a cold free-tier server.
+    LaunchedEffect(Unit) { V2Client.wakeServer() }
+
+    /**
+     * Pull the reset token out of whatever the user pasted: the full
+     * emailed link, or the bare token. Returns null (and sets the
+     * error) when neither shape is present.
+     */
+    fun extractToken(paste: String): String? {
+        val trimmed = paste.trim()
+        if (trimmed.isEmpty()) return null
+        Regex("[?&]token=([A-Za-z0-9_-]{20,200})").find(trimmed)?.let {
+            return it.groupValues[1]
+        }
+        if (Regex("^[A-Za-z0-9_-]{20,200}$").matches(trimmed)) return trimmed
+        return null
+    }
+
+    fun requestReset() {
+        if (loading || identifier.isBlank()) return
+        loading = true
+        errorMsg = null
+        statusMsg = "Sending reset link…"
+        scope.launch {
+            val ok = V2Client.forgotPassword(identifier.trim())
+            loading = false
+            statusMsg = null
+            if (ok) stage = 2
+            else errorMsg = "No connection. Check your internet and try again."
+        }
+    }
+
+    fun redeemToken() {
+        val token = extractToken(linkPaste)
+        if (loading || token == null || password.length < 6 || password != confirm) return
+        loading = true
+        errorMsg = null
+        statusMsg = "Setting your new password…"
+        scope.launch {
+            val (ok, msg) = V2Client.resetPasswordWithToken(token, password)
+            loading = false
+            statusMsg = null
+            if (ok) stage = 3 else errorMsg = msg
+        }
+    }
 
     BrandedAuthScaffold(role = role, onBack = onBack) {
         Column(
@@ -88,7 +141,7 @@ fun ResetPasswordScreen(
                 1 -> {
                     BrandedAuthHeader(
                         title = "Reset your password",
-                        sub = "Enter the email or phone on your account — we'll send a reset code. The same email works on the web.",
+                        sub = "Enter the email or phone on your account — we'll send you a reset link. The same link works on the web.",
                     )
                     AuthStatusSlot(statusMsg)
                     Spacer(modifier = Modifier.height(18.dp))
@@ -101,39 +154,15 @@ fun ResetPasswordScreen(
                         leadingIcon = Icons.Filled.Email,
                         keyboardType = KeyboardType.Email,
                         imeAction = ImeAction.Done,
-                        onImeAction = {
-                            if (identifier.isNotBlank() && !loading) {
-                                loading = true
-                                errorMsg = null
-                                statusMsg = "Sending reset email…"
-                                scope.launch {
-                                    val ok = V2Client.forgotPassword(identifier.trim())
-                                    loading = false
-                                    statusMsg = null
-                                    if (ok) stage = 2
-                                    else errorMsg = "No connection. Check your internet and try again."
-                                }
-                            }
-                        },
+                        onImeAction = { requestReset() },
                         index = 0,
                     )
                     Spacer(modifier = Modifier.height(18.dp))
                     PrimaryCtaButton(
-                        label = "Send reset email",
+                        label = "Send reset link",
                         loading = loading,
                         enabled = identifier.isNotBlank(),
-                        onClick = {
-                            loading = true
-                            errorMsg = null
-                            statusMsg = "Sending reset email…"
-                            scope.launch {
-                                val ok = V2Client.forgotPassword(identifier.trim())
-                                loading = false
-                                statusMsg = null
-                                if (ok) stage = 2
-                                else errorMsg = "No connection. Check your internet and try again."
-                            }
-                        },
+                        onClick = { requestReset() },
                         index = 1,
                     )
 
@@ -145,7 +174,7 @@ fun ResetPasswordScreen(
                     )
                 }
 
-                // ── 2. Redeem the token natively ────────────────────────
+                // ── 2. Check your email / optional native redeem ────────
                 2 -> {
                     Box(
                         modifier = Modifier
@@ -164,18 +193,34 @@ fun ResetPasswordScreen(
                     Spacer(modifier = Modifier.height(14.dp))
                     BrandedAuthHeader(
                         title = "Check your email",
-                        sub = "We sent a reset code to $identifier. Paste it below with your new password (or tap the link in the email to finish on the web).",
+                        sub = "We sent a reset link to $identifier. Open the email on this phone and TAP the link — it opens a secure page where you choose your new password.",
                     )
                     AuthStatusSlot(statusMsg)
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    StyledAuthField(
-                        value = token,
-                        onValueChange = { token = it; errorMsg = null },
-                        label = "Reset code",
-                        placeholder = "Paste the code from the email",
-                        leadingIcon = Icons.Filled.Key,
+                    PrimaryCtaButton(
+                        label = "Done — back to sign in",
+                        loading = false,
+                        onClick = onDone,
                         index = 0,
+                    )
+
+                    Spacer(modifier = Modifier.height(22.dp))
+                    Text(
+                        text = "Prefer to set it here? Paste the reset link from the email below.",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    StyledAuthField(
+                        value = linkPaste,
+                        onValueChange = { linkPaste = it; errorMsg = null },
+                        label = "Reset link (paste the whole link)",
+                        placeholder = "https://…/reset-password?token=…",
+                        leadingIcon = Icons.Filled.Key,
+                        index = 1,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     PasswordField(
@@ -183,7 +228,7 @@ fun ResetPasswordScreen(
                         onValueChange = { password = it; errorMsg = null },
                         label = "New password",
                         leadingIcon = Icons.Filled.Lock,
-                        index = 1,
+                        index = 2,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     PasswordField(
@@ -192,44 +237,30 @@ fun ResetPasswordScreen(
                         label = "Confirm new password",
                         leadingIcon = Icons.Filled.Lock,
                         imeAction = ImeAction.Done,
-                        onImeAction = {
-                            if (!loading && token.isNotBlank() && password.length >= 6 && password == confirm) {
-                                loading = true
-                                errorMsg = null
-                                statusMsg = "Resetting your password…"
-                                scope.launch {
-                                    val (ok, msg) = V2Client.resetPasswordWithToken(token.trim(), password)
-                                    loading = false
-                                    statusMsg = null
-                                    if (ok) stage = 3 else errorMsg = msg
-                                }
-                            }
-                        },
-                        index = 2,
+                        onImeAction = { redeemToken() },
+                        index = 3,
                     )
                     Spacer(modifier = Modifier.height(18.dp))
                     PrimaryCtaButton(
                         label = "Set new password",
                         loading = loading,
-                        enabled = token.isNotBlank() && password.length >= 6 && password == confirm,
-                        onClick = {
-                            loading = true
-                            errorMsg = null
-                            statusMsg = "Resetting your password…"
-                            scope.launch {
-                                val (ok, msg) = V2Client.resetPasswordWithToken(token.trim(), password)
-                                loading = false
-                                statusMsg = null
-                                if (ok) stage = 3 else errorMsg = msg
-                            }
-                        },
-                        index = 3,
+                        enabled = extractToken(linkPaste) != null && password.length >= 6 && password == confirm,
+                        onClick = { redeemToken() },
+                        index = 4,
                     )
 
                     if (password.isNotEmpty() && confirm.isNotEmpty() && password != confirm) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "The two passwords do not match.",
+                            color = Color(0xFFFCA5A5),
+                            fontSize = 12.sp,
+                        )
+                    }
+                    if (linkPaste.isNotBlank() && extractToken(linkPaste) == null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "That doesn't look like the reset link — paste the whole link from the email.",
                             color = Color(0xFFFCA5A5),
                             fontSize = 12.sp,
                         )

@@ -108,6 +108,24 @@ fun LoginScreen(
         }
     }
 
+    // Wake the production API the moment this screen appears. The
+    // free-tier server sleeps when idle and its wake-up burns 20-60 s;
+    // nudging it now means it is already awake by the time the user
+    // taps Sign in. Fire-and-forget — the result is irrelevant.
+    LaunchedEffect(Unit) { V2Client.wakeServer() }
+
+    // Honest status when sign-in runs long: a waking server (free
+    // tier) is the usual cause, and a silent spinner for a minute
+    // reads as "broken". Swap the status line after 5 s of loading.
+    LaunchedEffect(loading) {
+        if (loading) {
+            kotlinx.coroutines.delay(5000)
+            if (loading && statusMsg != null) {
+                statusMsg = "The server is waking up — this can take a moment. Hold on…"
+            }
+        }
+    }
+
     /** Complete the Google sign-in once we hold an id_token. */
     suspend fun finishGoogleSignIn(idToken: String?, silentResume: Boolean) {
         if (idToken == null) {

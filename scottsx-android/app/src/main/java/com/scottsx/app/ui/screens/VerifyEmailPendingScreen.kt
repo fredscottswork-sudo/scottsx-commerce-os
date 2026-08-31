@@ -1,9 +1,7 @@
 package com.scottsx.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,13 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MarkEmailRead
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,9 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,14 +50,23 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Email verification — the SIX-DIGIT CODE the backend mails at sign-up
- * (the exact same code the website asks for), typed into six company-
- * styled boxes. Confirms via POST /auth/verify/confirm. The email also
- * contains a link that finishes on the web if the user prefers — both
- * paths flip the same `email_verified` flag on the shared account.
+ * Email verification — LINK-based, exactly like the website.
+ *
+ * The backend mails a verification LINK (there is deliberately no
+ * typed code in the email — the web app has no code entry either).
+ * The user taps the link in their mail app, which opens the web page
+ * and flips the shared `email_verified` flag on the backend. This
+ * screen then DETECTS it:
+ *
+ *   * It polls GET /auth/me every 4 s while open (the same poll the
+ *     website's verify page runs), so the moment the link is tapped —
+ *     on this phone or any device — the app notices and moves on.
+ *   * A manual "I've tapped the link" button checks immediately for
+ *     users who don't want to wait for the next tick.
+ *   * "Resend email" re-mails the link (60 s cooldown, 6/hour cap).
  *
  * The fresh JWT is already stored (register signs the user in
- * immediately), so the verify endpoints are callable right away.
+ * immediately), so /auth/me is callable right away.
  */
 @Composable
 fun VerifyEmailPendingScreen(
@@ -75,23 +78,64 @@ fun VerifyEmailPendingScreen(
     val scope = rememberCoroutineScope()
     val role = Session.roleOrNull() ?: Role.BUYER
 
-    var code by remember { mutableStateOf("") }
     var checking by remember { mutableStateOf(false) }
     var confirmed by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
     var resendCooldown by remember { mutableIntStateOf(0) }
 
-    // Auto-resend once on mount (harmless — supersedes the first code
-    // with a fresh 15-minute window) when the route carried an email
-    // from a LOGIN (not a fresh register, which has one already).
-    LaunchedEffect(Unit) {
-        // Register already mailed a code; don't spam. Only the status
-        // line is set so users know where to look.
-        statusMsg = null
+    fun markVerified() {
+        confirmed = true
+        // Flip the local flag too so every screen sees it now.
+        val cached = com.scottsx.app.SessionCache.user.value
+        if (cached != null && cached.id.isNotBlank()) {
+            com.scottsx.app.SessionCache.updateUser(cached.copy(emailVerified = true))
+        }
     }
 
-    // Tick the cooldown down every second when > 0.
+    /** One immediate check — used by the poll AND the manual button. */
+    suspend fun checkNow(silent: Boolean) {
+        if (!silent) {
+            checking = true
+            errorMsg = null
+            statusMsg = "Checking…"
+        }
+        val verified = V2Client.fetchEmailVerified()
+        if (!silent) {
+            checking = false
+            statusMsg = null
+        }
+        when (verified) {
+            true -> if (!confirmed) markVerified()
+            false -> if (!silent) errorMsg =
+                "Not verified yet — open the email we sent to $email and tap the link inside it."
+            null -> if (!silent) errorMsg =
+                "Could not reach the server — check your internet and try again."
+        }
+    }
+
+    // AUTO-POLL while the screen is open: the link is tapped in the
+    // mail app, not here, so nothing else would tell us it happened.
+    // Same 4-second cadence as the website's verify page. A failed
+    // poll (offline, server waking) is silent — the next tick retries.
+    LaunchedEffect(Unit) {
+        while (!confirmed) {
+            delay(4000)
+            if (!confirmed && !checking) {
+                if (V2Client.fetchEmailVerified() == true) markVerified()
+            }
+        }
+    }
+
+    // Confirmed → brief success beat, then continue into the app.
+    LaunchedEffect(confirmed) {
+        if (confirmed) {
+            delay(900)
+            onVerified()
+        }
+    }
+
+    // Tick the resend cooldown down every second when > 0.
     LaunchedEffect(resendCooldown) {
         while (resendCooldown > 0) {
             delay(1000)
@@ -99,33 +143,9 @@ fun VerifyEmailPendingScreen(
         }
     }
 
-    fun confirm() {
-        if (checking || confirmed) return
-        if (code.length != 6) {
-            errorMsg = "Enter all 6 digits from the email."
-            return
-        }
-        checking = true
-        errorMsg = null
-        statusMsg = "Verifying…"
-        scope.launch {
-            val ok = V2Client.confirmVerificationCode(code)
-            checking = false
-            statusMsg = null
-            if (ok) {
-                confirmed = true
-                // Flip the local flag too so every screen sees it now.
-                val cached = com.scottsx.app.SessionCache.user.value
-                if (cached != null && cached.id.isNotBlank()) {
-                    com.scottsx.app.SessionCache.updateUser(cached.copy(emailVerified = true))
-                }
-                delay(900)
-                onVerified()
-            } else {
-                errorMsg = "That code didn't match — check the email and try again (codes expire after 15 minutes)."
-            }
-        }
-    }
+    // Wake the API while the user reads this screen so the poll (and
+    // any resend) answers instantly instead of racing a cold server.
+    LaunchedEffect(Unit) { V2Client.wakeServer() }
 
     BrandedAuthScaffold(role = role, onBack = onBack) {
         Column(
@@ -152,83 +172,49 @@ fun VerifyEmailPendingScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 BrandedAuthHeader(
                     title = "Verify your email",
-                    sub = "We sent a 6-digit code to $email. Type it below — the code is shared with the website, so verify once and you're in everywhere.",
+                    sub = "We sent a verification link to $email. Open it and tap the link — this screen will detect it automatically. It works on this phone or any device, and verifies your account everywhere at once.",
                 )
                 AuthStatusSlot(statusMsg)
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // ── Six company-styled code boxes ───────────────────────
-                BasicTextField(
-                    value = code,
-                    onValueChange = { v ->
-                        val digits = v.filter { it.isDigit() }.take(6)
-                        if (digits != code) {
-                            code = digits
-                            errorMsg = null
-                            if (digits.length == 6) confirm()
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    textStyle = TextStyle(color = Color.Transparent),
-                    modifier = Modifier.fillMaxWidth(),
-                ) { inner ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        repeat(6) { i ->
-                            val ch = code.getOrNull(i)
-                            val active = code.length == i
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 46.dp, height = 56.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(
-                                        if (active) Color(0xFF14254A) else Color(0xFF111F3B),
-                                    )
-                                    .border(
-                                        width = if (active) 2.dp else 1.dp,
-                                        color = if (active) ScottsTechXColors.BluePrimaryLight
-                                        else Color(0xFF22335C),
-                                        shape = RoundedCornerShape(14.dp),
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = ch?.toString() ?: "",
-                                    color = Color(0xFFF3F7FF),
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                )
-                            }
-                        }
-                    }
-                    inner()
+                // Live "watching" indicator — the poll is running.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        color = ScottsTechXColors.BluePrimary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(
+                        text = "Waiting for the link to be tapped…",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 13.sp,
+                    )
                 }
-
-                AuthErrorSlot(errorMsg)
 
                 Spacer(modifier = Modifier.height(18.dp))
                 PrimaryCtaButton(
-                    label = if (checking) "Verifying…" else "Verify email",
+                    label = if (checking) "Checking…" else "I've tapped the link — check now",
                     loading = checking,
-                    enabled = code.length == 6,
-                    onClick = { confirm() },
+                    enabled = !checking,
+                    onClick = { scope.launch { checkNow(silent = false) } },
                     index = 1,
                 )
+
+                AuthErrorSlot(errorMsg)
 
                 Spacer(modifier = Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
+                    horizontalArrangement = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        text = "Didn't get it? ",
+                        text = "Email didn't arrive? ",
                         color = Color(0xFF64748B),
                         fontSize = 13.sp,
                     )
                     Text(
-                        text = if (resendCooldown == 0) "Resend code" else "Resend in ${resendCooldown}s",
+                        text = if (resendCooldown == 0) "Resend email" else "Resend in ${resendCooldown}s",
                         color = if (resendCooldown == 0) ScottsTechXColors.AccentLink else Color(0xFF94A3B8),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -238,7 +224,7 @@ fun VerifyEmailPendingScreen(
                                 errorMsg = null
                                 scope.launch {
                                     val ok = V2Client.requestVerificationCode()
-                                    if (!ok) errorMsg = "Could not resend right now. Try again in a moment."
+                                    if (!ok) errorMsg = "Could not resend right now — wait a moment and try again."
                                 }
                             }
                             .padding(vertical = 2.dp),
@@ -253,7 +239,7 @@ fun VerifyEmailPendingScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Tip: check the spam or promotions folder — or tap the link inside the email to finish on the web instead.",
+                    text = "Tip: check the spam or promotions folder if you don't see it within a minute.",
                     color = Color(0xFF94A3B8),
                     fontSize = 11.5.sp,
                     textAlign = TextAlign.Center,

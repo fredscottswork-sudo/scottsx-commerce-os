@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,6 +98,21 @@ fun SignUpScreen(
         }
     }
 
+    // Wake the production API while the user fills the form (free-tier
+    // sleep costs 20-60 s) so Create account answers instantly.
+    LaunchedEffect(Unit) { V2Client.wakeServer() }
+
+    // Honest status when registration runs long — usually the server
+    // waking up. A silent spinner reads as "broken".
+    LaunchedEffect(loading) {
+        if (loading) {
+            kotlinx.coroutines.delay(5000)
+            if (loading && statusMsg != null) {
+                statusMsg = "The server is waking up — this can take a moment. Hold on…"
+            }
+        }
+    }
+
     /** Adopt a fresh backend session into both stores. */
     fun adoptSession(token: String, u: V2Client.GoogleUser, actualRole: Role) {
         com.scottsx.app.SessionCache.save(
@@ -154,7 +170,8 @@ fun SignUpScreen(
             when {
                 res.ok && res.token != null && res.user != null -> {
                     adoptSession(res.token, res.user, role)
-                    // Accounts start unverified → collect the 6-digit code.
+                    // Accounts start unverified → the emailed LINK gets
+                    // tapped on the pending screen (it polls for it).
                     onVerificationPending(emailTrim)
                 }
                 res.emailTaken -> errorMsg = "This email already has an account — tap \"Sign in\" below instead."
@@ -313,7 +330,7 @@ fun SignUpScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "We'll email you a 6-digit verification code to keep your account safe.",
+                text = "We'll email you a verification link to keep your account safe. Tap it and the app detects it automatically.",
                 color = Color(0xFF94A3B8),
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center,

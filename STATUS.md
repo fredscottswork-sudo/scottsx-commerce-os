@@ -1,5 +1,52 @@
 # ScottsTechX — build status
 
+## Twenty-eighth pass (2026-08-31) — AUTH FIXED: code/link mismatch + sleeping-server slowness
+
+Owner: "check auth — why does it take long, why is the code for reset
+not sent, why does signing up load and then not work. Authentication
+has many things to fix."
+
+Root causes found by tracing the full flow (app → backend → email):
+
+1. **THE CENTRAL BUG — the app demanded a code that is never sent.**
+   The backend emails a verification/reset LINK (deliberately —
+   "Link only. No code is printed here"; the web app redeems links
+   too), but the Android app's screens still had the old six-digit
+   code UI: "We sent a 6-digit code…", six code boxes, "Paste the
+   code from the email". Users could NEVER verify or reset in the
+   app — exactly "signing up loads and then does not work" and "the
+   code for reset is not sent".
+2. **Slowness — the free-tier API sleeps when idle** (wake-up burns
+   20-60 s), so sign-in/registration could hang on a cold server with
+   a silent spinner.
+
+Fixes (all app-side; backend + web unchanged — the app now speaks the
+same link-based flow they already use):
+
+- **VerifyEmailPendingScreen rewritten, link-based like the web:**
+  tells the user to TAP the emailed link, then AUTO-POLLS
+  GET /auth/me every 4 s (the web's verify page runs the same poll)
+  and detects the flip the moment the link is tapped on any device.
+  Manual "I've tapped the link — check now" button for instant
+  checks; "Resend email" keeps its 60 s cooldown. The dead-end six
+  code boxes are gone.
+- **ResetPasswordScreen reworked, link-first:** "we'll send you a
+  reset link" → tap it → set the new password on the secure page.
+  Optional native redeem accepts the PASTED whole link (token
+  extracted via regex) or bare token → POST /auth/reset-password.
+- **Slowness:** V2Client.wakeServer() fire-and-forget nudge on
+  Login/SignUp/Reset screen mount (cheap public GET /api/v1/products?
+  page=1&limit=1) so the server is awake before the user submits;
+  after 5 s of loading the status line honestly says "The server is
+  waking up — this can take a moment. Hold on…" instead of a silent
+  spinner.
+- Stale "6-digit code" copy fixed everywhere (sign-up footnote, KDocs).
+- New V2Client.fetchEmailVerified() (GET /auth/me poll — the web's
+  authService.me() equivalent).
+
+versionCode 19 / versionName 1.0.18. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Twenty-seventh pass (2026-08-31) — previous-version letterforms + instant first screen
 
 Owner: "use the same style as the previous version you created but
