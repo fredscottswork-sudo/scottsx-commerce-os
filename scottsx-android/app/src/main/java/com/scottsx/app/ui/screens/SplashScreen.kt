@@ -136,7 +136,7 @@ fun SplashScreen(
         com.scottsx.app.data.LiveMarketplace.warm()
         com.scottsx.app.data.CartStore.warm()
         forming = true
-        delay(900)
+        delay(1000)
         toMono = true
         delay(1100)
         leaving = true
@@ -162,22 +162,54 @@ fun SplashScreen(
     ) {
         CinematicBackground()
 
-        // BEAT 1 — the ScottsTechX wordmark forming.
-        // Same art / width / position as the launch-window background,
-        // starting at the same 45% opacity it was left at.
-        Image(
-            painter = painterResource(R.drawable.stx_wordmark),
-            contentDescription = "ScottsTechX",
-            contentScale = ContentScale.Fit,
+        // BEAT 1 — the ScottsTechX wordmark forming. Same art / width /
+        // position as the launch-window background, starting at the same
+        // 45% opacity it was left at. As it brightens to full strength a
+        // chrome light band sweeps across the letters — the forming is
+        // unmistakable.
+        Box(
             modifier = Modifier
                 .width(280.dp)
                 .aspectRatio(1400f / 164f)
                 .graphicsLayer {
+                    compositingStrategy = CompositingStrategy.Offscreen
                     scaleX = wordScale
                     scaleY = wordScale
                     alpha = wordAlpha
                 },
-        )
+        ) {
+            Image(
+                painter = painterResource(R.drawable.stx_wordmark),
+                contentDescription = "ScottsTechX",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.matchParentSize(),
+            )
+            // Forming sheen — sweeps left-to-right through the letters as
+            // the wordmark brightens (SrcIn keeps it inside the letters).
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawBehind {
+                        val sweep = -0.45f + 1.9f * formProgress
+                        if (sweep > -0.5f && sweep < 1.5f && wordDissolve > 0f) {
+                            val cx = size.width * sweep
+                            val beamW = size.width * 0.34f
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    0f to Color.Transparent,
+                                    0.5f to Color(0xFFEAF6FF).copy(
+                                        alpha = 0.85f * wordDissolve,
+                                    ),
+                                    1f to Color.Transparent,
+                                    startX = cx - beamW / 2f,
+                                    endX = cx + beamW / 2f,
+                                ),
+                                blendMode = BlendMode.SrcIn,
+                            )
+                        }
+                    },
+            )
+        }
 
         if (toMono) {
             // Engine glow blooming BEHIND the emblem.

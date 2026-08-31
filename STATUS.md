@@ -1,5 +1,21 @@
 # ScottsTechX — build status
 
+## Twenty-second pass (2026-08-31) — the wordmark's formation made unmistakable
+
+Owner re-sent the no-black-gap requirement (delivered in v1.0.11).
+v1.0.12 sharpens BEAT 1 so the forming is impossible to miss: as
+"ScottsTechX" brightens from its 45% launch-window state to full
+strength, a **chrome light band now sweeps left-to-right through the
+letters** (SrcIn-masked to the letter shapes, same technique as the
+monogram sheen). The word holds ~1.0 s before dissolving into the STX
+stamp. Launch window, themes, timing model and all safety properties
+are unchanged from v1.0.11: wordmark in the launch window from the
+literal tap (never black), seamless frame-1 pickup, no
+windowSplashScreen* attrs anywhere.
+
+versionCode 13 / versionName 1.0.12. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Twenty-first pass (2026-08-31) — no more black launch gap: the wordmark forms, then STX
 
 Owner: "there should never be a black/blank screen between the app
