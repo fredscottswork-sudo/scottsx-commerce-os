@@ -343,10 +343,12 @@ console.log('\n\x1b[1m5. Brand artwork\x1b[0m');
   const sp = files.find((x) => rel(x).endsWith('screens/SplashScreen.kt'));
   if (sp) {
     const ss = read(sp);
-    ok_if('splash uses the transparent lockup, not the raw square logo',
-      /R\.drawable\.brand_lockup/.test(ss) && !/R\.drawable\.logo\b/.test(ss));
-    ok_if('splash does not force the lockup into a fixed square',
-      !/painterResource\(R\.drawable\.brand_lockup\)[\s\S]{0,300}?\.size\(\d+\.dp\)/.test(ss));
+    ok_if('splash shows the transparent STX logo, not the raw square logo',
+      /R\.drawable\.stx_logo/.test(ss) && !/R\.drawable\.logo\b/.test(ss));
+    ok_if('splash never waits on the network',
+      !/LiveMarketplace\.state/.test(ss) && /warm\(\)/.test(ss));
+    ok_if('splash does not force the logo into a fixed square',
+      !/painterResource\(R\.drawable\.stx_logo\)[\s\S]{0,300}?\.size\(\d+\.dp\)/.test(ss));
     ok_if('splash does not print the wordmark twice',
       !/"ScottsTechX",\s*\n\s*color = Color\.White,\s*\n\s*fontSize = 3\d\.sp/.test(ss));
     ok_if('splash hands off to the next destination',

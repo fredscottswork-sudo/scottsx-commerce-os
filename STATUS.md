@@ -1,5 +1,31 @@
 # ScottsTechX — build status
 
+## Sixteenth pass (2026-08-31) — previous-version selectors + a simple new STX logo at launch
+
+Owner request on top of the clean v1.0.5 base, both delivered:
+
+- **Selectors → previous-version design.** RoleSelectionScreen restored
+  exactly from the last working app that had it (615ef16): each role
+  card carries its own Log in / Sign up pill buttons and expands with
+  the brand-blue glow when selected.
+- **A simple STX logo — created fresh for this build — shows when the
+  app is opened.** New transparent PNG (978x397, 462 KB) generated and
+  post-processed for this project: chrome-blue STX wordmark, corners
+  fully transparent, letters opaque. It appears on the splash over the
+  cinematic background, fading and scaling up over ~0.7 s, holding a
+  1.5 s brand beat, then handing over to the flow.
+- **Zero risky machinery.** The splash keeps the exact launch
+  mechanism of the build that works on the owner's phone
+  (LaunchedEffect + warm + delay + onFinished). No theme changes, no
+  Android-12 platform-splash attrs, no windowBackground layer-list, no
+  frame loops, no watchdogs — the things that broke the app in
+  v1.0.2-1.0.4 do not exist here.
+- New layout gates: splash shows the transparent STX logo (not the
+  square logo) and never waits on the network.
+
+versionCode 7 / versionName 1.0.6. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Fifteenth pass (2026-08-31) — full revert to the last known-good build + screen-by-screen audit
 
 Owner's call after the logo builds (v1.0.2–v1.0.4) broke the app on
