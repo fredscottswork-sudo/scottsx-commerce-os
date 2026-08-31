@@ -1,5 +1,43 @@
 # ScottsTechX — build status
 
+## Fourteenth pass (2026-08-31) — the REAL logo bug found: platform splash overlay removed
+
+Owner's device symptoms for every logo build (v1.0.2/v1.0.3): after the
+splash, the first welcome screen's logo never shows, Continue feels
+dead, welcome screens 2-3 are BLACK (videos), the role selector can't
+be selected ("the blue moving thing disappears"), the Log in / Sign up
+buttons misfire, and after login the dashboards render EMPTY — the
+whole app behaves differently from before the logo was placed.
+
+Root cause (app-wide, which the timing fix of the thirteenth pass could
+not touch): the logo builds shipped PLATFORM-level splash theme
+changes — `android:windowSplashScreen*` attrs + a launch layer-list as
+`android:windowBackground` on the app theme. On real devices that
+system splash overlay can outlive the launch: it sits over the app,
+swallows touch events (dead buttons, misfiring selector) and leaves
+black/blank areas (welcome videos, missing logo, dashboards that never
+recompose). CI compiles fine — only a real device shows it.
+
+The fix (v1.0.4):
+
+- **Themes are byte-for-byte the v1.0.1 known-good pair** — no
+  windowSplashScreen*, no launch layer-list. launch_background.xml,
+  launch_center.png and launch_stx.png are deleted. The app's launch
+  window is exactly what shipped in v1.0.1, the version that worked.
+- **The animated STX logo lives entirely inside Compose** (splash_s/t/x
+  letters): full choreography + tap-to-skip + fixed 3.3 s beat + 4.8 s
+  watchdog hand-over + once-only guard + zero network dependence. A
+  Compose screen cannot leak input or rendering artifacts into other
+  screens — when it navigates away it is fully disposed.
+- The previous-version role selectors (615ef16, the design from the
+  build the owner confirms worked) are untouched.
+- Everything else is exactly v1.0.3's code (all gates were green
+  there; the only deltas are the two theme files, the three deleted
+  drawables and the version bump).
+
+Local gates: syntax clean (same single known offline false positive),
+wiring ✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Thirteenth pass (2026-08-31) — animated STX logo back WITH the bug that broke it fixed
 
 Owner: "I really wanted that logo, but whenever I add it to the app it

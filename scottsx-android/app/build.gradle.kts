@@ -45,8 +45,8 @@ android {
         applicationId = "com.scottsx.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
 
         // ── Bake the API origin into the APK ─────────────────────────────
         // The release workflow and CI pass -PapiBaseUrl=<origin>/api/v1.

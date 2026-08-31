@@ -1,17 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- EXACTLY the v1.0.1 known-good theme. No windowSplashScreen* attrs,
+         no launch layer-list: the platform-level splash overlay they create
+         stuck around on real devices — eating touches and leaving black
+         areas across the whole app (dead buttons, black welcome screens,
+         broken selector, empty dashboards). The animated STX logo now
+         lives entirely inside Compose, which cannot affect other screens. -->
     <style name="Theme.ScottsTechX" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowTranslucentStatus">false</item>
-        <!-- Pre-31 fallback: the launch window itself carries the assembled
-             STX monogram dead-centre on the dark stage, so the logo is on
-             screen from the very first tap. Compose takes over seamlessly. -->
-        <item name="android:windowBackground">@drawable/launch_background</item>
-        <!-- Android 12+ SplashScreen API: STX visible from the very first tap. -->
-        <item name="android:windowSplashScreenBackground">@color/surface_dark</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_stx</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">@color/surface_dark</item>
-        <item name="android:windowSplashScreenAnimationDuration">450</item>
+        <item name="android:windowBackground">@color/surface_dark</item>
     </style>
 </resources>
