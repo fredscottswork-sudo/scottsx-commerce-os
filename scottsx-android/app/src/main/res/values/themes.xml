@@ -4,6 +4,14 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowTranslucentStatus">false</item>
-        <item name="android:windowBackground">@color/surface_dark</item>
+        <!-- Pre-31 fallback: the launch window itself carries the assembled
+             STX monogram dead-centre on the dark stage, so the logo is on
+             screen from the very first tap. Compose takes over seamlessly. -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <!-- Android 12+ SplashScreen API: STX visible from the very first tap. -->
+        <item name="android:windowSplashScreenBackground">@color/surface_dark</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_stx</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/surface_dark</item>
+        <item name="android:windowSplashScreenAnimationDuration">450</item>
     </style>
 </resources>

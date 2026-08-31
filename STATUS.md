@@ -1,5 +1,47 @@
 # ScottsTechX — build status
 
+## Thirteenth pass (2026-08-31) — animated STX logo back WITH the bug that broke it fixed
+
+Owner: "I really wanted that logo, but whenever I add it to the app it
+stops working as it was — if you can fix the error that comes with it,
+leave it in."
+
+**The error, found and fixed.** The splash's ignition-hold waited on
+`LiveMarketplace.state` — it held the launch screen until the live
+catalogue reached a terminal state, up to 8.5 s. The backend sleeps
+when idle, so on a real phone the catalogue stays `Loading` on most
+launches → the app sat on the splash for the full 8.5 s looking frozen
+(the plain splash never waits on the network; the animated one broke
+that promise). Second latent defect: the hold's exit condition was
+only re-checked on animation frames, so a stalled frame clock would
+stall the hand-over too.
+
+The fixed splash:
+
+- **Never touches the network**: the catalogue/cart warm-ups are fired
+  at frame zero and RACE the animation (same contract as the plain
+  splash); the beat is a FIXED 3.3 s — every launch behaves
+  identically, cold server or not.
+- **Watchdog hand-over**: a wall-clock deadline (4.8 s) finishes the
+  splash even if the frame clock stalls, and an atomic once-only guard
+  makes the hand-over single-shot no matter how many paths race.
+- Tap anywhere still skips; the full choreography (scatter → fusion →
+  impact → rings → shimmer ×2) plays unchanged; the Android-12+
+  platform splash still shows STX from the very first tap.
+- Themes keep the working version's transparent system bars — only the
+  launch-window attrs (`windowBackground` = STX layer-list +
+  `windowSplashScreen*`) are added.
+- New layout gate: "splash never waits on the network" (fails if the
+  splash reads `LiveMarketplace.state` again).
+
+The previous-version role selectors (in-card Log in / Sign up pills)
+stay. versionCode 4 / versionName 1.0.3.
+
+Local gates: syntax clean (one known offline-checker false positive on
+`for (sp in sparks)` — the identical pattern compiled green in CI),
+wiring ✓, Compose contract 18/18 ✓, layout 64/64 ✓ (incl. the two new
+splash rules), resources 9/9 ✓.
+
 ## Twelfth pass (2026-08-31) — splash reverted again by request; selectors keep the previous design
 
 Owner follow-up to the eleventh pass: **remove the animated STX logo,
