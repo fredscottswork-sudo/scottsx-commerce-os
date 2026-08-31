@@ -1,5 +1,30 @@
 # ScottsTechX — build status
 
+## Twenty-third pass (2026-08-31) — the REAL brand wordmark + original icon
+
+Two owner corrections on top of v1.0.12:
+
+- **Launcher icon → the original.** The STX icon art I generated is
+  removed; all 17 icon resources are byte-for-byte the app's original
+  icon (as the owner intended by "put back what you found").
+- **The opening now uses the company's own lettering and colour
+  scheme.** The launch-window wordmark and BEAT 1 of the splash are no
+  longer a font-rendered "ScottsTechX" — they are the actual
+  ScottsTechX wordmark EXTRACTED from the company lockup
+  (brand_lockup.png): the real letterforms in the real scheme (chrome
+  silver #a8a8a8/#c0c0c0 + electric blues #003090/#0030a8 on
+  transparent), 1365x105. The launch window shows it at 45% opacity
+  (300dp wide), the splash picks it up pixel-matched and forms it to
+  full strength with a chrome light sweep, then the STX monogram
+  stamps in (unchanged), then the app.
+- The uploaded brand_logo.png reference was lost to a sandbox reset
+  before it could be analysed; the repo's own brand_lockup.png (the
+  company's shipped branding) is the source used — if the uploaded
+  reference differs, re-attach it and the art will be swapped.
+
+versionCode 14 / versionName 1.0.13. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Twenty-second pass (2026-08-31) — the wordmark's formation made unmistakable
 
 Owner re-sent the no-black-gap requirement (delivered in v1.0.11).

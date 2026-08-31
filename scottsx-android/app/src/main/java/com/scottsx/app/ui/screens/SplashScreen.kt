@@ -48,11 +48,13 @@ import kotlinx.coroutines.delay
  * is never a black/blank screen. The Compose splash then picks up that
  * exact state and plays:
  *
- *   BEAT 1 — "ScottsTechX" FORMS (~0.5 s): the wordmark — white
- *   "Scotts" + chrome-blue "TechX" — brightens from its launch-window
- *   state to full strength and settles to size (frame 1 is pixel-
- *   matched to the window background: same art, same 280 dp width,
- *   same screen centre — the hand-off is invisible).
+ *   BEAT 1 — "ScottsTechX" FORMS (~0.5 s): the brand wordmark — the
+ *   actual ScottsTechX lettering extracted from the company lockup
+ *   (chrome silver + electric blue on transparent) — brightens from
+ *   its launch-window state to full strength and settles to size
+ *   (frame 1 is pixel-matched to the window background: same art,
+ *   same 300 dp width, same screen centre — the hand-off is
+ *   invisible), a chrome light band sweeping through the letters.
  *
  *   BEAT 2 — STX APPEARS: the wordmark dissolves and the chrome-blue
  *   STX monogram STAMPS in at full brightness — slightly oversized,
@@ -169,8 +171,8 @@ fun SplashScreen(
         // unmistakable.
         Box(
             modifier = Modifier
-                .width(280.dp)
-                .aspectRatio(1400f / 164f)
+                .width(300.dp)
+                .aspectRatio(1365f / 105f)
                 .graphicsLayer {
                     compositingStrategy = CompositingStrategy.Offscreen
                     scaleX = wordScale
