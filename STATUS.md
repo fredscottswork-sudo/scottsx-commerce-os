@@ -1,5 +1,21 @@
 # ScottsTechX — build status
 
+## Twelfth pass (2026-08-31) — splash reverted again by request; selectors keep the previous design
+
+Owner follow-up to the eleventh pass: **remove the animated STX logo,
+keep the restored role selectors.**
+
+- The animated splash (SplashScreen.kt, the 5 STX letter/monogram
+  PNGs, launch_background.xml, the Android-12 `windowSplashScreen*`
+  theme attrs, and the layout-check STX artwork rule) is reverted to
+  the plain pre-splash version — same state as the tenth pass.
+- **The previous-version role selectors stay**: each role card carries
+  its own Log in / Sign up pill buttons and expands with the brand-blue
+  glow when selected.
+- versionCode 4 / versionName 1.0.3.
+- Local gates: Kotlin syntax fully clean (0 problems), wiring 108/70/56
+  ✓, Compose contract 18/18 ✓, layout 63/63 ✓, resources 9/9 ✓.
+
 ## Eleventh pass (2026-08-31) — animated STX splash back by request + previous-version role selectors
 
 Owner request (two parts), both done:
