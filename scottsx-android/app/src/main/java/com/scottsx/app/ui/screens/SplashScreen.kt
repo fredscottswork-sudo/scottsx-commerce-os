@@ -56,10 +56,11 @@ import kotlinx.coroutines.delay
  *   same 300 dp width, same screen centre — the hand-off is
  *   invisible), a chrome light band sweeping through the letters.
  *
- *   BEAT 2 — STX APPEARS: the wordmark dissolves and the chrome-blue
- *   STX monogram STAMPS in at full brightness — slightly oversized,
- *   settling while the engine-glow blooms behind it, then breathing
- *   with a chrome sheen sweeping the letters (~1.1 s).
+ *   BEAT 2 — STX APPEARS: the wordmark dissolves and the company's
+ *   own STX emblem — the real mark from the brand lockup, chrome
+ *   silver + electric blue — STAMPS in at full brightness: slightly
+ *   oversized, settling while the engine-glow blooms behind it, then
+ *   breathing with a chrome sheen sweeping the letters (~1.1 s).
  *
  *   EXIT (~0.35 s): quick fade, then hand-over to the flow.
  *

@@ -1,5 +1,20 @@
 # ScottsTechX — build status
 
+## Twenty-fourth pass (2026-08-31) — beat 2 now uses the REAL company emblem
+
+Completion of the authentic-branding pass: BEAT 2 of the opening (the
+logo that stamps in after the wordmark forms) now uses the company's
+actual STX emblem — extracted from the brand lockup's mark band
+(1075x464, chrome silver #a8a8a8/#c0c0c0 + electric blues
+#003090/#0048a8 on transparent) — replacing the AI-generated
+monogram. The whole opening is now 100% authentic brand art:
+launch-window wordmark → wordmark forms (chrome light sweep) → real
+STX emblem stamps in (settle, glow bloom, breathing + sheen) → app.
+All animations and the launch mechanism are unchanged.
+
+versionCode 15 / versionName 1.0.14. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Twenty-third pass (2026-08-31) — the REAL brand wordmark + original icon
 
 Two owner corrections on top of v1.0.12:
