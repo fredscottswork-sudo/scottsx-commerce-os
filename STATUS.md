@@ -1,5 +1,36 @@
 # ScottsTechX — build status
 
+## Seventeenth pass (2026-08-31) — recreated premium STX logo + branded splash animation
+
+Owner request: "recreate the logo with better styles like the company
+logo, and it should have some animations and show immediately the app
+is clicked."
+
+- **Logo recreated in the company house style.** Generated against the
+  actual brand assets (brand_lockup / brand_mark) as style references:
+  polished chrome-blue "STX" monogram (deep #002080 → #2040c0 with
+  ice-blue highlights, silver edges, glow halo), 1100x591 transparent
+  PNG, 526 KB. Verified programmatically: pure black source background
+  (100% dark edges), exactly three letter clusters (S wide / T narrow /
+  X medium) in one band, corners fully transparent after processing.
+- **Branded splash animation**, the instant the app opens:
+  1. entrance (~0.7 s): logo fades in (faintly visible from frame one)
+     and settles up to size while a blue engine-glow blooms behind it;
+  2. hold (~1.2 s): the emblem breathes (glow pulse) and a chrome sheen
+     sweeps across the letters every ~1.9 s;
+  3. exit (~0.35 s): quick fade, then hand-over. Total ~2.3 s.
+- **Same bulletproof launch mechanism as the build that works on the
+  owner's phone**: one delay-driven LaunchedEffect, fire-and-forget
+  warm-ups, standard Compose animation APIs only (the same
+  animation-core APIs BrandLogo / PrimaryButton already use — v1.0.6's
+  one CI failure was an `animateFloatAsState` import from the wrong
+  package; this file imports every animation symbol from
+  androidx.compose.animation.core, matching PrimaryButton.kt).
+  No theme changes, no platform splash, no frame loops.
+
+versionCode 8 / versionName 1.0.7. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Sixteenth pass (2026-08-31) — previous-version selectors + a simple new STX logo at launch
 
 Owner request on top of the clean v1.0.5 base, both delivered:
