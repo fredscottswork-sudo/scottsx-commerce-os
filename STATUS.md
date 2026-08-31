@@ -1,5 +1,23 @@
 # ScottsTechX — build status
 
+## Twentieth pass (2026-08-31) — STX launcher icon back by request
+
+Owner: "put back the icon logo which you found."
+
+- **The chrome-blue STX launcher icon is back** — all 17 icon
+  resources restored to the exact v1.0.8 state (adaptive foreground
+  layers, legacy square + round PNGs, every density), regenerated from
+  the same stx_logo art as the splash: dark brand background
+  (#050711), STX monogram at 60% canvas width.
+- The instant-on splash is untouched: full-brightness STX monogram on
+  the very first app frame, stamp-settle, glow bloom, breathing +
+  chrome sheen, ~2.3 s. With the STX icon, the brand runs from the
+  tap itself (Android 12+ launch window shows the STX icon) through
+  the opening animation.
+
+versionCode 11 / versionName 1.0.10. Local gates: syntax clean, wiring
+✓, Compose contract 18/18 ✓, layout 64/64 ✓, resources 9/9 ✓.
+
 ## Nineteenth pass (2026-08-31) — launcher icon reverted per owner; instant-on STX splash kept
 
 Owner: "don't change the icon — I just want the logo thing you made to
