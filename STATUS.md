@@ -24,15 +24,15 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 
 | # | Gate | Checks | Status |
 |---|------|--------|--------|
-| 1 | Backend end-to-end | 253 | passing |
+| 1 | Backend end-to-end | 279 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
-| 3 | Android ⇆ backend contract | 91 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 201 | passing |
+| 3 | Android ⇆ backend contract | 105 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 218 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Kotlin syntax (55 files) | — | clean |
 | 7 | Kotlin parsers vs real API JSON | — | passing |
 
-**568 checks.** Every suite cleans up after itself; the database returns to 7
+**625 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
