@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Search, Sparkles } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { productService, aiService } from '../api/services';
 import type { Product } from '../api/types';
 import { ProductCard } from '../components/ProductCard';
@@ -35,31 +35,8 @@ export default function Home() {
   );
   const flash = products.filter((p) => p.isFlashDeal).slice(0, 6);
 
-  // Keep the useful marketplace shortcuts, but remove the two promotional
-  // tiles requested for the compact web layout. Payment methods remain
-  // available in the buyer checkout/account flows; these were only marketing
-  // cards on the home page.
-  const benefits = [
-    { icon: <MapPin size={20} />, title: 'Nearby sellers', sub: 'Kampala · Entebbe · Jinja · Mbarara · Gulu · Mbale' },
-    { icon: <Sparkles size={20} />, title: 'AI assistant', sub: 'Answers from the live catalog' },
-  ];
-
   return (
     <>
-      <div className="grid grid-4 home-benefits mb-16">
-        {benefits.map((b) => (
-          <div className="card card-pad" key={b.title}>
-            <div className="row">
-              <span className="stat-icon" style={{ background: 'linear-gradient(135deg, var(--primary), var(--purple))' }}>{b.icon}</span>
-              <div>
-                <strong>{b.title}</strong>
-                <div className="muted" style={{ fontSize: 12.5 }}>{b.sub}</div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       <PageHeader title="Marketplace" sub="Live catalog from the ScottsTechX backend — same data as the mobile app."
         actions={<SearchInput value={q} onChange={setQ} placeholder="Search products…" />} />
 
@@ -90,7 +67,7 @@ export default function Home() {
           <strong>Are you a seller?</strong>
           <div className="muted">List products, manage inventory and track orders on the web.</div>
         </div>
-        <Link to="/register"><Btn variant="primary">Open a store</Btn></Link>
+        <Link to="/register"><Btn variant="primary" className="join-cta">Open a store</Btn></Link>
       </div>
     </>
   );
