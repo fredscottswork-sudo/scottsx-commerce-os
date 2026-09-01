@@ -105,53 +105,118 @@ async function createPaymentForOrder(order: any, buyerEmail: string, buyerName: 
   };
 }
 
+/** Release exactly one order reservation. The conditional flag update makes
+ * retries and concurrent gateway callbacks idempotent. */
+async function releaseStockReservation(pool: any, orderId: string): Promise<void> {
+  const tx = await pool.connect();
+  try {
+    await tx.query('BEGIN');
+    const { rows } = await tx.query(
+      `UPDATE orders
+       SET stock_reserved = false, updated_at = now()
+       WHERE id = $1 AND stock_reserved = true
+       RETURNING product_id AS "productId", quantity`,
+      [orderId]
+    );
+    const reservation = rows[0];
+    if (reservation?.productId) {
+      await tx.query(
+        'UPDATE products SET stock_quantity = stock_quantity + $2 WHERE id = $1',
+        [reservation.productId, reservation.quantity]
+      );
+    }
+    await tx.query('COMMIT');
+  } catch (err) {
+    await tx.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    tx.release();
+  }
+}
+
 export default async function registerNylonPayRoute(app: FastifyInstance) {
   const pool = getPool();
 
   const checkoutSchema = z.object({
-    productId: z.string().min(1),
-    quantity: z.number().int().min(1).max(99).optional().default(1),
-    buyerPhone: z.string().optional().default(''),
+    productId: z.string().uuid(),
+    quantity: z.coerce.number().int().min(1).max(99).optional().default(1),
+    buyerPhone: z.string().trim().max(40).optional().default(''),
   });
 
-  // ── Checkout: create the order, then return a hosted payment link ────────
+  // ── Checkout: reserve stock, create the order, then return a payment link ─
   app.post('/api/v1/orders/checkout', { preHandler: requireAuth }, async (request, reply) => {
     const me = authedUser(request);
     const body = checkoutSchema.parse(request.body);
+    if (!nylonConfigured()) {
+      throw new ServiceUnavailableError('Nylon Pay is not configured — payment checkout is unavailable');
+    }
 
     const buyerRow = await pool.query('SELECT phone FROM users WHERE id = $1', [me.id]);
     const buyerPhone = body.buyerPhone || buyerRow.rows[0]?.phone || '';
+    const client = await pool.connect();
+    let order: any;
+    try {
+      await client.query('BEGIN');
+      // Payment checkout must use the same approved-only visibility rule as
+      // the public catalog. Lock and reserve in one transaction so two buyers
+      // cannot both create pending payments for the final unit.
+      const product = await client.query(
+        `SELECT id, seller_id AS "sellerId", title, price_minor::int AS price, stock_quantity AS stock
+         FROM products WHERE id = $1 AND status = 'approved' FOR UPDATE`,
+        [body.productId]
+      );
+      if (!product.rows[0]) throw new NotFoundError('Product not found or no longer available');
+      const p = product.rows[0];
+      if (Number(p.stock) < body.quantity) throw new ServiceUnavailableError('Not enough stock for this quantity');
 
-    const product = await pool.query(
-      `SELECT id, seller_id AS "sellerId", title, price_minor::int AS price, stock_quantity AS stock
-       FROM products WHERE id = $1`,
-      [body.productId]
-    );
-    if (!product.rows[0]) throw new NotFoundError('Product not found');
-    const p = product.rows[0];
-    if (p.stock < body.quantity) throw new ServiceUnavailableError('Not enough stock for this quantity');
-
-    const { rows } = await pool.query(
-      `INSERT INTO orders (buyer_id, seller_id, product_id, product_title, price_minor, quantity, status, payment_provider)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending', 'nylonpay')
-       RETURNING id, seller_id AS "sellerId", product_id AS "productId", product_title AS title,
-                 price_minor::int AS amount, quantity, status, created_at AS "createdAt"`,
-      [me.id, p.sellerId, p.id, p.title, p.price, body.quantity]
-    );
-    const order = rows[0];
+      const { rows } = await client.query(
+        `INSERT INTO orders (
+           buyer_id, seller_id, product_id, product_title, price_minor, quantity,
+           status, payment_provider, delivery_phone, stock_reserved
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', 'nylonpay', $7, true)
+         RETURNING id, seller_id AS "sellerId", product_id AS "productId", product_title AS title,
+                   price_minor::int AS amount, quantity, status, created_at AS "createdAt",
+                   delivery_phone AS "deliveryPhone"`,
+        [me.id, p.sellerId, p.id, p.title, p.price, body.quantity, buyerPhone]
+      );
+      order = rows[0];
+      await client.query(
+        'UPDATE products SET stock_quantity = stock_quantity - $2 WHERE id = $1',
+        [p.id, body.quantity]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
 
     try {
       const payment = await createPaymentForOrder(order, me.email, me.name, buyerPhone);
+      const immediateStatus = payment.status === 'successful'
+        ? 'paid'
+        : payment.status === 'failed' || payment.status === 'cancelled'
+          ? 'cancelled'
+          : 'pending';
       await pool.query(
-        `UPDATE orders SET payment_link = $2, payment_reference = $3, updated_at = now() WHERE id = $1`,
-        [order.id, payment.mode === 'invoice' ? payment.paymentLink : null, payment.reference]
+        `UPDATE orders SET payment_link = $2, payment_reference = $3, status = $4, updated_at = now() WHERE id = $1`,
+        [order.id, payment.mode === 'invoice' ? payment.paymentLink : null, payment.reference, immediateStatus]
       );
+      if (immediateStatus === 'cancelled') {
+        // A synchronous gateway rejection is already a terminal failure. Give
+        // the reservation back now; webhook redelivery is harmless because the
+        // conditional flag update can release it only once.
+        await releaseStockReservation(pool, order.id);
+      }
       return reply.code(201).send({
         order: {
           ...order,
           paymentLink: payment.paymentLink,
           invoiceNumber: payment.invoiceNumber,
           paymentMode: payment.mode,
+          status: immediateStatus,
         },
         paymentMode: payment.mode,
         paymentLink: payment.paymentLink,
@@ -175,18 +240,63 @@ export default async function registerNylonPayRoute(app: FastifyInstance) {
     );
     if (!rows[0]) throw new NotFoundError('Order not found');
     const order = rows[0];
+    if (order.status === 'paid' && order.payment_link) {
+      return { order, paymentLink: order.payment_link, reused: true };
+    }
+    if (order.status !== 'pending') {
+      throw new ServiceUnavailableError(`This order cannot be paid while it is ${order.status}`);
+    }
+    if (!nylonConfigured()) {
+      throw new ServiceUnavailableError('Nylon Pay is not configured — payment checkout is unavailable');
+    }
+
+    // Reserve legacy pending orders created before the explicit reservation
+    // flag was introduced. Current checkout rows already have this set, so
+    // retrying a payment never decrements inventory twice.
+    if (!order.stock_reserved && order.status === 'pending' && order.product_id) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const product = await client.query(
+          `SELECT id FROM products WHERE id = $1 AND status = 'approved'
+           AND stock_quantity >= $2 FOR UPDATE`,
+          [order.product_id, order.quantity]
+        );
+        if (!product.rows[0]) throw new ServiceUnavailableError('The product no longer has enough stock');
+        await client.query(
+          'UPDATE products SET stock_quantity = stock_quantity - $2 WHERE id = $1',
+          [order.product_id, order.quantity]
+        );
+        await client.query('UPDATE orders SET stock_reserved = true, updated_at = now() WHERE id = $1', [order.id]);
+        await client.query('COMMIT');
+        order.stock_reserved = true;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
 
     if (order.payment_link) {
       return { order, paymentLink: order.payment_link, reused: true };
     }
     const buyerRow = await pool.query('SELECT phone FROM users WHERE id = $1', [me.id]);
     const payment = await createPaymentForOrder(order, me.email, me.name, buyerRow.rows[0]?.phone || '');
+    const immediateStatus = payment.status === 'successful'
+      ? 'paid'
+      : payment.status === 'failed' || payment.status === 'cancelled'
+        ? 'cancelled'
+        : 'pending';
     await pool.query(
-      `UPDATE orders SET payment_link = $2, payment_reference = $3, updated_at = now() WHERE id = $1`,
-      [order.id, payment.mode === 'invoice' ? payment.paymentLink : null, payment.reference]
+      `UPDATE orders SET payment_link = $2, payment_reference = $3, status = $4, updated_at = now() WHERE id = $1`,
+      [order.id, payment.mode === 'invoice' ? payment.paymentLink : null, payment.reference, immediateStatus]
     );
+    if (immediateStatus === 'cancelled') {
+      await releaseStockReservation(pool, order.id);
+    }
     return {
-      order: { ...order, paymentLink: payment.paymentLink },
+      order: { ...order, paymentLink: payment.paymentLink, status: immediateStatus },
       paymentLink: payment.paymentLink,
       paymentMode: payment.mode,
       paymentReference: payment.reference,
@@ -223,23 +333,77 @@ export default async function registerNylonPayRoute(app: FastifyInstance) {
           ? { status: 'cancelled', nylon_transaction_id: payload.transactionId ?? null }
           : { status: 'pending', nylon_transaction_id: payload.transactionId ?? null };
 
-    const res = await pool.query(
-      `UPDATE orders SET status = $2, nylon_transaction_id = $3, updated_at = now()
-       WHERE (payment_reference = $1 OR id::text = $1) AND status <> 'paid'
-       RETURNING id`,
-      [reference, update.status, update.nylon_transaction_id]
-    );
-
-    if (event === 'transaction.successful' && (res.rowCount ?? 0) > 0) {
-      // Decrement stock after a confirmed payment.
-      await pool.query(
-        `UPDATE products p SET stock_quantity = GREATEST(stock_quantity - o.quantity, 0)
-         FROM orders o WHERE o.id = $1 AND o.product_id = p.id`,
-        [res.rows[0].id]
-      );
+    const tx = await pool.connect();
+    let matched = false;
+    try {
+      await tx.query('BEGIN');
+      let res;
+      if (event === 'transaction.failed' || event === 'transaction.cancelled') {
+        // Only a still-reserved order can release inventory. Include cancelled
+        // rows in the predicate because a synchronous gateway failure may have
+        // set the status before its webhook arrives, but the flag prevents a
+        // second delivery from adding the quantity twice.
+        res = await tx.query(
+          `UPDATE orders SET status = $2, nylon_transaction_id = $3, updated_at = now()
+           WHERE (payment_reference = $1 OR id::text = $1)
+             AND status <> 'paid'
+             AND (status <> 'cancelled' OR stock_reserved = true)
+           RETURNING id, product_id AS "productId", quantity,
+                     stock_reserved AS "stockReserved"`,
+          [reference, update.status, update.nylon_transaction_id]
+        );
+        matched = (res.rowCount ?? 0) > 0;
+        const order = res.rows[0];
+        if (order?.stockReserved && order.productId) {
+          await tx.query(
+            `UPDATE products SET stock_quantity = stock_quantity + $2 WHERE id = $1`,
+            [order.productId, order.quantity]
+          );
+          await tx.query('UPDATE orders SET stock_reserved = false, updated_at = now() WHERE id = $1', [order.id]);
+        }
+      } else {
+        res = await tx.query(
+          `UPDATE orders SET status = $2, nylon_transaction_id = $3, updated_at = now()
+           WHERE (payment_reference = $1 OR id::text = $1) AND status <> 'paid'
+           RETURNING id, product_id AS "productId", quantity,
+                     stock_reserved AS "stockReserved"`,
+          [reference, update.status, update.nylon_transaction_id]
+        );
+        matched = (res.rowCount ?? 0) > 0;
+        if (matched && event === 'transaction.successful') {
+          const order = res.rows[0];
+          // Stock is normally reserved when checkout starts. Legacy pending
+          // orders created before that flag existed are handled safely here as
+          // a fallback, still inside the same transaction as the state change.
+          if (!order.stockReserved && order.productId) {
+            const reserved = await tx.query(
+              `UPDATE products SET stock_quantity = stock_quantity - $2
+               WHERE id = $1 AND stock_quantity >= $2 RETURNING id`,
+              [order.productId, order.quantity]
+            );
+            if ((reserved.rowCount ?? 0) > 0) {
+              await tx.query('UPDATE orders SET stock_reserved = true, updated_at = now() WHERE id = $1', [order.id]);
+            } else {
+              // The payment was confirmed but the legacy row had no reservation
+              // and inventory is gone. Do not oversell; flag it as cancelled for
+              // operational reconciliation instead of claiming stock was held.
+              await tx.query(
+                `UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = $1`,
+                [order.id]
+              );
+            }
+          }
+        }
+      }
+      await tx.query('COMMIT');
+    } catch (err) {
+      await tx.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      tx.release();
     }
 
-    return { received: true, event, reference, matched: (res.rowCount ?? 0) > 0 };
+    return { received: true, event, reference, matched };
   });
 
   // ── Status helper: resolve an order's Nylon transaction state ────────────

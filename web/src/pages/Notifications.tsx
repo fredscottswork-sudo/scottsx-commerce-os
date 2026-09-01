@@ -1,32 +1,66 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck } from 'lucide-react';
 import { buyerService } from '../api/services';
 import type { AppNotification } from '../api/types';
 import { Btn, Card, Empty, ErrorBox, Loading, PageHeader } from '../components/ui';
 import { useToast } from '../store/ToastContext';
+import { useAuth } from '../store/AuthContext';
+
+function targetForNotification(n: AppNotification, role?: string): string | null {
+  const screen = n.data?.screen;
+  const id = n.data?.id;
+  const conversationId = n.data?.conversationId;
+  if (conversationId) return `/messages/${encodeURIComponent(conversationId)}`;
+  if (screen === 'product' && id) return `/product/${encodeURIComponent(id)}`;
+  if (screen === 'admin_products') return '/admin/queue';
+  if (screen === 'admin_support') return '/admin/support';
+  if (screen === 'order' && id) return role === 'seller' ? '/seller/orders' : '/buyer/orders';
+  if (screen === 'support') return role === 'admin' ? '/admin/support' : '/buyer/support';
+  return null;
+}
 
 export default function Notifications() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   async function load() {
     setLoading(true);
-    buyerService.notifications().then((r) => setItems(r.notifications)).catch((e: any) => setError(e.message)).finally(() => setLoading(false));
+    setError('');
+    try {
+      const r = await buyerService.notifications();
+      setItems(r.notifications);
+    } catch (e: any) {
+      setError(e?.message || 'Could not load notifications');
+    } finally {
+      setLoading(false);
+    }
   }
-  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
+  useEffect(() => { void load(); const t = setInterval(() => void load(), 15000); return () => clearInterval(t); }, []);
 
   async function markAll() {
-    await buyerService.markAllNotificationsRead();
-    toast('All marked read', 'success');
-    load();
+    try {
+      await buyerService.markAllNotificationsRead();
+      toast('All marked read', 'success');
+      await load();
+    } catch (e: any) {
+      toast(e?.message || 'Could not mark notifications read', 'error');
+    }
   }
 
-  async function markOne(n: AppNotification) {
-    if (n.read) return;
-    await buyerService.markNotificationRead(n.id);
-    load();
+  async function openNotification(n: AppNotification) {
+    try {
+      if (!n.read) await buyerService.markNotificationRead(n.id);
+      const target = targetForNotification(n, user?.role);
+      if (target) navigate(target);
+      else if (!n.read) await load();
+    } catch (e: any) {
+      toast(e?.message || 'Could not open notification', 'error');
+    }
   }
 
   return (
@@ -38,7 +72,14 @@ export default function Notifications() {
         <div className="grid" style={{ gap: 10 }}>
           {items.map((n) => (
             <Card key={n.id} className={n.read ? '' : ''} flush>
-              <div className="row" style={{ padding: '13px 16px', cursor: n.read ? 'default' : 'pointer', opacity: n.read ? 0.72 : 1 }} onClick={() => markOne(n)}>
+              <div
+                className="row"
+                style={{ padding: '13px 16px', cursor: targetForNotification(n, user?.role) || !n.read ? 'pointer' : 'default', opacity: n.read ? 0.72 : 1 }}
+                onClick={() => void openNotification(n)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void openNotification(n); } }}
+                role={targetForNotification(n, user?.role) || !n.read ? 'button' : undefined}
+                tabIndex={targetForNotification(n, user?.role) || !n.read ? 0 : undefined}
+              >
                 <span className="stat-icon" style={{ background: n.read ? 'var(--surface-3)' : 'linear-gradient(135deg, var(--primary), var(--purple))', color: n.read ? 'var(--text-2)' : '#fff' }}>
                   <Bell size={17} />
                 </span>

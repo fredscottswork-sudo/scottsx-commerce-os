@@ -430,9 +430,12 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
        category = COALESCE($5, category),
        brand = COALESCE($6, brand),
        price_minor = COALESCE($7, price_minor),
-       old_price_minor = COALESCE($8, old_price_minor),
+       -- Boolean presence flags let PATCH explicitly clear nullable/string
+       -- fields; COALESCE would silently keep an old value when null/empty was
+       -- intentionally sent by the editor.
+       old_price_minor = CASE WHEN $15 THEN $8 ELSE old_price_minor END,
        stock_quantity = COALESCE($9, stock_quantity),
-       image_url = COALESCE($10, image_url),
+       image_url = CASE WHEN $16 THEN $10 ELSE image_url END,
        location = COALESCE($11, location),
        is_flash_deal = COALESCE($12, is_flash_deal),
        discount_percent = COALESCE($13, discount_percent),
@@ -450,13 +453,19 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
       input.category ?? null,
       input.brand ?? null,
       input.priceMinor !== undefined ? Math.round(input.priceMinor) : null,
-      input.oldPriceMinor !== undefined ? Math.round(input.oldPriceMinor) : null,
+      input.oldPriceMinor === null
+        ? null
+        : input.oldPriceMinor !== undefined
+          ? Math.round(input.oldPriceMinor)
+          : null,
       input.stockQuantity ?? null,
       input.imageUrl ?? null,
       input.location ?? null,
       input.isFlashDeal ?? null,
       input.discountPercent ?? null,
       nextStatus,
+      input.oldPriceMinor !== undefined,
+      input.imageUrl !== undefined,
     ]
   );
   if (!rows[0]) throw new NotFoundError('Product not found');
@@ -474,10 +483,10 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
         [id, input.mediaUrls[i], i],
       );
     }
-    if (input.imageUrl === undefined && input.mediaUrls.length > 0) {
+    if (input.imageUrl === undefined) {
       await db.query('UPDATE products SET image_url = $2, updated_at = now() WHERE id = $1', [
         id,
-        input.mediaUrls[0],
+        input.mediaUrls[0] ?? '',
       ]);
     }
   }

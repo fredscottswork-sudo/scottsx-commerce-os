@@ -24,7 +24,21 @@ const SORTS: { id: Sort; label: string }[] = [
   { id: 'popular', label: 'Most viewed' },
 ];
 
+const SORT_IDS = new Set<Sort>(SORTS.map((s) => s.id));
 const PAGE_SIZE = 24;
+
+function positiveIntParam(raw: string | null, fallback = 1): number {
+  if (!raw || !/^\d+$/.test(raw)) return fallback;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= 1 ? Math.min(value, 1_000_000) : fallback;
+}
+
+function nonNegativeNumberParam(raw: string | null, max = Number.MAX_SAFE_INTEGER, integer = false): number | undefined {
+  if (!raw || !/^\d+(?:\.\d+)?$/.test(raw)) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || value > max) return undefined;
+  return integer ? Math.round(value) : value;
+}
 
 /** Minimal typing for the vendor-prefixed Web Speech API. */
 type SpeechRecognitionLike = {
@@ -43,11 +57,16 @@ export default function Search() {
   const q = params.get('q') ?? '';
   const category = params.get('category') ?? '';
   const brand = params.get('brand') ?? '';
-  const sort = (params.get('sort') as Sort) || 'relevance';
-  const page = Number(params.get('page') || 1);
+  const rawSort = params.get('sort');
+  const sort: Sort = rawSort && SORT_IDS.has(rawSort as Sort) ? (rawSort as Sort) : 'relevance';
+  const rawPage = params.get('page');
+  const page = positiveIntParam(rawPage);
   const minPrice = params.get('minPrice') ?? '';
   const maxPrice = params.get('maxPrice') ?? '';
   const minRating = params.get('minRating') ?? '';
+  const minPriceValue = nonNegativeNumberParam(minPrice, Number.MAX_SAFE_INTEGER, true);
+  const maxPriceValue = nonNegativeNumberParam(maxPrice, Number.MAX_SAFE_INTEGER, true);
+  const minRatingValue = nonNegativeNumberParam(minRating, 5);
   const verifiedOnly = params.get('verifiedOnly') === '1';
   const inStock = params.get('inStock') === '1';
   const flashOnly = params.get('flashOnly') === '1';
@@ -72,6 +91,7 @@ export default function Search() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => { setInput(q); }, [q]);
+  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
 
   const patch = useCallback((next: Record<string, string | null>, resetPage = true) => {
     const p = new URLSearchParams(params);
@@ -82,6 +102,33 @@ export default function Search() {
     if (resetPage) p.delete('page');
     setParams(p, { replace: true });
   }, [params, setParams]);
+
+  // URL parameters are user-controlled. Canonicalise them before the request
+  // is built so a stale share link such as `sort=discount&page=oops` cannot
+  // send an invalid enum/NaN to the API or leave the select in a blank state.
+  useEffect(() => {
+    const next = new URLSearchParams(params);
+    let changed = false;
+    if (rawSort !== null && rawSort !== sort) {
+      next.set('sort', sort);
+      changed = true;
+    }
+    if (rawPage !== null && rawPage !== String(page)) {
+      next.set('page', String(page));
+      changed = true;
+    }
+    for (const [key, raw, value] of [
+      ['minPrice', minPrice, minPriceValue],
+      ['maxPrice', maxPrice, maxPriceValue],
+      ['minRating', minRating, minRatingValue],
+    ] as const) {
+      if (!raw) continue;
+      if (value === undefined) next.delete(key);
+      else next.set(key, String(value));
+      if (next.get(key) !== raw) changed = true;
+    }
+    if (changed) setParams(next, { replace: true });
+  }, [maxPrice, maxPriceValue, minPrice, minPriceValue, minRating, minRatingValue, page, params, rawPage, rawSort, setParams, sort]);
 
   useEffect(() => { productService.facets().then(setFacets).catch(() => undefined); }, []);
 
@@ -94,9 +141,9 @@ export default function Search() {
       q: q || undefined,
       category: category || undefined,
       brand: brand || undefined,
-      minPrice: minPrice ? Number(minPrice) : undefined,
-      maxPrice: maxPrice ? Number(maxPrice) : undefined,
-      minRating: minRating ? Number(minRating) : undefined,
+      minPrice: minPriceValue,
+      maxPrice: maxPriceValue,
+      minRating: minRatingValue,
       verifiedOnly: verifiedOnly || undefined,
       inStock: inStock || undefined,
       flashOnly: flashOnly || undefined,
@@ -205,22 +252,27 @@ export default function Search() {
     rec.onerror = () => { setListening(false); toast('Could not hear you — try again', 'error'); };
     rec.onend = () => setListening(false);
     recognitionRef.current = rec;
-    rec.start();
-    setListening(true);
+    try {
+      rec.start();
+      setListening(true);
+    } catch {
+      setListening(false);
+      toast('Voice search could not start — try again', 'error');
+    }
   };
 
   const activeFilters = useMemo(() => {
     const chips: { label: string; clear: () => void }[] = [];
     if (category) chips.push({ label: category, clear: () => patch({ category: null }) });
     if (brand) chips.push({ label: brand, clear: () => patch({ brand: null }) });
-    if (minPrice) chips.push({ label: `From ${formatUgx(Number(minPrice))}`, clear: () => patch({ minPrice: null }) });
-    if (maxPrice) chips.push({ label: `Under ${formatUgx(Number(maxPrice))}`, clear: () => patch({ maxPrice: null }) });
-    if (minRating) chips.push({ label: `${minRating}★ and up`, clear: () => patch({ minRating: null }) });
+    if (minPriceValue !== undefined) chips.push({ label: `From ${formatUgx(minPriceValue)}`, clear: () => patch({ minPrice: null }) });
+    if (maxPriceValue !== undefined) chips.push({ label: `Under ${formatUgx(maxPriceValue)}`, clear: () => patch({ maxPrice: null }) });
+    if (minRatingValue !== undefined && minRatingValue > 0) chips.push({ label: `${minRatingValue}★ and up`, clear: () => patch({ minRating: null }) });
     if (verifiedOnly) chips.push({ label: 'Verified sellers', clear: () => patch({ verifiedOnly: null }) });
     if (inStock) chips.push({ label: 'In stock', clear: () => patch({ inStock: null }) });
     if (flashOnly) chips.push({ label: 'Flash deals', clear: () => patch({ flashOnly: null }) });
     return chips;
-  }, [category, brand, minPrice, maxPrice, minRating, verifiedOnly, inStock, flashOnly, patch]);
+  }, [category, brand, minPriceValue, maxPriceValue, minRatingValue, verifiedOnly, inStock, flashOnly, patch]);
 
   const filterPanel = (
     <div className="col">
@@ -374,7 +426,9 @@ export default function Search() {
               <ProductGrid
                 products={products}
                 onAddToCart={(p) => void add(p)}
-                onToggleFavorite={(p) => void toggleFavoriteSeller(p.seller.id, p.seller.name)}
+                onToggleFavorite={(p) => {
+                  if (p.seller?.id) void toggleFavoriteSeller(p.seller.id, p.seller.name);
+                }}
                 favoriteSellerIds={favoriteSellerIds}
               />
               <Pagination page={page} pageSize={PAGE_SIZE} total={total}

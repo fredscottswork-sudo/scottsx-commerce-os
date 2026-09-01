@@ -157,38 +157,88 @@ export default async function registerSocialRoute(app: FastifyInstance) {
   app.post('/api/v1/me/cart', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     const { productId, quantity } = z
-      .object({ productId: z.string().min(1), quantity: z.coerce.number().int().min(1).optional().default(1) })
+      .object({
+        productId: z.string().min(1),
+        // Keep malformed/absurd input bounded, but let the stock rule below
+        // return the useful 409 conflict when a client asks for more than the
+        // seller actually has (including the existing contract's large probe).
+        quantity: z.coerce.number().int().min(1).max(100000).optional().default(1),
+      })
       .parse(request.body);
 
-    const product = await pool.query(
-      `SELECT id, stock_quantity FROM products WHERE id = $1 AND status = 'approved'`,
-      [productId]
-    );
-    if (!product.rows[0]) throw new NotFoundError('Product not available');
-    if (product.rows[0].stock_quantity < quantity) {
-      throw new ConflictError(`Only ${product.rows[0].stock_quantity} left in stock`);
+    // Lock the product while checking the existing line. Checking only the
+    // increment allowed an existing quantity plus the new quantity to exceed
+    // stock, and concurrent adds could both pass the check before either
+    // upserted its line.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const product = await client.query(
+        `SELECT id, stock_quantity FROM products
+         WHERE id = $1 AND status = 'approved' FOR UPDATE`,
+        [productId]
+      );
+      if (!product.rows[0]) throw new NotFoundError('Product not available');
+
+      const existing = await client.query(
+        'SELECT quantity FROM cart_items WHERE user_id = $1 AND product_id = $2 FOR UPDATE',
+        [me.id, productId]
+      );
+      const nextQuantity = Number(existing.rows[0]?.quantity ?? 0) + quantity;
+      const stock = Number(product.rows[0].stock_quantity);
+      if (nextQuantity > stock) {
+        throw new ConflictError(`Only ${stock} left in stock`);
+      }
+
+      await client.query(
+        `INSERT INTO cart_items (user_id, product_id, quantity) VALUES ($1,$2,$3)
+         ON CONFLICT (user_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
+        [me.id, productId, nextQuantity]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
     }
-    await pool.query(
-      `INSERT INTO cart_items (user_id, product_id, quantity) VALUES ($1,$2,$3)
-       ON CONFLICT (user_id, product_id) DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity`,
-      [me.id, productId, quantity]
-    );
     return loadCart(me.id);
   });
 
   app.patch('/api/v1/me/cart/:productId', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     const { productId } = request.params as { productId: string };
-    const { quantity } = z.object({ quantity: z.coerce.number().int().min(0) }).parse(request.body);
+    const { quantity } = z.object({ quantity: z.coerce.number().int().min(0).max(99) }).parse(request.body);
     if (quantity === 0) {
       await pool.query('DELETE FROM cart_items WHERE user_id = $1 AND product_id = $2', [me.id, productId]);
       return loadCart(me.id);
     }
-    const res = await pool.query(
-      'UPDATE cart_items SET quantity = $3 WHERE user_id = $1 AND product_id = $2 RETURNING product_id',
-      [me.id, productId, quantity]
-    );
-    if (!res.rows[0]) throw new NotFoundError('Item not in cart');
+    // Match the POST guard and lock the product before changing a line. A
+    // stale cart can outlive a stock edit; accepting an impossible quantity
+    // here only moves the error to checkout and makes the cart misleading.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const product = await client.query(
+        `SELECT stock_quantity FROM products
+         WHERE id = $1 AND status = 'approved' FOR UPDATE`,
+        [productId]
+      );
+      if (!product.rows[0]) throw new ConflictError('Product is no longer available');
+      const res = await client.query(
+        'UPDATE cart_items SET quantity = $3 WHERE user_id = $1 AND product_id = $2 RETURNING product_id',
+        [me.id, productId, quantity]
+      );
+      if (!res.rows[0]) throw new NotFoundError('Item not in cart');
+      const stock = Number(product.rows[0].stock_quantity);
+      if (quantity > stock) throw new ConflictError(`Only ${stock} left in stock`);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
     return loadCart(me.id);
   });
 
@@ -217,15 +267,27 @@ export default async function registerSocialRoute(app: FastifyInstance) {
     const me = authedUser(request);
     const body = z
       .object({
-        addressId: z.string().optional(),
-        phone: z.string().optional().default(''),
-        note: z.string().max(500).optional().default(''),
+        addressId: z.string().uuid().optional(),
+        phone: z.string().trim().max(40).optional().default(''),
+        note: z.string().trim().max(500).optional().default(''),
       })
       .parse(request.body ?? {});
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+
+      let deliveryAddress = '';
+      if (body.addressId) {
+        const { rows: addresses } = await client.query(
+          `SELECT line1, city, country FROM addresses WHERE id = $1 AND user_id = $2`,
+          [body.addressId, me.id]
+        );
+        if (!addresses[0]) throw new NotFoundError('Delivery address not found');
+        deliveryAddress = [addresses[0].line1, addresses[0].city, addresses[0].country]
+          .filter((part) => String(part || '').trim())
+          .join(', ');
+      }
 
       // Lock the product rows we are about to sell so two buyers can't
       // oversell the same unit.
@@ -255,11 +317,18 @@ export default async function registerSocialRoute(app: FastifyInstance) {
       const created: any[] = [];
       for (const l of lines) {
         const { rows } = await client.query(
-          `INSERT INTO orders (buyer_id, seller_id, product_id, product_title, price_minor, quantity, status, payment_provider)
-           VALUES ($1,$2,$3,$4,$5,$6,'pending','cod')
+          `INSERT INTO orders (
+             buyer_id, seller_id, product_id, product_title, price_minor, quantity,
+             status, payment_provider, delivery_address, delivery_phone, delivery_note,
+             stock_reserved
+           )
+           VALUES ($1,$2,$3,$4,$5,$6,'pending','cod',$7,$8,$9,true)
            RETURNING id, seller_id AS "sellerId", product_id AS "productId", product_title AS title,
-                     price_minor::int AS amount, quantity, status, created_at AS "createdAt"`,
-          [me.id, l.sellerId, l.productId, l.title, l.priceMinor, l.quantity]
+                     price_minor::int AS amount, quantity, status, created_at AS "createdAt",
+                     delivery_address AS "deliveryAddress", delivery_phone AS "deliveryPhone",
+                     delivery_note AS "deliveryNote"`,
+          [me.id, l.sellerId, l.productId, l.title, l.priceMinor, l.quantity,
+            deliveryAddress, body.phone, body.note]
         );
         await client.query(
           'UPDATE products SET stock_quantity = stock_quantity - $2 WHERE id = $1',

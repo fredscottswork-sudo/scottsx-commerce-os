@@ -39,8 +39,11 @@ function isSameOriginApiHost(hostname: string): boolean {
 
 function resolveBase(): string {
   if (CONFIGURED) return CONFIGURED;
+  // In development the browser must use relative /api URLs. Vite proxies them
+  // to Fastify, which also works when the preview is opened through Arena's
+  // sandbox host (the browser cannot reach the sandbox's localhost directly).
+  if (import.meta.env.DEV) return '';
   if (typeof window === 'undefined' || !window.location) return '';
-  // Vite dev server and the test harness proxy /api themselves.
   if (isSameOriginApiHost(window.location.hostname)) return '';
   return FALLBACK_API;
 }

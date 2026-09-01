@@ -9,6 +9,7 @@ import { formatUgx } from '../../api/types';
 import { useCart } from '../../store/CartContext';
 import { useToast } from '../../store/ToastContext';
 import { useAuth } from '../../store/AuthContext';
+import { PRODUCT_IMAGE_FALLBACK } from '../../components/ProductCard';
 import {
   Btn, Empty, Field, Input, Select, TextArea, Modal, PageHeader, ConfirmModal, SkeletonRows,
 } from '../../components/ui';
@@ -137,7 +138,13 @@ export default function Cart() {
                   return (
                     <div key={it.productId} className={`cart-line ${bad ? 'cart-line-bad' : ''}`}>
                       <Link to={`/product/${it.productId}`}>
-                        <img src={it.imageUrl} alt={it.title} className="cart-thumb" loading="lazy" />
+                        <img
+                          src={it.imageUrl || PRODUCT_IMAGE_FALLBACK}
+                          alt={it.title}
+                          className="cart-thumb"
+                          loading="lazy"
+                          onError={(e) => { e.currentTarget.src = PRODUCT_IMAGE_FALLBACK; }}
+                        />
                       </Link>
 
                       <div className="grow" style={{ minWidth: 0 }}>

@@ -138,6 +138,16 @@ export default function SellerOrders() {
               ),
             },
             { key: 'buyer', header: 'Buyer', hideSm: true, render: (o) => o.buyerName || '—' },
+            {
+              key: 'delivery', header: 'Deliver to', hideSm: true,
+              render: (o) => (
+                <div className="tiny" style={{ maxWidth: 190 }}>
+                  <div className="ellipsis">{o.deliveryAddress || 'Address not provided'}</div>
+                  {o.deliveryPhone && <div className="muted">{o.deliveryPhone}</div>}
+                  {o.deliveryNote && <div className="muted ellipsis">Note: {o.deliveryNote}</div>}
+                </div>
+              ),
+            },
             { key: 'qty', header: 'Qty', hideSm: true, render: (o) => o.quantity },
             { key: 'amount', header: 'Amount', render: (o) => <span className="semi">{formatUgx(o.amount * (o.quantity || 1))}</span> },
             { key: 'status', header: 'Status', render: (o) => <StatusBadge status={o.status} /> },
