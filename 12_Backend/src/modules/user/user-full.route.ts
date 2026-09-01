@@ -134,7 +134,7 @@ export default async function registerUserFullRoute(app: FastifyInstance) {
        JOIN products p ON p.id = b.product_id
        JOIN users u ON u.id = p.seller_id
        LEFT JOIN store_settings s ON s.user_id = p.seller_id
-       WHERE b.user_id = $1 ORDER BY b.created_at DESC`,
+       WHERE b.user_id = $1 AND p.status = 'approved' ORDER BY b.created_at DESC`,
       [me.id]
     );
     return { products: rows.map((r) => ({ ...r, currency: 'UGX', seller: typeof r.seller === 'string' ? JSON.parse(r.seller) : r.seller })) };
@@ -142,7 +142,12 @@ export default async function registerUserFullRoute(app: FastifyInstance) {
 
   app.post('/api/v1/me/bookmarks/toggle', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
-    const body = z.object({ productId: z.string() }).parse(request.body);
+    const body = z.object({ productId: z.string().uuid() }).parse(request.body);
+    const product = await pool.query(
+      `SELECT 1 FROM products WHERE id = $1 AND status = 'approved'`,
+      [body.productId]
+    );
+    if (!product.rows[0]) throw new NotFoundError('Product not available');
     const existing = await pool.query('SELECT 1 FROM bookmarks WHERE user_id = $1 AND product_id = $2', [me.id, body.productId]);
     if ((existing.rowCount ?? 0) > 0) {
       await pool.query('DELETE FROM bookmarks WHERE user_id = $1 AND product_id = $2', [me.id, body.productId]);
@@ -156,8 +161,10 @@ export default async function registerUserFullRoute(app: FastifyInstance) {
   app.get('/api/v1/me/orders', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     const { rows } = await pool.query(
-      `SELECT id, seller_id AS "sellerId", product_title AS title, price_minor::int AS amount,
+      `SELECT id, seller_id AS "sellerId", product_id AS "productId", product_title AS title, price_minor::int AS amount,
               quantity, status, created_at AS "createdAt",
+              delivery_address AS "deliveryAddress", delivery_phone AS "deliveryPhone",
+              delivery_note AS "deliveryNote",
               COALESCE((SELECT url FROM product_media pm WHERE pm.product_id = o.product_id ORDER BY sort_order LIMIT 1),
                        (SELECT image_url FROM products p2 WHERE p2.id = o.product_id)) AS "imageUrl",
               (SELECT store_name FROM store_settings s WHERE s.user_id = o.seller_id) AS "storeName"
@@ -172,7 +179,9 @@ export default async function registerUserFullRoute(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const { rows } = await pool.query(
       `SELECT id, seller_id AS "sellerId", product_id AS "productId", product_title AS title,
-              price_minor::int AS amount, quantity, status, created_at AS "createdAt"
+              price_minor::int AS amount, quantity, status, created_at AS "createdAt",
+              delivery_address AS "deliveryAddress", delivery_phone AS "deliveryPhone",
+              delivery_note AS "deliveryNote"
        FROM orders WHERE id = $1 AND buyer_id = $2`,
       [id, me.id]
     );

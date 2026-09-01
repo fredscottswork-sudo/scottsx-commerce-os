@@ -176,22 +176,49 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const { rows } = await pool.query(
       `SELECT
-         u.id, u.display_name AS name, u.profile_photo_url AS logo_url, u.created_at,
+         u.id, u.display_name AS name,
+         COALESCE(NULLIF(s.store_logo_url, ''), u.profile_photo_url) AS logo_url,
+         u.city AS user_city, u.created_at,
          s.store_name, s.store_description, s.city, s.address, s.verified, s.rating,
-         s.lat, s.lng, s.service_radius_km, s.contact_email, s.contact_phone,
+         COALESCE(s.last_lat, s.lat) AS lat, COALESCE(s.last_lng, s.lng) AS lng,
+         s.service_radius_km, s.contact_email, s.contact_phone,
          s.delivery_fee_ugx, s.free_above_ugx, s.cod_enabled
        FROM users u
-       JOIN store_settings s ON s.user_id = u.id
+       LEFT JOIN store_settings s ON s.user_id = u.id
        WHERE u.id = $1 AND u.role = 'seller'`,
       [id]
     );
     if (!rows[0]) throw new NotFoundError('Seller not found');
     const seller = rows[0];
+    // Storefronts are public, so they must expose the same complete, approved
+    // product shape as the catalog. Returning pending/draft rows here leaked
+    // unpublished listings and left ProductCard with missing seller/price
+    // fields, which later crashed favorite and cart actions.
     const products = await pool.query(
-      `SELECT id, title, category, price_minor::int AS "priceMinor", stock_quantity AS "stockQuantity",
-              COALESCE((SELECT url FROM product_media pm WHERE pm.product_id = p.id ORDER BY sort_order LIMIT 1), p.image_url) AS "imageUrl",
-              rating::float AS rating, rating_count AS "ratingCount", is_flash_deal AS "isFlashDeal"
-       FROM products p WHERE p.seller_id = $1 ORDER BY p.created_at DESC`,
+      `SELECT
+         p.id, p.title, p.description, p.category, p.brand,
+         p.price_minor::int AS "priceMinor",
+         p.old_price_minor::int AS "oldPriceMinor",
+         p.stock_quantity AS "stockQuantity",
+         COALESCE((SELECT url FROM product_media pm WHERE pm.product_id = p.id ORDER BY sort_order LIMIT 1), p.image_url) AS "imageUrl",
+         COALESCE((SELECT json_agg(url ORDER BY sort_order) FROM product_media pm WHERE pm.product_id = p.id), '[]'::json) AS "mediaUrls",
+         p.rating::float AS rating, p.rating_count AS "ratingCount",
+         p.is_flash_deal AS "isFlashDeal", p.discount_percent AS "discountPercent",
+         p.location, p.status, p.rejection_reason AS "rejectionReason",
+         p.view_count AS "viewCount", p.created_at AS "createdAt",
+         json_build_object(
+           'id', u.id,
+           'name', COALESCE(s.store_name, u.display_name),
+           'rating', COALESCE(s.rating, 0)::float,
+           'location', COALESCE(s.city, p.location),
+           'verified', COALESCE(s.verified, false),
+           'logoUrl', COALESCE(NULLIF(s.store_logo_url, ''), u.profile_photo_url)
+         ) AS seller
+       FROM products p
+       JOIN users u ON u.id = p.seller_id
+       LEFT JOIN store_settings s ON s.user_id = p.seller_id
+       WHERE p.seller_id = $1 AND p.status = 'approved'
+       ORDER BY p.created_at DESC`,
       [id]
     );
     return {
@@ -200,13 +227,13 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
         name: seller.store_name || seller.name,
         storeName: seller.store_name || seller.name,
         description: seller.store_description ?? '',
-        city: seller.city ?? '',
+        city: seller.city || seller.user_city || '',
         address: seller.address ?? '',
         verified: !!seller.verified,
         rating: seller.rating ? Number(seller.rating) : 0,
         logoUrl: seller.logo_url ?? null,
-        lat: seller.lat ? Number(seller.lat) : null,
-        lng: seller.lng ? Number(seller.lng) : null,
+        lat: seller.lat === null || seller.lat === undefined ? null : Number(seller.lat),
+        lng: seller.lng === null || seller.lng === undefined ? null : Number(seller.lng),
         serviceRadiusKm: seller.service_radius_km ?? 20,
         deliveryFeeUgx: seller.delivery_fee_ugx ?? 0,
         freeAboveUgx: seller.free_above_ugx ?? 0,
@@ -214,7 +241,11 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
         contactEmail: seller.contact_email ?? '',
         contactPhone: seller.contact_phone ?? '',
       },
-      products: products.rows.map((p) => ({ ...p, currency: 'UGX' })),
+      products: products.rows.map((p) => ({
+        ...p,
+        currency: 'UGX',
+        seller: typeof p.seller === 'string' ? JSON.parse(p.seller) : p.seller,
+      })),
     };
   });
 
@@ -356,8 +387,10 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
           [seller.id]
         ),
         pool.query(
-          `SELECT o.id, o.buyer_id AS "buyerId", o.product_title AS "productTitle",
+          `SELECT o.id, o.buyer_id AS "buyerId", o.product_id AS "productId", o.product_title AS "productTitle",
                   o.price_minor::int AS amount, o.quantity, o.status, o.created_at AS "createdAt",
+                  o.delivery_address AS "deliveryAddress", o.delivery_phone AS "deliveryPhone",
+                  o.delivery_note AS "deliveryNote",
                   COALESCE(u.display_name, 'Buyer') AS "buyerName"
            FROM orders o LEFT JOIN users u ON u.id = o.buyer_id
            WHERE o.seller_id = $1 ORDER BY o.created_at DESC LIMIT 10`,
@@ -427,8 +460,10 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
   app.get('/api/v1/seller/orders', { preHandler: requireAuth }, async (request) => {
     const seller = requireSeller(request);
     const { rows } = await pool.query(
-      `SELECT id, buyer_id AS "buyerId", product_title AS title, price_minor::int AS amount,
+      `SELECT id, buyer_id AS "buyerId", product_id AS "productId", product_title AS title, price_minor::int AS amount,
               quantity, status, created_at AS "createdAt",
+              delivery_address AS "deliveryAddress", delivery_phone AS "deliveryPhone",
+              delivery_note AS "deliveryNote",
               (SELECT display_name FROM users WHERE id = o.buyer_id) AS "buyerName"
        FROM orders o
        WHERE seller_id = $1

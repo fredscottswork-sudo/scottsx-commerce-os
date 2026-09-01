@@ -88,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
           <Link to="/login" className="btn btn-sm">Sign in</Link>
-          <Link to="/register" className="btn btn-primary btn-sm">Get started</Link>
+          <Link to="/register" className="btn btn-primary btn-sm join-cta">Get started</Link>
         </header>
         <MainNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
         <main className="public-content">{children}</main>

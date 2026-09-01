@@ -198,7 +198,9 @@ export function AiConsole({
                             products={t.products.slice(0, 6)}
                             onAddToCart={audience === 'buyer' ? (p) => void add(p) : undefined}
                             onToggleFavorite={audience === 'buyer'
-                              ? (p) => void toggleFavoriteSeller(p.seller.id, p.seller.name)
+                              ? (p) => {
+                                  if (p.seller?.id) void toggleFavoriteSeller(p.seller.id, p.seller.name);
+                                }
                               : undefined}
                             favoriteSellerIds={favoriteSellerIds}
                           />

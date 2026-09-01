@@ -1,39 +1,55 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { BadgeCheck, MapPin, Package, Star } from 'lucide-react';
 import { productService, chatService } from '../api/services';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
+import { useCart } from '../store/CartContext';
 import { ProductCard } from '../components/ProductCard';
 import { Btn, Empty, ErrorBox, Loading } from '../components/ui';
 
 export default function SellerStorefront() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { add, favoriteSellerIds, toggleFavoriteSeller } = useCart();
   const [seller, setSeller] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    let alive = true;
     setLoading(true);
     setError('');
-    productService.sellerPublic(id!)
-      .then((r) => { setSeller(r.seller); setProducts(r.products); })
-      .catch((e: any) => setError(e.message))
-      .finally(() => setLoading(false));
+    setSeller(null);
+    setProducts([]);
+    if (!id) {
+      setError('Seller not found');
+      setLoading(false);
+      return () => { alive = false; };
+    }
+    productService.sellerPublic(id)
+      .then((r) => {
+        if (!alive) return;
+        setSeller(r.seller);
+        setProducts(r.products);
+      })
+      .catch((e: any) => { if (alive) setError(e?.message || 'Could not load store'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, [id]);
 
   async function chat() {
-    if (!user) { window.location.assign('/login'); return; }
+    if (!user) { navigate('/login'); return; }
     try {
       const r = await chatService.open(seller.id);
-      window.location.assign(`/messages/${r.conversation.id}`);
+      navigate(`/messages/${r.conversation.id}`);
     } catch (e: any) {
-      toast(e.message, 'error');
+      toast(e?.message || 'Could not open the store chat', 'error');
     }
   }
 
@@ -46,7 +62,9 @@ export default function SellerStorefront() {
         <div className="row-between wrap">
           <div className="row">
             <span className="avatar" style={{ width: 56, height: 56, fontSize: 22 }}>
-              {seller.logoUrl ? <img src={seller.logoUrl} alt="" /> : seller.name[0]}
+              {seller.logoUrl
+                ? <img src={seller.logoUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                : (seller.name || 'S')[0].toUpperCase()}
             </span>
             <div>
               <h1 style={{ margin: 0, fontSize: 24 }}>
@@ -70,7 +88,17 @@ export default function SellerStorefront() {
         <>
           <h2 className="mb-16">Products ({products.length})</h2>
           <div className="pgrid">
-            {products.map((p) => <ProductCard key={p.id} product={p} />)}
+            {products.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={p}
+                onAddToCart={(product) => void add(product)}
+                onToggleFavorite={(product) => {
+                  if (product.seller?.id) void toggleFavoriteSeller(product.seller.id, product.seller.name);
+                }}
+                isFavorite={favoriteSellerIds.has(p.seller?.id ?? seller.id)}
+              />
+            ))}
           </div>
         </>
       )}

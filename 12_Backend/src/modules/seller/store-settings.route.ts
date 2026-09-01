@@ -44,8 +44,8 @@ const FIELD_MAP: Record<string, string> = {
   contactEmail: 'contact_email',
   contactPhone: 'contact_phone',
   city: 'city',
-  verified: 'verified',
-  rating: 'rating',
+  // `verified` and `rating` are platform-owned facts. Sellers may see them,
+  // but must never be able to award themselves verification or alter reviews.
   lat: 'lat',
   lng: 'lng',
 };
@@ -61,9 +61,9 @@ const patchSchema = z
     businessPhone: z.string().optional(),
     address: z.string().optional(),
     pickupInstructions: z.string().optional(),
-    serviceRadiusKm: z.number().optional(),
-    deliveryFeeUgx: z.number().optional(),
-    freeAboveUgx: z.number().optional(),
+    serviceRadiusKm: z.number().int().min(0).max(1000).optional(),
+    deliveryFeeUgx: z.number().int().nonnegative().optional(),
+    freeAboveUgx: z.number().int().nonnegative().optional(),
     codEnabled: z.boolean().optional(),
     momoNumber: z.string().optional(),
     bankName: z.string().optional(),
@@ -73,16 +73,14 @@ const patchSchema = z
     notifMarketing: z.boolean().optional(),
     notifWeeklyDigest: z.boolean().optional(),
     twoFactorEnabled: z.boolean().optional(),
-    returnsWindowDays: z.number().optional(),
+    returnsWindowDays: z.number().int().min(0).max(365).optional(),
     refundPolicy: z.string().optional(),
     terms: z.string().optional(),
     contactEmail: z.string().optional(),
     contactPhone: z.string().optional(),
     city: z.string().optional(),
-    verified: z.boolean().optional(),
-    rating: z.number().optional(),
-    lat: z.number().optional(),
-    lng: z.number().optional(),
+    lat: z.number().min(-90).max(90).optional(),
+    lng: z.number().min(-180).max(180).optional(),
   })
   .passthrough(); // ignore unknown fields rather than failing
 
@@ -120,8 +118,8 @@ function rowToSettings(row: any) {
     city: row.city ?? '',
     verified: !!row.verified,
     rating: row.rating ? Number(row.rating) : 0,
-    lat: row.lat ? Number(row.lat) : null,
-    lng: row.lng ? Number(row.lng) : null,
+    lat: row.lat === null || row.lat === undefined ? null : Number(row.lat),
+    lng: row.lng === null || row.lng === undefined ? null : Number(row.lng),
     updatedAt: row.updated_at ?? null,
   };
 }

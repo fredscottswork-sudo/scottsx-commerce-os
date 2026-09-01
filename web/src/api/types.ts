@@ -277,6 +277,10 @@ export interface Order {
   imageUrl?: string;
   storeName?: string;
   buyerName?: string;
+  productId?: string;
+  deliveryAddress?: string;
+  deliveryPhone?: string;
+  deliveryNote?: string;
 }
 
 export interface Address {

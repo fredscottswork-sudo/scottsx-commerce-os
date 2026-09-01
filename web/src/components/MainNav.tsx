@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
-  Bell, ChevronDown, Grid3x3, Heart, Home, LayoutDashboard, MapPin, MessageCircle,
+  ChevronDown, Grid3x3, Heart, Home, LayoutDashboard, MapPin, MessageCircle,
   Package, Search, ShieldCheck, ShoppingBag, ShoppingCart, Sparkles, Store, Tag,
   Shirt, Dumbbell, Sparkle, Sofa, Apple, Car, Smartphone, User,
 } from 'lucide-react';
@@ -91,7 +91,10 @@ export function MainNav({ role, counts }: Props) {
 
   const links: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
     { to: '/', label: 'Market', icon: <Store size={15} />, end: true },
-    { to: '/search?flashOnly=1&sort=discount', label: 'Deals', icon: <Tag size={15} /> },
+    // Keep Deals on the catalog's validated sort union. `flashOnly` is the
+    // actual deal filter; `discount` was never accepted by the API and made
+    // this link fail before the results page could render.
+    { to: '/search?flashOnly=1&sort=relevance', label: 'Deals', icon: <Tag size={15} /> },
     { to: '/nearby', label: 'Nearby', icon: <MapPin size={15} /> },
     { to: role === 'buyer' ? '/buyer/ai' : role === 'seller' ? '/seller/ai' : '/ai', label: 'AI', icon: <Sparkles size={15} /> },
   ];
@@ -226,37 +229,28 @@ export function MainNav({ role, counts }: Props) {
 export function BottomNav({ role, counts }: Props) {
   const items = useMemo(() => {
     const home = role === 'admin' ? '/admin' : role === 'seller' ? '/seller' : role === 'buyer' ? '/buyer' : '/';
+    const ai = role === 'seller' ? '/seller/ai' : role === 'buyer' ? '/buyer/ai' : '/ai';
+    const account = role === 'admin' ? '/admin/users' : role === 'seller' ? '/seller/store-settings' : role === 'buyer' ? '/buyer/settings' : '/login';
+
+    // Keep the same five destinations on every phone. Role-specific entry
+    // points are appended rather than replacing Nearby, AI, or Account: the
+    // old role-specific arrays made whole sections disappear on mobile and
+    // left buyers/admins without the links their desktop nav exposed.
     const base = [
       { to: home, label: 'Home', icon: <Home size={19} />, end: true, badge: 0 },
       { to: '/search', label: 'Search', icon: <Search size={19} />, badge: 0 },
+      { to: '/nearby', label: 'Nearby', icon: <MapPin size={19} />, badge: 0 },
+      { to: ai, label: 'AI', icon: <Sparkles size={19} />, badge: 0 },
+      { to: account, label: 'Account', icon: <User size={19} />, badge: 0 },
     ];
-    if (role === 'seller') {
-      base.push(
-        { to: '/seller/inventory', label: 'Inventory', icon: <Package size={19} />, badge: 0 },
-        { to: '/messages', label: 'Chats', icon: <MessageCircle size={19} />, badge: counts.messages },
-        { to: '/notifications', label: 'Alerts', icon: <Bell size={19} />, badge: counts.notifications },
-      );
+
+    if (role === 'buyer') {
+      base.push({ to: '/cart', label: 'Cart', icon: <ShoppingCart size={19} />, badge: counts.cart });
     } else if (role === 'admin') {
-      base.push(
-        { to: '/admin/queue', label: 'Queue', icon: <ShieldCheck size={19} />, badge: 0 },
-        { to: '/messages', label: 'Chats', icon: <MessageCircle size={19} />, badge: counts.messages },
-        { to: '/notifications', label: 'Alerts', icon: <Bell size={19} />, badge: counts.notifications },
-      );
-    } else if (role === 'buyer') {
-      base.push(
-        { to: '/nearby', label: 'Nearby', icon: <MapPin size={19} />, badge: 0 },
-        { to: '/cart', label: 'Cart', icon: <ShoppingCart size={19} />, badge: counts.cart },
-        { to: '/messages', label: 'Chats', icon: <MessageCircle size={19} />, badge: counts.messages },
-      );
-    } else {
-      base.push(
-        { to: '/nearby', label: 'Nearby', icon: <MapPin size={19} />, badge: 0 },
-        { to: '/ai', label: 'AI', icon: <Sparkles size={19} />, badge: 0 },
-        { to: '/login', label: 'Account', icon: <User size={19} />, badge: 0 },
-      );
+      base.push({ to: '/admin/queue', label: 'Queue', icon: <ShieldCheck size={19} />, badge: 0 });
     }
     return base;
-  }, [role, counts.cart, counts.messages, counts.notifications]);
+  }, [role, counts.cart]);
 
   return (
     <nav className="bottomnav" aria-label="Mobile navigation" data-testid="bottomnav">

@@ -942,14 +942,18 @@ tbody tr.row-click { cursor: pointer; }
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 
-.ai-chat { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h) - 60px); min-height: 520px; }
+.ai-chat {
+  display: flex; flex-direction: column;
+  height: min(760px, calc(100dvh - var(--topbar-h) - 76px));
+  min-height: 460px;
+}
 .ai-chat-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 13px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
 .ai-chat-head .card-title { margin: 0; font-size: var(--fs-md); }
 .ai-chat-body {
-  flex: 1; overflow-y: auto; padding: 18px 16px;
+  flex: 1; min-height: 0; overflow-y: auto; padding: 18px 16px;
   display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth;
 }
 .ai-welcome { margin: auto; text-align: center; display: flex; flex-direction: column; align-items: center; padding: 24px 12px; }
@@ -977,7 +981,24 @@ tbody tr.row-click { cursor: pointer; }
   .ai-agents { position: static; }
   .ai-agents .col { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
   .ai-agents .agent-card { min-width: 190px; }
-  .ai-chat { height: calc(100vh - var(--topbar-h) - 210px); }
+  .ai-chat {
+    height: min(680px, calc(100dvh - var(--topbar-h) - 210px));
+    min-height: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  /* The old 520px minimum forced the whole page taller than a small phone and
+     pushed the composer behind the fixed bottom navigation. Let the message
+     list scroll inside the card instead. */
+  .ai-chat {
+    height: min(620px, calc(100dvh - var(--topbar-h) - 150px));
+    min-height: 0;
+  }
+  .ai-chat-head { padding: 11px 12px; }
+  .ai-chat-body { padding: 14px 11px; }
+  .ai-chat-input { padding: 9px 10px; gap: 7px; }
+  .ai-chat-input .btn { flex-shrink: 0; }
 }
 
 
@@ -1879,4 +1900,333 @@ tbody tr.row-click { cursor: pointer; }
 .google-signin[data-status='loading'] .google-fallback {
   border-style: solid;
   opacity: 0.75;
+}
+
+/* ═══ COMPACT, ADAPTIVE MOBILE LAYOUT ═════════════════════════════════════
+   The marketplace is information-dense on phones, like a shopping app: small
+   type, short controls, two useful product columns, and no horizontal page
+   overflow. These are final overrides so inline page styles cannot make a
+   phone viewport unexpectedly oversized. Desktop branding and composition
+   remain unchanged. */
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .content { padding: 16px; }
+  .public-content { padding: 20px 16px 38px; }
+  .grid { gap: 12px; }
+  .pgrid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .card { padding: 14px; }
+  .card-pad { padding: 15px; }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --topbar-h: 54px;
+    --fs-xs: clamp(10px, 2.75vw, 11px);
+    --fs-sm: clamp(10.75px, 2.95vw, 12px);
+    --fs-base: clamp(11.5px, 3.2vw, 13px);
+    --fs-md: clamp(12px, 3.45vw, 13.75px);
+    --fs-lg: clamp(14px, 3.9vw, 16px);
+    --fs-xl: clamp(17px, 4.9vw, 20px);
+    --fs-2xl: clamp(20px, 5.9vw, 24px);
+    --fs-3xl: clamp(23px, 7.4vw, 29px);
+    --radius-sm: 9px;
+    --radius: 11px;
+    --radius-lg: 15px;
+  }
+
+  html, body, #root { max-width: 100%; overflow-x: hidden; }
+  body { font-size: var(--fs-base); line-height: 1.42; }
+  h1 { font-size: var(--fs-3xl) !important; }
+  h2 { font-size: var(--fs-2xl) !important; }
+  h3 { font-size: var(--fs-xl) !important; }
+  h4 { font-size: var(--fs-lg) !important; }
+
+  .content,
+  .public-content {
+    width: 100%;
+    padding: 10px 10px calc(70px + env(safe-area-inset-bottom, 0px));
+  }
+  .public-content { padding-top: 12px; }
+  .public-footer { padding: 14px 10px calc(70px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Keep every header control on one compact row, including 320px phones. */
+  .topbar,
+  .public-topbar {
+    min-height: var(--topbar-h);
+    height: var(--topbar-h);
+    padding: 0 8px;
+    gap: 4px;
+  }
+  .topbar > .grow,
+  .public-topbar > .grow { min-width: 0; }
+  .brand {
+    gap: 6px;
+    padding: 6px 3px;
+    font-size: var(--fs-md);
+    white-space: nowrap;
+  }
+  .brand-logo {
+    width: 28px; height: 28px; border-radius: 8px; font-size: 14px;
+  }
+  .topbar .menu-btn { width: 30px; height: 30px; padding: 5px; }
+  .topbar .btn-icon,
+  .public-topbar > .btn-icon {
+    width: 30px; height: 30px; padding: 5px; border-radius: 8px;
+  }
+  .topbar-search,
+  .public-search {
+    min-width: 0;
+    max-width: none;
+    flex: 1 1 auto;
+  }
+  .topbar-search input,
+  .public-search input { min-width: 0; font-size: var(--fs-sm); }
+  .topbar-search,
+  .public-search { padding: 5px 6px 5px 8px; gap: 5px; }
+  .topbar-search svg,
+  .public-search svg { width: 14px; height: 14px; }
+  .public-topbar .grow { display: none; }
+  .public-topbar .public-links { display: none; }
+  .public-topbar > .btn:not(.btn-icon) {
+    padding: 5px 7px;
+    font-size: var(--fs-xs);
+    border-radius: 7px;
+  }
+
+  /* The horizontal marketplace row remains usable by touch but takes less
+     vertical space than the old 46px bar. */
+  .mainnav-inner { height: 40px; padding: 0 9px; gap: 3px; }
+  .mainnav-link { height: 28px; padding: 0 8px; gap: 4px; font-size: var(--fs-xs); }
+  .mainnav-link svg { width: 13px; height: 13px; }
+  .mainnav-link.active::after { left: 8px; right: 8px; bottom: -6px; }
+  .mainnav-cats { height: 28px; padding: 0 8px; margin-right: 2px; font-size: var(--fs-xs); }
+  .mainnav-cats svg { width: 14px; height: 14px; }
+
+  .page-head { gap: 8px; margin-bottom: 14px; }
+  .page-title { font-size: var(--fs-xl) !important; line-height: 1.18; }
+  .page-sub { font-size: var(--fs-sm); line-height: 1.35; margin-top: 2px; }
+  .page-head > .row { gap: 6px; width: 100%; }
+  .page-head > .row > * { min-width: 0; }
+
+  .grid { gap: 10px; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .grid-3,
+  .grid-4,
+  .grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card { padding: 11px; border-radius: var(--radius); }
+  .card-pad { padding: 12px; }
+  .card-head { gap: 7px; margin-bottom: 10px; }
+  .card-title { gap: 5px; font-size: var(--fs-md); }
+  .stat-card { padding: 11px; }
+  .stat-label { font-size: var(--fs-xs); }
+  .stat-value { font-size: var(--fs-xl); margin-top: 3px; }
+  .stat-icon { width: 32px; height: 32px; border-radius: 9px; }
+
+  .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pcard { border-radius: 9px; }
+  .pcard-body { padding: 8px 8px 9px; gap: 3px; }
+  .pcard-title { font-size: var(--fs-sm); line-height: 1.28; }
+  .pcard-price { font-size: var(--fs-md); }
+  .pcard-old { font-size: var(--fs-xs); }
+  .pcard-sub { font-size: var(--fs-xs); line-height: 1.25; }
+  .pcard-price-row { gap: 4px; }
+  .pcard-tags { top: 5px; left: 5px; gap: 3px; }
+  .pcard-fav { top: 5px; right: 5px; width: 27px; height: 27px; }
+  .pcard-fav svg { width: 13px; height: 13px; }
+  .pcard-cart { margin-top: 5px; padding: 5px 6px; min-height: 28px; font-size: var(--fs-xs); gap: 4px; }
+  .pcard-cart svg { width: 12px; height: 12px; }
+
+  .cat-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 7px; }
+  .cat-tile { gap: 4px; padding: 9px 5px; border-radius: 9px; }
+  .cat-emoji { font-size: 19px; }
+  .cat-name { font-size: var(--fs-xs); line-height: 1.2; }
+
+  .chip { gap: 4px; padding: 5px 9px; font-size: var(--fs-sm); }
+  .chip-row { gap: 5px; padding-bottom: 2px; }
+  .badge { padding: 2px 6px; font-size: var(--fs-xs); }
+
+  .btn { gap: 5px; padding: 7px 10px; font-size: var(--fs-base); border-radius: 8px; }
+  .btn-sm { padding: 5px 8px; font-size: var(--fs-sm); }
+  .btn-lg { padding: 9px 13px; font-size: var(--fs-md); border-radius: 9px; }
+  .btn-icon { width: 30px; height: 30px; padding: 6px; }
+  .btn-icon svg { width: 15px; height: 15px; }
+
+  .field { gap: 4px; margin-bottom: 10px; }
+  .field label,
+  .field-hint,
+  .field-error { font-size: var(--fs-sm); }
+  .input, .select, textarea.input, select {
+    min-height: 34px;
+    padding: 7px 9px;
+    font-size: var(--fs-base);
+    border-radius: 8px;
+  }
+  textarea.input { min-height: 72px; }
+  .form-row { gap: 8px; }
+
+  .searchbar { padding: 5px 6px 5px 8px; gap: 5px; }
+  .searchbar input { font-size: var(--fs-base); }
+  .searchbar-lg { padding: 4px 5px 4px 8px; gap: 4px; }
+  .searchbar-lg input { font-size: var(--fs-base); padding: 6px 0; }
+  .searchbar-lg .btn-icon { width: 28px; height: 28px; padding: 5px; }
+  .searchbar-lg > .btn:not(.btn-icon) { padding: 6px 8px; font-size: var(--fs-sm); }
+  .search-layout { gap: 10px; }
+  .filter-rail { max-height: none; }
+
+  .hero { padding: 17px; border-radius: var(--radius-lg); }
+  .hero-title { font-size: var(--fs-2xl); }
+  .hero-sub { font-size: var(--fs-sm); margin-top: 4px; }
+  .hero-inner { gap: 12px; }
+  .hero-cart { min-width: 0; width: 100%; padding: 10px; }
+  .tabs { margin-bottom: 12px; }
+  .tab { padding: 7px 10px; font-size: var(--fs-sm); }
+  .empty { padding: 30px 12px; }
+  .empty-icon { width: 52px; height: 52px; margin-bottom: 10px; }
+
+  .table-wrap { border-radius: 9px; }
+  .table { font-size: var(--fs-sm); }
+  .table thead th { padding: 8px 9px; font-size: var(--fs-xs); }
+  .table tbody td { padding: 8px 9px; }
+  .row-thumb { width: 32px; height: 32px; border-radius: 7px; }
+
+  .checkout-layout { gap: 10px; }
+  .cart-line { gap: 8px; padding: 8px; }
+  .cart-thumb { width: 48px; height: 48px; border-radius: 8px; }
+  .qty-stepper button { width: 27px; height: 29px; }
+  .qty-stepper span { min-width: 25px; font-size: var(--fs-sm); }
+  .sum-row { gap: 8px; padding: 4px 0; font-size: var(--fs-sm); }
+  .sum-total { font-size: var(--fs-lg); }
+  .trust-list { margin-top: 10px; padding-top: 10px; gap: 6px; }
+  .trust-list li { gap: 6px; font-size: var(--fs-xs); }
+
+  .modal-backdrop { padding: 9px; }
+  .modal { max-height: calc(100dvh - 18px); border-radius: 13px; }
+  .modal-head { padding: 11px 13px; gap: 8px; }
+  .modal-body { padding: 13px; }
+  .modal-foot { padding: 10px 13px; gap: 6px; }
+
+  .ai-console { gap: 10px; }
+  .ai-agents .agent-card { min-width: 155px; padding: 8px; gap: 7px; }
+  .agent-emoji { font-size: 16px; }
+  .ai-chat { height: min(620px, calc(100dvh - var(--topbar-h) - 120px)); }
+  .ai-chat-head { padding: 9px 10px; }
+  .ai-chat-body { padding: 11px 9px; gap: 9px; }
+  .ai-chat-input { padding: 7px 8px; gap: 5px; }
+  .ai-chat-input textarea { min-height: 34px; padding: 8px 9px; font-size: var(--fs-base); }
+  .bubble { max-width: 86%; padding: 7px 9px; font-size: var(--fs-base); }
+
+  .chat-list-item { gap: 8px; padding: 9px 10px; }
+  .thread-wrap { height: calc(100dvh - var(--topbar-h) - 8px); min-height: 0; }
+  .thread-head { gap: 7px; padding: 8px 9px; }
+  .thread-body { padding: 11px 9px; gap: 6px; }
+  .thread-composer { gap: 5px; padding: 7px 8px; }
+  .offer-card { padding: 9px 10px; }
+  .offer-price { font-size: var(--fs-lg); }
+
+  .place-banner { gap: 8px; }
+  .place-ico { width: 30px; height: 30px; }
+  .place-name { font-size: var(--fs-md); }
+  .store-distance { min-width: 58px; padding: 7px 7px; }
+  .store-distance strong { font-size: var(--fs-sm); }
+
+  .settings-hero { gap: 9px; }
+  .settings-toggle-row { gap: 9px; padding: 9px 0; }
+  .theme-option { gap: 6px; padding: 10px 7px; }
+
+  /* Make the fixed bar available on both compact phones and wide phones. */
+  .bottomnav {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0; z-index: 38;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding: 0 3px env(safe-area-inset-bottom, 0px);
+    background: color-mix(in srgb, var(--surface) 97%, transparent);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -5px 18px rgba(0, 0, 0, 0.24);
+  }
+  .bottomnav-item { gap: 2px; }
+  .bottomnav-item svg { width: 17px; height: 17px; }
+  .bottomnav-label { font-size: clamp(9px, 2.5vw, 10.5px); }
+  .icon-badge { min-width: 15px; height: 15px; padding: 0 3px; font-size: 9px; line-height: 15px; border-width: 1px; }
+}
+
+@media (max-width: 379px) {
+  :root {
+    --fs-xs: 10px;
+    --fs-sm: 10.5px;
+    --fs-base: 11.5px;
+    --fs-md: 12px;
+    --fs-lg: 14px;
+    --fs-xl: 17px;
+    --fs-2xl: 20px;
+    --fs-3xl: 23px;
+  }
+  .content, .public-content { padding-left: 8px; padding-right: 8px; }
+  .public-topbar { padding-left: 5px; padding-right: 5px; }
+  .public-topbar .brand { gap: 4px; font-size: 10.5px; }
+  .public-topbar .brand-logo { width: 25px; height: 25px; font-size: 13px; }
+  .public-topbar > .btn-icon { display: none; }
+  .public-topbar > .btn:not(.btn-icon) { padding-left: 5px; padding-right: 5px; }
+  .pgrid { gap: 6px; }
+  .pcard-body { padding-left: 6px; padding-right: 6px; }
+  .mainnav-inner { padding-left: 6px; padding-right: 6px; }
+  .bottomnav-label { font-size: 9px; }
+}
+
+/* Final phone-fit refinements ------------------------------------------------
+   Keep CTAs readable instead of allowing flexbox to squeeze their labels,
+   while giving the product/search surfaces the compact density expected on a
+   small shopping phone. */
+.join-cta {
+  flex: 0 0 auto;
+  min-width: 108px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+@media (max-width: 767px) {
+  .join-cta { min-width: 96px; }
+  .public-topbar .join-cta { min-width: 72px; }
+
+  /* Search controls stay on one short row and never force the page wider. */
+  .search-hero .searchbar-lg {
+    min-width: 0;
+    width: 100%;
+    height: 34px;
+    min-height: 34px;
+    overflow: hidden;
+  }
+  .search-hero .searchbar-lg input { min-width: 0; }
+  .search-hero .searchbar-lg .btn { flex: 0 0 auto; }
+
+  /* A slightly shorter image window makes two-column listings feel like a
+     dense marketplace feed without changing the product image itself. */
+  .pgrid .pcard-media { aspect-ratio: 1.12 / 1; }
+  .pcard-title { max-height: 2.56em; }
+}
+
+@media (max-width: 390px) {
+  .join-cta { min-width: 88px; padding-left: 7px !important; padding-right: 7px !important; }
+  .public-topbar .join-cta { min-width: 68px; }
+
+  /* On 320–390px phones the AI action keeps its icon and hides only its
+     visible label; its title/accessible name still says Ask AI. */
+  .search-hero .searchbar-lg > .btn-primary {
+    width: 28px;
+    min-width: 28px;
+    padding: 5px;
+    font-size: 0;
+    gap: 0;
+  }
+  .search-hero .searchbar-lg > .btn-primary svg { width: 14px; height: 14px; }
+  .search-hero .searchbar-lg { gap: 3px; padding-left: 6px; padding-right: 4px; }
+  .search-hero .searchbar-lg > svg { width: 14px; height: 14px; }
+
+  .pgrid { gap: 6px; }
+  .pgrid .pcard-media { aspect-ratio: 1.18 / 1; }
+  .pcard-body { padding: 6px 6px 7px; }
+  .pcard-title { font-size: 10.5px; line-height: 1.22; }
+  .pcard-price { font-size: 12px; }
+  .pcard-cart { min-height: 26px; padding: 4px; }
 }
