@@ -2151,6 +2151,45 @@ tbody tr.row-click { cursor: pointer; }
   .icon-badge { min-width: 15px; height: 15px; padding: 0 3px; font-size: 9px; line-height: 15px; border-width: 1px; }
 }
 
+/* Phone type scale ──────────────────────────────────────────────────────────
+   The desktop scale is tuned for a 1340px-wide marketplace grid. Those same
+   14/17/26px steps are too big for a 390px handset: product titles wrap to
+   three lines, store names clip and every card grows taller than the screen
+   can show. Phones therefore get their own, smaller scale.
+
+   Keep this block ABOVE the `max-width: 379px` one below — that block is
+   tighter still and, being later, correctly wins on the smallest handsets. */
+@media (max-width: 767px) {
+  :root {
+    --fs-xs: 11px;
+    --fs-sm: 12px;
+    --fs-base: 13px;
+    --fs-md: 13.5px;
+    --fs-lg: 15px;
+    --fs-xl: 17.5px;
+    --fs-2xl: 21px;
+    --fs-3xl: 25px;
+  }
+
+  body { line-height: 1.5; }
+  h1 { font-size: var(--fs-2xl); }
+  h2 { font-size: var(--fs-xl); }
+
+  /* These are set in px/clamp rather than tokens, so they need phone values
+     of their own. */
+  .brand-logo { font-size: 15px; }
+  .hero-title { font-size: clamp(19px, 5.6vw, 24px); }
+  .hero-sub { font-size: var(--fs-base); }
+  .stat-value { font-size: var(--fs-xl); }
+  .pcard-price { font-size: var(--fs-md); }
+
+  /* iOS Safari zooms the whole page when a focused field is under 16px, which
+     here means the layout jumps the moment a buyer taps an address or card
+     field. Fields keep a 16px floor; the labels, hints and surrounding copy
+     still follow the smaller scale above. */
+  .input, .select, textarea.input, select { font-size: max(16px, var(--fs-base)); }
+}
+
 @media (max-width: 379px) {
   :root {
     --fs-xs: 10px;
@@ -2229,4 +2268,90 @@ tbody tr.row-click { cursor: pointer; }
   .pcard-title { font-size: 10.5px; line-height: 1.22; }
   .pcard-price { font-size: 12px; }
   .pcard-cart { min-height: 26px; padding: 4px; }
+}
+
+/* ═══ VERIFIED STORE CAROUSEL ═══════════════════════════════════════════════
+   Horizontal, snap-scrolling strip of verified stores on the marketplace home
+   page. It is a real `overflow-x` scroller rather than a JS-translated track,
+   so momentum scrolling and swipe gestures stay native on a phone; the arrow
+   buttons are an extra for pointer devices and are hidden on touch widths. */
+.vstores { margin: 0 0 26px; }
+.vstores-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.vstores-title { display: flex; align-items: center; gap: 7px; font-size: var(--fs-lg); font-weight: 800; }
+.vstores-title svg { color: var(--primary); flex-shrink: 0; }
+.vstores-sub { margin: 3px 0 0; font-size: var(--fs-sm); color: var(--text-2); }
+.vstores-arrows { display: flex; gap: 8px; flex-shrink: 0; }
+.vstores-arrow {
+  width: 32px; height: 32px; border-radius: var(--radius-full);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.vstores-arrow:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); border-color: var(--border-strong); }
+.vstores-arrow:disabled { opacity: 0.35; cursor: default; }
+
+.vstores-track {
+  display: flex; gap: 14px;
+  overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding: 2px 2px 10px; margin: 0 -2px;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.vstores-track::-webkit-scrollbar { display: none; }
+
+.vstore-card {
+  flex: 0 0 236px; scroll-snap-align: start;
+  display: flex; flex-direction: column; gap: 9px;
+  padding: 13px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+  text-decoration: none; color: var(--text);
+  transition: transform var(--dur) var(--ease-out),
+              border-color var(--dur) var(--ease-out),
+              box-shadow var(--dur) var(--ease-out);
+}
+.vstore-card:hover {
+  transform: translateY(-2px); border-color: var(--border-strong);
+  box-shadow: var(--shadow); text-decoration: none;
+}
+.vstore-card-top { display: flex; align-items: center; gap: 10px; }
+.vstore-logo {
+  width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0; overflow: hidden;
+  background: var(--gradient-brand); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: var(--fs-md); font-weight: 800;
+}
+.vstore-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vstore-logo-fallback { box-shadow: var(--shadow-brand); }
+.vstore-card-id { min-width: 0; }
+.vstore-name { margin: 0; display: flex; align-items: center; gap: 5px; font-weight: 700; font-size: var(--fs-base); }
+.vstore-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vstore-check { color: var(--primary); flex-shrink: 0; display: inline-flex; }
+.vstore-meta { margin: 2px 0 0; font-size: var(--fs-xs); color: var(--text-3); }
+.vstore-desc {
+  margin: 0; font-size: var(--fs-sm); color: var(--text-2); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.vstore-stats {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: auto; font-size: var(--fs-xs); color: var(--text-2);
+}
+.vstore-rating { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; color: var(--text); }
+.vstore-rating svg { color: var(--warning); }
+.vstore-count { display: inline-flex; align-items: center; gap: 4px; }
+.vstore-distance { color: var(--accent-cyan); font-weight: 650; }
+.vstore-card-skeleton { pointer-events: none; }
+
+@media (max-width: 767px) {
+  .vstores { margin-bottom: 20px; }
+  .vstore-card { flex-basis: 74%; max-width: 250px; padding: 11px; }
+  .vstore-logo { width: 38px; height: 38px; }
+  /* Swipe is the gesture on a phone; the arrows would only eat header room. */
+  .vstores-arrows { display: none; }
+}
+@media (max-width: 390px) {
+  .vstore-card { flex-basis: 82%; padding: 10px; gap: 7px; }
+  .vstore-desc { -webkit-line-clamp: 1; }
 }

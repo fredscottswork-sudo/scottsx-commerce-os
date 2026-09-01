@@ -403,6 +403,75 @@ section('1b. Main navigation bar');
 }
 
 // ── 2. Search: filters, facets, results ─────────────────────────────────────
+// ── 1c. Verified store carousel ─────────────────────────────────────────────
+section('1c. Verified store carousel');
+{
+  // What the API says is verified, asked independently of the page, so the
+  // strip is compared against live data rather than against itself.
+  const verifiedRes = await apiFetch('/sellers/nearby?lat=0.3476&lng=32.5825&verifiedOnly=true&sort=rating&limit=12');
+  const verified = verifiedRes.body.sellers || [];
+  check('the marketplace has verified stores to show', verified.length > 0, `${verified.length} found`);
+
+  const allRes = await apiFetch('/sellers/nearby?lat=0.3476&lng=32.5825&limit=50');
+  const unverified = (allRes.body.sellers || []).find((s) => !s.verified);
+
+  const app = await mount('/');
+  const strip = app.$('[data-testid="verified-stores"]');
+  check('the home page shows the verified-store strip', !!strip);
+
+  const cards = app.$$('[data-testid="verified-store-card"]');
+  check('one card per verified store', cards.length === verified.length,
+    `${cards.length} cards vs ${verified.length} stores`);
+
+  const cardText = cards.map((c) => c.textContent || '');
+  const topStore = verified[0] ? (verified[0].storeName || verified[0].name) : '';
+  check('cards carry real store names from the API', cardText.some((t) => t.includes(topStore)),
+    `expected "${topStore}"`);
+  check('every card carries the verified badge',
+    cards.length > 0 && cards.every((c) => !!c.querySelector('.vstore-check')));
+  check('every card links to its own storefront',
+    cards.every((c, i) => c.getAttribute('href') === `/seller/${verified[i].id}`),
+    cards.map((c) => c.getAttribute('href')).join(', '));
+  check('cards show the store rating and listing count',
+    cardText.length > 0 && cardText.every((t) => /\d\.\d/.test(t) && /listings/i.test(t)));
+
+  if (unverified) {
+    const leaked = cardText.some((t) => t.includes(unverified.storeName || unverified.name));
+    check('no unverified store leaks into the strip', !leaked,
+      `${unverified.storeName || unverified.name} is not verified`);
+  }
+
+  check('the strip is a snap-scrolling track', !!app.$('.vstores-track'));
+  check('no runtime errors from the carousel', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+
+// ── 1d. Phone typography ────────────────────────────────────────────────────
+section('1d. Phone typography');
+{
+  // Read straight from the built stylesheet, so this checks what actually ships.
+  const phoneBlock = bundleCss.match(/@media\s*\(max-width:\s*767px\)\s*\{/);
+  check('a phone-width type scale ships in the bundle', !!phoneBlock);
+  check('the desktop scale is untouched (14px base)', /--fs-base:\s*14px/.test(bundleCss));
+  check('phones get a smaller scale (13px base)', /--fs-base:\s*13px/.test(bundleCss));
+
+  if (phoneBlock) {
+    const after = bundleCss.slice(phoneBlock.index);
+    check('the smaller scale is scoped inside the phone media query', /--fs-base:\s*13px/.test(after));
+  }
+
+  // The pre-existing 379px step is tighter still and must still win there.
+  check('the sub-380px scale survives', /@media\s*\(max-width:\s*379px\)/.test(bundleCss)
+    && /--fs-base:\s*11\.5px/.test(bundleCss));
+
+  // Under 16px, iOS Safari zooms the viewport the moment a field is focused.
+  check('form fields keep a 16px floor so iOS does not zoom on focus',
+    /font-size:\s*max\(16px,\s*var\(--fs-base\)\)/.test(bundleCss));
+
+  check('the carousel styles ship with the bundle', /\.vstore-card\s*\{/.test(bundleCss));
+}
+
+// ── 2. Search page ──────────────────────────────────────────────────────────
 section('2. Search page');
 {
   const app = await mount('/search?q=phones');

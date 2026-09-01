@@ -11,6 +11,15 @@ Three artifacts, three targets:
 The backend must be deployed **first**: the web app and the APK both need its
 public URL baked in at build time.
 
+> **Fastest path — `render.yaml` in the repo root.** Skip the manual backend and
+> web setup below: **Render Dashboard → New → Blueprint → select this repo**.
+> The blueprint creates the Postgres database, the API and the static site, and
+> wires `VITE_API_URL` and `PUBLIC_WEB_URL` between the two services itself.
+> Render prompts for the secrets marked `sync: false` (admin password, SMTP,
+> AI and payment keys) and generates `JWT_SECRET` for you. Sections 1 and 2
+> below remain the manual route, and are still worth reading for *what* each
+> setting does.
+
 ---
 
 ## What is missing before you can deploy
