@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CreditCard, MapPin, Search, ShoppingBag, Sparkles } from 'lucide-react';
+import { MapPin, Search, Sparkles } from 'lucide-react';
 import { productService, aiService } from '../api/services';
 import type { Product } from '../api/types';
 import { ProductCard } from '../components/ProductCard';
@@ -35,16 +35,18 @@ export default function Home() {
   );
   const flash = products.filter((p) => p.isFlashDeal).slice(0, 6);
 
+  // Keep the useful marketplace shortcuts, but remove the two promotional
+  // tiles requested for the compact web layout. Payment methods remain
+  // available in the buyer checkout/account flows; these were only marketing
+  // cards on the home page.
   const benefits = [
-    { icon: <CreditCard size={20} />, title: 'Mobile Money & Cards', sub: 'MTN MoMo, Airtel Money, Nylon Pay' },
     { icon: <MapPin size={20} />, title: 'Nearby sellers', sub: 'Kampala · Entebbe · Jinja · Mbarara · Gulu · Mbale' },
     { icon: <Sparkles size={20} />, title: 'AI assistant', sub: 'Answers from the live catalog' },
-    { icon: <ShoppingBag size={20} />, title: 'Local & genuine', sub: 'Every item inspected before listing' },
   ];
 
   return (
     <>
-      <div className="grid grid-4 mb-16">
+      <div className="grid grid-4 home-benefits mb-16">
         {benefits.map((b) => (
           <div className="card card-pad" key={b.title}>
             <div className="row">
