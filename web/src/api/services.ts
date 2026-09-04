@@ -2,7 +2,7 @@
  * ScottsTechX web — typed service layer. Every backend call lives here so UI
  * components never touch fetch directly.
  */
-import { api, multipart } from './client';
+import { api, multipart, API_ROOT, tokenStore } from './client';
 import type {
   Address,
   AdminProductRow,
@@ -373,7 +373,31 @@ export const chatService = {
 };
 
 // ── AI ──────────────────────────────────────────────────────────────────────
+
+/** One event from the SSE chat stream (`/ai/v2/ask` with Accept: text/event-stream). */
+export type AiStreamEvent =
+  | { type: 'stage'; text: string }
+  | { type: 'reasoning'; text: string }
+  | { type: 'delta'; text: string }
+  | { type: 'error'; message: string }
+  | { type: 'answer'; answer: AiAnswer };
+
+/**
+ * Decode a UTF-8 chunk without TextDecoder (jsdom harness environments don't
+ * expose it; real browsers/Node always take the TextDecoder branch).
+ */
+function decodeSseChunk(bytes: Uint8Array, decoder: TextDecoder | null, stream: boolean): string {
+  if (decoder) return decoder.decode(bytes, { stream });
+  let bin = '';
+  const STEP = 0x8000;
+  for (let i = 0; i < bytes.length; i += STEP) {
+    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + STEP)));
+  }
+  return decodeURIComponent(escape(bin));
+}
+
 export const aiService = {
+  /** Non-streaming JSON ask — used by surfaces that don't stream yet. */
   ask: (
     prompt: string,
     opts: {
@@ -398,6 +422,86 @@ export const aiService = {
       // cap would kill it. 240s covers the worst realistic combination.
       timeoutMs: 240_000,
     }),
+
+  /**
+   * Streaming ask: the backend pushes `stage` / `reasoning` / `delta` /
+   * `answer` / `error` events as text/event-stream, so the bubble fills in
+   * real time instead of after a 30-90s wait. Resolves with the final
+   * AiAnswer (the `answer` event); rejects only if the stream ends without
+   * one. `signal` aborts the fetch (cancel / unmount).
+   */
+  async askStream(
+    prompt: string,
+    opts: {
+      screen?: string;
+      agent?: string;
+      history?: { role: 'user' | 'assistant'; content: string }[];
+      /** Compressed photo (data URL) — the assistant analyzes it + matches it. */
+      imageData?: string;
+      /** Called for every SSE frame as it arrives. */
+      onEvent: (ev: AiStreamEvent) => void;
+      signal?: AbortSignal;
+    }
+  ): Promise<AiAnswer> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    };
+    const token = tokenStore.get();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_ROOT}/ai/v2/ask`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        prompt,
+        screen: opts.screen ?? 'web',
+        agent: opts.agent,
+        history: opts.history ?? [],
+        ...(opts.imageData ? { imageData: opts.imageData } : {}),
+      }),
+      signal: opts.signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`AI request failed (${res.status}): ${body.slice(0, 200)}`);
+    }
+    if (!res.body) throw new Error('AI stream returned no body');
+
+    const reader = res.body.getReader();
+    const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
+    let buf = '';
+    let finalAnswer: AiAnswer | undefined;
+    let lastError = '';
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decodeSseChunk(value, decoder, true);
+      let sep = buf.indexOf('\n\n');
+      while (sep >= 0) {
+        const frame = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        sep = buf.indexOf('\n\n');
+        for (const line of frame.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const ev = JSON.parse(payload) as AiStreamEvent;
+            if (ev.type === 'answer' && ev.answer) finalAnswer = ev.answer;
+            if (ev.type === 'error' && ev.message) lastError = ev.message;
+            opts.onEvent(ev);
+          } catch {
+            /* ignore malformed frame */
+          }
+        }
+      }
+    }
+    if (finalAnswer) return finalAnswer;
+    throw new Error(lastError || 'AI stream ended without an answer');
+  },
   agents: () => api<{ agents: AiAgent[] }>('/ai/agents', { auth: false }),
   status: () =>
     api<{

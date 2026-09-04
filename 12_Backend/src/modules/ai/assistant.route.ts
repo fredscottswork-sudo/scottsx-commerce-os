@@ -17,6 +17,7 @@ import { verifyJwt } from '../../auth.js';
 import {
   ask, generateProduct, aiSearch, imageSearch, aiConfigured,
   nvidiaVisionConfigured, llmStatusSummary, probeNvidia, AGENTS,
+  type AskStreamEvent,
 } from './assistant.service.js';
 import { roboflowConfigured, probeRoboflow } from '../vision/roboflow.service.js';
 
@@ -114,9 +115,65 @@ export default async function registerAiRoute(app: FastifyInstance) {
 
   // bodyLimit: a compressed phone photo as a base64 JSON payload lands in the
   // 1-8MB range; the default 1MB cap would 413 it.
-  app.post('/api/v1/ai/v2/ask', { bodyLimit: 8 * 1024 * 1024 }, async (request) => {
+  //
+  // SSE streaming: browsers/agents that send Accept: text/event-stream (or
+  // ?stream=1) get `data: {type:stage|reasoning|delta|error}` events in real
+  // time and a final `data: {type:answer, answer:{...}}`; everyone else gets
+  // the plain JSON result exactly as before, so older clients are unaffected.
+  app.post('/api/v1/ai/v2/ask', { bodyLimit: 8 * 1024 * 1024 }, async (request, reply) => {
     const body = askSchema.parse(request.body);
     const who = await softUser(request);
+    const queryStream = (request.query as Record<string, unknown> | null | undefined)?.stream;
+    const wantsStream =
+      String(request.headers.accept ?? '').includes('text/event-stream') ||
+      queryStream === '1' ||
+      queryStream === 'true';
+
+    if (wantsStream) {
+      reply.hijack();
+      const raw = reply.raw;
+      raw.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      raw.flushHeaders?.();
+      let closed = false;
+      const send = (event: AskStreamEvent) => {
+        if (closed || raw.destroyed) return;
+        try {
+          raw.write(`data: ${JSON.stringify(event)}\n\n`);
+        } catch {
+          closed = true;
+        }
+      };
+      try {
+        const result = await ask({
+          db: pool,
+          prompt: body.prompt,
+          screen: body.screen,
+          agent: body.agent,
+          role: who.role,
+          userId: who.id,
+          history: body.history,
+          imageData: body.imageData,
+          imageUrl: body.imageUrl,
+          onStream: send,
+        });
+        send({ type: 'answer', answer: result });
+      } catch (err) {
+        send({
+          type: 'error',
+          message: err instanceof Error ? err.message.slice(0, 300) : 'AI request failed',
+        });
+      } finally {
+        closed = true;
+        raw.end();
+      }
+      return;
+    }
+
     const result = await ask({
       db: pool,
       prompt: body.prompt,

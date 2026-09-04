@@ -45,7 +45,13 @@ let lastNvidiaBody = null;
 //   overload-once             — nemotron answers 503 exactly once, then 200
 //   overload-nemotron-fallback— nemotron ALWAYS 503, kimi-k2 must answer
 //   overload-everything       — every model answers 503 (full outage)
+//   overload-models-down      — /v1/models ALSO 503s (production case: the
+//                               listing endpoint is on the same host, so a
+//                               service overload hides the usable model list —
+//                               the chain must NOT collapse to the primary)
 let overloadOnceUsed = false;
+let stubModelsDown = false;
+let nvidiaModels503Hits = 0;
 // 'empty' makes the caption model return NOTHING (the silent failure that made
 // "detected" fall back to the user's question). Tests flip it to prove the
 // fallback is honest and never reports the question as the item.
@@ -62,6 +68,12 @@ const OVERLOAD_BODY = JSON.stringify({
 const nvidiaStub = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   if (req.method === 'GET' && url.pathname.endsWith('/models')) {
+    if (stubModelsDown) {
+      nvidiaModels503Hits++;
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end(OVERLOAD_BODY);
+      return;
+    }
     // Mirrors the REAL /v1/models of the production key (fetched live):
     // kimi-k2.6 (not "kimi-k2-instruct"), no llama-3.3 — the fallback chain
     // must be built from the key's actual list, not hard-coded names.
@@ -111,6 +123,8 @@ const nvidiaStub = http.createServer((req, res) => {
       } else if (marker === 'overload-nemotron-fallback' && /nemotron-3-ultra/.test(modelName)) {
         overload = true;
       } else if (marker === 'overload-everything') {
+        overload = true;
+      } else if (marker === 'overload-models-down' && /nemotron-3-ultra/.test(modelName)) {
         overload = true;
       }
       if (overload) {
@@ -511,6 +525,20 @@ const main = async () => {
       });
       return { status: r.status, data: await r.json().catch(() => ({})) };
     };
+    // Full production overload: the /v1/models listing is DOWN too (same
+    // host), so the backend has no usable-model list — the fallback chain
+    // must come from the preference list, NOT collapse to nemotron only.
+    // The cache TTL is 250ms in this test env, so let any fresh 200 listing
+    // (e.g. from generate-product right above) expire first.
+    stubModelsDown = true;
+    await new Promise((r) => setTimeout(r, 450));
+    const modelsDown = await overload('MARKER:overload-models-down');
+    stubModelsDown = false;
+    check('models listing overloaded: fallback chain still reaches kimi-k2.6',
+      modelsDown.status === 200 && /NVIDIA says/.test(modelsDown.data.text || '') &&
+        /kimi-k2\.6/.test(modelsDown.data.model || '') && !modelsDown.data.llmError &&
+        nvidiaModels503Hits > 0,
+      JSON.stringify({ status: modelsDown.status, model: modelsDown.data.model, llmError: modelsDown.data.llmError, models503: nvidiaModels503Hits }));
     const once = await overload('MARKER:overload-once');
     check('503 overload: chat answers after one retry (no llmError)',
       once.status === 200 && /NVIDIA says/.test(once.data.text || '') && !once.data.llmError,
@@ -523,6 +551,55 @@ const main = async () => {
     check('total outage: grounded answer + honest llmError (503)',
       down.status === 200 && /scottstechx-local/.test(down.data.provider || '') && /503/.test(down.data.llmError || ''),
       JSON.stringify({ provider: down.data.provider, llmError: down.data.llmError }));
+
+    // ── Streaming (SSE): stage → delta → answer events, then the final JSON
+    //    contract — this is what makes the chat FEEL instant (no 30-90s wait).
+    const sseRes = await fetch(`${API}/ai/v2/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+      body: JSON.stringify({ prompt: 'stream test: cheapest phones?' }),
+    });
+    const sseType = sseRes.headers.get('content-type') || '';
+    let sawStage = false;
+    let sawDelta = false;
+    let sseAnswer = null;
+    let sseLastError = '';
+    if (sseRes.body) {
+      const rd = sseRes.body.getReader();
+      const dec = new TextDecoder();
+      let b = '';
+      for (;;) {
+        const { done, value } = await rd.read();
+        if (done) break;
+        b += dec.decode(value, { stream: true });
+        let i = b.indexOf('\n\n');
+        while (i >= 0) {
+          const frame = b.slice(0, i);
+          b = b.slice(i + 2);
+          i = b.indexOf('\n\n');
+          for (const line of frame.split('\n')) {
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const ev = JSON.parse(payload);
+              if (ev.type === 'stage') sawStage = true;
+              if (ev.type === 'delta') sawDelta = true;
+              if (ev.type === 'error' && ev.message) sseLastError = ev.message;
+              if (ev.type === 'answer') sseAnswer = ev.answer;
+            } catch { /* ignore */ }
+          }
+        }
+      }
+    }
+    check('streaming ask responds with text/event-stream',
+      /text\/event-stream/.test(sseType), sseType);
+    check('streaming ask emits a stage event before the answer', sawStage);
+    check('streaming ask streams content deltas',
+      sawDelta && /NVIDIA says/.test(sseAnswer?.text ?? ''));
+    check('streaming ask ends with the full answer contract',
+      !!sseAnswer?.text && !sseLastError && !!sseAnswer?.provider,
+      JSON.stringify({ provider: sseAnswer?.provider, llmError: sseLastError }));
 
     // ── Chat vision: a photo attached to the chat message must be analyzed
     //    (caption + labels) and the answer grounded in live matches, so the

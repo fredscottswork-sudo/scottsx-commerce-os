@@ -1971,6 +1971,34 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
               border-color var(--dur-fast) var(--ease-out);
 }
 .ai-answer-act:hover { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 28%, var(--border)); }
+
+/* ── Live streaming state (stage chip, typing dots, blinking caret) ──────── */
+.ai-stream-state { display: inline-flex; align-items: center; gap: 8px; padding: 11px 14px; }
+.ai-stage {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11.5px; font-weight: 600; color: var(--text-2);
+  white-space: nowrap;
+}
+.ai-stage::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 60%, transparent);
+  animation: ai-stage-pulse 1.6s ease-out infinite;
+}
+.ai-stage--inline { display: flex; margin-bottom: 8px; padding: 6px 10px; border-radius: 999px; background: var(--primary-soft); width: fit-content; }
+@keyframes ai-stage-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.stream-caret {
+  display: inline-block; width: 2px; height: 1.05em; margin-left: 2px;
+  vertical-align: -0.18em; background: var(--primary); border-radius: 2px;
+  animation: caret-blink .8s steps(2, jump-none) infinite;
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
+.btn-stop { background: var(--danger, #dc2626) !important; border-color: var(--danger, #dc2626) !important; }
+
 .ai-sources {
   margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--border);
 }

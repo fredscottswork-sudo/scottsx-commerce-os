@@ -307,6 +307,9 @@ export function multipart(path: string, form: FormData): Promise<unknown> {
       }
       throw new ApiError(res.status, (data as any)?.error || `Upload failed (${res.status})`);
     }
+    // Same media rewrite as the JSON path — upload responses (image search)
+    // carry relative /api/v1/... image URLs that 404 against the static host.
+    rewriteMedia(data);
     return data;
   });
 }

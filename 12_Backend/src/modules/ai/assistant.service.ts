@@ -377,6 +377,16 @@ function activeProvider(): string {
   return (process.env.AI_PROVIDER || 'openrouter').toLowerCase();
 }
 
+/** One SSE event emitted while a chat answer streams. */
+export interface AskStreamEvent {
+  type: 'stage' | 'reasoning' | 'delta' | 'answer' | 'error';
+  /** reasoning_content / content delta. */
+  text?: string;
+  /** Final full answer (replaces accumulated deltas; carries products/meta). */
+  answer?: AskResult;
+  message?: string;
+}
+
 export interface AskOptions {
   db: pg.Pool;
   prompt: string;
@@ -390,6 +400,10 @@ export interface AskOptions {
   imageData?: string;
   /** Attached photo as a public URL. */
   imageUrl?: string;
+  /** When set, the NVIDIA chat path streams reasoning/content deltas through
+   *  this callback (the SSE transport). Other providers emit one delta. The
+   *  final AskResult is still returned normally. */
+  onStream?: (event: AskStreamEvent) => void;
 }
 
 export interface AskResult {
@@ -416,7 +430,9 @@ export interface AskResult {
 export async function ask(opts: AskOptions): Promise<AskResult> {
   const { db, prompt, screen = 'generic', role = 'buyer', history = [], imageData, imageUrl } = opts;
 
+  const emit = opts.onStream ?? (() => {});
   const agent = getAgent(opts.agent ?? routeAgent(prompt, role));
+  emit({ type: 'stage', text: 'Searching the catalogue…' });
   const ctx = await buildContext(db, agent, prompt);
 
   // ── Attached photo: analyze it with the real vision pipeline (Roboflow
@@ -429,6 +445,7 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
   let photoMatches: RetrievedProduct[] = [];
   let photoContext = '';
   if (imageData || imageUrl) {
+    emit({ type: 'stage', text: 'Analyzing your photo…' });
     try {
       // Chat can wait longer than the interactive search modal: a serverless
       // Roboflow cold start and a cold kimi-k3 call routinely exceed the 6s/8s
@@ -522,11 +539,12 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
       : '') +
     `USER QUESTION: ${prompt}`;
 
+  emit({ type: 'stage', text: 'Thinking…' });
   try {
     const llm =
       activeProvider() === 'apifreellm'
         ? await askApiFreeLlm(system, grounded, history)
-        : await askOpenRouter(system, grounded, history);
+        : await askOpenRouter(system, grounded, history, opts.onStream);
     return { text: llm.text, provider: llm.provider, model: llm.model, photoAnalysis, ...meta };
   } catch (err) {
     // A provider outage must never take the assistant down — fall back to the
@@ -536,6 +554,7 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
     // analysis + matches instead of a generic catalogue blast.
     const reason = err instanceof Error ? err.message : String(err);
     console.warn(`[ai] LLM unavailable, falling back to composer: ${reason.slice(0, 300)}`);
+    emit({ type: 'error', message: reason.slice(0, 200) });
     return {
       text: photoAnalysis
         ? composePhotoAnswer(photoAnalysis, photoMatches)
@@ -658,14 +677,23 @@ const NVIDIA_VISION_FALLBACK_PREFERENCE = [
   'moonshotai/kimi-k3',
 ];
 
-/** Build the fallback chain from the models the key can actually use. */
+/**
+ * Build the fallback chain from the models the key can actually use.
+ * With `useAllOnUnknown` (the key's /v1/models listing itself was overloaded
+ * or timed out) the preference list is used UNFILTERED: a 503 on the listing
+ * says nothing about which completion models are usable, and collapsing the
+ * chain to the primary is exactly how a transient overload becomes a hard
+ * "llm unavailable" fallback. A preference entry that 404s during completion
+ * just gets skipped by the per-model error handling.
+ */
 function nvidiaFallbackModels(
   ids: string[] | null,
   primary: string,
-  preference: string[] = NVIDIA_FALLBACK_PREFERENCE
+  preference: string[] = NVIDIA_FALLBACK_PREFERENCE,
+  useAllOnUnknown = false
 ): string[] {
   const listed = new Set(ids ?? []);
-  const preferred = preference.filter((m) => m !== primary && listed.has(m));
+  const preferred = preference.filter((m) => m !== primary && (useAllOnUnknown || listed.has(m)));
   if (preferred.length) return preferred;
   // Nothing from the preference list exists on this key — use any listed
   // instruct/chat-style model rather than failing offline.
@@ -713,6 +741,14 @@ function nvidiaTimeoutMs(): number {
 /** Short timeout for the /v1/models health+key check (fail fast). */
 const NVIDIA_MODELS_TIMEOUT_MS = 10_000;
 
+/** How long a /v1/models listing result is cached (default 60s; tests use a
+ *  short TTL so stub failures are observable without waiting). */
+function nvidiaModelsCacheTtlMs(): number {
+  const raw = Number(process.env.NVIDIA_MODELS_CACHE_TTL_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return 60_000;
+  return Math.min(Math.max(raw, 250), 300_000);
+}
+
 let nvidiaModelsCache: { at: number; ids: string[] | null; ok: boolean; status?: number } | null = null;
 
 /** Derive the /v1/models endpoint from the chat-completions URL. */
@@ -735,7 +771,7 @@ async function listNvidiaModels(): Promise<{
 }> {
   const key = process.env.NVIDIA_API_KEY?.trim();
   if (!key) return { ok: false, error: 'NVIDIA_API_KEY not set', ids: null, latencyMs: 0 };
-  if (nvidiaModelsCache && Date.now() - nvidiaModelsCache.at < 60_000) {
+  if (nvidiaModelsCache && Date.now() - nvidiaModelsCache.at < nvidiaModelsCacheTtlMs()) {
     return {
       ok: nvidiaModelsCache.ok,
       status: nvidiaModelsCache.status,
@@ -790,10 +826,53 @@ async function listNvidiaModels(): Promise<{
   }
 }
 
+/**
+ * Read an OpenAI-compatible SSE stream and invoke onChunk for every parsed
+ * JSON payload. Handles chunk splits, CRLF and the [DONE] sentinel; ignores
+ * keep-alive comments. Returns the last `model` field seen (or '').
+ */
+async function readSseStream(
+  res: Response,
+  onChunk: (obj: Record<string, unknown>) => void
+): Promise<void> {
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl = buf.indexOf('\n');
+    while (nl >= 0) {
+      const line = buf.slice(0, nl).replace(/\r$/, '');
+      buf = buf.slice(nl + 1);
+      nl = buf.indexOf('\n');
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        onChunk(JSON.parse(payload) as Record<string, unknown>);
+      } catch {
+        /* partial/invalid frame — ignore */
+      }
+    }
+  }
+}
+
 async function nvidiaChatCompletion(
   messages: Array<Record<string, unknown>>,
   maxTokens: number,
-  opts: { model?: string; think?: boolean; attemptTimeoutMs?: number; fallback?: string[] } = {}
+  opts: {
+    model?: string;
+    think?: boolean;
+    attemptTimeoutMs?: number;
+    fallback?: string[];
+    /** When set, `stream: true` is sent and deltas are pushed to this sink
+     *  (reasoning & content separately) as they arrive. The accumulated full
+     *  text is still returned. */
+    onStream?: (chunk: { reasoning?: string; content?: string; model?: string }) => void;
+  } = {}
 ): Promise<{ text: string; model: string }> {
   const key = process.env.NVIDIA_API_KEY?.trim();
   if (!key) throw new ServiceUnavailableError('NVIDIA_API_KEY is not set');
@@ -816,13 +895,21 @@ async function nvidiaChatCompletion(
   }
   // Chain = configured primary + models the key can actually use (in
   // preference order, then any listed instruct/chat-style model as a last
-  // resort). A hard-coded partner name that 404s would defeat the fallback.
-  const candidates = [primary, ...nvidiaFallbackModels(models.ids, primary, opts.fallback)];
+  // resort). When the /v1/models listing itself failed (503 overload, timeout)
+  // the chain is NOT collapsed: use the full preference list so a fallback
+  // model can still answer while the service is briefly overloaded.
+  const listingDown = !models.ok && models.status !== 401 && models.status !== 403;
+  const candidates = [
+    ...new Set([
+      primary,
+      ...nvidiaFallbackModels(models.ok ? models.ids : null, primary, opts.fallback, listingDown),
+    ]),
+  ];
 
   // Transient failures (NVIDIA's 'Service temporarily overloaded' 503, rate
-  // limits, 5xx) recover in seconds. Retry the same model once, then move
-  // down the usable-model chain — a talking answer from kimi-k2 beats an
-  // offline fallback. Hard errors (auth/credits) and network failures abort
+  // limits, 5xx) recover in seconds. Retry the same model twice with backoff,
+  // then move down the chain — a talking answer from kimi-k2 beats an offline
+  // fallback. Hard errors (auth/credits) and network failures abort
   // immediately: no model switch fixes those.
   const TRANSIENT_HTTP = new Set([408, 429, 500, 502, 503, 504]);
   const budgetMs = nvidiaTimeoutMs();
@@ -832,7 +919,7 @@ async function nvidiaChatCompletion(
 
   for (const model of candidates) {
     if (hardStop) break;
-    let attemptsLeft = 2; // 1 retry on this model before trying the next
+    let attemptsLeft = 3; // 2 retries on this model before trying the next
     while (attemptsLeft > 0 && !hardStop) {
       attemptsLeft--;
       const remaining = budgetMs - (Date.now() - startedAt);
@@ -860,6 +947,7 @@ async function nvidiaChatCompletion(
             // chat_template_kwargs — the raw-JSON equivalent of the Python SDK's
             // extra_body={"chat_template_kwargs":{"enable_thinking":true}}.
             ...(think ? { chat_template_kwargs: { enable_thinking: true } } : {}),
+            ...(opts.onStream ? { stream: true } : {}),
           }),
           signal: controller.signal,
         });
@@ -872,6 +960,33 @@ async function nvidiaChatCompletion(
           err.nvidiaBody = body;
           console.warn(`[ai] nvidia ${model} -> HTTP ${res.status}: ${body.slice(0, 200)}`);
           throw err;
+        }
+        if (opts.onStream) {
+          // Streaming: push reasoning/content deltas through the sink as they
+          // arrive (time-to-first-token is what makes chat FEEL fast), then
+          // return the accumulated answer so callers behave identically.
+          let content = '';
+          let reasoning = '';
+          let streamedModel = model;
+          await readSseStream(res, (obj) => {
+            if (typeof obj.model === 'string' && obj.model) streamedModel = obj.model;
+            const delta = (obj as { choices?: Array<{ delta?: Record<string, unknown> }> })
+              .choices?.[0]?.delta;
+            if (!delta) return;
+            const r = typeof delta.reasoning_content === 'string' ? delta.reasoning_content : '';
+            const c = typeof delta.content === 'string' ? delta.content : '';
+            if (r) {
+              reasoning += r;
+              opts.onStream?.({ reasoning: r });
+            }
+            if (c) {
+              content += c;
+              opts.onStream?.({ content: c });
+            }
+          });
+          const text = extractReply({ content, reasoning_content: reasoning });
+          if (!text) throw new ServiceUnavailableError('nvidia returned an empty stream');
+          return { text, model: streamedModel };
         }
         const data = await res.json();
         const text = extractReply(data?.choices?.[0]?.message);
@@ -903,7 +1018,11 @@ async function nvidiaChatCompletion(
           break;
         }
         if (transient && attemptsLeft > 0) {
-          const backoff = Math.min(300 + 400 * (2 - attemptsLeft) + Math.round(Math.random() * 200), Math.max(remaining - 1000, 100));
+          const backoff = Math.min(
+            500 + 900 * (2 - attemptsLeft) + Math.round(Math.random() * 300),
+            Math.max(remaining - 1000, 100)
+          );
+          console.warn(`[ai] nvidia ${model} -> transient ${status}, retrying in ${backoff}ms`);
           await new Promise((r) => setTimeout(r, backoff));
           continue; // retry the same model
         }
@@ -920,7 +1039,8 @@ async function nvidiaChatCompletion(
 async function askOpenRouter(
   system: string,
   userContent: string,
-  history: Array<{ role: 'user' | 'assistant'; content: string }>
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  onStream?: (ev: AskStreamEvent) => void
 ) {
   // Provider-agnostic: NVIDIA NIM (with model fallback) or any OpenAI-compatible
   // endpoint (OpenRouter, OpenAI, Groq…). Named askOpenRouter historically; the
@@ -936,7 +1056,18 @@ async function askOpenRouter(
   if (ep.provider === 'nvidia') {
     // nemotron-3-ultra is a thinking model — give it room (reasoning consumes
     // tokens; short replies get cut otherwise). The user's snippet uses 16384.
-    const r = await nvidiaChatCompletion(messages, 8192, { model: nvidiaModel(), think: true });
+    const r = await nvidiaChatCompletion(messages, 8192, {
+      model: nvidiaModel(),
+      think: true,
+      ...(onStream
+        ? {
+            onStream: (chunk) => {
+              if (chunk.reasoning) onStream({ type: 'reasoning', text: chunk.reasoning });
+              if (chunk.content) onStream({ type: 'delta', text: chunk.content });
+            },
+          }
+        : {}),
+    });
     return { text: r.text, provider: 'nvidia', model: r.model };
   }
 
@@ -946,12 +1077,34 @@ async function askOpenRouter(
     const res = await fetch(ep.url, {
       method: 'POST',
       headers: ep.headers,
-      body: JSON.stringify({ model: ep.model, messages, max_tokens: 2048, temperature: 0.4 }),
+      body: JSON.stringify({ model: ep.model, messages, max_tokens: 2048, temperature: 0.4, ...(onStream ? { stream: true } : {}) }),
       signal: controller.signal,
     });
     if (!res.ok) {
       const text = await res.text();
       throw new ServiceUnavailableError(`${ep.provider} error ${res.status}: ${text.slice(0, 200)}`);
+    }
+    if (onStream) {
+      let content = '';
+      let reasoning = '';
+      await readSseStream(res, (obj) => {
+        const delta = (obj as { choices?: Array<{ delta?: Record<string, unknown> }> })
+          .choices?.[0]?.delta;
+        if (!delta) return;
+        const r = typeof delta.reasoning_content === 'string' ? delta.reasoning_content : '';
+        const c = typeof delta.content === 'string' ? delta.content : '';
+        if (r) {
+          reasoning += r;
+          onStream({ type: 'reasoning', text: r });
+        }
+        if (c) {
+          content += c;
+          onStream({ type: 'delta', text: c });
+        }
+      });
+      const text = extractReply({ content, reasoning_content: reasoning });
+      if (!text) throw new ServiceUnavailableError(`${ep.provider} returned an empty stream`);
+      return { text, provider: ep.provider, model: ep.model };
     }
     const data = await res.json();
     const text = extractReply(data?.choices?.[0]?.message);

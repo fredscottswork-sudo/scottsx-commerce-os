@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Sparkles, Send, RotateCcw, Zap, AlertCircle,
+  Sparkles, Send, RotateCcw, Zap, AlertCircle, Square,
   ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, Camera, ImagePlus, X,
   Copy, Share2, BookOpen, Store,
 } from 'lucide-react';
 import { aiService } from '../api/services';
-import type { AiAgent, AiSearchResult, Product } from '../api/types';
+import type { AiAgent, AiAnswer, AiSearchResult, Product } from '../api/types';
 import { compressImage } from '../lib/imageSearch';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
@@ -62,6 +62,8 @@ interface Turn {
   model?: string;
   grounded?: boolean;
   pending?: boolean;
+  /** Assistant turn still receiving streamed deltas (content is partial). */
+  streaming?: boolean;
   llmError?: string;
   /** Photo attached to this user turn (compressed data URL) + its filename. */
   photo?: string;
@@ -133,8 +135,12 @@ export function AiConsole({
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Live status chip while the answer streams ("Searching the catalogue…"). */
+  const [stage, setStage] = useState('');
   const [listening, setListening] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
+  /** Aborts the in-flight SSE request (Stop button). */
+  const abortRef = useRef<AbortController | null>(null);
   /** Photo attached to the NEXT message (compressed on-device, ~200-400KB). */
   const [photo, setPhoto] = useState<{ dataUrl: string; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -241,9 +247,10 @@ export function AiConsole({
     setInput('');
     setPhoto(null);
     setBusy(true);
+    setStage(imageData ? 'Analyzing your photo…' : 'Searching the catalogue…');
 
-    try {
-      const r = await aiService.ask(prompt, { screen, agent: agentId || undefined, history, imageData });
+    // Finalize = replace the still-pending last turn with the completed answer.
+    const finalize = (r: AiAnswer) => {
       setTurns((t) => {
         const next = [...t];
         next[next.length - 1] = {
@@ -263,18 +270,86 @@ export function AiConsole({
       if (r.agent?.id && r.agent.id !== agentId && agents.some((a) => a.id === r.agent.id)) {
         setAgentId(r.agent.id);
       }
-    } catch (e: any) {
-      setTurns((t) => {
-        const next = [...t];
-        next[next.length - 1] = {
-          role: 'assistant',
-          content: `⚠️ ${e?.message || 'The assistant is unavailable right now. Please try again.'}`,
-        };
-        return next;
+    };
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    try {
+      const r = await aiService.askStream(prompt, {
+        screen,
+        agent: agentId || undefined,
+        history,
+        imageData,
+        signal: ctrl.signal,
+        onEvent: (ev) => {
+          if (ev.type === 'stage') {
+            setStage(ev.text);
+            return;
+          }
+          if (ev.type === 'reasoning') {
+            // Thinking deltas are private chain-of-thought — the user sees a
+            // pulsing "Thinking…" state, never the raw reasoning.
+            setStage('Thinking…');
+            return;
+          }
+          if (ev.type === 'delta') {
+            const delta = ev.text;
+            setStage('');
+            setTurns((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (!last || last.role !== 'assistant' || !last.pending) return prev;
+              next[next.length - 1] = { ...last, content: last.content + delta, streaming: true };
+              return next;
+            });
+            return;
+          }
+          if (ev.type === 'error' && ev.message) {
+            setStage('');
+            setTurns((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last?.pending) {
+                next[next.length - 1] = { ...last, content: `${last.content}⚠️ ${ev.message}`.trim() };
+              }
+              return next;
+            });
+          }
+        },
       });
-      toast(e?.message || 'AI request failed', 'error');
+      finalize(r);
+    } catch (e: any) {
+      if (ctrl.signal.aborted) {
+        // User pressed Stop — keep whatever streamed so far, mark it done.
+        setTurns((t) => {
+          const next = [...t];
+          const last = next[next.length - 1];
+          if (last?.pending) {
+            next[next.length - 1] = {
+              ...last,
+              pending: false,
+              streaming: false,
+              content: (last.content || '⏹️ Stopped.').trim(),
+              agent: 'ScottsTechX AI',
+            };
+          }
+          return next;
+        });
+      } else {
+        setTurns((t) => {
+          const next = [...t];
+          next[next.length - 1] = {
+            role: 'assistant',
+            content: `⚠️ ${e?.message || 'The assistant is unavailable right now. Please try again.'}`,
+          };
+          return next;
+        });
+        toast(e?.message || 'AI request failed', 'error');
+      }
     } finally {
       setBusy(false);
+      setStage('');
+      abortRef.current = null;
       inputRef.current?.focus();
     }
   }, [agentId, agents, busy, photo, screen, toast, turns]);
@@ -494,9 +569,16 @@ export function AiConsole({
                     <span className="ai-avatar" style={{ width: 28, height: 28 }}><Sparkles size={13} /></span>
                   )}
                   <div className={`bubble ${t.role === 'user' ? 'bubble-user' : 'bubble-ai'}`}>
-                    {t.pending ? (
-                      <span className="typing"><i /><i /><i /></span>
-                    ) : (
+                    {t.pending && !t.content && (
+                      <span className="ai-stream-state">
+                        {stage && <span className="ai-stage">{stage}</span>}
+                        <span className="typing"><i /><i /><i /></span>
+                      </span>
+                    )}
+                    {t.pending && t.content && stage && (
+                      <span className="ai-stage ai-stage--inline">{stage}</span>
+                    )}
+                    {(!t.pending || t.content) && (
                       <>
                         {t.role === 'user' && t.photo && (
                           <img
@@ -572,6 +654,7 @@ export function AiConsole({
                             <AlertCircle size={11} style={{ verticalAlign: -1 }} /> Answered without live catalogue data.
                           </p>
                         )}
+                        {t.streaming && <span className="stream-caret" aria-hidden="true" />}
                       </>
                     )}
                   </div>
@@ -710,12 +793,14 @@ export function AiConsole({
           />
           <Btn
             variant="primary"
-            type="submit"
-            loading={busy}
-            disabled={!input.trim() && !photo}
-            icon={<Send size={15} />}
+            type={busy ? 'button' : 'submit'}
+            disabled={!busy && !input.trim() && !photo}
+            icon={busy ? <Square size={14} /> : <Send size={15} />}
+            className={busy ? 'btn-stop' : ''}
+            aria-label={busy ? 'Stop generating' : 'Send message'}
+            onClick={busy ? () => abortRef.current?.abort() : undefined}
           >
-            Send
+            {busy ? 'Stop' : 'Send'}
           </Btn>
         </form>
         <p className="ai-disclaimer">
