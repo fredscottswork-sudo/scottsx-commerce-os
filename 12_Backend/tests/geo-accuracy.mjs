@@ -84,12 +84,19 @@ const none = await googleReverseGeocode(0.3040, 32.5980);
 check('no key configured returns null', none === null);
 check('provider reports not configured', googleGeocoderConfigured()===false);
 
-// ── Offline accuracy: the gazetteer must not guess a distant town ──────────
+// ── Offline accuracy: the gazetteer must never guess a distant settlement ───
 const { reverseGeocode } = await import('../src/geo/gazetteer.ts');
 
 console.log('\n[offline gazetteer - Kampala accuracy]');
 
-// Every one of these is a real suburb centroid; the layer must name it exactly.
+// Inside a mapped settlement the name is real and must be claimed.
+const kireka = reverseGeocode(0.3469, 32.6446);
+check('pin inside a settlement keeps its village name',
+  kireka?.village === 'Kireka' && kireka?.city === 'Kampala', JSON.stringify(kireka));
+
+// Suburb centroids with no row of their own must say the city, never borrow a
+// village from kilometres away (a Kabalagala pin used to resolve to any
+// nearby settlement — the wrong-village complaint).
 const SUBURBS = [
   ['Kabalagala', 0.3040, 32.5980],
   ['Kawempe',    0.3739, 32.5533],
@@ -100,24 +107,34 @@ const SUBURBS = [
 ];
 for (const [name, lat, lng] of SUBURBS) {
   const p = reverseGeocode(lat, lng);
-  check(`${name} resolves to itself, not the nearest town`,
-    p?.village === name, `got ${p?.village} (${p?.accuracyKm}km)`);
+  check(`${name} pin resolves to Kampala without a borrowed village`,
+    p?.city === 'Kampala' && p?.village === null, JSON.stringify(p));
 }
 
 // The regression that started this: a fix north of Kawempe was labelled
-// "Kampala" from 10.67km away. Whatever we answer now must be far closer.
+// "Kireka" from 10.67km away. Never name a settlement the pin is not in.
 const north = reverseGeocode(0.4162, 32.5822);
-check('a fix in a gap between suburbs is named from close by, not 10km away',
-  (north?.accuracyKm ?? 99) < 4, `${north?.label} @ ${north?.accuracyKm}km`);
-check('that fix still names a real locality',
-  Boolean(north?.village || north?.city), JSON.stringify(north));
+check('a gap fix never borrows a settlement name from far away',
+  north?.village === null && north?.city === 'Kampala', JSON.stringify(north));
 
-// Sanity: somewhere with no mapped suburbs must still answer, and must not
-// borrow a Kampala neighbourhood name.
+// Sanity: somewhere unmapped must still answer, and must not borrow a Kampala
+// neighbourhood name.
 const gulu = reverseGeocode(2.7746, 32.2990);
 check('upcountry fixes still resolve', Boolean(gulu?.city || gulu?.village), JSON.stringify(gulu));
 check('upcountry fix is not given a Kampala suburb name',
   gulu?.city !== 'Kampala', gulu?.label);
+
+// ── Wrong-village guard (edge of the city) ──────────────────────────────────
+// The pin must be inside/near a settlement before its name is claimed. A fix
+// ~9km from the nearest named place is "in Kampala" — not a "village of
+// Kampala" — and naming the nearest hamlet from 9km away would send customers
+// to the wrong village (the exact complaint this fixes).
+const south = reverseGeocode(0.15, 32.35);
+check('distant pin does not borrow a settlement name (village null)',
+  south?.village === null, JSON.stringify(south));
+check('distant pin still names its city', south?.city === 'Kampala', south?.city);
+check('distant pin label starts with the city, not a village',
+  (south?.label ?? '').startsWith('Kampala'), south?.label);
 
 srv.close();
 console.log(`\nResult: ${pass} passed, ${fail} failed`);

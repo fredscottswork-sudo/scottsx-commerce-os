@@ -74,7 +74,7 @@ export default function SellerStorefront() {
               </h1>
               <div className="muted row wrap" style={{ gap: 12 }}>
                 <span className="row"><Star size={14} style={{ color: 'var(--warning)' }} /> {seller.rating} rating</span>
-                <span className="row"><MapPin size={14} /> {seller.city || 'Uganda'}</span>
+                <span className="row"><MapPin size={14} /> {seller.placeLabel || seller.city || 'Uganda'}</span>
               </div>
             </div>
           </div>

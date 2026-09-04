@@ -193,6 +193,12 @@ const CITY_TIERS: [number, number][] = [
 /** Population above which a place stands alone and needs no parent city. */
 const SELF_SUFFICIENT_POP = 25_000;
 
+/** Beyond this a "village" name is a guess, and wrong-village errors (rough
+ *  store pins, GPS jitter, gazetteer gaps) cost more trust than a
+ *  city/region-only label. The city tier is still allowed to name the parent
+ *  city from farther out — it is the closest TOWN, not a suburb claim. */
+const VILLAGE_MAX_KM = 3;
+
 /** Beyond this the nearest name is meaningless (open ocean): country only. */
 const MAX_SANE_KM = 150;
 
@@ -279,6 +285,11 @@ export function reverseGeocode(lat: number, lng: number): ReverseResult | null {
   const sameAsCity = cityName !== null && cityName === localName;
   let village: string | null = sameAsCity ? null : localName;
   const city = cityName ?? localName;
+
+  // A village name is only trustworthy when the pin is actually inside/near
+  // that settlement. Beyond VILLAGE_MAX_KM it is a guess — say the city
+  // instead of sending customers to a wrong village (see geo-accuracy.mjs).
+  if (village && nearestKm > VILLAGE_MAX_KM) village = null;
 
   // Too far from anything to claim a locality: region/country only.
   const tooFar = nearestKm > MAX_SANE_KM;

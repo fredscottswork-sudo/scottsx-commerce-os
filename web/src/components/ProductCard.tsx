@@ -96,7 +96,7 @@ export const ProductCard = memo(function ProductCard({
 
         {!compact && (
           <p className="pcard-sub" style={{ marginTop: 2 }}>
-            <MapPin size={10} style={{ verticalAlign: -1 }} /> {product.location || product.seller?.location || 'Uganda'}
+            <MapPin size={10} style={{ verticalAlign: -1 }} /> {product.seller?.location || product.location || 'Uganda'}
           </p>
         )}
 

@@ -11,6 +11,7 @@
 import type pg from 'pg';
 import { NotFoundError, ForbiddenError, ValidationError } from '../../errors.js';
 import { expandTerm } from '../ai/catalog-context.js';
+import { reverseGeocode } from '../../geo/gazetteer.js';
 
 export const PRODUCT_SELECT = `
   SELECT
@@ -46,6 +47,9 @@ export const PRODUCT_SELECT = `
       'name', COALESCE(s.store_name, u.display_name),
       'rating', COALESCE(s.rating, 0)::float,
       'location', COALESCE(s.city, p.location),
+      'lat', s.lat,
+      'lng', s.lng,
+      'address', s.address,
       'verified', COALESCE(s.verified, false),
       'logoUrl', COALESCE(NULLIF(s.store_logo_url, ''), u.profile_photo_url)
     ) AS seller
@@ -57,12 +61,41 @@ export const PRODUCT_SELECT = `
   ) pm ON true
 `;
 
+// Accurate seller place cache: geocoded lat/lng wins over typed free text.
+const placeCache = new Map<string, { at: number; value: string | null }>();
+const PLACE_CACHE_TTL = 60_000;
+function sellerPlace(seller: any, fallback: string): string {
+  const lat = Number(seller?.lat);
+  const lng = Number(seller?.lng);
+  const key = Number.isFinite(lat) && Number.isFinite(lng) ? `${Math.round(lat * 10000) / 10000}:${Math.round(lng * 10000) / 10000}` : '';
+  if (key) {
+    const cached = placeCache.get(key);
+    if (cached && Date.now() - cached.at < PLACE_CACHE_TTL) return cached.value || fallback;
+    const place = reverseGeocode(lat, lng)?.shortLabel ?? null;
+    if (placeCache.size > 2000) {
+      const first = placeCache.keys().next().value;
+      if (first) placeCache.delete(first);
+    }
+    placeCache.set(key, { at: Date.now(), value: place });
+    if (place) return place;
+  }
+  const address = typeof seller?.address === 'string' ? seller.address.trim() : '';
+  return address || fallback;
+}
+
 export function rowsToProducts(rows: any[]) {
-  return rows.map((r) => ({
-    ...r,
-    currency: 'UGX',
-    seller: typeof r.seller === 'string' ? JSON.parse(r.seller) : r.seller,
-  }));
+  return rows.map((r) => {
+    const seller = typeof r.seller === 'string' ? JSON.parse(r.seller) : r.seller;
+    if (seller) {
+      // The seller's real geocoded place beats a typed city/pickup text that
+      // may be stale or wrong ("Kampala, Nakasero" from an old form).
+      seller.location = sellerPlace(seller, seller.location || 'Uganda');
+      delete seller.lat;
+      delete seller.lng;
+      delete seller.address;
+    }
+    return { ...r, currency: 'UGX', seller };
+  });
 }
 
 export interface SearchParams {

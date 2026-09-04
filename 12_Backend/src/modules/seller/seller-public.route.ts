@@ -12,6 +12,7 @@ import { getPool } from '../../db.js';
 import { requireAuth, requireSeller } from '../../auth.js';
 import { NotFoundError } from '../../errors.js';
 import { reverseGeocode } from '../../geo/gazetteer.js';
+import { rowsToProducts } from '../products/products.service.js';
 
 const nearbySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
@@ -211,6 +212,9 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
            'name', COALESCE(s.store_name, u.display_name),
            'rating', COALESCE(s.rating, 0)::float,
            'location', COALESCE(s.city, p.location),
+           'lat', s.lat,
+           'lng', s.lng,
+           'address', s.address,
            'verified', COALESCE(s.verified, false),
            'logoUrl', COALESCE(NULLIF(s.store_logo_url, ''), u.profile_photo_url)
          ) AS seller
@@ -221,6 +225,12 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
        ORDER BY p.created_at DESC`,
       [id]
     );
+    const sellerLat = Number(seller.lat);
+    const sellerLng = Number(seller.lng);
+    const geocoded =
+      Number.isFinite(sellerLat) && Number.isFinite(sellerLng)
+        ? reverseGeocode(sellerLat, sellerLng)?.shortLabel ?? seller.address ?? ''
+        : '';
     return {
       seller: {
         id: seller.id,
@@ -228,6 +238,8 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
         storeName: seller.store_name || seller.name,
         description: seller.store_description ?? '',
         city: seller.city || seller.user_city || '',
+        /** The seller's real place from the store pin — typed text only as fallback. */
+        placeLabel: geocoded || seller.city || seller.user_city || '',
         address: seller.address ?? '',
         verified: !!seller.verified,
         rating: seller.rating ? Number(seller.rating) : 0,
@@ -241,11 +253,7 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
         contactEmail: seller.contact_email ?? '',
         contactPhone: seller.contact_phone ?? '',
       },
-      products: products.rows.map((p) => ({
-        ...p,
-        currency: 'UGX',
-        seller: typeof p.seller === 'string' ? JSON.parse(p.seller) : p.seller,
-      })),
+      products: rowsToProducts(products.rows),
     };
   });
 

@@ -842,6 +842,9 @@ section('9. AI console');
   // Actually ask the assistant something and assert a grounded answer.
   const box = app.$('.ai-chat-input textarea');
   await app.type(box, 'cheapest phones');
+  check('market mark sits in the AI brand orbs', !!app.$('.ai-brand-orb .ai-brand-mark'),
+    app.$('.ai-brand-orb .ai-brand-mark') ? 'logo found' : 'no logo mark');
+  check('send button glows when the message is ready', !!app.$('.ai-chat-input .ai-send--ready'));
   const sendBtn = [...app.$$('.ai-chat-input button')].find((b) => /send/i.test(b.textContent || ''));
   if (box && sendBtn) {
     await app.click(sendBtn, 3200);
@@ -858,6 +861,13 @@ section('9. AI console');
     check('answers offer copy + share actions', app.$$('.ai-answer-act').length >= 2,
       `${app.$$('.ai-answer-act').length} actions`);
     check('answers disclose AI-generated content', /AI answers are generated/i.test(app.text()));
+    check('market quick-actions bar appears with the conversation',
+      app.$$('.ai-quick').length >= 4, `${app.$$('.ai-quick').length} quick actions`);
+    check('last answer offers Regenerate',
+      [...app.$$('.ai-answer-act')].some((b) => /regenerate/i.test(b.textContent || '')));
+    check('offers voice + one direct photo picker (camera modal gone)',
+      !!app.$('.ai-chat-input button[aria-label="Attach a photo"]') &&
+      !app.$('.ai-chat-input button[aria-label="Search by photo"]'));
   } else {
     check('assistant produced a reply bubble', false, 'composer not found');
   }
@@ -880,51 +890,35 @@ section('9b. Public STX AI page');
     aiBrand ? aiBrand.textContent : 'no brand bar');
   check('AI page shows its marketplace identity mark', !!app.$('.ai-brand-orb'));
   check('AI page offers extra capabilities (voice + photo)',
-    app.$$('.ai-cap').length >= 1 && !!app.$('.ai-chat-input button[aria-label="Search by photo"]'),
+    app.$$('.ai-cap').length >= 1 && !!app.$('.ai-chat-input button[aria-label="Attach a photo"]'),
     `${app.$$('.ai-cap').length} header caps + composer photo button`);
   check('no runtime errors on the AI page', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
 
-// ── 9c. Image search (URL path, guest-safe) ──────────────────────────────────
-section('9c. Image search');
+// ── 9c. Composer image selector: exactly ONE, opens the picker directly ─────
+section('9c. One direct image selector');
 {
   const app = await mount('/ai');
-  // The photo attach button lives in the composer, right beside Send.
   const composer = app.$('.ai-chat-input');
-  const photoBtn = composer && app.$('.ai-chat-input button[aria-label="Search by photo"]');
-  check('photo search sits in the chat composer', !!photoBtn,
-    photoBtn ? 'composer button found' : 'no composer photo button');
-  if (photoBtn) {
-    const sendBtn = [...(composer?.querySelectorAll('button') || [])].find((b) =>
-      /send/i.test(b.textContent || '')
-    );
-    check('photo button is adjacent to the Send button', !!sendBtn,
-      sendBtn ? 'send found' : 'no send button in composer');
-    await app.click(photoBtn, 300);
-    check('photo search modal opens', !!app.$('.visual-search'),
-      app.$('.visual-search') ? 'open' : 'no modal');
-    const urlBox = app.$('.visual-search input[aria-label="Image URL"]');
-    if (urlBox) {
-      await app.type(urlBox, 'https://example.com/photos/wireless-headphones.jpg');
-      // Optional hint name is not needed — the filename yields "wireless headphones".
-      const go = [...app.$$('.visual-search button')].find((b) => /find matches/i.test(b.textContent || ''));
-      check('modal offers a Find matches action', !!go);
-      if (go) {
-        await app.click(go, 2400);
-        const after = app.text();
-        check('image search returns catalogue products',
-          app.$$('.visual-search .pcard').length > 0 || /UGX/.test(after),
-          `${app.$$('.visual-search .pcard').length} cards`);
-        check('image search reports what it detected',
-          /wireless|headphones|Image looks like/i.test(after), 'no detection text');
-      }
-    } else {
-      check('photo modal exposes the URL field', false, 'no aria-label=Image URL input');
-    }
-    // Close again so later sections render clean.
-    const close = [...app.$$('.modal button, .modal .btn')].find((b) => /close/i.test(b.textContent || ''));
-    if (close) await app.click(close, 150);
+  const attachBtn = composer && app.$('.ai-chat-input button[aria-label="Attach a photo"]');
+  // The old selector opened a modal; it must be gone entirely.
+  const oldBtn = composer && app.$('.ai-chat-input button[aria-label="Search by photo"]');
+  const fileInput = composer && app.$('.ai-chat-input input[type="file"]');
+  check('composer has exactly one image selector', !!attachBtn && !oldBtn,
+    attachBtn ? 'attach button found, old button gone' : 'attach button missing');
+  check('the selector is the direct file picker (hidden input beside it)',
+    !!fileInput && fileInput.getAttribute('accept') === 'image/*',
+    fileInput ? `accept=${fileInput.getAttribute('accept')}` : 'no file input');
+  if (attachBtn && composer) {
+    // Clicking the button triggers the SAME hidden input (no modal in between).
+    let triggered = false;
+    fileInput?.addEventListener('click', () => { triggered = true; });
+    await app.click(attachBtn, 200);
+    check('pressing it opens the file picker, not a panel/modal',
+      triggered && !app.$('.visual-search') && !app.$('.modal'),
+      app.$('.visual-search') ? 'old visual-search still opens' : 'no panel or modal opened');
+    check('photo button sits beside the Send button', !!composer.querySelector('button[aria-label="Send message"], button[aria-label="Stop generating"]'));
   }
   app.close();
 }

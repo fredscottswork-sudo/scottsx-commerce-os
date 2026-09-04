@@ -2,17 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Sparkles, Send, RotateCcw, Zap, AlertCircle, Square,
-  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, Camera, ImagePlus, X,
-  Copy, Share2, BookOpen, Store,
+  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, ImagePlus, X,
+  Copy, Share2, BookOpen, Store, Flame, Wallet, MapPin, Truck,
 } from 'lucide-react';
 import { aiService } from '../api/services';
-import { formatUgx, type AiAgent, type AiAnswer, type AiSearchResult, type Product } from '../api/types';
+import { type AiAgent, type AiAnswer, type Product } from '../api/types';
 import { compressImage } from '../lib/imageSearch';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
 import { ProductGrid } from './ProductCard';
-import { Btn, RichText, Badge, Empty, Modal } from './ui';
-import { VisualSearch } from './VisualSearch';
+import { Btn, RichText, Badge } from './ui';
+import { BrandMark } from './BrandLogo';
 
 /**
  * The API describes each agent with a lucide icon NAME ('shopping-bag',
@@ -70,6 +70,25 @@ interface Turn {
   photoName?: string;
   /** Assistant: what the vision pipeline saw in the attached photo. */
   photoAnalysis?: { detected: string; matchCount: number; error?: string };
+}
+
+type HistoryItem = { role: 'user' | 'assistant'; content: string };
+
+/** Serialize prior turns for the backend (pending turns excluded). A photo's
+ *  analysis stays attached to the answer it produced, so follow-ups still
+ *  have the photo in context. Pure module function so "regenerate" reuses
+ *  exactly the same history the send button builds. */
+function historyFromTurns(list: Turn[], max = 8): HistoryItem[] {
+  return list
+    .filter((t) => !t.pending)
+    .slice(-max)
+    .map((t) => ({
+      role: t.role,
+      content:
+        t.role === 'assistant' && t.photoAnalysis?.detected
+          ? `${t.content}\n[Photo from earlier: ${t.photoAnalysis.detected} — ${t.photoAnalysis.matchCount} live matches]`
+          : t.content,
+    }));
 }
 
 /** Copy any text with a legacy fallback (clipboard API can be absent in
@@ -164,7 +183,6 @@ export function AiConsole({
   /** Live status chip while the answer streams ("Searching the catalogue…"). */
   const [stage, setStage] = useState('');
   const [listening, setListening] = useState(false);
-  const [imgOpen, setImgOpen] = useState(false);
   /** Aborts the in-flight SSE request (Stop button). */
   const abortRef = useRef<AbortController | null>(null);
   /** Drag-over highlight on the composer (a photo is being dragged onto it). */
@@ -248,24 +266,14 @@ export function AiConsole({
 
   const activeAgent = agents.find((a) => a.id === agentId);
 
-  const send = useCallback(async (text: string, imageData?: string) => {
+  const send = useCallback(async (text: string, imageData?: string, historyOverride?: HistoryItem[]) => {
     const prompt = text.trim();
     if (!prompt || busy) return;
 
     // Snapshot the history *before* adding this turn — the backend wants the
-    // prior context, not the message it is about to answer. A photo's analysis
-    // stays attached to the answer it produced, so follow-up questions
-    // ("and how much is delivery?") still have the photo in context.
-    const history = turns
-      .filter((t) => !t.pending)
-      .slice(-8)
-      .map((t) => ({
-        role: t.role,
-        content:
-          t.role === 'assistant' && t.photoAnalysis?.detected
-            ? `${t.content}\n[Photo from earlier: ${t.photoAnalysis.detected} — ${t.photoAnalysis.matchCount} live matches]`
-            : t.content,
-      }));
+    // prior context, not the message it is about to answer. Regenerate passes
+    // an explicit override (the turns to the user message are already gone).
+    const history = historyOverride ?? historyFromTurns(turns);
 
     setTurns((t) => [
       ...t,
@@ -412,40 +420,6 @@ export function AiConsole({
     setListening(true);
   }, [listening, send, toast]);
 
-  /** Photo — find products by image, then show them as a grounded answer.
-   *  The turn's TEXT also carries the matched listings (title/price/stock/
-   *  seller) so follow-up questions ("is the second one cheaper?") are
-   *  answerable: history only serializes `content`, never product cards. */
-  const onPhotoResults = useCallback((r: AiSearchResult) => {
-    setImgOpen(false);
-    const lines = [r.explanation || 'Here is what matches the photo.'];
-    if (r.products?.length) {
-      lines.push('', 'Matching listings (live catalogue):');
-      for (const p of r.products.slice(0, 6)) {
-        const seller = p.seller?.name || 'unknown seller';
-        const where = p.seller?.location ? `, ${p.seller.location}` : '';
-        lines.push(
-          `• ${p.title} — ${formatUgx(p.priceMinor)} | ${
-            p.stockQuantity > 0 ? `${p.stockQuantity} in stock` : 'out of stock'
-          } | ${seller}${where}`
-        );
-      }
-    }
-    setTurns((t) => [
-      ...t,
-      { role: 'user', content: 'Find this in the marketplace 📷' },
-      {
-        role: 'assistant',
-        content: lines.join('\n'),
-        products: r.products,
-        grounded: true,
-        agent: 'Photo search',
-        provider: status?.provider,
-        photoAnalysis: { detected: r.detected ?? '', matchCount: r.products?.length ?? 0 },
-      },
-    ]);
-  }, [status]);
-
   /** Attach a photo to the next CHAT message (compressed on-device first). */
   const attachFile = useCallback(
     async (file: File) => {
@@ -528,6 +502,21 @@ export function AiConsole({
     toast(ok ? `${p.seller.name} shop link copied` : 'Could not copy the shop link', ok ? 'success' : 'error');
   }, [toast]);
 
+  /** Regenerate the last answer: drop its turn plus the user message and ask
+   *  again with the same prior context (history override, exactly as send). */
+  const regenerate = useCallback(async () => {
+    if (busy) return;
+    let idx = -1;
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].role === 'user') { idx = i; break; }
+    }
+    if (idx < 0) return;
+    const prior = historyFromTurns(turns.slice(0, idx));
+    const userTurn = turns[idx];
+    setTurns((t) => t.slice(0, idx));
+    await send(userTurn.content, userTurn.photo, prior);
+  }, [busy, turns, send]);
+
   return (
     <div
       ref={tiltRef}
@@ -596,7 +585,7 @@ export function AiConsole({
       <div className="card ai-chat card-flush ai-chat--full">
         <div className="ai-chat-head ai-chat-head--brand">
           <div className="ai-brand" aria-label="ScottsTechX AI">
-            <span className="ai-brand-orb" aria-hidden="true"><Sparkles size={18} /></span>
+            <span className="ai-brand-orb" aria-hidden="true"><BrandMark size={24} className="ai-brand-mark" /></span>
             <div className="ai-brand-copy">
               <strong className="ai-brand-name">ScottsTechX <em>AI</em></strong>
               <span className="ai-brand-sub">{title} · grounded in the live marketplace</span>
@@ -639,7 +628,7 @@ export function AiConsole({
               ) : (
                 <div className="ai-welcome-bare">
                   <span className="ai-welcome-orb" aria-hidden="true">
-                    <Sparkles size={20} />
+                    <BrandMark size={26} className="ai-brand-mark" />
                   </span>
                   <p className="muted" style={{ fontSize: 13, margin: 0 }}>Ask anything — products, prices, sellers</p>
                   <p className="ai-welcome-tip" aria-hidden="true">Attach a photo · paste one · or just describe it</p>
@@ -716,6 +705,16 @@ export function AiConsole({
                               {t.llmError ? ` · ${t.llmError.slice(0, 90)}` : ''}
                             </span>
                             <span className="ai-answer-actions">
+                              <button
+                                type="button"
+                                className="ai-answer-act"
+                                title="Regenerate this answer"
+                                aria-label="Regenerate this answer"
+                                disabled={busy || i !== turns.length - 1}
+                                onClick={() => void regenerate()}
+                              >
+                                <RotateCcw size={12} /> Regenerate
+                              </button>
                               <button
                                 type="button"
                                 className="ai-answer-act"
@@ -804,6 +803,45 @@ export function AiConsole({
           )}
         </div>
 
+        {/* Market quick actions — step-in tools that make the assistant feel
+            like the marketplace's own, not a generic chat bot. */}
+        {turns.length > 0 && (
+          <div className="ai-quickbar" role="toolbar" aria-label="Quick actions">
+            <button
+              type="button"
+              className="ai-quick"
+              disabled={busy}
+              onClick={() => void send("Show me today's flash deals and the hottest prices.")}
+            >
+              <Flame size={13} /> Flash deals
+            </button>
+            <button
+              type="button"
+              className="ai-quick"
+              disabled={busy}
+              onClick={() => void send('Help me compare prices for what I describe.')}
+            >
+              <Wallet size={13} /> Price check
+            </button>
+            <button
+              type="button"
+              className="ai-quick"
+              disabled={busy}
+              onClick={() => void send('What can I buy near me right now? Tell me the closest sellers with stock.')}
+            >
+              <MapPin size={13} /> Near me
+            </button>
+            <button
+              type="button"
+              className="ai-quick"
+              disabled={busy}
+              onClick={() => void send('How do I track my order or get help with delivery?')}
+            >
+              <Truck size={13} /> Track order
+            </button>
+          </div>
+        )}
+
         <form
           className={`ai-chat-input ${dragOver ? 'ai-chat-input--drop' : ''}`}
           onSubmit={(e) => {
@@ -864,15 +902,6 @@ export function AiConsole({
           >
             <ImagePlus size={16} />
           </button>
-          <button
-            type="button"
-            className="ai-chat-img"
-            onClick={() => setImgOpen(true)}
-            title="Search the catalogue by photo"
-            aria-label="Search by photo"
-          >
-            <Camera size={16} />
-          </button>
           <textarea
             ref={inputRef}
             rows={1}
@@ -905,7 +934,7 @@ export function AiConsole({
             type={busy ? 'button' : 'submit'}
             disabled={!busy && !input.trim() && !photo}
             icon={busy ? <Square size={14} /> : <Send size={15} />}
-            className={busy ? 'btn-stop' : ''}
+            className={busy ? 'btn-stop' : input.trim() || photo ? 'ai-send--ready' : ''}
             aria-label={busy ? 'Stop generating' : 'Send message'}
             onClick={busy ? () => abortRef.current?.abort() : undefined}
           >
@@ -916,15 +945,6 @@ export function AiConsole({
           AI answers are generated — double-check prices and availability with the seller before paying.
         </p>
       </div>
-
-      <Modal
-        open={imgOpen}
-        onClose={() => setImgOpen(false)}
-        title="Search by photo"
-        footer={<Btn onClick={() => setImgOpen(false)}>Close</Btn>}
-      >
-        <VisualSearch compact onResults={onPhotoResults} />
-      </Modal>
       </div>
     </div>
   );

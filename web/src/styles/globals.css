@@ -2005,8 +2005,9 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 @media (prefers-reduced-motion: reduce) {
   .ai-aura-orb i, .ai-aura-grid, .ai-brand-orb, .ai-brand-orb::after,
   .ai-brand-name, .ai-live-dot, .ai-turn, .ai-welcome-orb, .ai-welcome-orb::before,
-  .stream-caret, .ai-stage::before, .typing i { animation: none !important; }
-  .ai-console, .ai-aura-orb, .ai-chat, .ai-chat-input .btn-primary { transition: none !important; }
+  .stream-caret, .ai-stage::before, .typing i,
+  .ai-chat-input::before, .ai-chat-input textarea:focus, .ai-send--ready { animation: none !important; }
+  .ai-console, .ai-aura-orb, .ai-chat, .ai-chat-input .btn-primary, .ai-quick { transition: none !important; }
 }
 
 .ai-chat { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h) - 60px); min-height: 520px; }
@@ -2218,6 +2219,72 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
               color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
 .ai-chat-img:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+
+/* The marketplace mark inside the AI orbs — circular crop of the STX logo. */
+.ai-brand-mark { border-radius: 50%; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35)); }
+.ai-brand-orb .ai-brand-mark, .ai-welcome-orb .ai-brand-mark {
+  width: 60%; height: 60%; object-fit: cover; display: block;
+}
+
+/* ── Market quick actions (step-in tools above the composer) ─────────────── */
+.ai-quickbar {
+  display: flex; gap: 7px; padding: 8px 14px 0;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
+}
+.ai-quickbar::-webkit-scrollbar { display: none; }
+.ai-quick {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 650;
+  color: var(--text-2); background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  border: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.ai-quick:hover:not(:disabled) {
+  color: var(--primary); border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--primary-soft); transform: translateY(-1px);
+}
+.ai-quick:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Animated composer: flowing gradient ring on focus + send glow ───────── */
+.ai-chat-input::before {
+  content: ''; position: absolute; inset: -1px; border-radius: 14px;
+  background: linear-gradient(115deg,
+    color-mix(in srgb, var(--primary) 0%, transparent) 0%,
+    color-mix(in srgb, var(--primary) 65%, transparent) 22%,
+    #22d3ee 38%,
+    #8b5cf6 55%,
+    color-mix(in srgb, var(--primary) 65%, transparent) 72%,
+    color-mix(in srgb, var(--primary) 0%, transparent) 100%);
+  background-size: 260% 100%;
+  opacity: 0; pointer-events: none; z-index: 1;
+  transition: opacity var(--dur) var(--ease-out);
+  animation: ai-border-flow 4.5s linear infinite;
+}
+.ai-chat-input:focus-within::before { opacity: 0.9; }
+@keyframes ai-border-flow {
+  from { background-position: 0% 50%; }
+  to { background-position: 260% 50%; }
+}
+.ai-chat-input > * { position: relative; z-index: 2; }
+.ai-chat-input textarea:focus {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
+  animation: ai-focus-breathe 2.6s ease-in-out infinite;
+}
+@keyframes ai-focus-breathe {
+  0%, 100% { box-shadow: 0 0 0 3.5px var(--primary-soft), 0 0 14px -6px color-mix(in srgb, var(--primary) 55%, transparent); }
+  50% { box-shadow: 0 0 0 4px var(--primary-soft), 0 0 26px -6px color-mix(in srgb, var(--primary) 80%, transparent); }
+}
+.ai-chat-input .ai-send--ready {
+  animation: ai-send-pulse 2.2s ease-in-out infinite;
+}
+@keyframes ai-send-pulse {
+  0%, 100% { box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--primary) 75%, transparent); }
+  50% { box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--primary) 100%, transparent), 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent); }
+}
+
 .ai-disclaimer {
   flex: 0 0 auto; margin: 0; padding: 0 14px 10px;
   font-size: 10px; line-height: 1.45; color: var(--text-3);
