@@ -11,7 +11,7 @@ import { useSeo } from '../hooks/useSeo';
 import { useRotatingPlaceholder, SEARCH_WATERMARKS } from '../hooks/useRotatingPlaceholder';
 import { BrandMark } from '../components/BrandLogo';
 import { useCart } from '../store/CartContext';
-import { mergedCategories, categoryIcon } from '../components/categories';
+import { mergedCategories, categoryIcon, categoryImage } from '../components/categories';
 
 const BENEFITS = [
   { anim: 'chat', icon: <MessageCircle size={22} />, title: 'Chat with sellers' },
@@ -226,6 +226,14 @@ export default function Home() {
                 className="cat-tile cat-tile-modern"
                 style={{ '--hue': (i * 23) % 360 } as CSSProperties}
               >
+                {categoryImage(c.name) && (
+                  <span
+                    className="cat-photo"
+                    style={{ backgroundImage: `url(${categoryImage(c.name)})` }}
+                    aria-hidden="true"
+                  />
+                )}
+                <span className="cat-veil" aria-hidden="true" />
                 <span className="cat-ico">{categoryIcon(c.name)}</span>
                 <span className="cat-name">{c.name}</span>
                 {c.count > 0 && <span className="cat-count">{c.count} item{c.count === 1 ? '' : 's'}</span>}

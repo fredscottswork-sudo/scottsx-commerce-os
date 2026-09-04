@@ -305,6 +305,15 @@ section('1. Public marketplace (logged out)');
     `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
   check('category tiles link into filtered search',
     !!app.$('.cat-grid-even a[href^="/search?category="]'));
+  check('every visible category tile has a real photo',
+    app.$$('.cat-grid-even .cat-tile').every((t) => !!t.querySelector('.cat-photo')),
+    `${app.$$('.cat-grid-even .cat-tile').filter((t) => !t.querySelector('.cat-photo')).length} tile(s) without a photo`);
+  const firstPhoto = app.$('.cat-grid-even .cat-photo');
+  check('category photos are bundled locally',
+    !!firstPhoto && /url\("\/cat\/.*\.jpg"\)/.test(firstPhoto.style.backgroundImage || ''),
+    firstPhoto ? firstPhoto.style.backgroundImage : '');
+  const chatCard = app.$('.feature-card--image[data-anim="chat"]');
+  check('chat card has its own slotted background', !!chatCard && /\/feature\/chat\.jpg/.test(bundleCss));
   const catsToggle = app.$('.cat-show-all');
   check('remaining categories are hidden behind a toggle', !!catsToggle);
   check('toggle reports the hidden count',

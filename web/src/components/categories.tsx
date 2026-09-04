@@ -54,6 +54,30 @@ export function categoryIcon(name: string): ReactNode {
   return ICONS[name] ?? <Package size={16} />;
 }
 
+export const CATEGORY_IMAGES: Record<string, string> = {
+  Electronics: '/cat/electronics.jpg',
+  Fashion: '/cat/fashion.jpg',
+  Beauty: '/cat/beauty.jpg',
+  'Home & Living': '/cat/home-living.jpg',
+  Sports: '/cat/sports.jpg',
+  Toys: '/cat/toys.jpg',
+  Automotive: '/cat/automotive.jpg',
+  Health: '/cat/health.jpg',
+  Jewelry: '/cat/jewelry.jpg',
+  'Bags & Shoes': '/cat/bags-shoes.jpg',
+  Groceries: '/cat/groceries.jpg',
+  Industrial: '/cat/industrial.jpg',
+  Phones: '/cat/phones.jpg',
+  Computers: '/cat/computers.jpg',
+  Agriculture: '/cat/agriculture.jpg',
+  Pets: '/cat/pets.jpg',
+};
+
+/** Photo used as the tile background on the home category showcase. */
+export function categoryImage(name: string): string {
+  return CATEGORY_IMAGES[name] ?? '';
+}
+
 /** Static categories merged with live facet counts, always in the fixed order. */
 export function mergedCategories(
   live: { name: string; count: number }[]
