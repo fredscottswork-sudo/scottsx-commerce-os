@@ -129,7 +129,7 @@ export default function AdminDashboard() {
               );
             })}
           </div>
-          <p className="tiny muted-2 mt-12">Catalogue overview</p>
+          <p className="tiny muted-2 mt-12">{stats.products.total.toLocaleString()} total listings · {stats.products.approved} live on marketplace</p>
         </section>
       </div>
 

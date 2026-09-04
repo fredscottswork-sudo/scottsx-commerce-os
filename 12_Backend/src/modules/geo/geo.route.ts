@@ -28,9 +28,33 @@ import { ServiceUnavailableError } from '../../errors.js';
  * degrades instead of failing, and works with no key at all.
  */
 async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | null> {
-  const viaGoogle = await googleReverseGeocode(lat, lng);
+  const [viaGoogle, viaOffline] = await Promise.all([
+    googleReverseGeocode(lat, lng),
+    Promise.resolve(reverseGeocode(lat, lng)),
+  ]);
+
+  // Prefer hand-checked neighbourhood table (Kigoowa, Kulambiro, etc) when
+  // the fix is inside a neighbourhood radius — this is more precise than
+  // either Google or the 167k global table for Kampala suburbs.
+  // If Google is available, keep its city/region/country but override village.
+  if (viaOffline?.village) {
+    // viaOffline already used findNeighbourhood; if village came from hood,
+    // distance check already passed inside gazetteer. Trust it.
+    if (viaGoogle) {
+      // Merge: precise village from offline hood, rest from Google
+      return {
+        ...viaGoogle,
+        village: viaOffline.village,
+        city: viaOffline.city || viaGoogle.city,
+        label: `${viaOffline.village}, ${viaGoogle.city || viaOffline.city || ''}, ${viaGoogle.region || viaOffline.region || ''}, ${viaGoogle.country || viaOffline.country || ''}`.replace(/,\s*,/g, ',').replace(/^,|,$/g,'').trim(),
+        shortLabel: `${viaOffline.village}, ${viaGoogle.city || viaOffline.city || ''}`.trim().replace(/,$/, ''),
+      };
+    }
+    return viaOffline;
+  }
+
   if (viaGoogle) return viaGoogle;
-  return reverseGeocode(lat, lng);
+  return viaOffline;
 }
 
 const coordSchema = z.object({

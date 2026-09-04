@@ -19,9 +19,13 @@ export function BarChart({ data, height = 180 }: { data: BarDatum[]; height?: nu
         const h = (d.value / max) * (height - 26);
         const x = i * bw + bw * 0.18;
         const w = bw * 0.64;
+        const showValue = d.value > 0;
         return (
           <g key={i}>
             <rect x={x} y={height - 20 - h} width={w} height={h} rx={2} fill={d.color ?? `url(#g${gid})`} />
+            {showValue && (
+              <text x={x + w / 2} y={height - 22 - h} textAnchor="middle" fontSize="9" fontWeight="600" fill="var(--text-2)">{d.value}</text>
+            )}
             <text x={x + w / 2} y={height - 7} textAnchor="middle" fontSize="11" fill="var(--text-2)">{d.label}</text>
           </g>
         );
@@ -31,14 +35,17 @@ export function BarChart({ data, height = 180 }: { data: BarDatum[]; height?: nu
 }
 
 export function Donut({ segments, size = 160, centerLabel }: { segments: Array<{ label: string; value: number; color: string }>; size?: number; centerLabel?: string }) {
-  const total = Math.max(1, segments.reduce((s, x) => s + x.value, 0));
+  const rawTotal = segments.reduce((s, x) => s + x.value, 0);
+  const total = Math.max(1, rawTotal);
   const r = 42;
   const c = 2 * Math.PI * r;
   let offset = 0;
+  const hasData = rawTotal > 0;
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label="Donut chart">
       <circle cx="50" cy="50" r={r} fill="none" stroke="var(--surface-3)" strokeWidth="14" />
-      {segments.map((s, i) => {
+      {hasData && segments.map((s, i) => {
+        if (s.value <= 0) return null;
         const len = (s.value / total) * c;
         const el = (
           <circle key={i} cx="50" cy="50" r={r} fill="none" stroke={s.color} strokeWidth="14"
