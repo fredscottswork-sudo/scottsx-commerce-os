@@ -39,7 +39,8 @@ const PRODUCT_SELECT = `
       'name', COALESCE(s.store_name, u.display_name),
       'rating', COALESCE(s.rating, 0)::float,
       'location', COALESCE(s.city, p.location),
-      'verified', COALESCE(s.verified, false)
+      'verified', COALESCE(s.verified, false),
+      'logoUrl', COALESCE(NULLIF(s.store_logo_url, ''), u.profile_photo_url)
     ) AS seller
   FROM products p
   JOIN users u ON u.id = p.seller_id

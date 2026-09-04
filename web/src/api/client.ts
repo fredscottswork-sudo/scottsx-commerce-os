@@ -171,7 +171,9 @@ function rewriteMedia(node: unknown): void {
   // Generic shallow fallback for single objects
   if (typeof obj.imageUrl === 'string') obj.imageUrl = cachedResolve(obj.imageUrl as string);
   if (Array.isArray(obj.mediaUrls)) obj.mediaUrls = (obj.mediaUrls as string[]).map(cachedResolve);
-  // For other shapes, do limited depth 2 scan only for known keys
+  // Single-object shapes (e.g. { product: {...} } or { seller: {...} }): the
+  // nested seller/person object still needs its media keys rewritten, so walk
+  // one level of known wrapper keys instead of returning after the top level.
   for (const [k, v] of Object.entries(obj)) {
     if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
       for (const item of v as any[]) {
@@ -182,6 +184,15 @@ function rewriteMedia(node: unknown): void {
           // no-op
         }
       }
+      continue;
+    }
+    if (v && typeof v === 'object' && (k === 'product' || k === 'seller' || k === 'otherParty' || k === 'thread')) {
+      const inner = v as any;
+      if (typeof inner.imageUrl === 'string') inner.imageUrl = cachedResolve(inner.imageUrl);
+      if (Array.isArray(inner.mediaUrls)) inner.mediaUrls = (inner.mediaUrls as string[]).map(cachedResolve);
+      if (inner.logoUrl) inner.logoUrl = cachedResolve(inner.logoUrl);
+      if (inner.photoUrl) inner.photoUrl = cachedResolve(inner.photoUrl);
+      if (inner.seller?.logoUrl) inner.seller.logoUrl = cachedResolve(inner.seller.logoUrl);
     }
   }
 }

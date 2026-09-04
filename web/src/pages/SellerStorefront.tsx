@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BadgeCheck, MapPin, Package, Star } from 'lucide-react';
+import { BadgeCheck, MapPin, Package, Star, Heart } from 'lucide-react';
 import { productService, chatService } from '../api/services';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useSeo } from '../hooks/useSeo';
 import { useToast } from '../store/ToastContext';
+import { useCart } from '../store/CartContext';
 import { ProductCard } from '../components/ProductCard';
 import { Btn, Empty, ErrorBox, Loading } from '../components/ui';
 
@@ -15,6 +16,7 @@ export default function SellerStorefront() {
   const nav = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { favoriteSellerIds, toggleFavoriteSeller } = useCart();
   const [seller, setSeller] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +52,11 @@ export default function SellerStorefront() {
     }
   }
 
+  function toggleFollow() {
+    if (!user) { nav('/login'); return; }
+    void toggleFavoriteSeller(seller.id, seller.name);
+  }
+
   if (loading) return <Loading />;
   if (error || !seller) return <ErrorBox message={error} onRetry={() => window.location.reload()} />;
 
@@ -71,7 +78,17 @@ export default function SellerStorefront() {
               </div>
             </div>
           </div>
-          <Btn variant="primary" onClick={chat}>Message store</Btn>
+          <div className="row" style={{ gap: 8 }}>
+            <Btn
+              variant={favoriteSellerIds.has(seller.id) ? 'primary' : 'outline'}
+              onClick={toggleFollow}
+              icon={<Heart size={16} fill={favoriteSellerIds.has(seller.id) ? 'currentColor' : 'none'} />}
+              aria-label={favoriteSellerIds.has(seller.id) ? `Unfollow ${seller.name}` : `Follow ${seller.name}`}
+            >
+              {favoriteSellerIds.has(seller.id) ? 'Following' : 'Follow'}
+            </Btn>
+            <Btn variant="primary" onClick={chat}>Message store</Btn>
+          </div>
         </div>
         {seller.description && <p className="muted mt-16" style={{ marginBottom: 0 }}>{seller.description}</p>}
       </div>

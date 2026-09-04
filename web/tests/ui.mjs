@@ -548,7 +548,36 @@ section('3. Product detail');
   check('renders the product title', t.includes(sampleProduct.title));
   check('renders the price', t.includes(sampleProduct.priceMinor.toLocaleString('en-UG')) || /UGX/.test(t));
   check('shows the seller', t.includes(sampleProduct.seller.name), `seller ${sampleProduct.seller.name}`);
+  check('seller card offers follow', /Follow/.test(t) && /Store/.test(t),
+    'expected both Follow and Store buttons');
+  // The avatar must be an <img> when the store has a logo, and a letter
+  // otherwise — never a broken image slot (regression: logo was dropped).
+  if (sampleProduct.seller.logoUrl) {
+    check('seller card renders the store logo', app.$$('.avatar img').length > 0,
+      `${app.$$('.avatar img').length} image avatars`);
+  } else {
+    const avs = app.$$('.avatar');
+    const letter = avs.find((a) => /^[A-Z]$/.test((a.textContent || '').trim()));
+    check('seller card falls back to the store initial without a logo',
+      !!letter && !app.$('.avatar img'),
+      `letter avatar: ${letter ? letter.textContent : 'missing'}; img: ${!!app.$('.avatar img')}`);
+  }
   check('no runtime errors on product detail', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+
+// ── 3b. Seller storefront ──────────────────────────────────────────────────
+section('3b. Seller storefront');
+{
+  const app = await mount(`/seller/${sampleProduct.seller.id}`);
+  const t = app.text();
+  check('storefront shows the store name', t.includes(sampleProduct.seller.name),
+    `expected ${sampleProduct.seller.name}`);
+  check('storefront offers Follow and Message store', /Follow/.test(t) && /Message store/.test(t),
+    'expected both follow and message CTAs');
+  check('storefront renders the seller logo or initial', !!app.$('.avatar'),
+    'header avatar present');
+  check('no runtime errors on storefront', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
 
@@ -822,6 +851,13 @@ section('9. AI console');
     check('reply is grounded in the real catalogue',
       /UGX/.test(after) || app.$$('.bubble-ai .pcard').length > 0,
       'expected prices or product cards in the answer');
+    // AI-generated answers carry a visible watermark + actions.
+    const wm = app.$('.ai-answer-wm');
+    check('AI answers are watermarked as ScottsTechX AI',
+      !!wm && /ScottsTechX AI/i.test(wm.textContent || ''), wm ? wm.textContent : 'no watermark');
+    check('answers offer copy + share actions', app.$$('.ai-answer-act').length >= 2,
+      `${app.$$('.ai-answer-act').length} actions`);
+    check('answers disclose AI-generated content', /AI answers are generated/i.test(app.text()));
   } else {
     check('assistant produced a reply bubble', false, 'composer not found');
   }

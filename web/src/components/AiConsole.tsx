@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Sparkles, Send, RotateCcw, Zap, AlertCircle,
   ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, Camera,
+  Copy, Share2, BookOpen, Store,
 } from 'lucide-react';
 import { aiService } from '../api/services';
 import type { AiAgent, AiSearchResult, Product } from '../api/types';
@@ -55,8 +57,45 @@ interface Turn {
   content: string;
   products?: Product[];
   agent?: string;
+  provider?: string;
+  model?: string;
   grounded?: boolean;
   pending?: boolean;
+}
+
+/** Copy any text with a legacy fallback (clipboard API can be absent in
+ *  embedded web views and older browsers). Resolves to the copied text. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through to the DOM fallback */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Build a share-ready text block for one assistant answer. */
+function answerShareText(t: Turn): string {
+  const lines = [t.content];
+  if (t.products?.length) {
+    lines.push('', 'Matching products:');
+    for (const p of t.products.slice(0, 6)) lines.push(`• ${p.title} — ${window.location.origin}/product/${p.id}`);
+  }
+  lines.push('', '— answered by ScottsTechX AI');
+  return lines.join('\n');
 }
 
 /**
@@ -90,6 +129,8 @@ export function AiConsole({
   const [listening, setListening] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
   const [status, setStatus] = useState<{ provider: string; grounded: boolean; configured: boolean } | null>(null);
+  const [openSources, setOpenSources] = useState<number | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -187,6 +228,8 @@ export function AiConsole({
           content: r.text,
           products: r.products,
           agent: r.agent?.name,
+          provider: r.provider,
+          model: r.model,
           grounded: r.grounded,
         };
         return next;
@@ -245,9 +288,42 @@ export function AiConsole({
         content: r.explanation || 'Here is what matches the photo.',
         products: r.products,
         grounded: true,
+        agent: 'Photo search',
+        provider: status?.provider,
       },
     ]);
-  }, []);
+  }, [status]);
+
+  /** Copy one assistant answer to the clipboard. */
+  const copyAnswer = useCallback(async (t: Turn, i: number) => {
+    const ok = await copyText(t.content);
+    setCopied(i);
+    window.setTimeout(() => setCopied((c) => (c === i ? null : c)), 1600);
+    toast(ok ? 'Answer copied' : 'Could not copy the answer', ok ? 'success' : 'error');
+  }, [toast]);
+
+  /** Share one assistant answer (native share sheet, or copy as fallback). */
+  const shareAnswer = useCallback(async (t: Turn, i: number) => {
+    const text = answerShareText(t);
+    const nav = navigator as any;
+    if (nav.share) {
+      try {
+        await nav.share({ title: 'ScottsTechX AI', text });
+        return;
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return; // user closed the sheet — not an error
+      }
+    }
+    const ok = await copyText(text);
+    toast(ok ? 'Answer copied — paste it anywhere to share' : 'Could not share the answer', ok ? 'success' : 'error');
+  }, [toast]);
+
+  /** Copy the store link of a matched product. */
+  const copyShop = useCallback(async (p: Product) => {
+    const url = `${window.location.origin}/seller/${p.seller.id}`;
+    const ok = await copyText(`${p.seller.name} — ${url}`);
+    toast(ok ? `${p.seller.name} shop link copied` : 'Could not copy the shop link', ok ? 'success' : 'error');
+  }, [toast]);
 
   return (
     <div className={`ai-console${fullHeight ? ' ai-console-full ai-console--noagents' : ''}`}>
@@ -376,6 +452,46 @@ export function AiConsole({
                     ) : (
                       <>
                         <RichText text={t.content} />
+                        {t.role === 'assistant' && (
+                          <div className="ai-answer-meta">
+                            <span className="ai-answer-wm" title="AI-generated content">
+                              <Sparkles size={10} /> ScottsTechX AI
+                              {t.agent ? ` · ${t.agent}` : ''}
+                              {t.provider ? ` · ${t.provider}` : ''}
+                            </span>
+                            <span className="ai-answer-actions">
+                              <button
+                                type="button"
+                                className="ai-answer-act"
+                                title="Copy answer"
+                                aria-label="Copy answer"
+                                onClick={() => void copyAnswer(t, i)}
+                              >
+                                {copied === i ? '✓ Copied' : <><Copy size={12} /> Copy</>}
+                              </button>
+                              <button
+                                type="button"
+                                className="ai-answer-act"
+                                title="Share answer"
+                                aria-label="Share answer"
+                                onClick={() => void shareAnswer(t, i)}
+                              >
+                                <Share2 size={12} /> Share
+                              </button>
+                              {!!t.products?.length && (
+                                <button
+                                  type="button"
+                                  className="ai-answer-act"
+                                  title="Show sources"
+                                  aria-label="Show sources"
+                                  onClick={() => setOpenSources((s) => (s === i ? null : i))}
+                                >
+                                  <BookOpen size={12} /> {openSources === i ? 'Hide sources' : `Sources (${t.products.length})`}
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                        )}
                         {t.role === 'assistant' && t.grounded === false && (
                           <p className="tiny muted-2 mt-8">
                             <AlertCircle size={11} style={{ verticalAlign: -1 }} /> Answered without live catalogue data.
@@ -399,6 +515,31 @@ export function AiConsole({
                         : undefined}
                       favoriteSellerIds={favoriteSellerIds}
                     />
+                    {openSources === i && (
+                      <div className="ai-sources">
+                        <p className="tiny semi muted-2" style={{ marginBottom: 6 }}>
+                          <BookOpen size={11} style={{ verticalAlign: -2 }} /> Sources — live catalogue matches
+                        </p>
+                        <div className="col" style={{ gap: 4 }}>
+                          {t.products.slice(0, 8).map((p) => (
+                            <div key={p.id} className="ai-source-row">
+                              <Link to={`/product/${p.id}`} className="ai-source-link">
+                                {p.title}
+                              </Link>
+                              <button
+                                type="button"
+                                className="ai-answer-act"
+                                title="Copy shop link"
+                                aria-label={`Copy ${p.seller.name} shop link`}
+                                onClick={() => void copyShop(p)}
+                              >
+                                <Store size={11} /> Copy shop
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -434,6 +575,9 @@ export function AiConsole({
             Send
           </Btn>
         </form>
+        <p className="ai-disclaimer">
+          AI answers are generated — double-check prices and availability with the seller before paying.
+        </p>
       </div>
 
       <Modal

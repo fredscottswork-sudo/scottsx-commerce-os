@@ -115,7 +115,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
            'id', other.id,
            'name', COALESCE(NULLIF(s.store_name, ''), other.display_name),
            'role', other.role,
-           'photoUrl', other.profile_photo_url,
+           'photoUrl', COALESCE(NULLIF(s.store_logo_url, ''), other.profile_photo_url),
            'verified', COALESCE(s.verified, false)
          ) AS "otherParty",
          p.title AS "productTitle",
@@ -247,7 +247,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
            'id', other.id,
            'name', COALESCE(NULLIF(s.store_name, ''), other.display_name),
            'role', other.role,
-           'photoUrl', other.profile_photo_url,
+           'photoUrl', COALESCE(NULLIF(s.store_logo_url, ''), other.profile_photo_url),
            'verified', COALESCE(s.verified, false),
            'location', COALESCE(NULLIF(s.city, ''), other.city)
          ) AS "otherParty",

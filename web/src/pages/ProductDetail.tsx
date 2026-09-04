@@ -12,12 +12,26 @@ import { useSeo } from '../hooks/useSeo';
 import { IMAGE_FALLBACK, ProductGrid } from '../components/ProductCard';
 import { resolveMediaUrl } from '../api/client';
 
+/** Seller avatar with a graceful fallback to the store initial when the logo
+ *  is missing or fails to load (broken link, deleted upload, offline host). */
+function SellerAvatar({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const showImg = !!logoUrl && !failed;
+  return (
+    <span className="avatar" style={{ width: 48, height: 48, fontSize: 18 }}>
+      {showImg
+        ? <img src={resolveMediaUrl(logoUrl!)} alt={`${name} logo`} onError={() => setFailed(true)} />
+        : name?.[0]?.toUpperCase() || 'S'}
+    </span>
+  );
+}
+
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { add, savedIds, toggleSaved } = useCart();
+  const { add, savedIds, toggleSaved, favoriteSellerIds, toggleFavoriteSeller } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +88,11 @@ export default function ProductDetail() {
     }
   }
 
+  function handleToggleFollowSeller() {
+    if (!user) { toast('Sign in to follow this store', 'warning'); navigate('/login', { state: { from: `/product/${id}` } }); return; }
+    if (product) void toggleFavoriteSeller(product.seller.id, product.seller.name);
+  }
+
   if (loading) return <Loading />;
   if (error || !product) return <ErrorBox message={error} onRetry={() => window.location.reload()} />;
   const p = product;
@@ -116,7 +135,7 @@ export default function ProductDetail() {
 
           <Card className="mt-16">
             <div className="row" style={{ gap: 12 }}>
-              <span className="avatar">{p.seller.name?.[0]?.toUpperCase() || 'S'}</span>
+              <SellerAvatar name={p.seller.name} logoUrl={p.seller.logoUrl} />
               <div className="grow" style={{ minWidth: 0 }}>
                 <div className="row" style={{ gap: 6 }}>
                   <strong className="ellipsis">{p.seller.name}</strong>
@@ -124,7 +143,18 @@ export default function ProductDetail() {
                 </div>
                 <span className="muted tiny">{p.seller.location || 'Uganda'}</span>
               </div>
-              <Link to={`/seller/${p.seller.id}`}><Btn size="sm" icon={<Store size={14} />}>Store</Btn></Link>
+              <div className="row" style={{ gap: 6 }}>
+                <Btn
+                  size="sm"
+                  variant={favoriteSellerIds.has(p.seller.id) ? 'primary' : 'outline'}
+                  onClick={handleToggleFollowSeller}
+                  icon={<Heart size={14} fill={favoriteSellerIds.has(p.seller.id) ? 'currentColor' : 'none'} />}
+                  aria-label={favoriteSellerIds.has(p.seller.id) ? `Unfollow ${p.seller.name}` : `Follow ${p.seller.name}`}
+                >
+                  {favoriteSellerIds.has(p.seller.id) ? 'Following' : 'Follow'}
+                </Btn>
+                <Link to={`/seller/${p.seller.id}`}><Btn size="sm" icon={<Store size={14} />}>Store</Btn></Link>
+              </div>
             </div>
           </Card>
 
