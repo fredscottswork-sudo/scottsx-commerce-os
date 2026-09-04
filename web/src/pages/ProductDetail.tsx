@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Star, Heart, MessageCircle, ExternalLink } from 'lucide-react';
-import { productService, paymentService, chatService, buyerService } from '../api/services';
+import { Star, Heart, MessageCircle, ExternalLink, ShoppingCart, Store, ShieldCheck, Package, BadgeCheck } from 'lucide-react';
+import { productService, paymentService, chatService } from '../api/services';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
-import { Btn, Card, ErrorBox, Loading, Modal } from '../components/ui';
+import { useCart } from '../store/CartContext';
+import { Btn, Card, ErrorBox, Loading, Modal, Badge } from '../components/ui';
 import { useSeo } from '../hooks/useSeo';
-import { IMAGE_FALLBACK } from '../components/ProductCard';
+import { IMAGE_FALLBACK, ProductGrid } from '../components/ProductCard';
 import { resolveMediaUrl } from '../api/client';
 
 export default function ProductDetail() {
@@ -16,7 +17,9 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { add, savedIds, toggleSaved } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
+  const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [buying, setBuying] = useState(false);
@@ -26,16 +29,21 @@ export default function ProductDetail() {
   useEffect(() => {
     setLoading(true);
     setError('');
-    productService.byId(id!).then((r) => setProduct(r.product)).catch((e: any) => setError(e.message)).finally(() => setLoading(false));
+    productService.byId(id!)
+      .then((r) => {
+        setProduct(r.product);
+        setQuantity(1);
+        // related
+        productService.related(r.product.id).then((rel) => setRelated(rel.products)).catch(() => undefined);
+      })
+      .catch((e: any) => setError(e.message))
+      .finally(() => setLoading(false));
   }, [id]);
 
-  // A shared listing should show what is for sale and what it costs. Falling
-  // back to the site defaults while loading avoids flashing an empty title.
   useSeo({
     title: product ? product.title : undefined,
     description: product
-      ? `${formatUgx(product.priceMinor)} — ${product.description || product.title}. ` +
-        `Available from ${product.seller?.name || 'a verified seller'} on ScottsTechX.`
+      ? `${formatUgx(product.priceMinor)} — ${product.description || product.title}. Available from ${product.seller?.name || 'a verified seller'} on ScottsTechX.`
       : undefined,
     image: product?.imageUrl ? resolveMediaUrl(product.imageUrl) : undefined,
     type: 'product',
@@ -65,11 +73,10 @@ export default function ProductDetail() {
     }
   }
 
-  async function toggleSaved() {
+  async function handleToggleSaved() {
     if (!user) { navigate('/login'); return; }
     try {
-      await buyerService.toggleBookmark(product!.id);
-      toast('Saved updated', 'success');
+      await toggleSaved(product!.id);
     } catch (e: any) {
       toast(e.message, 'error');
     }
@@ -78,25 +85,17 @@ export default function ProductDetail() {
   if (loading) return <Loading />;
   if (error || !product) return <ErrorBox message={error} onRetry={() => window.location.reload()} />;
   const p = product;
+  const isSaved = savedIds.has(p.id);
 
   return (
     <>
       <Link to="/" className="muted">← Back to marketplace</Link>
-      {/* The columns MUST come from the stylesheet, not an inline style. This
-          was `style={{gridTemplateColumns:'minmax(0,420px) 1fr'}}`, and an
-          inline declaration outranks a media query, so the phone rule that
-          stacks .grid-2 into one column could never apply. The image track
-          collapsed to 31px at 360px wide and the title wrapped one letter per
-          line — the "weird vertical page". .product-detail stacks below 900px
-          and only becomes two columns above it. */}
       <div className="product-detail mt-16">
         <div className="card product-gallery">
           <img
             className="product-hero-img"
-            src={p.imageUrl || IMAGE_FALLBACK}
+            src={p.imageUrl ? resolveMediaUrl(p.imageUrl) : IMAGE_FALLBACK}
             alt={p.title}
-            /* A blocked or dead image host otherwise leaves a large empty
-               panel at the top of the page. */
             onError={(e) => { (e.currentTarget as HTMLImageElement).src = IMAGE_FALLBACK; }}
           />
         </div>
@@ -105,14 +104,14 @@ export default function ProductDetail() {
             {p.isFlashDeal && <span className="badge badge-red">FLASH -{p.discountPercent}%</span>}
             <span className="badge badge-blue">{p.category}</span>
             {p.stockQuantity > 5 ? <span className="badge badge-green">In stock ({p.stockQuantity})</span> : <span className="badge badge-amber">Only {p.stockQuantity} left</span>}
+            {p.seller.verified && <span className="badge badge-green"><ShieldCheck size={11} /> Verified seller</span>}
           </div>
           <h1 className="product-title" style={{ margin: '10px 0 6px', fontSize: 26 }}>{p.title}</h1>
-          <div className="row muted mb-16">
-            <Star size={15} style={{ color: 'var(--warning)' }} /> {p.rating} · {p.ratingCount} ratings · {p.brand}
+          <div className="row muted mb-16" style={{ gap: 6 }}>
+            <span className="row" style={{ gap: 4 }}><Star size={15} style={{ color: 'var(--warning)' }} fill="currentColor" /> {Number(p.rating || 0).toFixed(1)}</span>
+            <span>· {p.ratingCount || 0} ratings</span>
+            {p.brand && <><span>·</span><span>{p.brand}</span></>}
           </div>
-          {/* Each amount is its own inline-block so "UGX 4,800,000" can never
-              be split across two lines — the old price used to break after
-              "UGX", leaving a stray strikethrough hanging beside the new one. */}
           <div className="product-price-row">
             <span className="product-price" style={{ fontSize: 30, fontWeight: 800, color: 'var(--primary)' }}>
               {formatUgx(p.priceMinor)}
@@ -121,38 +120,49 @@ export default function ProductDetail() {
               <span className="product-price-old">{formatUgx(p.oldPriceMinor)}</span>
             )}
           </div>
-          <p className="muted mt-16">{p.description}</p>
+          <p className="muted mt-16" style={{ whiteSpace: 'pre-wrap' }}>{p.description || 'No description provided.'}</p>
 
           <Card className="mt-16">
-            <div className="row">
-              <span className="avatar">{p.seller.name[0]}</span>
-              <div className="grow">
-                <div className="row">
-                  <strong>{p.seller.name}</strong>
-                  {p.seller.verified && <span className="badge badge-green">✓ Verified</span>}
+            <div className="row" style={{ gap: 12 }}>
+              <span className="avatar">{p.seller.name?.[0]?.toUpperCase() || 'S'}</span>
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="row" style={{ gap: 6 }}>
+                  <strong className="ellipsis">{p.seller.name}</strong>
+                  {p.seller.verified && <BadgeCheck size={14} className="t-success" />}
                 </div>
-                <span className="muted" style={{ fontSize: 13 }}>{p.seller.location || 'Uganda'}</span>
+                <span className="muted tiny">{p.seller.location || 'Uganda'}</span>
               </div>
-              <Link to={`/seller/${p.seller.id}`}><Btn size="sm">Store</Btn></Link>
+              <Link to={`/seller/${p.seller.id}`}><Btn size="sm" icon={<Store size={14} />}>Store</Btn></Link>
             </div>
           </Card>
 
-          <div className="row mt-16">
-            <label className="muted" style={{ fontSize: 13 }}>Qty</label>
-            <select className="select" style={{ width: 70 }} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))}>
-              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+          <div className="row mt-16 wrap" style={{ gap: 10 }}>
+            <label className="muted tiny semi">Qty</label>
+            <select className="select" style={{ width: 84 }} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))}>
+              {Array.from({ length: Math.min(10, Math.max(1, p.stockQuantity)) }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
+            <span className="tiny muted">{p.stockQuantity} available</span>
           </div>
 
-          <div className="row mt-16 wrap product-actions">
-            <Btn variant="primary" size="lg" onClick={buy} disabled={buying} style={{ flex: 1, minWidth: 180 }}>
-              {buying ? 'Creating payment…' : `Buy now · ${formatUgx(p.priceMinor * quantity)}`}
+          <div className="row mt-16 wrap product-actions" style={{ gap: 8 }}>
+            <Btn variant="primary" size="lg" onClick={buy} disabled={buying || p.stockQuantity === 0} style={{ flex: '1 1 180px' }} icon={<ShoppingCart size={16} />}>
+              {buying ? 'Creating payment…' : p.stockQuantity === 0 ? 'Out of stock' : `Buy now · ${formatUgx(p.priceMinor * quantity)}`}
             </Btn>
-            <Btn size="lg" onClick={messageSeller}><MessageCircle size={18} /> Message seller</Btn>
-            <Btn size="lg" onClick={toggleSaved} aria-label="Save"><Heart size={18} /></Btn>
+            <Btn size="lg" variant="outline" onClick={() => void add(p, quantity)} icon={<Package size={16} />}>Add to cart</Btn>
+            <Btn size="lg" onClick={messageSeller} icon={<MessageCircle size={16} />}>Message</Btn>
+            <Btn size="lg" variant={isSaved ? 'primary' : 'default'} onClick={handleToggleSaved} aria-label="Save" icon={<Heart size={16} fill={isSaved ? 'currentColor' : 'none'} />}>
+              {isSaved ? 'Saved' : 'Save'}
+            </Btn>
           </div>
         </div>
       </div>
+
+      {related.length > 0 && (
+        <section className="mt-24">
+          <h2 className="mb-12" style={{ fontSize: 18 }}>Related products</h2>
+          <ProductGrid products={related} onAddToCart={(prod) => void add(prod)} favoriteSellerIds={new Set()} />
+        </section>
+      )}
 
       <Modal open={payModal !== null} onClose={() => setPayModal(null)} title={payModal?.mode === 'collect' ? 'Payment initiated 📲' : 'Payment ready 🎉'}
         footer={
@@ -169,7 +179,7 @@ export default function ProductDetail() {
           <p>
             A Mobile Money request for <strong>{formatUgx(p.priceMinor * quantity)}</strong> was sent to your phone
             (MTN MoMo / Airtel Money). Enter your PIN to approve. <br />
-            <span className="muted">Status: {payModal.status} · Ref: {payModal.ref.slice(0, 8)}</span>
+            <span className="muted tiny">Status: {payModal.status} · Ref: {payModal.ref.slice(0, 8)}</span>
           </p>
         ) : (
           <p>Open your secure payment link to complete the purchase. <br />

@@ -58,10 +58,17 @@ export default function AddProduct() {
   const validate = (forPublish: boolean) => {
     const e: Partial<Record<keyof Form, string>> = {};
     if (form.title.trim().length < 3) e.title = 'Give the product a clear title (3+ characters)';
+    if (form.priceMinor < 0) e.priceMinor = 'Price cannot be negative';
     if (forPublish) {
       if (!form.priceMinor || form.priceMinor <= 0) e.priceMinor = 'Set a price above zero';
-      if (!form.imageUrl.trim()) e.imageUrl = 'Add at least one photo before publishing';
+      const hasPhoto = form.mediaUrls.length > 0 || !!form.imageUrl.trim();
+      if (!hasPhoto) e.imageUrl = 'Add at least one photo before publishing';
     }
+    if (form.oldPriceMinor != null && form.oldPriceMinor > 0 && form.oldPriceMinor <= form.priceMinor) {
+      e.oldPriceMinor = 'Was price should be higher than current price';
+    }
+    if (form.stockQuantity < 0) e.stockQuantity = 'Stock cannot be negative';
+    if (form.discountPercent < 0 || form.discountPercent > 100) e.discountPercent = 'Discount must be 0-100';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -139,9 +146,10 @@ export default function AddProduct() {
             <ImageUploader
               images={form.mediaUrls}
               max={8}
-              onChange={(next) =>
-                setForm((f) => ({ ...f, mediaUrls: next, imageUrl: next[0] ?? '' }))
-              }
+              onChange={(next) => {
+                setForm((f) => ({ ...f, mediaUrls: next, imageUrl: next[0] ?? '' }));
+                if (errors.imageUrl) setErrors((e) => ({ ...e, imageUrl: undefined }));
+              }}
             />
             {errors.imageUrl && (
               <p className="tiny err-text mt-8" role="alert">{errors.imageUrl}</p>
@@ -198,13 +206,13 @@ export default function AddProduct() {
                 <Input type="number" min={0} value={form.priceMinor || ''} invalid={!!errors.priceMinor}
                   onChange={(e) => set('priceMinor', Number(e.target.value))} placeholder="1650000" />
               </Field>
-              <Field label="Was price (UGX)" hint="Optional — shows a struck-through original.">
-                <Input type="number" min={0} value={form.oldPriceMinor ?? ''}
+              <Field label="Was price (UGX)" hint="Optional — shows a struck-through original." error={errors.oldPriceMinor}>
+                <Input type="number" min={0} value={form.oldPriceMinor ?? ''} invalid={!!errors.oldPriceMinor}
                   onChange={(e) => set('oldPriceMinor', e.target.value ? Number(e.target.value) : null)} />
               </Field>
             </div>
-            <Field label="Stock quantity">
-              <Input type="number" min={0} value={form.stockQuantity}
+            <Field label="Stock quantity" error={errors.stockQuantity}>
+              <Input type="number" min={0} value={form.stockQuantity} invalid={!!errors.stockQuantity}
                 onChange={(e) => set('stockQuantity', Number(e.target.value))} />
             </Field>
 
@@ -216,8 +224,8 @@ export default function AddProduct() {
               <Switch checked={form.isFlashDeal} onChange={(v) => set('isFlashDeal', v)} label="" />
             </div>
             {form.isFlashDeal && (
-              <Field label="Discount percent">
-                <Input type="number" min={0} max={100} value={form.discountPercent}
+              <Field label="Discount percent" error={errors.discountPercent}>
+                <Input type="number" min={0} max={100} value={form.discountPercent} invalid={!!errors.discountPercent}
                   onChange={(e) => set('discountPercent', Number(e.target.value))} />
               </Field>
             )}
@@ -249,8 +257,8 @@ export default function AddProduct() {
               <h3 className="card-title mb-12">Buyer preview</h3>
               <div className="pcard" style={{ maxWidth: 220, pointerEvents: 'none' }}>
                 <div className="pcard-media">
-                  {form.imageUrl
-                    ? <img className="pcard-img" src={resolveImageUrl(form.imageUrl)} alt="" />
+                  {form.mediaUrls[0] || form.imageUrl
+                    ? <img className="pcard-img" src={resolveImageUrl(form.mediaUrls[0] || form.imageUrl)} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none'; }} />
                     : <div className="skeleton" style={{ width: '100%', height: '100%' }} />}
                   {form.isFlashDeal && (
                     <div className="pcard-tags"><span className="badge badge-red">FLASH −{form.discountPercent}%</span></div>

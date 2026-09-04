@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Package, PlusCircle, Trash2, Send, Pencil, AlertTriangle, Eye, Clock, XCircle, Search as SearchIcon,
+  Package, PlusCircle, Trash2, Send, Pencil, AlertTriangle, Eye, Clock, XCircle,
 } from 'lucide-react';
 import { sellerService } from '../../api/services';
 import type { Product, ProductStatus } from '../../api/types';
@@ -9,10 +9,29 @@ import { formatUgx } from '../../api/types';
 import { useToast } from '../../store/ToastContext';
 import {
   Btn, Empty, ErrorBox, PageHeader, SkeletonRows, Tabs, Table, StatusBadge,
-  ConfirmModal, Modal, Field, Input, TextArea, Select, SearchInput,
+  ConfirmModal, Modal, Field, Input, TextArea, Select, SearchInput, Switch,
 } from '../../components/ui';
+import { ImageUploader } from '../../components/ImageUploader';
+import { resolveMediaUrl } from '../../api/client';
 
 type TabId = 'all' | ProductStatus;
+
+const CATEGORIES = ['Electronics','Fashion','Home','Beauty','Sports','Automotive','Books','Groceries','Toys','Health','Other'];
+
+type EditForm = {
+  title: string;
+  description: string;
+  priceMinor: number;
+  oldPriceMinor: number | null;
+  stockQuantity: number;
+  category: string;
+  brand: string;
+  location: string;
+  imageUrl: string;
+  mediaUrls: string[];
+  isFlashDeal: boolean;
+  discountPercent: number;
+};
 
 export default function Inventory() {
   const { toast } = useToast();
@@ -29,8 +48,13 @@ export default function Inventory() {
 
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
-  const [form, setForm] = useState({ title: '', description: '', priceMinor: 0, stockQuantity: 0, category: '', brand: '', imageUrl: '' });
+  const [form, setForm] = useState<EditForm>({
+    title: '', description: '', priceMinor: 0, oldPriceMinor: null, stockQuantity: 0,
+    category: 'Other', brand: '', location: '', imageUrl: '', mediaUrls: [],
+    isFlashDeal: false, discountPercent: 0,
+  });
   const [saving, setSaving] = useState(false);
+  const [editErrors, setEditErrors] = useState<Partial<Record<keyof EditForm, string>>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +79,14 @@ export default function Inventory() {
   };
 
   const submit = async (p: Product) => {
+    if (!p.imageUrl && !(p as any).mediaUrls?.length) {
+      toast('Add a photo before submitting — listings without a real image cannot be published', 'warning');
+      return;
+    }
+    if (!p.priceMinor || p.priceMinor <= 0) {
+      toast('Set a price above zero before submitting', 'warning');
+      return;
+    }
     setBusyId(p.id);
     try {
       await sellerService.submitForReview(p.id);
@@ -69,22 +101,61 @@ export default function Inventory() {
 
   const openEdit = (p: Product) => {
     setEditing(p);
+    setEditErrors({});
     setForm({
-      title: p.title, description: p.description || '', priceMinor: p.priceMinor,
-      stockQuantity: p.stockQuantity, category: p.category || '', brand: p.brand || '',
+      title: p.title,
+      description: p.description || '',
+      priceMinor: p.priceMinor,
+      oldPriceMinor: p.oldPriceMinor ?? null,
+      stockQuantity: p.stockQuantity,
+      category: p.category || 'Other',
+      brand: p.brand || '',
+      location: (p as any).location || '',
       imageUrl: p.imageUrl || '',
+      // If backend ever returns media array, use it; otherwise seed with single imageUrl
+      mediaUrls: (p as any).mediaUrls?.length ? (p as any).mediaUrls : (p.imageUrl ? [p.imageUrl] : []),
+      isFlashDeal: !!p.isFlashDeal,
+      discountPercent: p.discountPercent ?? 0,
     });
+  };
+
+  const validateEdit = () => {
+    const e: Partial<Record<keyof EditForm, string>> = {};
+    if (form.title.trim().length < 3) e.title = 'Title must be at least 3 characters';
+    if (!form.priceMinor || form.priceMinor <= 0) e.priceMinor = 'Price must be greater than zero';
+    if (form.stockQuantity < 0) e.stockQuantity = 'Stock cannot be negative';
+    if (form.discountPercent < 0 || form.discountPercent > 100) e.discountPercent = 'Discount must be 0-100';
+    if (!form.mediaUrls.length && !form.imageUrl.trim()) e.imageUrl = 'Add at least one photo';
+    setEditErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   const saveEdit = async () => {
     if (!editing) return;
+    if (!validateEdit()) { toast('Fix the highlighted fields', 'warning'); return; }
     setSaving(true);
     try {
-      await sellerService.updateProduct(editing.id, form);
+      const payload: any = {
+        title: form.title.trim(),
+        description: form.description,
+        priceMinor: Math.round(form.priceMinor),
+        oldPriceMinor: form.oldPriceMinor ? Math.round(form.oldPriceMinor) : null,
+        stockQuantity: Math.round(form.stockQuantity),
+        category: form.category,
+        brand: form.brand.trim(),
+        location: form.location.trim(),
+        // Always send mediaUrls so backend syncs gallery; imageUrl derived from cover
+        mediaUrls: form.mediaUrls,
+        imageUrl: form.mediaUrls[0] || form.imageUrl,
+        isFlashDeal: form.isFlashDeal,
+        discountPercent: form.isFlashDeal ? Math.round(form.discountPercent) : 0,
+      };
+      await sellerService.updateProduct(editing.id, payload);
       const contentChanged =
         form.title !== editing.title ||
         form.description !== (editing.description || '') ||
-        form.imageUrl !== (editing.imageUrl || '');
+        (form.category || '') !== (editing.category || '') ||
+        (form.mediaUrls[0] || form.imageUrl || '') !== (editing.imageUrl || '');
       toast(
         contentChanged && editing.status === 'approved'
           ? 'Saved — content edits go back to admin review before they show publicly'
@@ -178,7 +249,11 @@ export default function Inventory() {
               header: 'Product',
               render: (p) => (
                 <div className="row" style={{ gap: 10 }}>
-                  <img src={p.imageUrl} alt="" className="row-thumb" loading="lazy" />
+                  {p.imageUrl ? (
+                    <img src={resolveMediaUrl(p.imageUrl)} alt="" className="row-thumb" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                  ) : (
+                    <span className="row-thumb center" style={{ fontWeight: 800, background: 'var(--surface-3)', color: 'var(--text-3)' }}>{p.title[0]?.toUpperCase() || '•'}</span>
+                  )}
                   <div style={{ minWidth: 0 }}>
                     <div className="semi ellipsis" style={{ maxWidth: 280 }}>{p.title}</div>
                     <div className="tiny muted">{p.category}{p.brand ? ` · ${p.brand}` : ''}</div>
@@ -233,11 +308,11 @@ export default function Inventory() {
         />
       )}
 
-      {/* ── Edit ────────────────────────────────────────────────────── */}
+      {/* ── Edit — full product form with gallery ─────────────────────── */}
       <Modal
         open={!!editing}
         onClose={() => setEditing(null)}
-        title="Edit product"
+        title={`Edit “${editing?.title ?? ''}”`}
         size="lg"
         footer={
           <>
@@ -248,38 +323,73 @@ export default function Inventory() {
       >
         {editing?.status === 'approved' && (
           <p className="tiny muted mb-12">
-            <Clock size={12} style={{ verticalAlign: -2 }} /> Editing the title, description or image sends this
+            <Clock size={12} style={{ verticalAlign: -2 }} /> Editing the title, description, category or photos sends this
             listing back to review. Price and stock changes stay live immediately.
           </p>
         )}
-        <Field label="Title" required>
-          <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        </Field>
-        <Field label="Description">
-          <TextArea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-        </Field>
-        <div className="form-row">
-          <Field label="Price (UGX)" required>
-            <Input type="number" min={1} value={form.priceMinor}
-              onChange={(e) => setForm({ ...form, priceMinor: Number(e.target.value) })} />
+        <div className="col">
+          <section>
+            <h4 className="mb-8" style={{ fontSize: 13 }}>Photos</h4>
+            <ImageUploader
+              images={form.mediaUrls}
+              max={8}
+              onChange={(next) => setForm((f) => ({ ...f, mediaUrls: next, imageUrl: next[0] || '' }))}
+            />
+            {editErrors.imageUrl && <p className="tiny t-danger mt-4">{editErrors.imageUrl}</p>}
+          </section>
+
+          <Field label="Title" required error={editErrors.title}>
+            <Input value={form.title} invalid={!!editErrors.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Product title" />
           </Field>
-          <Field label="Stock">
-            <Input type="number" min={0} value={form.stockQuantity}
-              onChange={(e) => setForm({ ...form, stockQuantity: Number(e.target.value) })} />
+          <Field label="Description">
+            <TextArea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What buyers get, condition, warranty…" />
           </Field>
+
+          <div className="form-row">
+            <Field label="Price (UGX)" required error={editErrors.priceMinor}>
+              <Input type="number" min={1} value={form.priceMinor || ''} invalid={!!editErrors.priceMinor}
+                onChange={(e) => setForm({ ...form, priceMinor: Number(e.target.value) })} />
+            </Field>
+            <Field label="Was price (UGX)" hint="Optional — shows original price struck through">
+              <Input type="number" min={0} value={form.oldPriceMinor ?? ''} onChange={(e) => setForm({ ...form, oldPriceMinor: e.target.value ? Number(e.target.value) : null })} />
+            </Field>
+          </div>
+
+          <div className="form-row">
+            <Field label="Stock" error={editErrors.stockQuantity}>
+              <Input type="number" min={0} value={form.stockQuantity} invalid={!!editErrors.stockQuantity}
+                onChange={(e) => setForm({ ...form, stockQuantity: Number(e.target.value) })} />
+            </Field>
+            <Field label="Category">
+              <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </Field>
+          </div>
+
+          <div className="form-row">
+            <Field label="Brand">
+              <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} placeholder="e.g. Samsung" />
+            </Field>
+            <Field label="Location" hint="Where buyers collect or you dispatch from">
+              <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Kampala, Nakasero" />
+            </Field>
+          </div>
+
+          <div className="control-row" style={{ borderBottom: 'none', paddingBottom: 0 }}>
+            <div>
+              <div className="semi tiny">Flash deal</div>
+              <p className="tiny muted">Highlights in the flash-deals rail</p>
+            </div>
+            <Switch checked={form.isFlashDeal} onChange={(v) => setForm((f) => ({ ...f, isFlashDeal: v }))} label="" />
+          </div>
+          {form.isFlashDeal && (
+            <Field label="Discount percent" error={editErrors.discountPercent}>
+              <Input type="number" min={0} max={100} value={form.discountPercent} invalid={!!editErrors.discountPercent}
+                onChange={(e) => setForm({ ...form, discountPercent: Number(e.target.value) })} />
+            </Field>
+          )}
         </div>
-        <div className="form-row">
-          <Field label="Category">
-            <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
-          </Field>
-          <Field label="Brand">
-            <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
-          </Field>
-        </div>
-        <Field label="Image URL" hint="Must be a public http(s) link. Listings without a real image cannot be published.">
-          <Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
-        </Field>
-        {form.imageUrl && <img src={form.imageUrl} alt="" className="img-preview" />}
       </Modal>
 
       <ConfirmModal

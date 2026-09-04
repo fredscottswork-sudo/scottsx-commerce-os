@@ -439,6 +439,28 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
   );
   if (!rows[0]) throw new NotFoundError('Product not found');
 
+  // Sync gallery if caller sent mediaUrls — this is how the ImageUploader
+  // in the edit modal persists its ordered list.
+  if (Array.isArray(input.mediaUrls)) {
+    await db.query('DELETE FROM product_media WHERE product_id = $1', [id]);
+    for (let i = 0; i < input.mediaUrls.length; i++) {
+      const url = String(input.mediaUrls[i] || '').trim();
+      if (!url) continue;
+      await db
+        .query('INSERT INTO product_media (product_id, url, sort_order) VALUES ($1,$2,$3)', [id, url, i])
+        .catch(() => undefined);
+    }
+    // Keep image_url in sync with the cover (first media) so legacy readers
+    // that only look at products.image_url still see something. If the gallery
+    // was cleared, blank the legacy column too so the quality gate catches it.
+    const cover = String(input.mediaUrls[0] || '').trim();
+    if (cover) {
+      await db.query('UPDATE products SET image_url = $2 WHERE id = $1', [id, cover]).catch(() => undefined);
+    } else if (input.mediaUrls.length === 0) {
+      await db.query('UPDATE products SET image_url = $2 WHERE id = $1', [id, '']).catch(() => undefined);
+    }
+  }
+
   if (nextStatus === 'pending' && prev.status !== 'pending') {
     await db.query(
       `INSERT INTO product_reviews (product_id, action, reason) VALUES ($1, 'submitted', 'edited by seller')`,
