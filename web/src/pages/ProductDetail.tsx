@@ -1,58 +1,70 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Star, Heart, MessageCircle, ShoppingCart, ShieldCheck } from 'lucide-react';
-import { productService, chatService, buyerService } from '../api/services';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Star, Heart, MessageCircle, ExternalLink, ShoppingCart, Store, ShieldCheck, Package, BadgeCheck } from 'lucide-react';
+import { productService, paymentService, chatService } from '../api/services';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useCart } from '../store/CartContext';
 import { useToast } from '../store/ToastContext';
-import { Btn, Card, ErrorBox, Loading } from '../components/ui';
-import { PRODUCT_IMAGE_FALLBACK } from '../components/ProductCard';
+import { useCart } from '../store/CartContext';
+import { Btn, Card, ErrorBox, Loading, Modal, Badge } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
+import { IMAGE_FALLBACK, ProductGrid } from '../components/ProductCard';
+import { resolveMediaUrl } from '../api/client';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useAuth();
   const { add } = useCart();
   const { toast } = useToast();
+  const { add, savedIds, toggleSaved } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
+  const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
-    let alive = true;
     setLoading(true);
     setError('');
-    setProduct(null);
-    if (!id) {
-      setError('Product not found');
-      setLoading(false);
-      return () => { alive = false; };
-    }
-    productService.byId(id)
-      .then((r) => { if (alive) setProduct(r.product); })
-      .catch((e: any) => { if (alive) setError(e?.message || 'Could not load product'); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    productService.byId(id!)
+      .then((r) => {
+        setProduct(r.product);
+        setQuantity(1);
+        // related
+        productService.related(r.product.id).then((rel) => setRelated(rel.products)).catch(() => undefined);
+      })
+      .catch((e: any) => setError(e.message))
+      .finally(() => setLoading(false));
   }, [id]);
 
-  /** Sign-in is only demanded *here*, not on page load. */
-  function requireUser(action: string) {
-    if (user) return true;
-    toast(`Sign in to ${action}`, 'warning');
-    navigate('/login', { state: { from: location.pathname } });
-    return false;
-  }
+  useSeo({
+    title: product ? product.title : undefined,
+    description: product
+      ? `${formatUgx(product.priceMinor)} — ${product.description || product.title}. Available from ${product.seller?.name || 'a verified seller'} on ScottsTechX.`
+      : undefined,
+    image: product?.imageUrl ? resolveMediaUrl(product.imageUrl) : undefined,
+    type: 'product',
+  });
 
-  async function addToInquiry() {
-    await add(product!, quantity);
+  async function buy() {
+    if (!user) { toast('Please sign in to buy — we saved this product for you', 'warning'); navigate('/login', { state: { from: `/product/${id}` } }); return; }
+    setBuying(true);
+    try {
+      const r = await paymentService.checkout(id!, quantity, user.phone);
+      setPayModal({ mode: r.paymentMode, link: r.paymentLink, ref: r.paymentReference, status: r.status });
+      toast(r.paymentMode === 'collect' ? 'Payment request sent to your phone' : 'Payment link ready', 'success');
+    } catch (e: any) {
+      toast(e.message || 'Could not create payment', 'error');
+    } finally {
+      setBuying(false);
+    }
   }
 
   async function messageSeller() {
-    if (!requireUser('message the seller')) return;
+    if (!user) { toast('Sign in to message this seller', 'warning'); navigate('/login', { state: { from: `/product/${id}` } }); return; }
     try {
       const r = await chatService.open(product!.seller.id, product!.id);
       navigate(`/messages/${r.conversation.id}`);
@@ -61,93 +73,86 @@ export default function ProductDetail() {
     }
   }
 
-  async function toggleSaved() {
-    if (!requireUser('save products')) return;
+  async function handleToggleSaved() {
+    if (!user) { toast('Sign in to save products', 'warning'); navigate('/login', { state: { from: `/product/${id}` } }); return; }
     try {
-      await buyerService.toggleBookmark(product!.id);
-      toast('Saved updated', 'success');
+      await toggleSaved(product!.id);
     } catch (e: any) {
       toast(e.message, 'error');
     }
   }
 
   if (loading) return <Loading />;
-  if (error || !product) return <ErrorBox message={error || 'Product not found'} onRetry={() => window.location.reload()} />;
+  if (error || !product) return <ErrorBox message={error} onRetry={() => window.location.reload()} />;
   const p = product;
-  const requestedBack = (location.state as { from?: string } | null)?.from;
-  const backTo = requestedBack?.startsWith('/') && !requestedBack.startsWith('//') ? requestedBack : '/';
-  const maxQuantity = Math.min(Math.max(p.stockQuantity, 1), 5);
-  const soldOut = p.stockQuantity <= 0;
+  const isSaved = savedIds.has(p.id);
 
   return (
     <>
-      <Link to={backTo} className="muted">← Back to marketplace</Link>
-      <div className="grid grid-2 mt-16" style={{ gridTemplateColumns: 'minmax(0, 420px) 1fr' }}>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Link to="/" className="muted">← Back to marketplace</Link>
+      <div className="product-detail mt-16">
+        <div className="card product-gallery">
           <img
-            src={p.imageUrl || PRODUCT_IMAGE_FALLBACK}
+            className="product-hero-img"
+            src={p.imageUrl ? resolveMediaUrl(p.imageUrl) : IMAGE_FALLBACK}
             alt={p.title}
-            onError={(e) => { e.currentTarget.src = PRODUCT_IMAGE_FALLBACK; }}
-            style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', display: 'block' }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).src = IMAGE_FALLBACK; }}
           />
         </div>
-        <div>
+        <div className="product-info">
           <div className="row wrap">
             {p.isFlashDeal && <span className="badge badge-red">FLASH -{p.discountPercent}%</span>}
             <span className="badge badge-blue">{p.category}</span>
-            {soldOut
-              ? <span className="badge badge-red">Sold out</span>
-              : p.stockQuantity > 5
-                ? <span className="badge badge-green">In stock ({p.stockQuantity})</span>
-                : <span className="badge badge-amber">Only {p.stockQuantity} left</span>}
+            {p.stockQuantity > 5 ? <span className="badge badge-green">In stock ({p.stockQuantity})</span> : <span className="badge badge-amber">Only {p.stockQuantity} left</span>}
+            {p.seller.verified && <span className="badge badge-green"><ShieldCheck size={11} /> Verified seller</span>}
           </div>
-          <h1 style={{ margin: '10px 0 6px', fontSize: 26 }}>{p.title}</h1>
-          <div className="row muted mb-16">
-            <Star size={15} style={{ color: 'var(--warning)' }} /> {p.rating} · {p.ratingCount} ratings · {p.brand}
+          <h1 className="product-title" style={{ margin: '10px 0 6px', fontSize: 26 }}>{p.title}</h1>
+          <div className="row muted mb-16" style={{ gap: 6 }}>
+            <span className="row" style={{ gap: 4 }}><Star size={15} style={{ color: 'var(--warning)' }} fill="currentColor" /> {Number(p.rating || 0).toFixed(1)}</span>
+            <span>· {p.ratingCount || 0} ratings</span>
+            {p.brand && <><span>·</span><span>{p.brand}</span></>}
           </div>
-          <div style={{ fontSize: 30, fontWeight: 800, color: 'var(--primary)' }}>
-            {formatUgx(p.priceMinor)}
+          <div className="product-price-row">
+            <span className="product-price" style={{ fontSize: 30, fontWeight: 800, color: 'var(--primary)' }}>
+              {formatUgx(p.priceMinor)}
+            </span>
             {p.oldPriceMinor && p.oldPriceMinor > p.priceMinor && (
-              <span style={{ fontSize: 16, color: 'var(--text-2)', textDecoration: 'line-through', fontWeight: 400, marginLeft: 10 }}>{formatUgx(p.oldPriceMinor)}</span>
+              <span className="product-price-old">{formatUgx(p.oldPriceMinor)}</span>
             )}
           </div>
-          <p className="muted mt-16">{p.description}</p>
+          <p className="muted mt-16" style={{ whiteSpace: 'pre-wrap' }}>{p.description || 'No description provided.'}</p>
 
           <Card className="mt-16">
-            <div className="row">
-              <span className="avatar">
-                {p.seller.logoUrl
-                  ? <img src={p.seller.logoUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                  : (p.seller.name || 'S')[0].toUpperCase()}
-              </span>
-              <div className="grow">
-                <div className="row">
-                  <strong>{p.seller.name}</strong>
-                  {p.seller.verified && <span className="badge badge-green">✓ Verified</span>}
+            <div className="row" style={{ gap: 12 }}>
+              <span className="avatar">{p.seller.name?.[0]?.toUpperCase() || 'S'}</span>
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="row" style={{ gap: 6 }}>
+                  <strong className="ellipsis">{p.seller.name}</strong>
+                  {p.seller.verified && <BadgeCheck size={14} className="t-success" />}
                 </div>
-                <span className="muted" style={{ fontSize: 13 }}>{p.seller.location || 'Uganda'}</span>
+                <span className="muted tiny">{p.seller.location || 'Uganda'}</span>
               </div>
-              <Link to={`/seller/${p.seller.id}`}><Btn size="sm">Store</Btn></Link>
+              <Link to={`/seller/${p.seller.id}`}><Btn size="sm" icon={<Store size={14} />}>Store</Btn></Link>
             </div>
           </Card>
 
-          <div className="row mt-16">
-            <label className="muted" style={{ fontSize: 13 }}>Qty</label>
-            <select className="select" style={{ width: 70 }} value={quantity} disabled={soldOut}
-              onChange={(e) => setQuantity(Number(e.target.value))}>
-              {Array.from({ length: maxQuantity }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+          <div className="row mt-16 wrap" style={{ gap: 10 }}>
+            <label className="muted tiny semi">Qty</label>
+            <select className="select" style={{ width: 84 }} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))}>
+              {Array.from({ length: Math.min(10, Math.max(1, p.stockQuantity)) }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
+            <span className="tiny muted">{p.stockQuantity} available</span>
           </div>
 
-          {/* Messaging-first: no online payment. Chat to agree, then close the deal. */}
-          <div className="row mt-16 wrap">
-            <Btn variant="primary" size="lg" onClick={() => void addToInquiry()} disabled={soldOut} style={{ flex: 1, minWidth: 180 }}>
-              <ShoppingCart size={18} /> {soldOut ? 'Sold out' : 'Add to inquiry'}
+          <div className="row mt-16 wrap product-actions" style={{ gap: 8 }}>
+            <Btn variant="primary" size="lg" onClick={buy} disabled={buying || p.stockQuantity === 0} style={{ flex: '1 1 180px' }} icon={<ShoppingCart size={16} />}>
+              {buying ? 'Creating payment…' : p.stockQuantity === 0 ? 'Out of stock' : `Buy now · ${formatUgx(p.priceMinor * quantity)}`}
             </Btn>
-            <Btn size="lg" onClick={messageSeller}><MessageCircle size={18} /> Chat with seller</Btn>
-            <Btn size="lg" onClick={toggleSaved} aria-label="Save"><Heart size={18} /></Btn>
+            <Btn size="lg" variant="outline" onClick={() => void add(p, quantity)} icon={<Package size={16} />}>Add to cart</Btn>
+            <Btn size="lg" onClick={messageSeller} icon={<MessageCircle size={16} />}>Message</Btn>
+            <Btn size="lg" variant={isSaved ? 'primary' : 'default'} onClick={handleToggleSaved} aria-label="Save" icon={<Heart size={16} fill={isSaved ? 'currentColor' : 'none'} />}>
+              {isSaved ? 'Saved' : 'Save'}
+            </Btn>
           </div>
 
           <p className="tiny muted mt-12" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -156,6 +161,36 @@ export default function ProductDetail() {
           </p>
         </div>
       </div>
+
+      {related.length > 0 && (
+        <section className="mt-24">
+          <h2 className="mb-12" style={{ fontSize: 18 }}>Related products</h2>
+          <ProductGrid products={related} onAddToCart={(prod) => void add(prod)} favoriteSellerIds={new Set()} />
+        </section>
+      )}
+
+      <Modal open={payModal !== null} onClose={() => setPayModal(null)} title={payModal?.mode === 'collect' ? 'Payment initiated 📲' : 'Payment ready 🎉'}
+        footer={
+          <>
+            {payModal?.mode === 'collect'
+              ? <Btn variant="primary" onClick={() => setPayModal(null)}>OK</Btn>
+              : <Btn variant="primary" onClick={() => { if (payModal?.link) window.open(payModal.link, '_blank'); }}>
+                  <ExternalLink size={16} /> Open payment page
+                </Btn>}
+          </>
+        }
+      >
+        {payModal?.mode === 'collect' ? (
+          <p>
+            A Mobile Money request for <strong>{formatUgx(p.priceMinor * quantity)}</strong> was sent to your phone
+            (MTN MoMo / Airtel Money). Enter your PIN to approve. <br />
+            <span className="muted tiny">Status: {payModal.status} · Ref: {payModal.ref.slice(0, 8)}</span>
+          </p>
+        ) : (
+          <p>Open your secure payment link to complete the purchase. <br />
+            <a href={payModal?.link ?? '#'} target="_blank" rel="noreferrer">{payModal?.link}</a></p>
+        )}
+      </Modal>
     </>
   );
 }

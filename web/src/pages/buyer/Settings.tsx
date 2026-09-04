@@ -243,6 +243,7 @@ export default function Settings() {
                 </Btn>
                 <input
                   ref={fileRef} type="file" accept="image/*" hidden
+                  aria-label="Upload a profile photo"
                   onChange={(e) => uploadPhoto(e.target.files?.[0] ?? null)}
                 />
                 {photoUrl && (

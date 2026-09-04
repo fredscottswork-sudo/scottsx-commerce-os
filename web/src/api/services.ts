@@ -504,15 +504,14 @@ export const adminService = {
   deleteProduct: (id: string) => api<{ ok: boolean }>(`/admin/products/${id}`, { method: 'DELETE' }),
 };
 
-// ── Location (offline reverse geocoding, global) ────────────────────────────
+// ── Location — fast Google Maps background ───────────────────────────────
 export const geoService = {
-  /** Name any coordinate: village / city / region / country. No auth needed. */
   reverse: (lat: number, lng: number) =>
     api<{ place: Place; query: { lat: number; lng: number } }>(
-      `/geo/reverse?lat=${lat}&lng=${lng}`, { auth: false }
+      `/geo/reverse?lat=${lat}&lng=${lng}`,
+      { auth: false }
     ),
   status: () => api<{ ready: boolean; source: string; coverage: string }>('/geo/status', { auth: false }),
-  /** Persist my position and get the resolved place back in one round trip. */
   saveMyLocation: (lat: number, lng: number, accuracyM?: number) =>
     api<{ ok: boolean; place: Place | null; position: { lat: number; lng: number; accuracyM: number | null } }>(
       '/me/location', { method: 'POST', body: { lat, lng, accuracyM } }

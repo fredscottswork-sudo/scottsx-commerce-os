@@ -9,7 +9,6 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    // The preview environment proxies requests from a sandbox-specific host.
     allowedHosts: true,
     proxy: {
       '/api': {
@@ -17,5 +16,21 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  build: {
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          firebase: ['firebase/app', 'firebase/auth'],
+          icons: ['lucide-react'],
+        },
+      },
+    },
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', 'lucide-react'],
   },
 });

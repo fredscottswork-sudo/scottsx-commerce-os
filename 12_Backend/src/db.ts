@@ -42,13 +42,23 @@ function defaultDbUrl(): string {
 
 let pool: pg.Pool | null = null;
 
-/** Single shared pool. Lazily created so imports never trigger a connection. */
+/** Single shared pool — tuned for speed */
 export function getPool(): pg.Pool {
   if (!pool) {
+    const isServerless = Boolean(
+      process.env.FIREBASE_CONFIG || process.env.K_SERVICE || process.env.FUNCTION_TARGET || process.env.FUNCTIONS_EMULATOR
+    );
     pool = new Pool({
       connectionString: process.env.DATABASE_URL || defaultDbUrl(),
-      max: 10,
+      max: isServerless ? 10 : 20,
+      min: 2,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+      statement_timeout: 10000,
+      query_timeout: 10000,
+      keepAlive: true,
     });
+    pool.on('error', (err) => console.error('[db] pool error', err));
   }
   return pool;
 }

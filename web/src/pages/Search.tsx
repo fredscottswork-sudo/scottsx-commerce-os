@@ -13,8 +13,7 @@ import { VisualSearch } from '../components/VisualSearch';
 import {
   Btn, Empty, ErrorBox, SkeletonGrid, Field, Input, Select, Switch, Pagination, Modal, RichText,
 } from '../components/ui';
-import { consumeStashedImageSearch } from '../lib/imageSearch';
-import { SEARCH_WATERMARKS, useRotatingPlaceholder } from '../hooks/useRotatingPlaceholder';
+import { useSeo } from '../hooks/useSeo';
 
 type Sort = 'relevance' | 'newest' | 'price_asc' | 'price_desc' | 'rating' | 'popular';
 
@@ -27,21 +26,7 @@ const SORTS: { id: Sort; label: string }[] = [
   { id: 'popular', label: 'Most viewed' },
 ];
 
-const SORT_IDS = new Set<Sort>(SORTS.map((s) => s.id));
 const PAGE_SIZE = 24;
-
-function positiveIntParam(raw: string | null, fallback = 1): number {
-  if (!raw || !/^\d+$/.test(raw)) return fallback;
-  const value = Number(raw);
-  return Number.isSafeInteger(value) && value >= 1 ? Math.min(value, 1_000_000) : fallback;
-}
-
-function nonNegativeNumberParam(raw: string | null, max = Number.MAX_SAFE_INTEGER, integer = false): number | undefined {
-  if (!raw || !/^\d+(?:\.\d+)?$/.test(raw)) return undefined;
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0 || value > max) return undefined;
-  return integer ? Math.round(value) : value;
-}
 
 /** Minimal typing for the vendor-prefixed Web Speech API. */
 type SpeechRecognitionLike = {
@@ -53,6 +38,13 @@ type SpeechRecognitionLike = {
 };
 
 export default function Search() {
+  useSeo({
+    title: 'Search products',
+    description:
+      'Search thousands of products from verified Ugandan sellers on ScottsTechX. ' +
+      'Filter by category, price and location.',
+  });
+
   const [params, setParams] = useSearchParams();
   const { add, favoriteSellerIds, toggleFavoriteSeller } = useCart();
   const { toast } = useToast();
@@ -60,16 +52,11 @@ export default function Search() {
   const q = params.get('q') ?? '';
   const category = params.get('category') ?? '';
   const brand = params.get('brand') ?? '';
-  const rawSort = params.get('sort');
-  const sort: Sort = rawSort && SORT_IDS.has(rawSort as Sort) ? (rawSort as Sort) : 'relevance';
-  const rawPage = params.get('page');
-  const page = positiveIntParam(rawPage);
+  const sort = (params.get('sort') as Sort) || 'relevance';
+  const page = Number(params.get('page') || 1);
   const minPrice = params.get('minPrice') ?? '';
   const maxPrice = params.get('maxPrice') ?? '';
   const minRating = params.get('minRating') ?? '';
-  const minPriceValue = nonNegativeNumberParam(minPrice, Number.MAX_SAFE_INTEGER, true);
-  const maxPriceValue = nonNegativeNumberParam(maxPrice, Number.MAX_SAFE_INTEGER, true);
-  const minRatingValue = nonNegativeNumberParam(minRating, 5);
   const verifiedOnly = params.get('verifiedOnly') === '1';
   const inStock = params.get('inStock') === '1';
   const flashOnly = params.get('flashOnly') === '1';
@@ -93,7 +80,6 @@ export default function Search() {
   const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
 
   useEffect(() => { setInput(q); }, [q]);
-  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
 
   // The topbar camera modal stashes its result and navigates here; pick it
   // up so the shopper lands straight on their visual matches.
@@ -115,33 +101,6 @@ export default function Search() {
     setParams(p, { replace: true });
   }, [params, setParams]);
 
-  // URL parameters are user-controlled. Canonicalise them before the request
-  // is built so a stale share link such as `sort=discount&page=oops` cannot
-  // send an invalid enum/NaN to the API or leave the select in a blank state.
-  useEffect(() => {
-    const next = new URLSearchParams(params);
-    let changed = false;
-    if (rawSort !== null && rawSort !== sort) {
-      next.set('sort', sort);
-      changed = true;
-    }
-    if (rawPage !== null && rawPage !== String(page)) {
-      next.set('page', String(page));
-      changed = true;
-    }
-    for (const [key, raw, value] of [
-      ['minPrice', minPrice, minPriceValue],
-      ['maxPrice', maxPrice, maxPriceValue],
-      ['minRating', minRating, minRatingValue],
-    ] as const) {
-      if (!raw) continue;
-      if (value === undefined) next.delete(key);
-      else next.set(key, String(value));
-      if (next.get(key) !== raw) changed = true;
-    }
-    if (changed) setParams(next, { replace: true });
-  }, [maxPrice, maxPriceValue, minPrice, minPriceValue, minRating, minRatingValue, page, params, rawPage, rawSort, setParams, sort]);
-
   useEffect(() => { productService.facets().then(setFacets).catch(() => undefined); }, []);
 
   // ── Fetch results whenever the query string changes ──────────────────────
@@ -153,9 +112,9 @@ export default function Search() {
       q: q || undefined,
       category: category || undefined,
       brand: brand || undefined,
-      minPrice: minPriceValue,
-      maxPrice: maxPriceValue,
-      minRating: minRatingValue,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      minRating: minRating ? Number(minRating) : undefined,
       verifiedOnly: verifiedOnly || undefined,
       inStock: inStock || undefined,
       flashOnly: flashOnly || undefined,
@@ -251,40 +210,35 @@ export default function Search() {
     rec.onerror = () => { setListening(false); toast('Could not hear you — try again', 'error'); };
     rec.onend = () => setListening(false);
     recognitionRef.current = rec;
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      setListening(false);
-      toast('Voice search could not start — try again', 'error');
-    }
+    rec.start();
+    setListening(true);
   };
 
   const activeFilters = useMemo(() => {
     const chips: { label: string; clear: () => void }[] = [];
     if (category) chips.push({ label: category, clear: () => patch({ category: null }) });
     if (brand) chips.push({ label: brand, clear: () => patch({ brand: null }) });
-    if (minPriceValue !== undefined) chips.push({ label: `From ${formatUgx(minPriceValue)}`, clear: () => patch({ minPrice: null }) });
-    if (maxPriceValue !== undefined) chips.push({ label: `Under ${formatUgx(maxPriceValue)}`, clear: () => patch({ maxPrice: null }) });
-    if (minRatingValue !== undefined && minRatingValue > 0) chips.push({ label: `${minRatingValue}★ and up`, clear: () => patch({ minRating: null }) });
+    if (minPrice) chips.push({ label: `From ${formatUgx(Number(minPrice))}`, clear: () => patch({ minPrice: null }) });
+    if (maxPrice) chips.push({ label: `Under ${formatUgx(Number(maxPrice))}`, clear: () => patch({ maxPrice: null }) });
+    if (minRating) chips.push({ label: `${minRating}★ and up`, clear: () => patch({ minRating: null }) });
     if (verifiedOnly) chips.push({ label: 'Verified sellers', clear: () => patch({ verifiedOnly: null }) });
     if (inStock) chips.push({ label: 'In stock', clear: () => patch({ inStock: null }) });
     if (flashOnly) chips.push({ label: 'Flash deals', clear: () => patch({ flashOnly: null }) });
     return chips;
-  }, [category, brand, minPriceValue, maxPriceValue, minRatingValue, verifiedOnly, inStock, flashOnly, patch]);
+  }, [category, brand, minPrice, maxPrice, minRating, verifiedOnly, inStock, flashOnly, patch]);
 
   const filterPanel = (
     <div className="col">
       <Field label="Category">
         <Select value={category} onChange={(e) => patch({ category: e.target.value || null })}>
           <option value="">All categories</option>
-          {facets?.categories.map((c) => <option key={c.name} value={c.name}>{c.name} ({c.count})</option>)}
+          {facets?.categories.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
         </Select>
       </Field>
       <Field label="Brand">
         <Select value={brand} onChange={(e) => patch({ brand: e.target.value || null })}>
           <option value="">All brands</option>
-          {facets?.brands.map((b) => <option key={b.name} value={b.name}>{b.name} ({b.count})</option>)}
+          {facets?.brands.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}
         </Select>
       </Field>
       <div className="form-row">
@@ -320,30 +274,30 @@ export default function Search() {
     <div className="col-lg">
       {/* ── Search bar with AI / image / voice ──────────────────────────── */}
       <div className="search-hero anim-up">
-        <div className="searchbar searchbar-lg searchbar-glow" style={{ position: 'relative' }}>
-          <SearchIcon size={18} className="muted-2" style={{ flexShrink: 0 }} />
+        <div className="searchbar searchbar-lg searchbar--compact" style={{ position: 'relative' }}>
+          <SearchIcon size={15} className="muted-2" style={{ flexShrink: 0 }} />
           <input
             value={input}
             onChange={(e) => { setInput(e.target.value); setShowSuggest(true); }}
             onFocus={() => setShowSuggest(true)}
             onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
             onKeyDown={(e) => { if (e.key === 'Enter') runSearch(input); }}
-            placeholder={watermark}
+            placeholder="Search products, brands, stores…"
             aria-label="Search"
           />
           {input && (
-            <button className="btn btn-ghost btn-icon" onClick={() => { setInput(''); runSearch(''); }} aria-label="Clear">
-              <X size={16} />
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => { setInput(''); runSearch(''); }} aria-label="Clear">
+              <X size={13} />
             </button>
           )}
-          <button className={`btn btn-icon ${listening ? 'btn-danger' : ''}`} onClick={toggleVoice}
+          <button className={`btn btn-icon btn-sm ${listening ? 'btn-danger' : ''}`} onClick={toggleVoice}
             title="Voice search" aria-label="Voice search">
-            {listening ? <MicOff size={17} /> : <Mic size={17} />}
+            {listening ? <MicOff size={14} /> : <Mic size={14} />}
           </button>
-          <button className="btn btn-icon" onClick={() => setImageOpen(true)} title="Search by image" aria-label="Search by image">
-            <ImageIcon size={17} />
+          <button className="btn btn-icon btn-sm" onClick={() => setImageOpen(true)} title="Search by image" aria-label="Search by image">
+            <ImageIcon size={14} />
           </button>
-          <Btn variant="primary" onClick={runAiSearch} loading={aiBusy} icon={<Sparkles size={15} />}>
+          <Btn variant="primary" size="sm" onClick={runAiSearch} loading={aiBusy} icon={<Sparkles size={12} />}>
             Ask AI
           </Btn>
 
@@ -381,10 +335,6 @@ export default function Search() {
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div className="row-between wrap">
         <div className="row wrap" style={{ gap: 8 }}>
-          <span className="semi">
-            {loading ? 'Searching…' : `${total.toLocaleString()} result${total === 1 ? '' : 's'}`}
-            {q && <span className="muted"> for “{q}”</span>}
-          </span>
           {activeFilters.map((f) => (
             <button key={f.label} className="chip active" onClick={f.clear}>
               {f.label} <X size={12} style={{ marginLeft: 3, verticalAlign: -1 }} />
@@ -392,7 +342,7 @@ export default function Search() {
           ))}
         </div>
         <div className="row" style={{ gap: 8 }}>
-          <Select value={sort} onChange={(e) => patch({ sort: e.target.value })} style={{ width: 'auto' }}>
+          <Select aria-label="Sort results" value={sort} onChange={(e) => patch({ sort: e.target.value })} style={{ width: 'auto' }}>
             {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </Select>
           <Btn className="filters-btn" icon={<SlidersHorizontal size={15} />} onClick={() => setFiltersOpen(true)}>
@@ -425,9 +375,7 @@ export default function Search() {
               <ProductGrid
                 products={products}
                 onAddToCart={(p) => void add(p)}
-                onToggleFavorite={(p) => {
-                  if (p.seller?.id) void toggleFavoriteSeller(p.seller.id, p.seller.name);
-                }}
+                onToggleFavorite={(p) => void toggleFavoriteSeller(p.seller.id, p.seller.name)}
                 favoriteSellerIds={favoriteSellerIds}
               />
               <Pagination page={page} pageSize={PAGE_SIZE} total={total}
@@ -439,7 +387,7 @@ export default function Search() {
 
       {/* ── Mobile filter drawer ────────────────────────────────────────── */}
       <Modal open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters"
-        footer={<Btn variant="primary" onClick={() => setFiltersOpen(false)}>Show {total} results</Btn>}>
+        footer={<Btn variant="primary" onClick={() => setFiltersOpen(false)}>Show results</Btn>}>
         {filterPanel}
       </Modal>
 

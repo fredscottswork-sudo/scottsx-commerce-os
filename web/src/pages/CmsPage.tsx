@@ -3,12 +3,18 @@ import { useParams, Link } from 'react-router-dom';
 import { cmsService } from '../api/services';
 import type { CmsPage as CmsType } from '../api/types';
 import { Card, ErrorBox, Loading } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
 
 export default function CmsPage() {
   const { slug } = useParams<{ slug: string }>();
   const [page, setPage] = useState<CmsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useSeo({
+    title: page?.title,
+    description: page?.body?.slice(0, 300),
+  });
 
   useEffect(() => {
     setLoading(true);

@@ -1,201 +1,222 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, memo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { CreditCard, MapPin, Search, ShoppingBag, Sparkles } from 'lucide-react';
 import { productService, geoService } from '../api/services';
-import type { Product, NearbySeller, Facets } from '../api/types';
-import { ProductCard } from '../components/ProductCard';
+import type { Product, NearbySeller } from '../api/types';
+import { ProductGrid } from '../components/ProductCard';
 import VerifiedStoreCarousel from '../components/VerifiedStoreCarousel';
-import { categoryIcon, mergedCategories } from '../components/categories';
-import { Empty, ErrorBox, Loading, PageHeader, SearchInput, Btn } from '../components/ui';
-import { SEARCH_WATERMARKS, useRotatingPlaceholder } from '../hooks/useRotatingPlaceholder';
+import ExtraDealDisplay from '../components/ExtraDealDisplay';
+import { Empty, ErrorBox, Loading, Btn } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
+import { BrandMark } from '../components/BrandLogo';
+import { useCart } from '../store/CartContext';
 
-/**
- * Kampala — the marketplace's home city, and the fallback centre for the
- * verified-store strip.
- *
- * The API needs *some* coordinate to sort stores by distance. When the browser
- * cannot (or will not) say where the buyer is, we ask from here rather than
- * showing nothing: the strip still lists real verified stores, it just stops
- * claiming how far away they are (see `showDistance`).
- */
+/* Alibaba-style comprehensive categories — 16 total (even) for balanced grid */
+const CATEGORIES = [
+  'All',
+  'Electronics',
+  'Fashion',
+  'Beauty',
+  'Home & Living',
+  'Sports',
+  'Toys',
+  'Automotive',
+  'Health',
+  'Jewelry',
+  'Bags & Shoes',
+  'Groceries',
+  'Industrial',
+  'Phones',
+  'Computers',
+  'Agriculture',
+] as const;
+
+const BENEFITS = [
+  { anim: 'pay', icon: <CreditCard size={22} />, title: 'Mobile Money & Cards' },
+  { anim: 'nearby', icon: <MapPin size={22} />, title: 'Nearby sellers' },
+  { anim: 'ai', icon: <Sparkles size={22} />, title: 'AI assistant' },
+  { anim: 'trust', icon: <ShoppingBag size={22} />, title: 'Local & genuine' },
+] as const;
+
+const AD_ITEMS = [
+  { icon: <CreditCard size={14} />, label: 'Mobile Money', color: '#0ea5e9' },
+  { icon: <MapPin size={14} />, label: 'Nearby', color: '#10b981' },
+  { icon: <Sparkles size={14} />, label: 'AI Shopper', color: '#8b5cf6' },
+  { icon: <ShoppingBag size={14} />, label: 'Genuine', color: '#f59e0b' },
+] as const;
+
 const FALLBACK_CENTER = { lat: 0.3476, lng: 32.5825 };
-
-/** How long we are willing to wait for the browser's own position. */
 const GEO_TIMEOUT_MS = 4000;
 
-/**
- * Best-effort position for the strip, in order of trustworthiness:
- * a fresh browser fix → the position this account last saved → Kampala.
- *
- * Never rejects: the marketplace grid below does not depend on it, so a
- * refused location prompt must not put an error state on the home page.
- */
+const MobileAdvert = memo(function MobileAdvert() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % AD_ITEMS.length), 3500);
+    return () => clearInterval(t);
+  }, []);
+  const active = AD_ITEMS[idx];
+  return (
+    <div className="madvert" data-testid="mobile-advert" style={{ contentVisibility: 'auto', containIntrinsicSize: '80px' } as any}>
+      <div className="madvert-bg" aria-hidden="true">
+        <div className="madvert-orb madvert-orb-1" />
+        <div className="madvert-orb madvert-orb-2" />
+        <div className="madvert-grid" />
+      </div>
+      <div className="madvert-content">
+        <div className="madvert-logo-wrap">
+          <BrandMark size={32} className="madvert-logo" />
+          <span className="madvert-live">LIVE</span>
+        </div>
+        <div className="madvert-text">
+          <strong className="madvert-title">ScottsTechX <span className="madvert-title-accent">Marketplace</span></strong>
+          <div className="madvert-sub"><span className="madvert-sub-dot" /><span>Everything • Verified • Nearby • AI • Pay</span></div>
+          <div className="madvert-cycle">
+            <span className="madvert-cycle-icon" style={{ color: active.color, background: `${active.color}14`, borderColor: `${active.color}22` }}>{active.icon}</span>
+            <span className="madvert-cycle-label" style={{ color: active.color }}>{active.label}</span>
+            <span className="madvert-cycle-dots">{AD_ITEMS.map((_, i) => (<span key={i} className={`madvert-dot ${i === idx ? 'active' : ''}`} />))}</span>
+          </div>
+        </div>
+        <div className="madvert-cta"><Search size={12} /></div>
+      </div>
+    </div>
+  );
+});
+
 async function resolveCenter(): Promise<{ lat: number; lng: number; precise: boolean }> {
   const fix = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      resolve(null);
-      return;
-    }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { resolve(null); return; }
     let settled = false;
-    const finish = (value: { lat: number; lng: number } | null) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(value);
-    };
+    const finish = (value: { lat: number; lng: number } | null) => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
     const timer = setTimeout(() => finish(null), GEO_TIMEOUT_MS);
     try {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => finish({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => finish(null),
-        { timeout: GEO_TIMEOUT_MS - 500, maximumAge: 5 * 60 * 1000 },
-      );
-    } catch {
-      finish(null);
-    }
+      navigator.geolocation.getCurrentPosition((pos) => finish({ lat: pos.coords.latitude, lng: pos.coords.longitude }), () => finish(null), { timeout: GEO_TIMEOUT_MS - 500, maximumAge: 5 * 60 * 1000 });
+    } catch { finish(null); }
   });
-
   if (fix) return { ...fix, precise: true };
-
-  // Signed-in buyers have a stored last-known position.
-  try {
-    const saved = await geoService.myLocation();
-    if (saved.position) return { ...saved.position, precise: true };
-  } catch {
-    // Logged out (401) or the endpoint is unavailable — fall through.
-  }
-
+  try { const saved = await geoService.myLocation(); if (saved.position) return { ...saved.position, precise: true }; } catch {}
   return { ...FALLBACK_CENTER, precise: false };
 }
 
 export default function Home() {
+  useSeo({
+    title: "Uganda's Marketplace",
+    description: 'Buy and sell on ScottsTechX — electronics, fashion, home goods and more from verified sellers across Kampala, Entebbe, Jinja and beyond.',
+  });
+
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
-  const [facets, setFacets] = useState<Facets | null>(null);
-  const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
-
+  const [qDebounced, setQDebounced] = useState('');
   const [stores, setStores] = useState<NearbySeller[]>([]);
   const [storesLoading, setStoresLoading] = useState(true);
   const [storesPrecise, setStoresPrecise] = useState(false);
+  const { add } = useCart();
 
-  async function load() {
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q.trim().toLowerCase()), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const load = useCallback(async (cat: string) => {
     setLoading(true);
     setError('');
     try {
-      const r = await productService.list();
+      const r = await productService.list({ pageSize: 24, sort: 'popular', category: cat !== 'All' ? cat : undefined } as any);
       setProducts(r.products);
     } catch (e: any) {
       setError(e.message || 'Could not load products');
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => { load(); }, []);
-  useEffect(() => {
-    productService.facets().then(setFacets).catch(() => undefined);
+    } finally { setLoading(false); }
   }, []);
 
-  /**
-   * Verified stores, nearest/best first.
-   *
-   * Deliberately isolated from `load()`: this strip is an enhancement, so a
-   * failing store lookup hides the strip and leaves the marketplace intact
-   * rather than blanking the page.
-   */
+  useEffect(() => { load(category); }, [category, load]);
+
   useEffect(() => {
     let cancelled = false;
-
+    const cacheKey = 'vstores_cache';
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Date.now() - cached.at < 5 * 60 * 1000 && cached.sellers?.length) {
+          setStores(cached.sellers);
+          setStoresPrecise(cached.precise);
+          setStoresLoading(false);
+          return;
+        }
+      }
+    } catch {}
     (async () => {
       try {
         const at = await resolveCenter();
         if (cancelled) return;
-        const r = await productService.nearby({
-          lat: at.lat,
-          lng: at.lng,
-          verifiedOnly: true,
-          sort: 'rating',
-          limit: 12,
-        });
+        const r = await productService.nearby({ lat: at.lat, lng: at.lng, verifiedOnly: true, sort: 'rating', limit: 12 });
         if (cancelled) return;
-        setStores((r.sellers || []).filter((s) => s.verified));
+        const sellers = (r.sellers || []).filter((s) => s.verified);
+        setStores(sellers);
         setStoresPrecise(at.precise);
-      } catch {
-        // No strip — nothing else on the page is affected.
-      } finally {
-        if (!cancelled) setStoresLoading(false);
-      }
+        try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), sellers, precise: at.precise })); } catch {}
+      } catch {} finally { if (!cancelled) setStoresLoading(false); }
     })();
-
     return () => { cancelled = true; };
   }, []);
 
-  const filtered = products.filter((p) =>
-    (q.trim() === '' || (p.title + ' ' + p.brand + ' ' + p.description).toLowerCase().includes(q.toLowerCase()))
-  );
-  const flash = products.filter((p) => p.isFlashDeal).slice(0, 6);
+  const filtered = useMemo(() => {
+    if (!qDebounced) return products;
+    return products.filter((p) => `${p.title} ${p.brand}`.toLowerCase().includes(qDebounced));
+  }, [products, qDebounced]);
+
+  const flash = useMemo(() => products.filter((p) => p.isFlashDeal).slice(0, 6), [products]);
+  const deals = useMemo(() => {
+    if (flash.length > 0) return flash;
+    if (products.length === 0) return [];
+    const discounted = products.filter((p) => (p.discountPercent || 0) > 0 || p.oldPriceMinor);
+    return (discounted.length >= 3 ? discounted : products).slice(0, 6);
+  }, [flash, products]);
+
   const showStores = storesLoading || stores.length > 0;
   const categoryTiles = facets ? mergedCategories(facets.categories) : [];
 
   return (
     <>
-      <PageHeader title="Marketplace" sub="Live catalog from the ScottsTechX backend — same data as the mobile app."
-        actions={<SearchInput value={q} onChange={setQ} placeholder={watermark} />} />
-
-      {/* ── Alibaba-style category showcase: 16 even tiles, live counts ── */}
-      {categoryTiles.length > 0 && (
-        <section className="cat-shower mb-24">
-          <div className="row-between mb-14">
-            <h2 className="card-title">Shop by category</h2>
-            <Link to="/search" className="link-arrow">Browse all →</Link>
+      <div className="grid grid-4 mb-16 feature-grid" style={{ contentVisibility: 'auto', containIntrinsicSize: '80px' } as any}>
+        {BENEFITS.map((b, i) => (
+          <div className="card feature-card feature-card--image" key={b.title} data-anim={b.anim} style={{ '--i': i, contentVisibility: 'auto', containIntrinsicSize: '80px' } as CSSProperties}>
+            <div className="feature-card-bg" aria-hidden="true" />
+            <div className="feature-card-overlay" aria-hidden="true" />
+            <div className="feature-card-content"><span className="feature-card-icon">{b.icon}</span><strong className="feature-card-title">{b.title}</strong></div>
           </div>
-          <div className="cat-grid cat-grid-even">
-            {categoryTiles.map((c, i) => (
-              <Link
-                key={c.name}
-                to={`/search?category=${encodeURIComponent(c.name)}`}
-                className="cat-tile cat-tile-modern"
-                style={{ '--hue': (i * 23) % 360 } as CSSProperties}
-              >
-                <span className="cat-ico">{categoryIcon(c.name)}</span>
-                <span className="cat-name">{c.name}</span>
-                {c.count > 0 && <span className="cat-count">{c.count} item{c.count === 1 ? '' : 's'}</span>}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+        ))}
+      </div>
 
-      {showStores && (
-        <VerifiedStoreCarousel
-          sellers={stores}
-          loading={storesLoading}
-          showDistance={storesPrecise}
-        />
-      )}
+      <MobileAdvert />
 
-      {flash.length > 0 && (
-        <>
-          <h2 className="mb-16" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>⚡ Flash deals</h2>
-          <div className="pgrid mb-24" style={{ marginBottom: 28 }}>
-            {flash.map((p) => <ProductCard key={p.id} product={p} />)}
-          </div>
-        </>
-      )}
-
-      <h2 className="mb-16">All products ({filtered.length})</h2>
-      {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={load} /> :
-        filtered.length === 0 ? <Empty icon={<Search size={28} />} title="No products found" subtitle="Try another category or search." /> :
-        <div className="pgrid">
-          {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
-        </div>}
-
-      <div className="card card-pad mt-24 row-between wrap">
-        <div>
-          <strong>Are you a seller?</strong>
-          <div className="muted">List products, manage inventory and track orders on the web.</div>
+      <div className="home-search-wrap" style={{ contentVisibility: 'auto', containIntrinsicSize: '60px' } as any}>
+        <div className="home-searchbar">
+          <div className="home-searchbar-bg" aria-hidden="true"><div className="home-searchbar-orb" /></div>
+          <Search size={15} className="home-searchbar-icon" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products, brands, stores…" aria-label="Search products" />
+          {q && <button className="home-searchbar-clear" onClick={() => setQ('')} aria-label="Clear search"><span>×</span></button>}
+          <div className="home-searchbar-divider" aria-hidden="true" />
+          <button className="home-searchbar-ai" onClick={() => q.trim() && (window.location.href = `/search?q=${encodeURIComponent(q.trim())}`)}><Sparkles size={12} /> AI</button>
         </div>
+        <div className="home-search-hint"><span className="home-search-hint-dot" /> Try “phones”, “shoes”, “nearby”</div>
+      </div>
+
+      <div className="category-row mb-16" role="tablist" aria-label="Categories" style={{ contentVisibility: 'auto', containIntrinsicSize: '40px' } as any}>
+        {CATEGORIES.map((c) => (<button key={c} role="tab" aria-selected={category === c} className={`chip category-chip ${category === c ? 'active' : ''}`} onClick={() => setCategory(c)}>{c}</button>))}
+      </div>
+
+      {showStores && <VerifiedStoreCarousel sellers={stores} loading={storesLoading} showDistance={storesPrecise} />}
+      {deals.length > 0 && <ExtraDealDisplay deals={deals} />}
+
+      <h2 className="mb-16">All products</h2>
+      {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={() => load(category)} /> :
+        filtered.length === 0 ? <Empty icon={<Search size={28} />} title="No products found" subtitle="Try another category or search." /> :
+          <ProductGrid products={filtered} onAddToCart={(p) => void add(p)} />}
+
+      <div className="card card-pad mt-24 row-between wrap" style={{ contentVisibility: 'auto', containIntrinsicSize: '80px' } as any}>
+        <div><strong>Are you a seller?</strong><div className="muted">List products, manage inventory and track orders on the web.</div></div>
         <Link to="/register"><Btn variant="primary" className="join-cta">Open a store</Btn></Link>
       </div>
     </>

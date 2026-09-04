@@ -1,17 +1,19 @@
-import { type MouseEvent } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { type MouseEvent, memo } from 'react';
+import { Link } from 'react-router-dom';
 import { Star, ShoppingCart, Heart, MapPin, Eye } from 'lucide-react';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { StatusBadge } from './ui';
 
-export const PRODUCT_IMAGE_FALLBACK =
+/** Exported so the product detail page shows the same placeholder as the grid
+ *  when an image host is unreachable, instead of a large empty box. */
+export const IMAGE_FALLBACK =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#121a2f"/><text x="50%" y="50%" fill="#5a6a8c" font-family="sans-serif" font-size="20" text-anchor="middle">No image</text></svg>`
   );
 
-export function ProductCard({
+export const ProductCard = memo(function ProductCard({
   product, index = 0, onAddToCart, onToggleFavorite, isFavorite, showStatus, compact,
 }: {
   product: Product;
@@ -22,10 +24,8 @@ export function ProductCard({
   showStatus?: boolean;
   compact?: boolean;
 }) {
-  const location = useLocation();
   const discounted = !!product.oldPriceMinor && product.oldPriceMinor > product.priceMinor;
   const soldOut = product.stockQuantity !== undefined && product.stockQuantity <= 0;
-  const from = `${location.pathname}${location.search}`;
 
   const stop = (e: MouseEvent, fn?: () => void) => {
     e.preventDefault();
@@ -36,19 +36,19 @@ export function ProductCard({
   return (
     <Link
       to={`/product/${product.id}`}
-      state={{ from }}
       className="pcard stagger-item"
-      style={{ '--i': index } as React.CSSProperties}
+      style={{ '--i': index, contentVisibility: 'auto', containIntrinsicSize: '300px' } as React.CSSProperties}
       aria-label={product.title}
     >
       <div className="pcard-media">
         <img
           className="pcard-img"
-          src={product.imageUrl || PRODUCT_IMAGE_FALLBACK}
+          src={product.imageUrl || IMAGE_FALLBACK}
           alt={product.title}
           loading="lazy"
           decoding="async"
-          onError={(e) => { (e.currentTarget as HTMLImageElement).src = PRODUCT_IMAGE_FALLBACK; }}
+          fetchPriority={index < 4 ? 'high' : 'low' as any}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).src = IMAGE_FALLBACK; }}
         />
 
         <div className="pcard-tags">
@@ -113,9 +113,9 @@ export function ProductCard({
       </div>
     </Link>
   );
-}
+});
 
-export function ProductGrid({
+export const ProductGrid = memo(function ProductGrid({
   products, onAddToCart, onToggleFavorite, favoriteSellerIds, showStatus,
 }: {
   products: Product[];
@@ -139,4 +139,4 @@ export function ProductGrid({
       ))}
     </div>
   );
-}
+});

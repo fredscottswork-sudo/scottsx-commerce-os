@@ -18,9 +18,15 @@
     "deploy": "npm run build && firebase deploy --only functions",
     "deploy:all": "npm run build && firebase deploy",
     "emulate": "firebase emulators:start --only functions",
-    "setup:secrets": "powershell -ExecutionPolicy Bypass -File scripts/deploy-firebase.ps1"
+    "setup:secrets": "powershell -ExecutionPolicy Bypass -File scripts/deploy-firebase.ps1",
+    "test:e2e": "node tests/e2e.mjs",
+    "test:llm": "node tests/llm-integration.mjs",
+    "test:geo": "tsx tests/geo-accuracy.mjs",
+    "test:ai": "node tests/ai-quality.mjs",
+    "test:all": "node tests/e2e.mjs && node tests/ai-quality.mjs && node tests/production-safety.mjs && node tests/google-auth.mjs && node tests/firebase-auth.mjs && node tests/android-contract.mjs && npm run test:geo && npm run test:llm"
   },
   "dependencies": {
+    "@fastify/compress": "^9.2.0",
     "@fastify/cors": "^10.0.1",
     "@fastify/multipart": "^9.0.1",
     "@nile-squad/nylonpay-ts": "^2.0.0",

@@ -102,7 +102,7 @@ export default function BuyerDashboard() {
   );
   const totalSpent = useMemo(
     () => orders.filter((o) => ['paid', 'shipped', 'delivered'].includes((o.status || '').toLowerCase()))
-      .reduce((s, o) => s + (o.amount || 0), 0),
+      .reduce((s, o) => s + (o.amount || 0) * (o.quantity || 1), 0),
     [orders]
   );
   const newFromFollows = useMemo(() => following.reduce((s, f) => s + (f.newThisWeek || 0), 0), [following]);
@@ -173,10 +173,16 @@ export default function BuyerDashboard() {
           <div className="hscroll">
             {activeOrders.slice(0, 6).map((o, i) => (
               <Link key={o.id} to="/buyer/orders" className="track-card stagger-item" style={{ '--i': i } as React.CSSProperties}>
-                {o.imageUrl && <img src={o.imageUrl} alt="" className="track-thumb" loading="lazy" />}
+                {o.imageUrl ? (
+                  <img src={o.imageUrl} alt="" className="track-thumb" loading="lazy" />
+                ) : (
+                  <span className="track-thumb center" style={{ fontSize: 16, fontWeight: 800, background: 'var(--surface-3)', color: 'var(--text-3)' }}>
+                    {o.title?.[0]?.toUpperCase() || '•'}
+                  </span>
+                )}
                 <div style={{ minWidth: 0 }}>
                   <div className="ellipsis semi">{o.title}</div>
-                  <div className="tiny muted">{o.storeName || 'Seller'} · {formatUgx(o.amount)}</div>
+                  <div className="tiny muted">{o.storeName || 'Seller'} · {formatUgx(o.amount * (o.quantity || 1))}{o.quantity > 1 ? ` × ${o.quantity}` : ''}</div>
                   <span className={`badge badge-${o.status === 'shipped' ? 'cyan' : 'amber'} mt-4`}>{o.status}</span>
                 </div>
               </Link>
@@ -198,7 +204,6 @@ export default function BuyerDashboard() {
                 className="cat-tile stagger-item" style={{ '--i': i } as React.CSSProperties}>
                 <span className="cat-emoji">{CATEGORY_ICONS[c.name] ?? '🛍️'}</span>
                 <span className="cat-name">{c.name}</span>
-                <span className="tiny muted-2">{c.count} item{c.count === 1 ? '' : 's'}</span>
               </Link>
             ))}
           </div>
@@ -279,7 +284,7 @@ export default function BuyerDashboard() {
                   <div className="ellipsis semi">{s.storeName}</div>
                   <div className="tiny muted">
                     <Star size={10} style={{ verticalAlign: -1, color: 'var(--warning)' }} fill="currentColor" />
-                    {' '}{Number(s.rating || 0).toFixed(1)} · {s.productCount} products
+                    {' '}{Number(s.rating || 0).toFixed(1)} · Verified
                   </div>
                   {s.newThisWeek > 0 && <span className="badge badge-green mt-4">{s.newThisWeek} new</span>}
                 </div>

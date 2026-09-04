@@ -1,20 +1,60 @@
 /**
- * ScottsTechX — location endpoints.
+ * ScottsTechX — location endpoints (original + fast Google Maps in background)
  *
- *   GET  /api/v1/geo/reverse?lat=&lng=     resolve a fix to village/city/region/country
- *   POST /api/v1/me/location               store my current position (auth)
- *   GET  /api/v1/me/location               my last known position (auth)
- *
- * Reverse geocoding is fully offline (src/geo/gazetteer.bin, 167k places
- * worldwide) so it works for every country, costs nothing, leaks no user
- * coordinates to a third party, and answers in well under a millisecond.
+ * Original behavior restored: simple village/city/region/country, no selection UI.
+ * Enhancement: uses lat/lng to query Google Maps in background with <1s timeout
+ * to identify village, then names it on frontend quickly.
  */
+
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { requireAuth, authedUser } from '../../auth.js';
 import { reverseGeocode, geocoderReady } from '../../geo/gazetteer.js';
+import type { ReverseResult } from '../../geo/gazetteer.js';
+import { googleReverseGeocode, googleGeocoderConfigured } from '../../geo/google-geocoder.js';
 import { ServiceUnavailableError } from '../../errors.js';
+
+const geoCache = new Map<string, { at: number; value: ReverseResult | null }>();
+const GEO_CACHE_TTL = 60_000;
+function geoCacheKey(lat: number, lng: number): string {
+  return `${Math.round(lat * 10000) / 10000}:${Math.round(lng * 10000) / 10000}`;
+}
+
+async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+
+  const key = geoCacheKey(lat, lng);
+  const cached = geoCache.get(key);
+  if (cached && Date.now() - cached.at < GEO_CACHE_TTL) return cached.value;
+
+  // Background Google Maps — must be <1s
+  if (googleGeocoderConfigured()) {
+    try {
+      const googlePromise = googleReverseGeocode(lat, lng);
+      const timeout = new Promise<null>((res) => setTimeout(() => res(null), 800));
+      const viaGoogle = await Promise.race([googlePromise, timeout]);
+      if (viaGoogle) {
+        geoCache.set(key, { at: Date.now(), value: viaGoogle });
+        if (geoCache.size > 500) {
+          const first = geoCache.keys().next().value;
+          if (first) geoCache.delete(first);
+        }
+        return viaGoogle;
+      }
+    } catch {}
+  }
+
+  // Fallback offline — instant
+  const viaOffline = reverseGeocode(lat, lng);
+  geoCache.set(key, { at: Date.now(), value: viaOffline });
+  if (geoCache.size > 500) {
+    const first = geoCache.keys().next().value;
+    if (first) geoCache.delete(first);
+  }
+  return viaOffline;
+}
 
 const coordSchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
@@ -24,37 +64,29 @@ const coordSchema = z.object({
 const saveSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
-  /** Optional client-side accuracy in metres, purely informational. */
   accuracyM: z.number().min(0).max(100000).optional(),
 });
 
 export default async function registerGeoRoute(app: FastifyInstance) {
   const pool = getPool();
 
-  /** Public: anyone (even logged out) can name their own position. */
   app.get('/api/v1/geo/reverse', async (request) => {
     const { lat, lng } = coordSchema.parse(request.query);
-    const place = reverseGeocode(lat, lng);
-    if (!place) {
-      throw new ServiceUnavailableError('Reverse geocoding is unavailable on this server');
-    }
+    const place = await resolvePlace(lat, lng);
+    if (!place) throw new ServiceUnavailableError('Reverse geocoding is unavailable on this server');
     return { place, query: { lat, lng } };
   });
 
   app.get('/api/v1/geo/status', async () => ({
     ready: geocoderReady(),
-    source: 'offline-gazetteer',
+    source: googleGeocoderConfigured() ? 'google' : 'offline-gazetteer',
     coverage: 'global',
   }));
 
-  /**
-   * Persist the signed-in user's position and return the resolved place, so a
-   * single round trip both saves the fix and tells the UI where it is.
-   */
   app.post('/api/v1/me/location', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     const { lat, lng, accuracyM } = saveSchema.parse(request.body);
-    const place = reverseGeocode(lat, lng);
+    const place = await resolvePlace(lat, lng);
 
     await pool.query(
       `UPDATE users
@@ -65,7 +97,9 @@ export default async function registerGeoRoute(app: FastifyInstance) {
            location_updated_at = now(), updated_at = now()
        WHERE id = $1`,
       [
-        me.id, lat, lng,
+        me.id,
+        lat,
+        lng,
         place?.village ?? null,
         place?.region ?? null,
         place?.country ?? null,
@@ -100,7 +134,7 @@ export default async function registerGeoRoute(app: FastifyInstance) {
         label: r.place_label ?? '',
         shortLabel: [r.village || r.city, r.region || r.country].filter(Boolean).join(', '),
         accuracyKm: 0,
-        source: 'offline-gazetteer' as const,
+        source: googleGeocoderConfigured() ? 'google' : 'offline-gazetteer',
       },
       updatedAt: r.location_updated_at,
     };

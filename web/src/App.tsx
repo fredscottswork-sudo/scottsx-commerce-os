@@ -1,49 +1,56 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, type ReactNode, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './store/AuthContext';
 import { AppShell } from './components/AppShell';
 import { useSeo } from './hooks/useSeo';
+import { Loading } from './components/ui';
 
-import Login from './pages/Login';
-import Register from './pages/Register';
-import VerifyEmail from './pages/VerifyEmail';
-import ResetPassword from './pages/ResetPassword';
-import Home from './pages/Home';
-import ProductDetail from './pages/ProductDetail';
-import SellerStorefront from './pages/SellerStorefront';
-import Nearby from './pages/Nearby';
-import Search from './pages/Search';
-import Ai from './pages/Ai';
-import CmsPage from './pages/CmsPage';
-import NotFound from './pages/NotFound';
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const Home = lazy(() => import('./pages/Home'));
+const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+const SellerStorefront = lazy(() => import('./pages/SellerStorefront'));
+const Nearby = lazy(() => import('./pages/Nearby'));
+const Search = lazy(() => import('./pages/Search'));
+const Ai = lazy(() => import('./pages/Ai'));
+const CmsPage = lazy(() => import('./pages/CmsPage'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
-import BuyerDashboard from './pages/buyer/BuyerDashboard';
-import Orders from './pages/buyer/Orders';
-import Saved from './pages/buyer/Saved';
-import Addresses from './pages/buyer/Addresses';
-import Refunds from './pages/buyer/Refunds';
-import Support from './pages/buyer/Support';
-import SettingsPage from './pages/buyer/Settings';
-import AiChat from './pages/buyer/AiChat';
-import Cart from './pages/buyer/Cart';
-import Messages from './pages/Messages';
-import Thread from './pages/Thread';
-import Notifications from './pages/Notifications';
+const BuyerDashboard = lazy(() => import('./pages/buyer/BuyerDashboard'));
+const Orders = lazy(() => import('./pages/buyer/Orders'));
+const Saved = lazy(() => import('./pages/buyer/Saved'));
+const Addresses = lazy(() => import('./pages/buyer/Addresses'));
+const Payments = lazy(() => import('./pages/buyer/Payments'));
+const Refunds = lazy(() => import('./pages/buyer/Refunds'));
+const Support = lazy(() => import('./pages/buyer/Support'));
+const SettingsPage = lazy(() => import('./pages/buyer/Settings'));
+const AiChat = lazy(() => import('./pages/buyer/AiChat'));
+const Cart = lazy(() => import('./pages/buyer/Cart'));
+const Messages = lazy(() => import('./pages/Messages'));
+const Thread = lazy(() => import('./pages/Thread'));
+const Notifications = lazy(() => import('./pages/Notifications'));
 
-import SellerDashboard from './pages/seller/SellerDashboard';
-import Inventory from './pages/seller/Inventory';
-import AddProduct from './pages/seller/AddProduct';
-import BulkImport from './pages/seller/BulkImport';
-import SellerOrders from './pages/seller/SellerOrders';
-import SellerAnalytics from './pages/seller/SellerAnalytics';
-import SellerAi from './pages/seller/SellerAi';
-import StoreSettingsPage from './pages/seller/StoreSettings';
+const SellerDashboard = lazy(() => import('./pages/seller/SellerDashboard'));
+const Inventory = lazy(() => import('./pages/seller/Inventory'));
+const AddProduct = lazy(() => import('./pages/seller/AddProduct'));
+const BulkImport = lazy(() => import('./pages/seller/BulkImport'));
+const SellerOrders = lazy(() => import('./pages/seller/SellerOrders'));
+const SellerAnalytics = lazy(() => import('./pages/seller/SellerAnalytics'));
+const SellerAi = lazy(() => import('./pages/seller/SellerAi'));
+const StoreSettingsPage = lazy(() => import('./pages/seller/StoreSettings'));
 
-import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminUsers from './pages/admin/AdminUsers';
-import AdminProducts from './pages/admin/AdminProducts';
-import AdminQueue from './pages/admin/AdminQueue';
-import AdminSupport from './pages/admin/AdminSupport';
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
+const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
+const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'));
+const AdminQueue = lazy(() => import('./pages/admin/AdminQueue'));
+const AdminSupport = lazy(() => import('./pages/admin/AdminSupport'));
+
+function SuspenseFallback() {
+  return <div style={{ padding: 24 }}><Loading /></div>;
+}
 
 /**
  * Is the visitor arriving from a verification link?
@@ -116,82 +123,74 @@ export default function App() {
 
   return (
     <AppShell>
-      <Routes>
-        {/* public */}
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={user ? <RedirectByRole /> : <Login />} />
-        <Route path="/register" element={user ? <RedirectByRole /> : <Register />} />
-        {/* Destination of the password-reset email link. Always public: the
-            token is the credential, and the person's session is exactly what
-            may be compromised. */}
-        <Route path="/reset-password" element={<ResetPassword />} />
-        {/* The verification gate.
-            A ?token= in the URL means the visitor is arriving from the link in
-            their email, and that MUST be honoured whatever the session says.
-            They routinely open it on a different device with no session at
-            all, and bouncing them to /login would throw the token away - the
-            link would appear broken through no fault of theirs. The page
-            redeems the token and signs them in itself.
-            Without a token the old rules apply: nothing to verify when signed
-            out, nothing to do here once verified. */}
-        <Route
-          path="/verify-email"
-          element={
-            hasVerificationToken() ? (
-              <VerifyEmail />
-            ) : !user ? (
-              <Navigate to="/login" replace />
-            ) : user.emailVerified ? (
-              <RedirectByRole />
-            ) : (
-              <VerifyEmail />
-            )
-          }
-        />
-        <Route path="/product/:id" element={<ProductDetail />} />
-        <Route path="/seller/:id" element={<SellerStorefront />} />
-        <Route path="/nearby" element={<Nearby />} />
-        <Route path="/search" element={<Search />} />
-        <Route path="/ai" element={<Ai />} />
-        <Route path="/cms/:slug" element={<CmsPage />} />
+      <Suspense fallback={<SuspenseFallback />}>
+        <Routes>
+          {/* public */}
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={user ? <RedirectByRole /> : <Login />} />
+          <Route path="/register" element={user ? <RedirectByRole /> : <Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route
+            path="/verify-email"
+            element={
+              hasVerificationToken() ? (
+                <VerifyEmail />
+              ) : !user ? (
+                <Navigate to="/login" replace />
+              ) : user.emailVerified ? (
+                <RedirectByRole />
+              ) : (
+                <VerifyEmail />
+              )
+            }
+          />
+          <Route path="/product/:id" element={<ProductDetail />} />
+          <Route path="/seller/:id" element={<SellerStorefront />} />
+          <Route path="/nearby" element={<Nearby />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/ai" element={<Ai />} />
+          <Route path="/cms/:slug" element={<CmsPage />} />
 
-        {/* buyer */}
-        <Route path="/buyer" element={<RequireRole role="buyer"><BuyerDashboard /></RequireRole>} />
-        <Route path="/buyer/orders" element={<RequireRole role="buyer"><Orders /></RequireRole>} />
-        <Route path="/buyer/saved" element={<RequireRole role="buyer"><Saved /></RequireRole>} />
-        <Route path="/buyer/addresses" element={<RequireRole role="buyer"><Addresses /></RequireRole>} />
-        <Route path="/buyer/refunds" element={<RequireRole role="buyer"><Refunds /></RequireRole>} />
-        <Route path="/buyer/support" element={<RequireRole role="buyer"><Support /></RequireRole>} />
-        <Route path="/buyer/settings" element={<RequireRole role="buyer"><SettingsPage /></RequireRole>} />
-        <Route path="/buyer/ai" element={<RequireRole role="buyer"><AiChat /></RequireRole>} />
-        {/* Guests may browse + hold an inquiry cart; the page itself
-            prompts sign-in only at checkout / messaging. */}
-        <Route path="/cart" element={<Cart />} />
+          {/* public cart — guest browsing, login deferred to checkout */}
+          <Route path="/cart" element={<Cart />} />
 
-        {/* seller */}
-        <Route path="/seller" element={<RequireRole role="seller"><SellerDashboard /></RequireRole>} />
-        <Route path="/seller/inventory" element={<RequireRole role="seller"><Inventory /></RequireRole>} />
-        <Route path="/seller/add-product" element={<RequireRole role="seller"><AddProduct /></RequireRole>} />
-        <Route path="/seller/bulk-import" element={<RequireRole role="seller"><BulkImport /></RequireRole>} />
-        <Route path="/seller/orders" element={<RequireRole role="seller"><SellerOrders /></RequireRole>} />
-        <Route path="/seller/analytics" element={<RequireRole role="seller"><SellerAnalytics /></RequireRole>} />
-        <Route path="/seller/ai" element={<RequireRole role="seller"><SellerAi /></RequireRole>} />
-        <Route path="/seller/store-settings" element={<RequireRole role="seller"><StoreSettingsPage /></RequireRole>} />
+          {/* buyer */}
+          <Route path="/buyer" element={<RequireRole role="buyer"><BuyerDashboard /></RequireRole>} />
+          <Route path="/buyer/orders" element={<RequireRole role="buyer"><Orders /></RequireRole>} />
+          <Route path="/buyer/saved" element={<RequireRole role="buyer"><Saved /></RequireRole>} />
+          <Route path="/buyer/addresses" element={<RequireRole role="buyer"><Addresses /></RequireRole>} />
+          <Route path="/buyer/payments" element={<RequireRole role="buyer"><Payments /></RequireRole>} />
+          <Route path="/buyer/refunds" element={<RequireRole role="buyer"><Refunds /></RequireRole>} />
+          <Route path="/buyer/support" element={<RequireRole role="buyer"><Support /></RequireRole>} />
+          <Route path="/buyer/settings" element={<RequireRole role="buyer"><SettingsPage /></RequireRole>} />
+          <Route path="/buyer/ai" element={<RequireRole role="buyer"><AiChat /></RequireRole>} />
 
-        {/* shared authenticated */}
-        <Route path="/messages" element={<RequireAuth><Messages /></RequireAuth>} />
-        <Route path="/messages/:id" element={<RequireAuth><Thread /></RequireAuth>} />
-        <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
+          {/* seller */}
+          <Route path="/seller" element={<RequireRole role="seller"><SellerDashboard /></RequireRole>} />
+          <Route path="/seller/inventory" element={<RequireRole role="seller"><Inventory /></RequireRole>} />
+          <Route path="/seller/add-product" element={<RequireRole role="seller"><AddProduct /></RequireRole>} />
+          <Route path="/seller/bulk-import" element={<RequireRole role="seller"><BulkImport /></RequireRole>} />
+          <Route path="/seller/orders" element={<RequireRole role="seller"><SellerOrders /></RequireRole>} />
+          <Route path="/seller/analytics" element={<RequireRole role="seller"><SellerAnalytics /></RequireRole>} />
+          <Route path="/seller/ai" element={<RequireRole role="seller"><SellerAi /></RequireRole>} />
+          <Route path="/seller/store-settings" element={<RequireRole role="seller"><StoreSettingsPage /></RequireRole>} />
 
-        {/* admin */}
-        <Route path="/admin" element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
-        <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsers /></RequireRole>} />
-        <Route path="/admin/products" element={<RequireRole role="admin"><AdminProducts /></RequireRole>} />
-        <Route path="/admin/queue" element={<RequireRole role="admin"><AdminQueue /></RequireRole>} />
-        <Route path="/admin/support" element={<RequireRole role="admin"><AdminSupport /></RequireRole>} />
+          {/* shared authenticated */}
+          <Route path="/messages" element={<RequireAuth><Messages /></RequireAuth>} />
+          <Route path="/messages/:id" element={<RequireAuth><Thread /></RequireAuth>} />
+          <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+          {/* admin */}
+          <Route path="/admin" element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
+          <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsers /></RequireRole>} />
+          <Route path="/admin/products" element={<RequireRole role="admin"><AdminProducts /></RequireRole>} />
+          <Route path="/admin/queue" element={<RequireRole role="admin"><AdminQueue /></RequireRole>} />
+          <Route path="/admin/support" element={<RequireRole role="admin"><AdminSupport /></RequireRole>} />
+
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     </AppShell>
   );
 }

@@ -73,16 +73,22 @@ export default function Messages() {
     }
   }, []);
 
-  // Refetch on filter change, and poll quietly so the list stays live.
+  // Initial load + filter change
   useEffect(() => { load(); }, [filter, load]);
 
+  // Live poll — 20s, paused when hidden
   useEffect(() => {
-    const t = setInterval(() => load({ quiet: true }), 10000);
-    return () => clearInterval(t);
+    const tick = () => { if (!document.hidden) load({ quiet: true }); };
+    const t = setInterval(tick, 20000);
+    const onVis = () => { if (!document.hidden) tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
   }, [load]);
 
-  // Debounce the search box.
+  // Debounce search — skip first render (filter effect already loaded)
+  const firstSearch = useRef(true);
   useEffect(() => {
+    if (firstSearch.current) { firstSearch.current = false; return; }
     const t = setTimeout(() => load({ quiet: true }), 280);
     return () => clearTimeout(t);
   }, [search, load]);
@@ -230,10 +236,7 @@ export default function Messages() {
 
       {!loading && !error && items.length > 0 && (
         <p className="muted mt-16" style={{ fontSize: 'var(--fs-xs)', textAlign: 'center' }}>
-          <span className="live-dot" style={{ marginRight: 6 }}><i /> Live</span>
-          <Inbox size={12} style={{ verticalAlign: -2 }} /> Showing {items.length} of {counts.all} conversation
-          {counts.all === 1 ? '' : 's'}
-          {counts.archived > 0 && ` · ${counts.archived} archived`}
+          <Inbox size={12} style={{ verticalAlign: -2 }} /> {filter !== 'all' ? `${FILTERS.find(f=>f.key===filter)?.label} · ` : ''}{items.length} conversation{items.length === 1 ? '' : 's'}
           {user?.role === 'buyer' && (
             <>
               {' · '}

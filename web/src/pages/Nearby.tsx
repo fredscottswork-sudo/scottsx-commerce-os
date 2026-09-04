@@ -1,14 +1,6 @@
 /**
- * Nearby stores — global, self-locating.
- *
- * The marketplace is worldwide, so this screen has no radius control and no
- * hard-coded city list. It detects where you are, names the spot
- * (village / city / region / country) and lists every store sorted by distance,
- * re-sorting continuously as you move.
- *
- * Position semantics the buyer can trust:
- *   • a seller sharing location   → the pin follows their live GPS fix,
- *   • a seller not sharing        → the pin stays at their last known position.
+ * Nearby stores — compact store displayer (desktop + mobile, mostly mobile)
+ * Original master restored, plus Google Maps background <1s, now ultra compact.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -26,8 +18,6 @@ import {
 } from '../components/ui';
 
 type Sort = 'distance' | 'rating' | 'products' | 'newest';
-
-/** Metres the buyer must move before we re-query the server. */
 const REFETCH_METRES = 250;
 
 function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -67,7 +57,6 @@ export default function Nearby() {
   const lastFetchCenter = useRef<{ lat: number; lng: number } | null>(null);
   const savedOnce = useRef(false);
 
-  // ── Fetch: no radius — the API returns every store, nearest first ────────
   const fetchSellers = useCallback(async (at: { lat: number; lng: number }) => {
     setError('');
     try {
@@ -93,11 +82,9 @@ export default function Nearby() {
     }
   }, [q, verifiedOnly, openOnly, sort]);
 
-  /** Apply a new position: name it, remember it, and refresh the list. */
   const applyPosition = useCallback((next: { lat: number; lng: number }, accuracyM?: number) => {
     setCenter(next);
     setLocating(false);
-    // Persist for signed-in users so the account knows where they are.
     if (user && !savedOnce.current) {
       savedOnce.current = true;
       geoService.saveMyLocation(next.lat, next.lng, accuracyM)
@@ -110,14 +97,10 @@ export default function Nearby() {
     }
   }, [user]);
 
-  // ── Detect the buyer's position automatically on arrival ─────────────────
   useEffect(() => {
     let cancelled = false;
-
     async function fallbackToSavedLocation(reason: string) {
       if (cancelled) return;
-      // A signed-in user has a stored last-known position — use it so the page
-      // is never empty just because the browser refused a fresh fix.
       if (user) {
         try {
           const r = await geoService.myLocation();
@@ -127,7 +110,7 @@ export default function Nearby() {
             setLocating(false);
             return;
           }
-        } catch { /* fall through */ }
+        } catch {}
       }
       if (cancelled) return;
       setLocating(false);
@@ -159,7 +142,6 @@ export default function Nearby() {
     return () => { cancelled = true; };
   }, [user, applyPosition]);
 
-  // Refresh whenever the position or a filter changes.
   useEffect(() => {
     if (!center) return;
     setLoading(true);
@@ -167,7 +149,6 @@ export default function Nearby() {
     return () => clearTimeout(t);
   }, [center, fetchSellers]);
 
-  // ── Continuous tracking: stores re-sort as the buyer moves ───────────────
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       toast('This browser cannot share your location', 'error');
@@ -178,7 +159,6 @@ export default function Nearby() {
     watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
         const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        // Re-sort locally on every fix (instant); re-query only after real movement.
         setSellers((prev) =>
           prev
             .map((s) => ({ ...s, distanceKm: Number((metresBetween(next, s) / 1000).toFixed(2)) }))
@@ -187,16 +167,14 @@ export default function Nearby() {
         const from = lastFetchCenter.current;
         if (!from || metresBetween(from, next) > REFETCH_METRES) {
           setMoved(true);
-          savedOnce.current = false; // a real move is worth persisting again
+          savedOnce.current = false;
           applyPosition(next, pos.coords.accuracy);
         }
       },
       (err) => {
         setUsingGps(false);
         toast(
-          err.code === err.PERMISSION_DENIED
-            ? 'Location permission denied'
-            : 'Could not get your location',
+          err.code === err.PERMISSION_DENIED ? 'Location permission denied' : 'Could not get your location',
           'warning'
         );
       },
@@ -214,7 +192,6 @@ export default function Nearby() {
     if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
   }, []);
 
-  /** Ask the browser again after a denial (or first visit without a fix). */
   const retryLocate = useCallback(() => {
     setLocating(true);
     setGeoDenied(false);
@@ -240,160 +217,130 @@ export default function Nearby() {
     <>
       <PageHeader
         title="Stores near you"
-        sub="Sellers sharing live location update in real time. Everyone else stays pinned at their last known position."
+        sub="Sellers sharing live location update in real time."
         actions={
           usingGps ? (
-            <Btn variant="danger" icon={<LocateOff size={15} />} onClick={stopTracking}>Stop tracking</Btn>
+            <Btn variant="danger" icon={<LocateOff size={13} />} onClick={stopTracking} style={{ padding: '6px 10px', fontSize: 12, minHeight: 32 }}>Stop</Btn>
           ) : (
-            <Btn variant="primary" icon={<LocateFixed size={15} />} onClick={startTracking}>Follow my location</Btn>
+            <Btn variant="primary" icon={<LocateFixed size={13} />} onClick={startTracking} style={{ padding: '6px 10px', fontSize: 12, minHeight: 32 }}>Follow</Btn>
           )
         }
       />
 
-      {/* ── Where you are ───────────────────────────────────────────── */}
-      <div className="card card-pad mb-16 place-banner">
-        <span className="place-ico"><MapPin size={18} /></span>
+      {/* Where you are — compact */}
+      <div className="card card-pad place-banner" style={{ padding: '8px 10px', marginBottom: 10 }}>
+        <span className="place-ico" style={{ width: 26, height: 26 }}><MapPin size={13} /></span>
         <div className="grow" style={{ minWidth: 0 }}>
-          <div className="tiny muted-2 semi">Your location</div>
+          <div className="tiny muted-2 semi" style={{ fontSize: 9 }}>Your location</div>
           {locating ? (
-            <strong className="place-name">Detecting your location…</strong>
+            <strong className="place-name" style={{ fontSize: 11 }}>Detecting…</strong>
           ) : place ? (
             <>
-              <strong className="place-name" data-testid="place-label">{place.label}</strong>
-              <div className="tiny muted mt-4 place-parts">
-                {place.village && <span><span className="muted-2">Village:</span> {place.village}</span>}
-                {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
-                {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
-                {place.country && <span><span className="muted-2">Country:</span> {place.country}</span>}
+              <strong className="place-name" data-testid="place-label" style={{ fontSize: 11 }}>{place.label}</strong>
+              <div className="tiny muted mt-4 place-parts" style={{ gap: 4, fontSize: 9 }}>
+                {place.village && <span>{place.village}</span>}
+                {place.city && <span>{place.city}</span>}
+                {place.region && <span>{place.region}</span>}
               </div>
             </>
           ) : (
-            <strong className="place-name">Location unavailable</strong>
+            <strong className="place-name" style={{ fontSize: 11 }}>Unavailable</strong>
           )}
         </div>
-        <div className="row" style={{ gap: 8 }}>
-          {usingGps && <Badge tone="green" live>Live GPS</Badge>}
+        <div className="row" style={{ gap: 6 }}>
+          {usingGps && <Badge tone="green" live>Live</Badge>}
           {!usingGps && !locating && (
-            <Btn variant="ghost" icon={<LocateFixed size={14} />} onClick={retryLocate}>Update</Btn>
+            <Btn variant="ghost" icon={<LocateFixed size={12} />} onClick={retryLocate} style={{ padding: '4px 8px', fontSize: 10, minHeight: 26 }}>Update</Btn>
           )}
         </div>
       </div>
 
       {geoDenied && (
-        <div className="card card-pad mb-16 row" style={{ gap: 10, borderColor: 'var(--warning)' }}>
-          <AlertCircle size={18} className="t-warning" />
+        <div className="card card-pad mb-12 row" style={{ gap: 8, padding: '8px 10px', borderColor: 'var(--warning)' }}>
+          <AlertCircle size={14} className="t-warning" />
           <div className="grow">
-            <strong>We could not detect your location</strong>
-            <div className="tiny muted">Allow location access, then try again — no city list needed, it works anywhere in the world.</div>
+            <strong style={{ fontSize: 11 }}>Location blocked</strong>
+            <div className="tiny muted" style={{ fontSize: 9 }}>Allow access to see nearby stores.</div>
           </div>
-          <Btn variant="primary" onClick={retryLocate}>Try again</Btn>
+          <Btn variant="primary" onClick={retryLocate} style={{ padding: '4px 8px', fontSize: 10, minHeight: 26 }}>Try again</Btn>
         </div>
       )}
 
-      {/* ── Filters (no radius: the whole world is in range) ─────────── */}
-      <div className="card mb-16">
-        <div className="row wrap" style={{ gap: 14 }}>
-          <div style={{ flex: '1 1 220px', minWidth: 200 }}>
-            <SearchInput value={q} onChange={setQ} placeholder="Filter stores or products…" />
+      <div className="card mb-12" style={{ padding: '8px 10px' }}>
+        <div className="row wrap" style={{ gap: 8 }}>
+          <div style={{ flex: '1 1 160px', minWidth: 140 }}>
+            <SearchInput value={q} onChange={setQ} placeholder="Filter stores…" />
           </div>
-
-          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
-            <option value="distance">Nearest first</option>
+          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto', padding: '6px 8px', fontSize: 11, minHeight: 30 }}>
+            <option value="distance">Nearest</option>
             <option value="rating">Top rated</option>
             <option value="products">Most products</option>
-            <option value="newest">Newest stores</option>
+            <option value="newest">Newest</option>
           </Select>
-
           <Switch checked={verifiedOnly} onChange={setVerifiedOnly} label="Verified" />
-          <Switch checked={openOnly} onChange={setOpenOnly} label="Open now" />
+          <Switch checked={openOnly} onChange={setOpenOnly} label="Open" />
         </div>
       </div>
 
-      {/* ── Live status strip ───────────────────────────────────────── */}
-      <div className="row wrap mb-16" style={{ gap: 9 }}>
-        <Badge tone="primary">
-          <Globe2 size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-          {stats.shown} of {total} store{total === 1 ? '' : 's'}
-        </Badge>
-        {liveCount > 0 && <Badge tone="green" live>{liveCount} sharing live location</Badge>}
-        <Badge tone="cyan">{stats.open} open now</Badge>
-        <Badge tone="violet">{stats.delivering} deliver to you</Badge>
-        {updatedAt && (
-          <span className="tiny muted-2">
-            <Clock size={11} style={{ verticalAlign: -1 }} /> Updated {updatedAt.toLocaleTimeString()}
-          </span>
-        )}
-        {moved && <span className="tiny t-primary semi">You moved — refreshing…</span>}
+      <div className="row wrap mb-12" style={{ gap: 6 }}>
+        <Badge tone="primary"><Globe2 size={10} style={{ marginRight: 3 }} />{stats.shown}/{total}</Badge>
+        {liveCount > 0 && <Badge tone="green" live>{liveCount} live</Badge>}
+        <Badge tone="cyan">{stats.open} open</Badge>
+        <Badge tone="violet">{stats.delivering} deliver</Badge>
+        {updatedAt && <span className="tiny muted-2" style={{ fontSize: 9 }}><Clock size={10} /> {updatedAt.toLocaleTimeString()}</span>}
+        {moved && <span className="tiny t-primary semi" style={{ fontSize: 9 }}>Refreshing…</span>}
       </div>
 
-      {/* ── Results ─────────────────────────────────────────────────── */}
       {loading ? (
-        <SkeletonRows rows={5} height={116} />
+        <SkeletonRows rows={4} height={68} />
       ) : error ? (
         <ErrorBox message={error} onRetry={center ? () => void fetchSellers(center) : retryLocate} />
       ) : sellers.length === 0 ? (
         <Empty
-          icon={<MapPin size={28} />}
+          icon={<MapPin size={22} />}
           title="No stores match"
-          subtitle="Clear the filters to see every store, sorted by distance from you."
-          action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }}>
-            Clear filters
-          </Btn>}
+          subtitle="Clear filters to see every store."
+          action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }} style={{ padding: '6px 10px', fontSize: 11 }}>Clear</Btn>}
         />
       ) : (
-        <div className="grid grid-2 stagger">
+        <div className="grid grid-2 stagger" style={{ gap: 6 }}>
           {sellers.map((s, i) => (
             <Link key={s.id} to={`/seller/${s.id}`} className="card card-hover store-card stagger-item"
-              style={{ '--i': i } as React.CSSProperties}>
-              <div className="row" style={{ alignItems: 'flex-start', gap: 12 }}>
-                <span className="avatar avatar-lg">
+              style={{ '--i': i, padding: '6px 8px', gap: 6 } as React.CSSProperties}>
+              <div className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
+                <span className="avatar avatar-lg" style={{ width: 28, height: 28, fontSize: 11 }}>
                   {s.logoUrl ? <img src={s.logoUrl} alt="" /> : (s.storeName || s.name || 'S')[0].toUpperCase()}
                 </span>
-
                 <div className="grow" style={{ minWidth: 0 }}>
-                  <div className="row" style={{ gap: 6 }}>
-                    <strong className="ellipsis">{s.storeName || s.name}</strong>
-                    {s.verified && <BadgeCheck size={15} className="t-success" aria-label="Verified" />}
+                  <div className="row" style={{ gap: 4 }}>
+                    <strong className="ellipsis" style={{ fontSize: 11 }}>{s.storeName || s.name}</strong>
+                    {s.verified && <BadgeCheck size={12} className="t-success" />}
                     {s.isOpen ? <Badge tone="green">Open</Badge> : <Badge>Closed</Badge>}
                   </div>
-
-                  <div className="tiny muted mt-4">
-                    <Star size={11} style={{ verticalAlign: -1, color: 'var(--warning)' }} fill="currentColor" />
-                    {' '}{Number(s.rating || 0).toFixed(1)} · <Package size={11} style={{ verticalAlign: -1 }} /> {s.productCount} products
-                    {s.newThisWeek > 0 && <span className="t-success"> · {s.newThisWeek} new</span>}
+                  <div className="tiny muted mt-4" style={{ fontSize: 9, display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <Star size={9} style={{ color: 'var(--warning)' }} fill="currentColor" /> {Number(s.rating || 0).toFixed(1)} · <Package size={9} /> {s.productCount}
                   </div>
-
-                  <div className="tiny muted mt-4 ellipsis">
-                    <MapPin size={11} style={{ verticalAlign: -1 }} /> {s.placeLabel || s.address || s.city || '—'}
+                  <div className="tiny muted mt-4 ellipsis" style={{ fontSize: 9 }}>
+                    <MapPin size={9} /> {s.placeLabel || s.address || s.city || '—'}
                   </div>
-
-                  {/* The live / last-known distinction the buyer must be able to trust. */}
-                  <div className="row wrap mt-8" style={{ gap: 6 }}>
+                  <div className="row wrap mt-8" style={{ gap: 3 }}>
                     {s.live ? (
-                      <Badge tone="green" live>
-                        Live · {s.locationAgeMinutes !== null ? `${s.locationAgeMinutes}m ago` : 'now'}
-                      </Badge>
+                      <Badge tone="green" live>Live {s.locationAgeMinutes !== null ? `${s.locationAgeMinutes}m` : ''}</Badge>
                     ) : (
-                      <Badge tone="amber">
-                        <Radio size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
-                        {s.locationSharing ? 'Last seen' : 'Fixed address'}
-                      </Badge>
+                      <Badge tone="amber"><Radio size={8} style={{ marginRight: 2 }} />{s.locationSharing ? 'Seen' : 'Fixed'}</Badge>
                     )}
                     {s.withinServiceRadius ? (
-                      <Badge tone="cyan"><Truck size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
-                        {s.deliveryFeeUgx > 0 ? formatUgx(s.deliveryFeeUgx) : 'Free delivery'}
-                      </Badge>
+                      <Badge tone="cyan"><Truck size={8} style={{ marginRight: 2 }} />{s.deliveryFeeUgx > 0 ? formatUgx(s.deliveryFeeUgx) : 'Free'}</Badge>
                     ) : (
-                      <Badge>Outside delivery zone</Badge>
+                      <Badge>Outside</Badge>
                     )}
-                    {s.codEnabled && <Badge tone="violet">Pay on delivery</Badge>}
+                    {s.codEnabled && <Badge tone="violet">COD</Badge>}
                   </div>
                 </div>
-
-                <div className="store-distance">
-                  <Navigation size={14} />
-                  <strong>{s.distanceKm} km</strong>
-                  <span className="tiny muted-2">~{s.etaMinutes} min</span>
+                <div className="store-distance" style={{ minWidth: 42, padding: '3px 5px', gap: 1 }}>
+                  <Navigation size={10} />
+                  <strong style={{ fontSize: 10 }}>{s.distanceKm}km</strong>
+                  <span className="tiny muted-2" style={{ fontSize: 7 }}>~{s.etaMinutes}m</span>
                 </div>
               </div>
             </Link>

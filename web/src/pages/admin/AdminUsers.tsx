@@ -109,6 +109,7 @@ export default function AdminUsers() {
           <SearchInput value={search} onChange={setSearch} placeholder="Search name, email or phone…" />
         </div>
         <Select
+          aria-label="Filter by role"
           value={role}
           style={{ width: 'auto' }}
           onChange={(e) => {

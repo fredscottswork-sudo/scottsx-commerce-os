@@ -1,23 +1,29 @@
 /**
  * ScottsTechX — /reset-password
- *
- * The destination of the link in the password-reset email: ?token= is a
- * single-use, 30-minute bearer credential. This page is the ONLY thing that
- * redeems it — no session, no other proof of ownership is involved, because
- * the token itself IS the proof (32 random bytes that only reached the
- * person who can read that inbox).
- *
- * The token is stripped from the address bar the moment the page loads, so
- * it never sits in history and is never re-sent on refresh.
+ * Extraordinary GitHub/Alibaba style, STX mark only
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { KeyRound, LogIn } from 'lucide-react';
+import { KeyRound, LogIn, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { authService } from '../api/services';
 import { ApiError } from '../api/client';
-import { Btn, Field, Input } from '../components/ui';
-import { BrandLockup } from '../components/BrandLogo';
+import { Btn } from '../components/ui';
+import { BrandMark } from '../components/BrandLogo';
 import { useSeo } from '../hooks/useSeo';
+
+function getStrength(pw: string) {
+  if (!pw) return { score: 0, label: '', color: '' };
+  let s = 0;
+  if (pw.length >= 6) s++;
+  if (pw.length >= 10) s++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
+  if (/\d/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  if (s <= 2) return { score: 1, label: 'Weak', color: '#ef4444' };
+  if (s <= 3) return { score: 2, label: 'Fair', color: '#f59e0b' };
+  if (s <= 4) return { score: 3, label: 'Good', color: '#10b981' };
+  return { score: 4, label: 'Strong', color: '#059669' };
+}
 
 export default function ResetPassword() {
   useSeo({ title: 'Reset your password', noIndex: true });
@@ -28,9 +34,13 @@ export default function ResetPassword() {
 
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+
+  const strength = useMemo(() => getStrength(password), [password]);
 
   const stripToken = useCallback(() => {
     if (searchParams.toString()) setSearchParams({}, { replace: true });
@@ -63,85 +73,129 @@ export default function ResetPassword() {
   );
 
   return (
-    <div className="auth-wrap" data-testid="reset-password-page">
-      <div className="auth-brand">
-        <BrandLockup width={300} className="auth-lockup" />
-        <h1 className="auth-tagline">Set a new password.</h1>
-        <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 'min(420px, 100%)' }}>
-          The link in your email is one-time and expires in 30 minutes, so finish this now.
-        </p>
-      </div>
+    <div className="auth-form auth-form--solo auth-form--extra">
+      <div className="auth-card auth-card--extra auth-card--github auth-card--better" style={{ width: '100%', maxWidth: 380 }}>
+        <div className="auth-card-glow" aria-hidden="true" />
+        <div className="auth-card-inner">
+          <div className="auth-card-head">
+            <div className="auth-logo-wrap">
+              <BrandMark size={52} className="auth-logo-top auth-logo-top--mark" />
+            </div>
+            <h2>{done ? 'Password updated' : token ? 'Set new password' : 'No reset link'}</h2>
+            <p className="muted">
+              {done ? 'Your new password is active' : token ? 'At least 6 characters, unique to this site' : 'This page needs the email link'}
+            </p>
+          </div>
 
-      <div className="auth-form">
-        <div className="auth-card">
           {done ? (
-            <div data-testid="reset-success">
-              <div className="verify-sent-icon verify-done-icon" aria-hidden="true">
-                <KeyRound size={30} />
+            <div className="auth-success">
+              <div className="auth-success-icon auth-success-icon--green">
+                <CheckCircle2 size={28} />
               </div>
-              <h2 style={{ marginTop: 12 }}>Password updated</h2>
-              <p className="muted">Your new password is in effect. Sign in with it.</p>
-              <Btn
-                variant="primary"
-                className="btn-block btn-lg mt-8"
-                onClick={() => navigate('/login', { replace: true })}
-                data-testid="reset-go-login"
-              >
-                <LogIn size={16} />
-                <span>Sign in</span>
+              <p className="auth-success-text">Your new password is in effect. Sign in with it now.</p>
+              <Btn variant="primary" className="btn-block auth-submit" onClick={() => navigate('/login', { replace: true })}>
+                <span className="auth-btn-content"><LogIn size={16} /> Sign in</span>
               </Btn>
+              <div className="auth-trust" style={{ marginTop: 16 }}>
+                <ShieldCheck size={13} /> Secured • Encrypted
+              </div>
             </div>
           ) : token ? (
-            <form onSubmit={submit}>
-              <div className="verify-sent-icon" aria-hidden="true">
-                <KeyRound size={30} />
+            <form onSubmit={submit} className="auth-better-form">
+              <div className="auth-icon-badge">
+                <KeyRound size={20} />
               </div>
-              <h2 style={{ marginTop: 12 }}>Choose a new password</h2>
-              <p className="muted">At least 6 characters. Something you have not used here before.</p>
-              <Field label="New password">
-                <Input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </Field>
-              <Field label="Confirm new password">
-                <Input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </Field>
-              {error && <div className="field-error mb-8" data-testid="reset-error">{error}</div>}
-              <Btn type="submit" variant="primary" className="btn-block btn-lg" disabled={busy}>
-                {busy ? 'Updating…' : 'Update password'}
+
+              <div className="auth-field">
+                <label className="auth-label" htmlFor="new-pass">New password</label>
+                <div className="auth-input-wrap">
+                  <Lock size={16} className="auth-input-icon" />
+                  <input
+                    id="new-pass"
+                    className="auth-input"
+                    type={showPass ? 'text' : 'password'}
+                    required
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                  <button type="button" className="auth-pass-toggle" onClick={() => setShowPass((v) => !v)} aria-label="Toggle password">
+                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                {password && (
+                  <div className="auth-strength">
+                    <div className="auth-strength-bar">
+                      <span style={{ width: `${(strength.score / 4) * 100}%`, background: strength.color }} />
+                    </div>
+                    <span className="auth-strength-label" style={{ color: strength.color }}>{strength.label}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="auth-field">
+                <label className="auth-label" htmlFor="confirm-pass">Confirm new password</label>
+                <div className="auth-input-wrap">
+                  <Lock size={16} className="auth-input-icon" />
+                  <input
+                    id="confirm-pass"
+                    className="auth-input"
+                    type={showConfirm ? 'text' : 'password'}
+                    required
+                    autoComplete="new-password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                  <button type="button" className="auth-pass-toggle" onClick={() => setShowConfirm((v) => !v)} aria-label="Toggle confirm">
+                    {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <div className="auth-error">
+                  <AlertCircle size={14} />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <Btn type="submit" variant="primary" className="btn-block auth-submit" disabled={busy}>
+                {busy ? (
+                  <span className="auth-btn-loading"><span className="spinner" /> Updating…</span>
+                ) : (
+                  <span className="auth-btn-content">Update password <ArrowRight size={16} /></span>
+                )}
               </Btn>
+
+              <div className="auth-terms">
+                <ShieldCheck size={12} /> One-time link • Expires in 30 minutes • Encrypted
+              </div>
             </form>
           ) : (
-            <div data-testid="reset-no-token">
-              <div className="verify-sent-icon" aria-hidden="true">
-                <KeyRound size={30} />
+            <div className="auth-success">
+              <div className="auth-success-icon">
+                <KeyRound size={24} />
               </div>
-              <h2 style={{ marginTop: 12 }}>No reset link found</h2>
-              <p className="muted">
-                This page needs the link from the reset email — it does not work on its own.
-              </p>
-              <Btn
-                variant="primary"
-                className="btn-block btn-lg mt-8"
-                onClick={() => navigate('/login', { replace: true })}
-              >
-                <span>Back to sign in</span>
+              <p className="auth-success-text">This page needs the link from the reset email — it does not work on its own.</p>
+              <Btn variant="primary" className="btn-block auth-submit" onClick={() => navigate('/login', { replace: true })}>
+                <span className="auth-btn-content">Back to sign in</span>
               </Btn>
-              <p className="muted mt-16" style={{ textAlign: 'center', fontSize: 13 }}>
-                Lost the email? Request a new link from <Link to="/login">sign in</Link>.
+              <p className="auth-foot-text" style={{ marginTop: 12 }}>
+                Lost the email? Request a new link from <Link to="/forgot-password" className="auth-link">forgot password</Link>.
               </p>
+            </div>
+          )}
+
+          {!done && token && (
+            <div className="auth-extra-foot">
+              <p className="auth-foot-text">
+                Remembered? <Link to="/login" className="auth-link">Sign in</Link>
+              </p>
+              <div className="auth-trust">
+                <ShieldCheck size={13} /> Secured & encrypted
+              </div>
             </div>
           )}
         </div>

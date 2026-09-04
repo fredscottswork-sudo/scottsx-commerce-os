@@ -9,9 +9,8 @@ import { formatUgx } from '../../api/types';
 import { useCart } from '../../store/CartContext';
 import { useToast } from '../../store/ToastContext';
 import { useAuth } from '../../store/AuthContext';
-import { PRODUCT_IMAGE_FALLBACK } from '../../components/ProductCard';
 import {
-  Btn, Empty, Modal, PageHeader, ConfirmModal, SkeletonRows,
+  Btn, Empty, ErrorBox, Field, Input, Select, TextArea, Modal, PageHeader, ConfirmModal, SkeletonRows,
 } from '../../components/ui';
 
 /**
@@ -23,7 +22,7 @@ import {
  * inquiry or open a conversation.
  */
 export default function Cart() {
-  const { cart, loading, setQty, remove, clear, refresh } = useCart();
+  const { cart, loading, loadError, setQty, remove, clear, refresh } = useCart();
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -49,51 +48,22 @@ export default function Cart() {
   const unavailable = cart.items.filter((i) => i.status !== 'approved' || i.stockQuantity < i.quantity);
 
   const changeQty = async (productId: string, qty: number) => {
+    if (qty <= 0) {
+      setBusyId(productId);
+      await remove(productId);
+      setBusyId('');
+      return;
+    }
     setBusyId(productId);
     await setQty(productId, qty);
     setBusyId('');
   };
 
-  const openChat = async (sellerId: string, _sellerName: string) => {
-    if (!isBuyer) {
-      toast('Sign in to chat with sellers', 'warning');
-      navigate('/login', { state: { from: '/cart' } });
-      return;
-    }
-    try {
-      const r = await chatService.open(sellerId);
-      navigate(`/messages/${r.conversation.id}`);
-    } catch (e: any) {
-      toast(e?.message || 'Could not open chat', 'error');
-    }
-  };
+  const isGuest = !user || user.role !== 'buyer';
 
-  /** Message every seller group with a short inquiry so the conversation starts. */
-  const messageAllSellers = async () => {
-    if (!isBuyer) { openChat('', ''); return; }
-    setSending(true);
-    try {
-      let first: string | null = null;
-      for (const [sellerId, group] of bySeller) {
-        const r = await chatService.open(sellerId);
-        if (!first) first = r.conversation.id;
-        const lines = group.items
-          .map((i) => `• ${i.title} × ${i.quantity} — ${formatUgx(i.lineTotalMinor)}`)
-          .join('\n');
-        await chatService.send(r.conversation.id, `Hi! I'm interested in:\n${lines}\nCan we discuss the price and delivery?`);
-      }
-      toast('Inquiry sent to every seller', 'success');
-      navigate(first ? `/messages/${first}` : '/messages');
-    } catch (e: any) {
-      toast(e?.message || 'Could not message all sellers', 'error');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const sendInquiry = async () => {
-    if (!isBuyer) {
-      toast('Sign in to send an inquiry', 'warning');
+  const placeOrder = async () => {
+    if (isGuest) {
+      toast('Please sign in to place your order — your cart is saved', 'warning');
       navigate('/login', { state: { from: '/cart' } });
       return;
     }
@@ -120,6 +90,18 @@ export default function Cart() {
       <>
         <PageHeader title="Your inquiry cart" />
         <SkeletonRows rows={4} height={82} />
+      </>
+    );
+  }
+
+  // A failed load must never masquerade as an empty cart: the items are still
+  // on the server, and telling the buyer otherwise invites them to re-add
+  // everything (or abandon the purchase).
+  if (loadError && cart.items.length === 0 && !placed) {
+    return (
+      <>
+        <PageHeader title="Your cart" />
+        <ErrorBox message={`${loadError} — your items are safe, this device just could not reach the server.`} onRetry={() => { void refresh(); }} />
       </>
     );
   }
@@ -201,13 +183,13 @@ export default function Cart() {
                   return (
                     <div key={it.productId} className={`cart-line ${bad ? 'cart-line-bad' : ''}`}>
                       <Link to={`/product/${it.productId}`}>
-                        <img
-                          src={it.imageUrl || PRODUCT_IMAGE_FALLBACK}
-                          alt={it.title}
-                          className="cart-thumb"
-                          loading="lazy"
-                          onError={(e) => { e.currentTarget.src = PRODUCT_IMAGE_FALLBACK; }}
-                        />
+                        {it.imageUrl ? (
+                          <img src={it.imageUrl} alt={it.title} className="cart-thumb" loading="lazy" />
+                        ) : (
+                          <span className="cart-thumb center" style={{ fontWeight: 800, background: "var(--surface-3)", color: "var(--text-3)" }}>
+                            {it.title?.[0]?.toUpperCase() || "•"}
+                          </span>
+                        )}
                       </Link>
 
                       <div className="grow" style={{ minWidth: 0 }}>
@@ -250,7 +232,7 @@ export default function Cart() {
           ))}
         </div>
 
-        {/* ── Next steps — messaging first ────────────────────────────── */}
+        {/* ── Summary / checkout — guest sees login prompt, buyer sees full form */}
         <aside className="card checkout-summary">
           <h3 className="card-title mb-12">Next steps</h3>
 
@@ -259,30 +241,62 @@ export default function Cart() {
           <div className="sum-row"><span className="muted">Delivery</span><span className="tiny muted">Agree it in chat</span></div>
           <div className="sum-divider" />
 
-          <div className="col mt-16">
-            {isBuyer ? (
-              <>
-                <Btn variant="primary" size="lg" className="w-full" loading={sending}
-                  disabled={unavailable.length > 0} onClick={() => void messageAllSellers()}>
-                  <MessageCircle size={17} /> Message all sellers
-                </Btn>
-                <Btn size="lg" className="w-full" loading={sending}
-                  disabled={unavailable.length > 0} onClick={() => void sendInquiry()}>
-                  <Send size={16} /> Send inquiry
-                </Btn>
-              </>
-            ) : (
-              <Btn variant="primary" size="lg" className="w-full" onClick={() => navigate('/login', { state: { from: '/cart' } })}>
-                <LogIn size={17} /> Sign in to send an inquiry
+          {isGuest ? (
+            <div className="col mt-16">
+              <div className="card" style={{ background: 'var(--primary-soft)', borderColor: 'var(--primary)', padding: 12 }}>
+                <strong>Sign in to checkout</strong>
+                <p className="tiny muted mt-4">Your cart is saved on this device. Create an account or sign in to place your order and track delivery.</p>
+              </div>
+              <Btn variant="primary" size="lg" className="w-full mt-12" onClick={() => navigate('/login', { state: { from: '/cart' } })}>
+                Sign in to checkout · {formatUgx(cart.subtotalMinor)}
               </Btn>
-            )}
-          </div>
+              <Btn size="lg" className="w-full" onClick={() => navigate('/register')}>Create account</Btn>
+              <ul className="trust-list">
+                <li><ShieldCheck size={14} /> Buyer protection on every order</li>
+                <li><Truck size={14} /> Pay on delivery — no card needed</li>
+                <li><CheckCircle2 size={14} /> Sellers are notified instantly</li>
+              </ul>
+            </div>
+          ) : (
+            <>
+              <div className="col mt-16">
+                {addresses.length > 0 ? (
+                  <Field label="Deliver to">
+                    <Select value={addressId} onChange={(e) => setAddressId(e.target.value)}>
+                      {addresses.map((a) => (
+                        <option key={a.id} value={a.id}>{a.label} — {a.line1}, {a.city}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                ) : (
+                  <div className="tiny muted">
+                    <MapPin size={13} style={{ verticalAlign: -2 }} /> No saved address.{' '}
+                    <Link to="/buyer/addresses">Add one</Link> so sellers know where to deliver.
+                  </div>
+                )}
 
-          <ul className="trust-list">
-            <li><MessageCircle size={14} /> Chat directly with every seller</li>
-            <li><ShieldCheck size={14} /> Buyer protection on every deal</li>
-            <li><Store size={14} /> Sellers are notified instantly</li>
-          </ul>
+                <Field label="Phone for delivery" hint="The seller calls this number to arrange handover.">
+                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
+                </Field>
+
+                <Field label="Note for the seller (optional)">
+                  <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. call when you reach the gate" />
+                </Field>
+              </div>
+
+              <Btn variant="primary" size="lg" className="w-full mt-12" loading={placing}
+                disabled={unavailable.length > 0} onClick={placeOrder}>
+                Place order · {formatUgx(cart.subtotalMinor)}
+              </Btn>
+
+              <ul className="trust-list">
+                <li><ShieldCheck size={14} /> Buyer protection on every order</li>
+                <li><Truck size={14} /> Pay on delivery — no card needed</li>
+                <li><CheckCircle2 size={14} /> Sellers are notified instantly</li>
+              </ul>
+            </>
+          )}
         </aside>
       </div>
 

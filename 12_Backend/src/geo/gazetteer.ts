@@ -148,7 +148,7 @@ export interface ReverseResult {
   label: string;
   /** Short two-part form for dense UI: "Kabalagala, Central Region". */
   shortLabel: string;
-  source: 'offline-gazetteer';
+  source: 'offline-gazetteer' | 'google';
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {

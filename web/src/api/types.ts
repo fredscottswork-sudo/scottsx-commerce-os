@@ -18,8 +18,6 @@ export interface Product {
   currency: string;
   stockQuantity: number;
   imageUrl: string;
-  /** Full photo gallery in sort order (first slot = main image). */
-  mediaUrls?: string[];
   category: string;
   brand: string;
   seller: Seller;
@@ -178,7 +176,7 @@ export interface NearbySeller {
   placeLabel: string;
 }
 
-/** Offline reverse-geocoding result: where a coordinate actually is. */
+/** Reverse-geocoding result: where a coordinate is (Google Maps in background) */
 export interface Place {
   village: string | null;
   city: string | null;
@@ -190,7 +188,7 @@ export interface Place {
   label: string;
   /** "Kabalagala, Central Region" */
   shortLabel: string;
-  source: 'offline-gazetteer';
+  source: 'offline-gazetteer' | 'google';
 }
 
 export interface ChatParty {
@@ -269,6 +267,8 @@ export interface QuickReply {
 export interface Order {
   id: string;
   sellerId?: string;
+  buyerId?: string;
+  productId?: string;
   title: string;
   amount: number;
   quantity: number;
@@ -277,10 +277,6 @@ export interface Order {
   imageUrl?: string;
   storeName?: string;
   buyerName?: string;
-  productId?: string;
-  deliveryAddress?: string;
-  deliveryPhone?: string;
-  deliveryNote?: string;
 }
 
 export interface Address {
