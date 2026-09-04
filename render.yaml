@@ -156,6 +156,10 @@ services:
         sync: false
       - key: NVIDIA_VISION_MODEL
         sync: false
+      - key: NVIDIA_ENABLE_THINKING
+        sync: false
+      - key: NVIDIA_TIMEOUT_MS
+        sync: false
 
       # Public origin of THIS API if it differs from the request host (custom
       # domain). Used to build absolute photo URLs for Roboflow.

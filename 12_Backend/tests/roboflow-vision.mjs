@@ -33,24 +33,47 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures++;
 };
 
-/** NVIDIA NIM stand-in: returns an OpenAI-style chat completion. For vision
- *  requests the caption is request-aware; for chat requests (no image part)
- *  it answers as a real assistant so the chat path can be tested with NVIDIA
- *  as the only provider. */
+/** NVIDIA NIM stand-in: GET /v1/models (the key/model check) and POST
+ *  /v1/chat/completions — non-streaming for chat/vision, SSE when the probe
+ *  requests stream:true. Captions are request-aware; chat answers as a real
+ *  assistant so the chat path is testable with NVIDIA as the only provider. */
 let nvidiaHits = 0;
+let nvidiaVisionHits = 0;
+let nvidiaThinkingHits = 0;
+let lastNvidiaBody = null;
 const nvidiaStub = http.createServer((req, res) => {
+  const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+  if (req.method === 'GET' && url.pathname.endsWith('/models')) {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        data: [
+          { id: 'nvidia/nemotron-3-ultra-550b-a55b' },
+          { id: 'moonshotai/kimi-k3' },
+          { id: 'moonshotai/kimi-k2-instruct' },
+          { id: 'meta/llama-3.3-70b-instruct' },
+        ],
+      })
+    );
+    return;
+  }
   let body = '';
   req.on('data', (c) => (body += c));
   req.on('end', () => {
     nvidiaHits++;
     let imgUrl = '';
     let prompt = '';
+    let stream = false;
     try {
       const p = JSON.parse(body || '{}');
+      lastNvidiaBody = p;
+      stream = Boolean(p?.stream);
       prompt = String(p?.messages?.[p.messages?.length - 1]?.content ?? '');
       const last = p?.messages?.[p.messages?.length - 1]?.content;
       const parts = Array.isArray(last) ? last : [];
       imgUrl = String(parts.find?.((c) => c?.type === 'image_url')?.image_url?.url ?? '');
+      if (imgUrl) nvidiaVisionHits++;
+      if (p?.chat_template_kwargs?.enable_thinking === true) nvidiaThinkingHits++;
     } catch { /* ignore */ }
     let reply = `NVIDIA says: the catalogue has items matching "${prompt.slice(0, 60)}".`;
     if (imgUrl) {
@@ -58,8 +81,14 @@ const nvidiaStub = http.createServer((req, res) => {
       else if (/approved-headphones|wrapped-approved/.test(imgUrl)) reply = 'AirSound Pro Headphones';
       else reply = 'vision caption test';
     }
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ choices: [{ message: { content: reply } }] }));
+    res.writeHead(200, { 'content-type': stream ? 'text/event-stream' : 'application/json' });
+    if (stream) {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else {
+      res.end(JSON.stringify({ choices: [{ message: { content: reply } }] }));
+    }
   });
 });
 
@@ -383,8 +412,17 @@ const main = async () => {
     check('chat answers through the NVIDIA model',
       askRes.status === 200 && typeof askData.text === 'string' && /NVIDIA says/.test(askData.text || ''),
       JSON.stringify({ status: askRes.status, text: askData.text, provider: askData.provider }));
-    check('generate-product uses the captured caption/NVIDIA path',
-      typeof status.data.model === 'string' && status.data.model.includes('kimi-k3'),
+    check('chat uses the nemotron-3-ultra model',
+      typeof status.data.model === 'string' && /nemotron-3-ultra/.test(status.data.model),
+      JSON.stringify(status.data.model));
+    check('chat requests carry the thinking prefill (chat_template_kwargs)',
+      nvidiaThinkingHits > 0,
+      `thinkingHits=${nvidiaThinkingHits}`);
+    check('vision caption requests use an image-capable model and skip thinking',
+      nvidiaVisionHits > 0,
+      `visionHits=${nvidiaVisionHits}`);
+    check('generate-product uses the configured NVIDIA model',
+      typeof status.data.model === 'string' && /nemotron-3-ultra/.test(status.data.model),
       JSON.stringify(status.data.model));
   } else {
     console.log('  (NVIDIA_API_KEY not set on the live server — caption checks skipped)');

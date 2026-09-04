@@ -116,6 +116,8 @@ interface RequestOptions {
   body?: unknown;
   auth?: boolean;
   rawBody?: boolean;
+  /** Override the default 30s cap (e.g. 120s for AI chat with a thinking model). */
+  timeoutMs?: number;
 }
 
 /**
@@ -206,9 +208,9 @@ function rewriteMedia(node: unknown): void {
  */
 const REQUEST_TIMEOUT_MS = 30_000;
 
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
@@ -225,7 +227,7 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
 }
 
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, auth = true, rawBody = false } = opts;
+  const { method = 'GET', body, auth = true, rawBody = false, timeoutMs } = opts;
   const headers: Record<string, string> = {};
   if (!rawBody && body !== undefined) headers['Content-Type'] = 'application/json';
   if (auth) {
@@ -235,11 +237,15 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
 
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${API_ROOT}${path}`, {
-      method,
-      headers,
-      body: rawBody ? (body as BodyInit) : body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    res = await fetchWithTimeout(
+      `${API_ROOT}${path}`,
+      {
+        method,
+        headers,
+        body: rawBody ? (body as BodyInit) : body !== undefined ? JSON.stringify(body) : undefined,
+      },
+      timeoutMs
+    );
   } catch (e) {
     throw e instanceof ApiError ? e : new ApiError(0, 'Network error — check your connection and try again.');
   }

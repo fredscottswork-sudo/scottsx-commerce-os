@@ -33,8 +33,11 @@ const VISION_SEARCH_DEADLINE_MS = 6000;
 /** How long interactive image search waits on the NVIDIA/LLM describe call (ms). */
 const VISION_DESCRIBE_DEADLINE_MS = 8000;
 
-/** NVIDIA NIM (OpenAI-compatible) vision endpoint used to describe photos. */
+/** NVIDIA NIM (OpenAI-compatible) endpoints. */
 const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
+/** Chat/agent model — strong general LLM (text only). */
+const NVIDIA_CHAT_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b';
+/** Vision caption model — must accept image_url (nemotron-3-ultra is text-only). */
 const NVIDIA_VISION_MODEL = 'moonshotai/kimi-k3';
 
 /** True when an NVIDIA NIM key is configured (server-side only). */
@@ -144,7 +147,7 @@ export function visionCaptionConfigured(): boolean {
  * model name / key / credit issue is visible without digging through logs.
  * Never returns the key.
  */
-export async function probeNvidia(): Promise<{
+export interface NvidiaProbeResult {
   configured: boolean;
   url: string;
   model: string;
@@ -152,30 +155,125 @@ export async function probeNvidia(): Promise<{
   status?: number;
   error?: string;
   latencyMs?: number;
-}> {
+  models?: { ok: boolean; status?: number; error?: string; ids?: string[] | null; latencyMs?: number };
+  completion?: {
+    streamOk: boolean;
+    status?: number;
+    error?: string;
+    firstByteMs?: number;
+    latencyMs?: number;
+  };
+}
+
+export async function probeNvidia(): Promise<NvidiaProbeResult> {
   const url = process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL;
   const model = nvidiaModel();
   if (!process.env.NVIDIA_API_KEY?.trim()) {
     return { configured: false, url, model, ok: false, error: 'NVIDIA_API_KEY not set' };
   }
+
+  // 1. Key + reachability + model availability via GET /v1/models (fast, and
+  //    a 401/403 is decisive; a network error is decisive too).
+  const models = await listNvidiaModels();
+  const base: NvidiaProbeResult = {
+    configured: true,
+    url,
+    model,
+    ok: false,
+    models: {
+      ok: models.ok,
+      status: models.status,
+      error: models.error,
+      ids: models.ids?.slice(0, 40),
+      latencyMs: models.latencyMs,
+    },
+  };
+  if (!models.ok) {
+    base.ok = false;
+    base.status = models.status;
+    base.error = `models endpoint: ${models.error ?? `HTTP ${models.status}`}`;
+    return base;
+  }
+
+  // 2. Does the configured model exist? If not, say so BEFORE wasting a slot.
+  const modelFound = models.ids?.includes(model) ?? false;
+  if (!modelFound) {
+    base.ok = false;
+    base.error = `model "${model}" not in /v1/models for this key`;
+    return base;
+  }
+
+  // 3. Streaming probe: measures time-to-first-byte. If headers+tokens arrive,
+  //    the setup is fully working and any later slowness is model latency.
   const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45_000);
+  let res: Response | undefined;
   try {
-    const r = await nvidiaChatCompletion(
-      [{ role: 'user', content: 'Reply with the single word OK.' }],
-      5
-    );
-    return { configured: true, url, model: r.model, ok: true, latencyMs: Date.now() - started };
-  } catch (err) {
-    const e = err as { message?: string; nvidiaStatus?: number };
-    return {
-      configured: true,
-      url,
-      model,
-      ok: false,
-      status: e.nvidiaStatus,
-      error: (e.message || String(err)).slice(0, 300),
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.NVIDIA_API_KEY}` },
+      body: JSON.stringify({
+        model,
+        stream: true,
+        max_tokens: 8,
+        temperature: 0,
+        messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      base.status = res.status;
+      base.error = `completion HTTP ${res.status}: ${body.slice(0, 300)}`;
+      base.completion = { streamOk: false, status: res.status, error: body.slice(0, 300) };
+      return base;
+    }
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    let firstByteMs = 0;
+    let firstChunk = '';
+    const firstByte = new Promise<boolean>((resolve) => {
+      const read = async () => {
+        if (!reader) return resolve(false);
+        const { done, value } = await reader.read();
+        if (done) return resolve(false);
+        firstByteMs = Date.now() - started;
+        firstChunk = decoder.decode(value, { stream: true }).slice(0, 200);
+        resolve(true);
+      };
+      void read();
+    });
+    const gotByte = await Promise.race([
+      firstByte,
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 40_000)),
+    ]);
+    base.ok = gotByte;
+    base.completion = {
+      streamOk: gotByte,
+      firstByteMs: gotByte ? firstByteMs : undefined,
       latencyMs: Date.now() - started,
     };
+    base.error = gotByte ? undefined : `no first token within 40s (chunk: "${firstChunk.slice(0, 80)}")`;
+    if (gotByte) base.latencyMs = firstByteMs;
+    return base;
+  } catch (err) {
+    const e = err as { name?: string; message?: string };
+    base.error = `${e.name ?? 'error'}: ${e.message ?? String(err)}`;
+    base.completion = { streamOk: false, error: base.error, latencyMs: Date.now() - started };
+    return base;
+  } finally {
+    clearTimeout(timer);
+    // drain remaining stream in the background so socket isn't leaked
+    void (async () => {
+      try {
+        const r = res?.body?.getReader();
+        while (r) {
+          const { done } = await r.read();
+          if (done) break;
+        }
+      } catch { /* ignore */ }
+    })();
   }
 }
 
@@ -324,12 +422,19 @@ function stripThinking(input: string): string {
 const NVIDIA_FALLBACK_MODELS = ['moonshotai/kimi-k2-instruct', 'meta/llama-3.3-70b-instruct'];
 
 /** Resolve which NVIDIA model to use (NVIDIA_MODEL wins, then NVIDIA_VISION_MODEL). */
+/** Chat model (text): NVIDIA_MODEL wins, else the nemotron-3-ultra default. */
 function nvidiaModel(): string {
-  return (
-    process.env.NVIDIA_MODEL?.trim() ||
-    process.env.NVIDIA_VISION_MODEL?.trim() ||
-    NVIDIA_VISION_MODEL
-  );
+  return process.env.NVIDIA_MODEL?.trim() || NVIDIA_CHAT_MODEL;
+}
+
+/** Vision caption model: NVIDIA_VISION_MODEL wins, else kimi-k3 (image-capable). */
+function nvidiaVisionModel(): string {
+  return process.env.NVIDIA_VISION_MODEL?.trim() || NVIDIA_VISION_MODEL;
+}
+
+/** Reasoning prefill matches the user's NIM snippet (extra_body equivalent). */
+function nvidiaThinkingEnabled(): boolean {
+  return (process.env.NVIDIA_ENABLE_THINKING ?? 'true').toLowerCase() !== 'false';
 }
 
 /**
@@ -339,25 +444,135 @@ function nvidiaModel(): string {
  * Auth/credit/network errors are NOT retried (a different model won't fix
  * those). Returns { text, model } or throws.
  */
+/** Timeout for the model completion itself (generous: reasoning models and
+ *  cold starts can take a while). Env override NVIDIA_TIMEOUT_MS. */
+function nvidiaTimeoutMs(): number {
+  const raw = Number(process.env.NVIDIA_TIMEOUT_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return 120_000;
+  return Math.min(Math.max(raw, 10_000), 180_000);
+}
+
+/** Short timeout for the /v1/models health+key check (fail fast). */
+const NVIDIA_MODELS_TIMEOUT_MS = 10_000;
+
+let nvidiaModelsCache: { at: number; ids: string[] | null; ok: boolean; status?: number } | null = null;
+
+/** Derive the /v1/models endpoint from the chat-completions URL. */
+function nvidiaModelsUrl(): string {
+  const base = process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL;
+  return base.replace(/\/chat\/completions\/?$/i, '') + '/models';
+}
+
+/**
+ * List models available to this key via GET /v1/models. Result is the fastest
+ * decisive check: 401 = bad key, 403 = no permission, network error = can't
+ * reach NVIDIA at all, 200 = the exact model IDs we may use. Cached 60s.
+ */
+async function listNvidiaModels(): Promise<{
+  ok: boolean;
+  status?: number;
+  error?: string;
+  ids: string[] | null;
+  latencyMs: number;
+}> {
+  const key = process.env.NVIDIA_API_KEY?.trim();
+  if (!key) return { ok: false, error: 'NVIDIA_API_KEY not set', ids: null, latencyMs: 0 };
+  if (nvidiaModelsCache && Date.now() - nvidiaModelsCache.at < 60_000) {
+    return {
+      ok: nvidiaModelsCache.ok,
+      status: nvidiaModelsCache.status,
+      ids: nvidiaModelsCache.ids,
+      latencyMs: 0,
+    };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NVIDIA_MODELS_TIMEOUT_MS);
+  const t0 = Date.now();
+  try {
+    const res = await fetch(nvidiaModelsUrl(), {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${key}` },
+      signal: controller.signal,
+    });
+    const text = await res.text().catch(() => '');
+    let ids: string[] | null = null;
+    if (res.ok) {
+      try {
+        ids = ((JSON.parse(text) as { data?: Array<{ id?: string }> }).data ?? [])
+          .map((m) => m.id ?? '')
+          .filter(Boolean);
+      } catch {
+        ids = null;
+      }
+    }
+    nvidiaModelsCache = { at: Date.now(), ids, ok: res.ok, status: res.status };
+    return {
+      ok: res.ok,
+      status: res.status,
+      error: res.ok ? undefined : text.slice(0, 300),
+      ids,
+      latencyMs: Date.now() - t0,
+    };
+  } catch (err) {
+    nvidiaModelsCache = { at: Date.now(), ids: null, ok: false };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      ids: null,
+      latencyMs: Date.now() - t0,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function nvidiaChatCompletion(
   messages: Array<Record<string, unknown>>,
-  maxTokens: number
+  maxTokens: number,
+  opts: { model?: string; think?: boolean } = {}
 ): Promise<{ text: string; model: string }> {
   const key = process.env.NVIDIA_API_KEY?.trim();
   if (!key) throw new ServiceUnavailableError('NVIDIA_API_KEY is not set');
   const url = process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL;
-  const primary = nvidiaModel();
+  const primary = opts.model || nvidiaModel();
   const candidates = [primary, ...NVIDIA_FALLBACK_MODELS.filter((m) => m !== primary)];
+  const think = opts.think ?? nvidiaThinkingEnabled();
+
+  // Fail fast on bad key / unreachable host instead of hanging 25s. A 200
+  // (or a list-shaped failure that doesn't mention auth) also lets us pick a
+  // model that actually exists on this account.
+  const models = await listNvidiaModels();
+  if (!models.ok) {
+    const msg = `${models.error ?? `HTTP ${models.status}`}`;
+    if (models.status === 401 || models.status === 403 || /unauthorized|forbidden|invalid.*key|api.?key/i.test(msg)) {
+      throw new ServiceUnavailableError(`nvidia key rejected (${models.status}): ${msg.slice(0, 200)}`);
+    }
+    if (/fetch failed|abort|timed? ?out|ECONN|ENOTFOUND|socket/i.test(msg)) {
+      throw new ServiceUnavailableError(`nvidia endpoint unreachable: ${msg.slice(0, 200)}`);
+    }
+  }
+  const usable = models.ids?.length
+    ? candidates.filter((m) => models.ids!.includes(m))
+    : candidates;
 
   let lastError: unknown;
-  for (const model of candidates) {
+  for (const model of usable.length ? usable : candidates) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), llmTimeoutMs());
+    const timer = setTimeout(() => controller.abort(), nvidiaTimeoutMs());
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: 0.4 }),
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: maxTokens,
+          temperature: 0.4,
+          // Reasoning models (nemotron-3) expect the thinking toggle as
+          // chat_template_kwargs — the raw-JSON equivalent of the Python SDK's
+          // extra_body={"chat_template_kwargs":{"enable_thinking":true}}.
+          ...(think ? { chat_template_kwargs: { enable_thinking: true } } : {}),
+        }),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -405,7 +620,9 @@ async function askOpenRouter(
   ];
 
   if (ep.provider === 'nvidia') {
-    const r = await nvidiaChatCompletion(messages, 2048);
+    // nemotron-3-ultra is a thinking model — give it room (reasoning consumes
+    // tokens; short replies get cut otherwise). The user's snippet uses 16384.
+    const r = await nvidiaChatCompletion(messages, 8192, { model: nvidiaModel(), think: true });
     return { text: r.text, provider: 'nvidia', model: r.model };
   }
 
@@ -677,7 +894,10 @@ async function describeImage(input: { imageUrl?: string; imageData?: string }): 
             ],
           },
         ],
-        64
+        64,
+        // Captions must use an IMAGE-capable model (nemotron-3-ultra is
+        // text-only) and skip thinking so the caption is fast.
+        { model: nvidiaVisionModel(), think: false }
       );
       return r.text.slice(0, 120);
     } catch (err) {
