@@ -180,7 +180,13 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
       body: JSON.stringify({ inputs: { image } }),
       signal: controller.signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Surfaces as a warning in Render logs — body is truncated and the key
+      // is never logged. Callers still fall back gracefully.
+      const detail = await res.text().catch(() => '');
+      console.warn(`[vision] Roboflow workflow HTTP ${res.status}: ${detail.slice(0, 300)}`);
+      return null;
+    }
     const payload = await res.json();
 
     const decision = normalizeDecision(
@@ -205,7 +211,11 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
       embedding,
       checkedAt: new Date().toISOString(),
     };
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[vision] Roboflow workflow call failed (${err instanceof Error ? err.name : 'error'}) — ` +
+        'falling back to catalogue search.'
+    );
     return null;
   } finally {
     clearTimeout(timer);
