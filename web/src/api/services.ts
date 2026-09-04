@@ -386,6 +386,7 @@ export const aiService = {
   status: () =>
     api<{
       configured: boolean; provider: string; model: string; grounded: boolean;
+      visionProvider: 'roboflow' | 'llm' | 'none';
       capabilities: Record<string, boolean>;
     }>('/ai/status', { auth: false }),
   search: (q: string, limit = 24) =>

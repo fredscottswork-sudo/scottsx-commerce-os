@@ -128,7 +128,7 @@ export function AiConsole({
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
-  const [status, setStatus] = useState<{ provider: string; grounded: boolean; configured: boolean } | null>(null);
+  const [status, setStatus] = useState<{ provider: string; grounded: boolean; configured: boolean; visionProvider?: 'roboflow' | 'llm' | 'none' } | null>(null);
   const [openSources, setOpenSources] = useState<number | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
 
@@ -359,6 +359,10 @@ export function AiConsole({
             <p className="tiny muted-2 mt-16">
               Engine: <strong>{status.provider}</strong>
               {!status.configured && ' · local catalogue mode'}
+              {status.visionProvider === 'roboflow' && (
+                <span className="t-success"> · Vision: Roboflow</span>
+              )}
+              {status.visionProvider === 'llm' && <> · Vision: LLM</>}
             </p>
           )}
         </aside>

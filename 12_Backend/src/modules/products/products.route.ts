@@ -35,6 +35,49 @@ import {
   recordView,
 } from './products.service.js';
 import { notify } from '../notifications/notify.service.js';
+import { reviewListing, type ReviewOutcome } from '../vision/roboflow.service.js';
+
+/** Public origin of the API, used to turn `/api/v1/uploads/...` photo paths
+ *  into URLs Roboflow can fetch. PUBLIC_API_URL wins (custom domains); behind
+ *  Render's proxy `request.protocol`/`host` are already correct (trustProxy). */
+function apiBaseUrl(request: { protocol: string; headers: { host?: string } }): string {
+  return process.env.PUBLIC_API_URL?.trim() || `${request.protocol}://${request.headers.host ?? ''}`;
+}
+
+/** Notify the seller for the outcome of an automated vision review. */
+async function notifyVisionOutcome(
+  pool: ReturnType<typeof getPool>,
+  sellerId: string,
+  product: { id: string; title: string },
+  outcome: ReviewOutcome
+): Promise<void> {
+  if (outcome.status === 'approved') {
+    await notify(pool, {
+      userId: sellerId,
+      title: 'Your listing is live',
+      body: `"${product.title}" passed the automated photo review and is now live.`,
+      type: 'product_approved',
+      data: { screen: 'product', id: product.id },
+    });
+    return;
+  }
+  if (outcome.status === 'rejected') {
+    const needsPhoto = outcome.analysis.decision === 'needs_better_image';
+    const reason = needsPhoto
+      ? 'The photo is unclear — upload a sharper picture of the product.'
+      : outcome.analysis.rejectionReasons.slice(0, 2).join('; ') ||
+        'The photo did not pass the automated review.';
+    await notify(pool, {
+      userId: sellerId,
+      title: 'Listing not approved',
+      body: `"${product.title}" was not approved: ${reason}`,
+      type: 'product_rejected',
+      data: { screen: 'product', id: product.id },
+    });
+    return;
+  }
+  // manual_review → the normal queue owns it; no extra notification here.
+}
 
 /**
  * Postgres `integer` (and the `price_minor::int` casts every read uses) top out
@@ -223,10 +266,23 @@ export default async function registerProductsRoute(app: FastifyInstance) {
     // saved without one so sellers can work incrementally.
     if (!body.asDraft) assertListingReady(body);
 
-    const product = await createProduct(pool, seller.id, body, { asDraft: body.asDraft });
+    let product = await createProduct(pool, seller.id, body, { asDraft: body.asDraft });
 
-    if (product.status === 'pending') {
-      // Tell the seller, and alert every admin that a listing needs review.
+    // Vision first, admins second: when ROBOFLOW_API_KEY is configured the
+    // workflow can approve a listing outright, push it back to the seller for
+    // a better photo, or block it — only "manual_review" falls through to the
+    // existing admin queue. (Without a key the outcome is 'skipped' and the
+    // flow is byte-for-byte what it was before.)
+    let vision: ReviewOutcome = { status: 'skipped' };
+    if (!body.asDraft && product.imageUrl) {
+      vision = await reviewListing(pool, product.id, product.imageUrl, apiBaseUrl(request));
+      product = await getProductById(pool, product.id, { id: seller.id, role: 'seller' });
+    }
+    const status = product.status;
+
+    if (status === 'pending') {
+      // "manual_review" (or vision skipped) → tell the seller and alert every
+      // admin that a listing needs review.
       await notify(pool, {
         userId: seller.id,
         title: 'Product submitted for review',
@@ -244,33 +300,73 @@ export default async function registerProductsRoute(app: FastifyInstance) {
           data: { screen: 'admin_products', id: product.id },
         }).catch(() => undefined);
       }
+    } else if (status === 'approved') {
+      await notifyVisionOutcome(pool, seller.id, product, vision);
+    } else if (status === 'rejected') {
+      await notifyVisionOutcome(pool, seller.id, product, vision);
     }
-    return { product, message: product.status === 'pending' ? 'Submitted for admin approval' : 'Saved as draft' };
+
+    return {
+      product,
+      message: status === 'approved'
+        ? 'Your listing passed the automated photo review and is live'
+        : status === 'rejected'
+          ? 'The automated photo review did not approve this listing'
+          : status === 'pending'
+            ? 'Submitted for admin approval'
+            : 'Saved as draft',
+    };
   });
 
   app.patch('/api/v1/seller/products/:id', { preHandler: requireAuth }, async (request) => {
     const seller = requireSeller(request);
     const { id } = request.params as { id: string };
     const body = updateProductSchema.parse(request.body);
-    const product = await updateProduct(pool, seller.id, id, body);
-    return { product };
+    let product = await updateProduct(pool, seller.id, id, body);
+    // A photo change takes an approved listing back to review — let the vision
+    // gate have first say before an admin re-reviews it (idempotent: 'skipped'
+    // when no key or no new photo).
+    if (body.imageUrl !== undefined || Array.isArray(body.mediaUrls)) {
+      const vision = await reviewListing(pool, product.id, product.imageUrl, apiBaseUrl(request));
+      if (vision.status !== 'skipped') {
+        product = await getProductById(pool, product.id, { id: seller.id, role: 'seller' });
+        if (product.status === 'rejected') await notifyVisionOutcome(pool, seller.id, product, vision);
+      }
+    }
+    return { product, message: product.status === 'approved' ? 'Listing passed automated review' : product.status === 'rejected' ? 'The automated photo review did not approve this listing' : undefined };
   });
 
   app.post('/api/v1/seller/products/:id/submit', { preHandler: requireAuth }, async (request) => {
     const seller = requireSeller(request);
     const { id } = request.params as { id: string };
-    const product = await submitForReview(pool, seller.id, id);
-    const admins = await pool.query(`SELECT id FROM users WHERE role = 'admin'`);
-    for (const a of admins.rows) {
-      await notify(pool, {
-        userId: a.id,
-        title: 'Product awaiting approval',
-        body: `"${product.title}" was submitted for review.`,
-        type: 'general',
-        data: { screen: 'admin_products', id: product.id },
-      }).catch(() => undefined);
+    let product = await submitForReview(pool, seller.id, id);
+
+    // Run the same vision gate as a fresh submission (photo may have changed
+    // since the draft was first created). 'skipped' keeps the admin queue flow.
+    let vision: ReviewOutcome = { status: 'skipped' };
+    if (product.imageUrl) {
+      vision = await reviewListing(pool, product.id, product.imageUrl, apiBaseUrl(request));
+      product = await getProductById(pool, product.id, { id: seller.id, role: 'seller' });
     }
-    return { product };
+    const status = product.status;
+
+    if (status === 'approved') {
+      await notifyVisionOutcome(pool, seller.id, product, vision);
+    } else if (status === 'rejected') {
+      await notifyVisionOutcome(pool, seller.id, product, vision);
+    } else {
+      const admins = await pool.query(`SELECT id FROM users WHERE role = 'admin'`);
+      for (const a of admins.rows) {
+        await notify(pool, {
+          userId: a.id,
+          title: 'Product awaiting approval',
+          body: `"${product.title}" was submitted for review.`,
+          type: 'general',
+          data: { screen: 'admin_products', id: product.id },
+        }).catch(() => undefined);
+      }
+    }
+    return { product, message: status === 'approved' ? 'Listing passed automated review and is live' : status === 'rejected' ? 'The automated photo review did not approve this listing' : 'Submitted for admin approval' };
   });
 
   app.delete('/api/v1/seller/products/:id', { preHandler: requireAuth }, async (request) => {

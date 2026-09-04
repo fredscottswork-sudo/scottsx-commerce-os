@@ -133,6 +133,17 @@ export default function ProductDetail() {
           </div>
           <p className="muted mt-16" style={{ whiteSpace: 'pre-wrap' }}>{p.description || 'No description provided.'}</p>
 
+          {!!p.visionTags?.length && (
+            <div className="row wrap mt-10" style={{ gap: 6 }}>
+              <span className="tiny muted-2">AI detected:</span>
+              {p.visionTags.slice(0, 6).map((tag) => (
+                <span key={tag} className="chip" style={{ fontSize: 11, padding: '3px 9px', fontStyle: 'normal' }}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
           <Card className="mt-16">
             <div className="row" style={{ gap: 12 }}>
               <SellerAvatar name={p.seller.name} logoUrl={p.seller.logoUrl} />

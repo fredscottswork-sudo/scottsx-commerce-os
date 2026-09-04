@@ -260,7 +260,13 @@ export default function Inventory() {
                     {p.status === 'rejected' && p.rejectionReason && (
                       <div className="tiny t-danger mt-4">
                         <XCircle size={11} style={{ verticalAlign: -1 }} /> {p.rejectionReason}
+                        {p.visionDecision && (
+                          <span className="muted-2"> · AI review: {p.visionDecision.replace('_', ' ')}</span>
+                        )}
                       </div>
+                    )}
+                    {p.status === 'approved' && p.visionDecision === 'approved' && (
+                      <div className="tiny t-success mt-4">✓ Passed automated photo review</div>
                     )}
                   </div>
                 </div>

@@ -31,6 +31,9 @@ hr "2/7  Google Sign-In (local IdP, no egress)"
 hr "3/7  Android ⇆ backend contract"
 (cd "$ROOT/12_Backend" && node tests/android-contract.mjs) || FAILED=1
 
+hr "3b/7 Roboflow vision contract (skips when ROBOFLOW_API_KEY is unset)"
+(cd "$ROOT/12_Backend" && node tests/roboflow-vision.mjs) || FAILED=1
+
 hr "4/7  Web UI (real bundle, real backend)"
 (cd "$ROOT/web" && npm run build >/dev/null 2>&1 && node tests/ui.mjs) || FAILED=1
 

@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { verifyJwt } from '../../auth.js';
 import { ask, generateProduct, aiSearch, imageSearch, aiConfigured, AGENTS } from './assistant.service.js';
+import { roboflowConfigured } from '../vision/roboflow.service.js';
 
 const askSchema = z.object({
   prompt: z.string().min(1),
@@ -53,6 +54,7 @@ export default async function registerAiRoute(app: FastifyInstance) {
       ? process.env.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct'
       : 'catalog-grounded',
     grounded: true,
+    visionProvider: roboflowConfigured() ? 'roboflow' : aiConfigured() ? 'llm' : 'none',
     capabilities: {
       chat: true,
       agents: true,
@@ -60,7 +62,7 @@ export default async function registerAiRoute(app: FastifyInstance) {
       imageSearch: true,
       voiceSearch: true,
       listingGeneration: true,
-      vision: aiConfigured(),
+      vision: roboflowConfigured() || aiConfigured(),
     },
   }));
 

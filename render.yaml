@@ -132,13 +132,23 @@ services:
       - key: AI_VISION_MODEL
         sync: false
 
-      # Payments. Unset, /orders/checkout answers 503 and cash-on-delivery
-      # remains the only buy path — which is what both clients use today.
-      - key: NYLON_PAY_API_KEY
+      # Roboflow vision AI (server-side only — never add to web build vars).
+      # When set, listing photos are reviewed on submit: approved → publishes,
+      # manual_review → admin queue, rejected/needs_better_image → blocked
+      # with the workflow's reasons. The same workflow labels photos for image
+      # search + AI listing generation, and its embedding powers visual search.
+      #   ROBOFLOW_WORKFLOW_URL  — defaults to the active-learning workflow
+      #   ROBOFLOW_TIMEOUT_MS    — default 10000
+      - key: ROBOFLOW_API_KEY
         sync: false
-      - key: NYLON_PAY_API_SECRET
+      - key: ROBOFLOW_WORKFLOW_URL
         sync: false
-      - key: NYLON_PAY_WEBHOOK_SECRET
+      - key: ROBOFLOW_TIMEOUT_MS
+        sync: false
+
+      # Public origin of THIS API if it differs from the request host (custom
+      # domain). Used to build absolute photo URLs for Roboflow.
+      - key: PUBLIC_API_URL
         sync: false
 
       # ── Verification email (SMTP) ─────────────────────────────────────────

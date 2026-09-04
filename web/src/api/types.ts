@@ -30,6 +30,14 @@ export interface Product {
   rejectionReason?: string;
   viewCount?: number;
   createdAt?: string;
+  /** Roboflow vision moderation outcome (approved/manual_review/rejected/…). */
+  visionDecision?: string | null;
+  visionRejectionReasons?: string[] | null;
+  visionCategory?: string | null;
+  visionSubcategory?: string | null;
+  visionTitle?: string | null;
+  visionTags?: string[] | null;
+  visionCheckedAt?: string | null;
 }
 
 export type ProductStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'suspended';

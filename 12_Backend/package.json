@@ -23,7 +23,8 @@
     "test:llm": "node tests/llm-integration.mjs",
     "test:geo": "tsx tests/geo-accuracy.mjs",
     "test:ai": "node tests/ai-quality.mjs",
-    "test:all": "node tests/e2e.mjs && node tests/ai-quality.mjs && node tests/production-safety.mjs && node tests/google-auth.mjs && node tests/firebase-auth.mjs && node tests/android-contract.mjs && npm run test:geo && npm run test:llm"
+    "test:vision": "node tests/roboflow-vision.mjs",
+    "test:all": "node tests/e2e.mjs && node tests/ai-quality.mjs && node tests/production-safety.mjs && node tests/google-auth.mjs && node tests/firebase-auth.mjs && node tests/android-contract.mjs && node tests/roboflow-vision.mjs && npm run test:geo && npm run test:llm"
   },
   "dependencies": {
     "@fastify/compress": "^9.2.0",

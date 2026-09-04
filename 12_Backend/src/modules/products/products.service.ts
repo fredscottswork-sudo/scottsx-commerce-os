@@ -12,7 +12,7 @@ import type pg from 'pg';
 import { NotFoundError, ForbiddenError, ValidationError } from '../../errors.js';
 import { expandTerm } from '../ai/catalog-context.js';
 
-const PRODUCT_SELECT = `
+export const PRODUCT_SELECT = `
   SELECT
     p.id,
     p.title,
@@ -34,6 +34,13 @@ const PRODUCT_SELECT = `
     p.rejection_reason AS "rejectionReason",
     p.view_count AS "viewCount",
     p.created_at AS "createdAt",
+    p.vision_decision AS "visionDecision",
+    p.vision_rejection_reasons AS "visionRejectionReasons",
+    p.vision_category AS "visionCategory",
+    p.vision_subcategory AS "visionSubcategory",
+    p.vision_title AS "visionTitle",
+    p.vision_tags AS "visionTags",
+    p.vision_checked_at AS "visionCheckedAt",
     json_build_object(
       'id', u.id,
       'name', COALESCE(s.store_name, u.display_name),
@@ -50,7 +57,7 @@ const PRODUCT_SELECT = `
   ) pm ON true
 `;
 
-function rowsToProducts(rows: any[]) {
+export function rowsToProducts(rows: any[]) {
   return rows.map((r) => ({
     ...r,
     currency: 'UGX',

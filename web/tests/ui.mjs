@@ -885,8 +885,45 @@ section('9b. Public STX AI page');
   app.close();
 }
 
-// ── 9c. Dashboard top nav: Orders must never hide under Messages ────────────
-section('9c. Dashboard top nav overlap');
+// ── 9c. Image search (URL path, guest-safe) ──────────────────────────────────
+section('9c. Image search');
+{
+  const app = await mount('/ai');
+  // Open the photo modal from the AI console's capability row.
+  const photoBtn = [...app.$$('.ai-cap')].find((b) => /photo/i.test(b.textContent || ''));
+  check('AI console exposes the photo search capability', !!photoBtn,
+    photoBtn ? photoBtn.textContent : 'no photo capability button');
+  if (photoBtn) {
+    await app.click(photoBtn, 300);
+    check('photo search modal opens', !!app.$('.visual-search'),
+      app.$('.visual-search') ? 'open' : 'no modal');
+    const urlBox = app.$('.visual-search input[aria-label="Image URL"]');
+    if (urlBox) {
+      await app.type(urlBox, 'https://example.com/photos/wireless-headphones.jpg');
+      // Optional hint name is not needed — the filename yields "wireless headphones".
+      const go = [...app.$$('.visual-search button')].find((b) => /find matches/i.test(b.textContent || ''));
+      check('modal offers a Find matches action', !!go);
+      if (go) {
+        await app.click(go, 2400);
+        const after = app.text();
+        check('image search returns catalogue products',
+          app.$$('.visual-search .pcard').length > 0 || /UGX/.test(after),
+          `${app.$$('.visual-search .pcard').length} cards`);
+        check('image search reports what it detected',
+          /wireless|headphones|Image looks like/i.test(after), 'no detection text');
+      }
+    } else {
+      check('photo modal exposes the URL field', false, 'no aria-label=Image URL input');
+    }
+    // Close again so later sections render clean.
+    const close = [...app.$$('.modal button, .modal .btn')].find((b) => /close/i.test(b.textContent || ''));
+    if (close) await app.click(close, 150);
+  }
+  app.close();
+}
+
+// ── 9d. Dashboard top nav: Orders must never hide under Messages ────────────
+section('9d. Dashboard top nav overlap');
 {
   const app = await mount('/seller', seller);
   const inner = app.$('.mainnav-inner');

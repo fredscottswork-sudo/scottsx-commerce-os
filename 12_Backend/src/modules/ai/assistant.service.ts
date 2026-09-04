@@ -24,6 +24,8 @@ import {
   type AgentId,
 } from './agents.js';
 import { parseIntent, retrieveProducts, fmtUgx } from './catalog-context.js';
+import { analyzeImage, rankByEmbedding } from '../vision/roboflow.service.js';
+import { PRODUCT_SELECT, rowsToProducts } from '../products/products.service.js';
 
 /**
  * The chat-completions endpoint.
@@ -315,9 +317,10 @@ export async function aiSearch(db: pg.Pool, query: string, limit = 24) {
 // ── Image search ────────────────────────────────────────────────────────────
 
 /**
- * Image search. The uploaded photo's labels/filename/hint are turned into a
- * catalog query. With a vision-capable LLM key configured the image is
- * described first; otherwise we fall back to the caller-supplied hint.
+ * Image search. Roboflow vision is first: the workflow labels the photo and,
+ * when it returns a visual embedding, catalogue rows are ranked by cosine
+ * similarity against it. The LLM description remains as the fallback when
+ * Roboflow is unconfigured or fails, then hint → filename keywords.
  */
 export async function imageSearch(
   db: pg.Pool,
@@ -334,6 +337,26 @@ export async function imageSearch(
     .filter((w, i, all) => w && all.indexOf(w) === i)
     .join(' ');
 
+  // Roboflow: labels + embedding. Never throws — null on unconfigured/error.
+  const vision = raw ? await analyzeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData }) : null;
+
+  if (vision) {
+    const labelTerms = [
+      vision.productTitle,
+      vision.category,
+      vision.subcategory,
+      ...vision.tags,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const merged = `${terms} ${labelTerms}`
+      .split(/\s+/)
+      .filter((w, i, all) => w && all.indexOf(w) === i)
+      .join(' ')
+      .trim();
+    if (merged) terms = merged;
+  }
+
   if (!terms && raw) {
     const described = await describeImage(raw).catch(() => '');
     terms = described;
@@ -348,14 +371,54 @@ export async function imageSearch(
   }
 
   const result = await aiSearch(db, terms || 'popular', limit);
+
+  // Visual boost: when the workflow gave an embedding, rank the catalogue by
+  // cosine similarity and bubble the closest matches to the top (text-search
+  // results stay in the list so recall never drops).
+  let rankedIds: string[] = [];
+  if (vision?.embedding) {
+    const rows = await db.query(
+      `SELECT id, visual_embedding
+         FROM products
+        WHERE status = 'approved' AND visual_embedding IS NOT NULL`
+    );
+    rankedIds = rankByEmbedding(rows.rows as any[], vision.embedding, 0.35);
+    if (rankedIds.length) {
+      const byId = new Map(result.products.map((p: any) => [p.id, p]));
+      // Rows ranked by the embedding may not be in the text result — fetch any
+      // missing ones so the visual ranking is complete, not just a reorder.
+      const missing = rankedIds.filter((id) => !byId.has(id));
+      if (missing.length) {
+        const fetched = await db.query(
+          `${PRODUCT_SELECT} WHERE p.id = ANY($1::uuid[]) AND p.status = 'approved'`,
+          [missing]
+        );
+        for (const row of rowsToProducts(fetched.rows)) {
+          if (!byId.has(row.id)) byId.set(row.id, row);
+        }
+      }
+      result.products = rankedIds
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .concat(result.products.filter((p: any) => !rankedIds.includes(p.id)))
+        .slice(0, limit);
+    }
+  }
+
   return {
     ...result,
-    detected: terms,
-    explanation: terms
-      ? `Image looks like **${terms}** — ${result.products.length} similar item${
-          result.products.length === 1 ? '' : 's'
-        } found.`
-      : 'Could not read the image — showing popular products instead.',
+    detected: vision
+      ? [vision.productTitle, vision.category, ...vision.tags].filter(Boolean).join(' ')
+      : terms,
+    explanation: vision
+      ? `Vision found **${[vision.productTitle, vision.category, ...vision.tags].filter(Boolean).join(' ')}** — ${
+          result.products.length
+        } similar item${result.products.length === 1 ? '' : 's'} found.`
+      : terms
+        ? `Image looks like **${terms}** — ${result.products.length} similar item${
+            result.products.length === 1 ? '' : 's'
+          } found.`
+        : 'Could not read the image — showing popular products instead.',
   };
 }
 
@@ -408,7 +471,15 @@ export async function generateProduct(
 ) {
   const hint = (opts.hint ?? '').trim();
   let detected = hint;
-  if (!detected && opts.imageUrl) detected = await describeImage(opts.imageUrl).catch(() => '');
+  if (!detected && opts.imageUrl) {
+    // Roboflow first: its product_title/category/tags are trained on the
+    // catalogue's own categories, so they beat a generic LLM description.
+    const vision = await analyzeImage({ imageUrl: opts.imageUrl });
+    detected =
+      [vision?.productTitle, vision?.category, ...(vision?.tags ?? [])]
+        .filter(Boolean)
+        .join(' ') || (await describeImage(opts.imageUrl).catch(() => ''));
+  }
 
   const heuristic = heuristicGenerateProduct(opts.imageUrl ?? '', detected || hint);
 
