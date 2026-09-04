@@ -61,6 +61,7 @@ interface Turn {
   model?: string;
   grounded?: boolean;
   pending?: boolean;
+  llmError?: string;
 }
 
 /** Copy any text with a legacy fallback (clipboard API can be absent in
@@ -231,6 +232,7 @@ export function AiConsole({
           provider: r.provider,
           model: r.model,
           grounded: r.grounded,
+          llmError: (r as any).llmError,
         };
         return next;
       });
@@ -458,6 +460,7 @@ export function AiConsole({
                               <Sparkles size={10} /> ScottsTechX AI
                               {t.agent ? ` · ${t.agent}` : ''}
                               {t.provider ? ` · ${t.provider}` : ''}
+                              {t.llmError ? ` · ${t.llmError.slice(0, 90)}` : ''}
                             </span>
                             <span className="ai-answer-actions">
                               <button

@@ -152,6 +152,8 @@ services:
         sync: false
       - key: NVIDIA_BASE_URL
         sync: false
+      - key: NVIDIA_MODEL
+        sync: false
       - key: NVIDIA_VISION_MODEL
         sync: false
 

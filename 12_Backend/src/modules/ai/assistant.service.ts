@@ -106,7 +106,7 @@ function resolveLlmEndpoint(): {
     return {
       url: process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL,
       key: nvidiaKey,
-      model: process.env.NVIDIA_VISION_MODEL?.trim() || NVIDIA_VISION_MODEL,
+      model: nvidiaModel(),
       provider: 'nvidia',
       headers: {
         'Content-Type': 'application/json',
@@ -136,6 +136,47 @@ function resolveLlmEndpoint(): {
 /** Vision describer readiness: NVIDIA NIM, OpenRouter vision, or Roboflow. */
 export function visionCaptionConfigured(): boolean {
   return nvidiaVisionConfigured() || Boolean(process.env.LLM_API_KEY);
+}
+
+/**
+ * Live diagnostic probe of the NVIDIA endpoint: performs a real (tiny) chat
+ * request and reports the outcome. Used by GET /ai/diagnostics so a broken
+ * model name / key / credit issue is visible without digging through logs.
+ * Never returns the key.
+ */
+export async function probeNvidia(): Promise<{
+  configured: boolean;
+  url: string;
+  model: string;
+  ok: boolean;
+  status?: number;
+  error?: string;
+  latencyMs?: number;
+}> {
+  const url = process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL;
+  const model = nvidiaModel();
+  if (!process.env.NVIDIA_API_KEY?.trim()) {
+    return { configured: false, url, model, ok: false, error: 'NVIDIA_API_KEY not set' };
+  }
+  const started = Date.now();
+  try {
+    const r = await nvidiaChatCompletion(
+      [{ role: 'user', content: 'Reply with the single word OK.' }],
+      5
+    );
+    return { configured: true, url, model: r.model, ok: true, latencyMs: Date.now() - started };
+  } catch (err) {
+    const e = err as { message?: string; nvidiaStatus?: number };
+    return {
+      configured: true,
+      url,
+      model,
+      ok: false,
+      status: e.nvidiaStatus,
+      error: (e.message || String(err)).slice(0, 300),
+      latencyMs: Date.now() - started,
+    };
+  }
 }
 
 /** Provider/model the UI should display for the configured chat engine. */
@@ -171,6 +212,9 @@ export interface AskResult {
   agent: { id: AgentId; name: string; tagline: string };
   products: unknown[];
   grounded: boolean;
+  /** Set when the provider call failed and we fell back — shows the real
+   *  reason (e.g. "nvidia error 401: …") instead of a mysterious label. */
+  llmError?: string;
 }
 
 /**
@@ -213,11 +257,16 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
     return { text: llm.text, provider: llm.provider, model: llm.model, ...meta };
   } catch (err) {
     // A provider outage must never take the assistant down — fall back to the
-    // grounded local composer and label it honestly.
+    // grounded local composer and label it honestly, carrying the real error
+    // so the UI can explain it (and so a bad model name is visible, not
+    // swallowed).
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[ai] LLM unavailable, falling back to composer: ${reason.slice(0, 300)}`);
     return {
       text: composeOfflineAnswer(agent, prompt, ctx),
       provider: 'scottstechx-local (llm unavailable)',
       model: 'catalog-grounded',
+      llmError: reason.slice(0, 200),
       ...meta,
     };
   }
@@ -270,14 +319,83 @@ function stripThinking(input: string): string {
     .trim();
 }
 
+/** Models to try when the configured NVIDIA model is rejected as unknown
+ *  (build.nvidia.com catalog moves; a wrong name must not kill chat). */
+const NVIDIA_FALLBACK_MODELS = ['moonshotai/kimi-k2-instruct', 'meta/llama-3.3-70b-instruct'];
+
+/** Resolve which NVIDIA model to use (NVIDIA_MODEL wins, then NVIDIA_VISION_MODEL). */
+function nvidiaModel(): string {
+  return (
+    process.env.NVIDIA_MODEL?.trim() ||
+    process.env.NVIDIA_VISION_MODEL?.trim() ||
+    NVIDIA_VISION_MODEL
+  );
+}
+
+/**
+ * One OpenAI-compatible chat completion against NVIDIA NIM, with a model
+ * fallback chain: a 4xx that mentions the model name usually means "model not
+ * found on this account", so try the next known-good model before giving up.
+ * Auth/credit/network errors are NOT retried (a different model won't fix
+ * those). Returns { text, model } or throws.
+ */
+async function nvidiaChatCompletion(
+  messages: Array<Record<string, unknown>>,
+  maxTokens: number
+): Promise<{ text: string; model: string }> {
+  const key = process.env.NVIDIA_API_KEY?.trim();
+  if (!key) throw new ServiceUnavailableError('NVIDIA_API_KEY is not set');
+  const url = process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL;
+  const primary = nvidiaModel();
+  const candidates = [primary, ...NVIDIA_FALLBACK_MODELS.filter((m) => m !== primary)];
+
+  let lastError: unknown;
+  for (const model of candidates) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), llmTimeoutMs());
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: 0.4 }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        const err = new ServiceUnavailableError(
+          `nvidia error ${res.status}: ${body.slice(0, 300)}`
+        ) as ServiceUnavailableError & { nvidiaStatus?: number; nvidiaBody?: string };
+        err.nvidiaStatus = res.status;
+        err.nvidiaBody = body;
+        console.warn(`[ai] nvidia ${model} -> HTTP ${res.status}: ${body.slice(0, 200)}`);
+        throw err;
+      }
+      const data = await res.json();
+      const text = extractReply(data?.choices?.[0]?.message);
+      if (!text) throw new ServiceUnavailableError('nvidia returned an empty response');
+      return { text, model };
+    } catch (err) {
+      lastError = err;
+      const status = (err as { nvidiaStatus?: number }).nvidiaStatus;
+      const body = String((err as { nvidiaBody?: string }).nvidiaBody ?? '');
+      const modelIssue = (status === 400 || status === 404 || status === 422) && /model/i.test(body);
+      if (!modelIssue) break; // auth / credit / network — retrying another model won't help
+      console.warn(`[ai] nvidia model "${model}" rejected — trying next.`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new ServiceUnavailableError('nvidia call failed');
+}
+
 async function askOpenRouter(
   system: string,
   userContent: string,
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ) {
-  // Provider-agnostic now: NVIDIA NIM (kimi-k3) or any OpenAI-compatible
-  // endpoint (OpenRouter, OpenAI, Groq…). Named askOpenRouter historically;
-  // the returned provider name tells the UI which one answered.
+  // Provider-agnostic: NVIDIA NIM (with model fallback) or any OpenAI-compatible
+  // endpoint (OpenRouter, OpenAI, Groq…). Named askOpenRouter historically; the
+  // returned provider name tells the UI which one answered.
   const ep = resolveLlmEndpoint();
 
   const messages = [
@@ -285,6 +403,11 @@ async function askOpenRouter(
     ...history.slice(-8).map((h) => ({ role: h.role, content: h.content })),
     { role: 'user', content: userContent },
   ];
+
+  if (ep.provider === 'nvidia') {
+    const r = await nvidiaChatCompletion(messages, 2048);
+    return { text: r.text, provider: 'nvidia', model: r.model };
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), llmTimeoutMs());
@@ -539,48 +662,27 @@ async function describeImage(input: { imageUrl?: string; imageData?: string }): 
   if (!imageUrl) return '';
 
   // ── NVIDIA NIM (preferred: strong general vision captions) ───────────────
-  const ninKey = process.env.NVIDIA_API_KEY?.trim();
-  if (ninKey) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+  if (process.env.NVIDIA_API_KEY?.trim()) {
     try {
-      const res = await fetch(process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${ninKey}`,
-        },
-        body: JSON.stringify({
-          model: process.env.NVIDIA_VISION_MODEL?.trim() || NVIDIA_VISION_MODEL,
-          max_tokens: 64,
-          temperature: 0,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: 'What is in this image? Name the product in 2-6 words for an e-commerce search (brand + item type only, no sentence).',
-                },
-                { type: 'image_url', image_url: { url: imageUrl } },
-              ],
-            },
-          ],
-        }),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        console.warn(`[vision] NVIDIA describe HTTP ${res.status}`);
-        return '';
-      }
-      const data = await res.json();
-      const reply = extractReply(data?.choices?.[0]?.message);
-      return reply.slice(0, 120);
+      const r = await nvidiaChatCompletion(
+        [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'What is in this image? Name the product in 2-6 words for an e-commerce search (brand + item type only, no sentence).',
+              },
+              { type: 'image_url', image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        64
+      );
+      return r.text.slice(0, 120);
     } catch (err) {
       console.warn(`[vision] NVIDIA describe failed (${err instanceof Error ? err.name : 'error'})`);
       return '';
-    } finally {
-      clearTimeout(timer);
     }
   }
 

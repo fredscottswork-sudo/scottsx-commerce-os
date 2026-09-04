@@ -104,6 +104,8 @@ export interface AiAnswer {
   agent: { id: string; name: string; tagline: string };
   products: Product[];
   grounded: boolean;
+  /** Filled when the model call failed and the app fell back offline. */
+  llmError?: string;
 }
 
 export interface AiSearchResult {

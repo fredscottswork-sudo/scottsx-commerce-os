@@ -358,6 +358,13 @@ const main = async () => {
   // 5b2. NVIDIA paths: captions must merge into the search query, and with
   //      NVIDIA as the only key the CHAT must be served by the model too
   //      (configured:true + a real provider), not the offline composer.
+  const diag = await api('/ai/diagnostics');
+  check('diagnostics endpoint runs a real NVIDIA probe',
+    diag.status === 200 && typeof diag.data?.nvidia?.ok === 'boolean',
+    JSON.stringify(diag.data?.nvidia));
+  check('diagnostics probe succeeds against the configured endpoint',
+    diag.data?.nvidia?.ok === true,
+    JSON.stringify(diag.data?.nvidia?.error));
   if (status.data?.nvidiaVisionConfigured) {
     check('NVIDIA NIM receives image_url requests from the search endpoint',
       nvidiaHits > 0, `hits=${nvidiaHits}`);

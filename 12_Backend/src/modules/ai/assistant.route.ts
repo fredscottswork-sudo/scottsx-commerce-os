@@ -16,7 +16,7 @@ import { getPool } from '../../db.js';
 import { verifyJwt } from '../../auth.js';
 import {
   ask, generateProduct, aiSearch, imageSearch, aiConfigured,
-  nvidiaVisionConfigured, llmStatusSummary, AGENTS,
+  nvidiaVisionConfigured, llmStatusSummary, probeNvidia, AGENTS,
 } from './assistant.service.js';
 import { roboflowConfigured } from '../vision/roboflow.service.js';
 
@@ -83,6 +83,24 @@ export default async function registerAiRoute(app: FastifyInstance) {
   });
 
   app.get('/api/v1/ai/agents', async () => ({ agents: AGENTS }));
+
+  /**
+   * Live AI diagnostics — public, no secrets. Runs a REAL tiny NVIDIA chat
+   * request and reports the outcome, so a bad model name, invalid key, credit
+   * exhaustion or unreachable endpoint is visible in one call:
+   *
+   *   GET /api/v1/ai/diagnostics
+   *   { env: {...booleans}, nvidia: { ok, status, error, latencyMs, model }, roboflow: {...} }
+   */
+  app.get('/api/v1/ai/diagnostics', async () => ({
+    env: {
+      chat: aiConfigured(),
+      nvidia: nvidiaVisionConfigured(),
+      roboflow: roboflowConfigured(),
+    },
+    nvidia: await probeNvidia(),
+    roboflow: { configured: roboflowConfigured() },
+  }));
 
   app.post('/api/v1/ai/v2/ask', async (request) => {
     const body = askSchema.parse(request.body);
