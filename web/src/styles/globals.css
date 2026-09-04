@@ -1842,6 +1842,173 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 
+/* ═══ Premium AI surface ─ 3D aurora, parallax depth, glass, motion ──────── */
+/* .ai-console is the 3D stage: pointer position lands in --par-x/--par-y
+   (aurora parallax) and --tilt-x/--tilt-y (card lean, non-immersive only). */
+.ai-console { position: relative; transform-style: preserve-3d; }
+.ai-console-inner { display: contents; }
+
+.ai-aura {
+  position: absolute; inset: -60px -80px; pointer-events: none;
+  z-index: 0; overflow: hidden; border-radius: var(--radius);
+}
+.ai-aura-orb {
+  position: absolute; display: block;
+  transform: translate3d(var(--par-x, 0px), var(--par-y, 0px), 0);
+  transition: transform 0.45s var(--ease-out);
+  will-change: transform;
+}
+.ai-aura-orb i {
+  position: absolute; inset: 0; display: block; border-radius: 50%;
+  filter: blur(64px); opacity: 0.5;
+}
+.ai-aura-orb--a { width: 460px; height: 460px; left: -130px; top: -170px; }
+.ai-aura-orb--a i {
+  background: radial-gradient(circle at 32% 30%, #1e6fff 0%, rgba(30,111,255,0.25) 45%, transparent 68%);
+  animation: aiAuraFloatA 17s ease-in-out infinite;
+}
+.ai-aura-orb--b { width: 430px; height: 430px; right: -140px; top: 22%; }
+.ai-aura-orb--b i {
+  background: radial-gradient(circle at 60% 40%, #8b5cf6 0%, rgba(139,92,246,0.22) 45%, transparent 68%);
+  animation: aiAuraFloatB 21s ease-in-out infinite;
+}
+.ai-aura-orb--c { width: 380px; height: 380px; left: 30%; bottom: -200px; }
+.ai-aura-orb--c i {
+  background: radial-gradient(circle at 50% 50%, #22d3ee 0%, rgba(34,211,238,0.2) 45%, transparent 68%);
+  animation: aiAuraFloatC 19s ease-in-out infinite;
+}
+@keyframes aiAuraFloatA {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(26px, 34px, 0) scale(1.08); }
+  66% { transform: translate3d(-18px, 12px, 0) scale(0.96); }
+}
+@keyframes aiAuraFloatB {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  40% { transform: translate3d(-30px, -24px, 0) scale(1.1); }
+  75% { transform: translate3d(16px, 20px, 0) scale(0.94); }
+}
+@keyframes aiAuraFloatC {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(22px, -26px, 0) scale(1.06); }
+}
+/* Perspective "floor" grid — a 3D plane receding behind the chat. */
+.ai-aura-grid {
+  position: absolute; inset: -40% -20% -20%;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--primary) 10%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary) 10%, transparent) 1px, transparent 1px);
+  background-size: 46px 46px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 25%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 25%, transparent 78%);
+  transform: perspective(900px) rotateX(56deg) translateY(10%);
+  transform-origin: 50% 0%;
+  opacity: 0.55; pointer-events: none;
+}
+/* Depth layers: orbs move at different rates with the pointer. */
+.ai-aura-orb--a { translate: 0 calc(var(--par-y, 0px) * 1.6) 0; }
+.ai-aura-orb--b { translate: 0 calc(var(--par-y, 0px) * -1.1) 0; }
+
+/* The brand orb becomes a 3D sphere: highlight + shading + orbiting ring. */
+.ai-brand-orb {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 34%),
+    radial-gradient(circle at 62% 74%, #0b2f7a 0%, rgba(11,47,122,0) 55%),
+    radial-gradient(circle at 38% 42%, #4dc7ff 0%, #1e6fff 52%, #1b2a6b 100%);
+  box-shadow:
+    inset -8px -10px 18px rgba(0, 0, 0, 0.4),
+    inset 4px 6px 12px rgba(255, 255, 255, 0.25),
+    0 14px 30px -10px color-mix(in srgb, #1e6fff 70%, transparent);
+  animation: aiOrbFloat 5.5s var(--ease-out) infinite;
+}
+.ai-brand-orb svg { transform: translateZ(0); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35)); }
+@keyframes aiOrbFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.05); }
+}
+
+/* Welcome hero orb (full-screen AI pages). */
+.ai-welcome-orb {
+  position: relative; width: 58px; height: 58px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 36%),
+    radial-gradient(circle at 65% 78%, #0b2f7a 0%, rgba(11,47,122,0) 58%),
+    radial-gradient(circle at 40% 45%, #4dc7ff 0%, #1e6fff 54%, #1b2a6b 100%);
+  box-shadow: inset -8px -10px 18px rgba(0,0,0,0.4), inset 4px 6px 12px rgba(255,255,255,0.25),
+    0 16px 36px -12px color-mix(in srgb, #1e6fff 75%, transparent);
+  animation: aiOrbFloat 5.5s var(--ease-out) infinite;
+}
+.ai-welcome-orb::before {
+  content: ''; position: absolute; inset: -7px; border-radius: 50%; z-index: -1;
+  background: conic-gradient(from 0deg, #1e6fff, #22d3ee, #8b5cf6, #1e6fff);
+  filter: blur(10px); opacity: 0.45;
+  animation: aiOrbSpin 7s linear infinite;
+}
+.ai-welcome-tip {
+  font-size: 11px; letter-spacing: 0.02em; color: var(--text-3);
+  display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 0;
+}
+.ai-welcome-tip::before { content: ''; width: 14px; height: 1px; background: currentColor; opacity: 0.5; }
+.ai-welcome-tip::after { content: ''; width: 14px; height: 1px; background: currentColor; opacity: 0.5; }
+
+/* Header + composer get a glass wash so the aurora shows through. */
+.ai-chat-head--brand {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 7%, transparent), transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.ai-cap { background: color-mix(in srgb, var(--surface-2) 78%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+
+/* Turns rise in as they land; AI bubbles get a soft glow. */
+.ai-turn { animation: aiTurnIn 0.3s var(--ease-out) both; }
+@keyframes aiTurnIn {
+  from { opacity: 0; transform: translateY(9px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.bubble-ai {
+  box-shadow: 0 10px 26px -16px color-mix(in srgb, var(--primary) 60%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+.bubble-user { box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--primary) 55%, transparent); }
+
+/* Composer: glass input, gradient send button with lift/press. */
+.ai-chat-input {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.ai-chat-input textarea { background: color-mix(in srgb, var(--surface) 88%, transparent); }
+.ai-chat-input .btn-primary:not(.btn-stop) {
+  background-image: linear-gradient(135deg, var(--primary), #22d3ee 130%);
+  background-size: 160% 160%;
+  box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--primary) 75%, transparent);
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out),
+    background-position var(--dur) var(--ease-out), filter var(--dur-fast) var(--ease-out);
+}
+.ai-chat-input .btn-primary:not(.btn-stop):hover {
+  transform: translateY(-1px);
+  background-position: 90% 60%;
+  box-shadow: 0 14px 28px -10px color-mix(in srgb, var(--primary) 85%, transparent);
+}
+.ai-chat-input .btn-primary:not(.btn-stop):active { transform: translateY(1px) scale(0.98); }
+.ai-stage { color: var(--text-2); }
+
+/* The docked non-full-height card also gets the lean (subtle, mouse only).
+   The .card mount animation would keep its fill-mode transform locked, so it
+   is disabled here — turns animate themselves and the lean must win. */
+.ai-chat.card { animation: none; }
+@media (hover: hover) and (pointer: fine) {
+  .ai-console:not(.ai-console-full) .card.ai-chat {
+    transform: perspective(1100px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+    transition: transform 0.35s var(--ease-out);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-aura-orb i, .ai-aura-grid, .ai-brand-orb, .ai-brand-orb::after,
+  .ai-brand-name, .ai-live-dot, .ai-turn, .ai-welcome-orb, .ai-welcome-orb::before,
+  .stream-caret, .ai-stage::before, .typing i { animation: none !important; }
+  .ai-console, .ai-aura-orb, .ai-chat, .ai-chat-input .btn-primary { transition: none !important; }
+}
+
 .ai-chat { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h) - 60px); min-height: 520px; }
 .ai-chat-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

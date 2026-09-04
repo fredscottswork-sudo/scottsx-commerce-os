@@ -127,6 +127,32 @@ export function AiConsole({
    */
   fullHeight?: boolean;
 }) {
+  /** Desktop 3D tilt: the chat card leans with the pointer (mouse only,
+   *  disabled for reduced motion). Values are CSS vars consumed by .ai-chat. */
+  const tiltRef = useRef<HTMLDivElement>(null);
+  const onTiltMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const el = tiltRef.current;
+    if (!el || e.pointerType !== 'mouse') return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    el.style.setProperty('--tilt-x', `${(-py * 2.4).toFixed(2)}deg`);
+    el.style.setProperty('--tilt-y', `${(px * 3).toFixed(2)}deg`);
+    // Background parallax (px): the aurora orbs drift opposite the pointer,
+    // giving the chat real depth without moving the surface itself.
+    el.style.setProperty('--par-x', `${(-py * 24).toFixed(1)}px`);
+    el.style.setProperty('--par-y', `${(px * 34).toFixed(1)}px`);
+  }, []);
+  const onTiltLeave = useCallback(() => {
+    const el = tiltRef.current;
+    if (!el) return;
+    el.style.setProperty('--tilt-x', '0deg');
+    el.style.setProperty('--tilt-y', '0deg');
+    el.style.setProperty('--par-x', '0px');
+    el.style.setProperty('--par-y', '0px');
+  }, []);
   const { toast } = useToast();
   const { add, favoriteSellerIds, toggleFavoriteSeller } = useCart();
 
@@ -496,7 +522,22 @@ export function AiConsole({
   }, [toast]);
 
   return (
-    <div className={`ai-console${fullHeight ? ' ai-console-full ai-console--noagents' : ''}`}>
+    <div
+      ref={tiltRef}
+      className={`ai-console${fullHeight ? ' ai-console-full ai-console--noagents' : ''}`}
+      onPointerMove={onTiltMove}
+      onPointerLeave={onTiltLeave}
+    >
+      {/* 3D aurora backdrop: floating gradient orbs + perspective grid that
+          sit behind the chat card (pure CSS, pointer-events none). The orbs
+          parallax with the pointer via --par-x/--par-y for real depth. */}
+      <div className="ai-aura" aria-hidden="true">
+        <span className="ai-aura-orb ai-aura-orb--a"><i /></span>
+        <span className="ai-aura-orb ai-aura-orb--b"><i /></span>
+        <span className="ai-aura-orb ai-aura-orb--c"><i /></span>
+        <span className="ai-aura-grid" />
+      </div>
+      <div className="ai-console-inner">
       {/* Agent picker removed for extraordinary full-screen chat — user asked to remove agent words above */}
       {!fullHeight && (
         <aside className="card ai-agents">
@@ -590,8 +631,11 @@ export function AiConsole({
                 </>
               ) : (
                 <div className="ai-welcome-bare">
-                  <Sparkles size={18} className="muted-2" />
+                  <span className="ai-welcome-orb" aria-hidden="true">
+                    <Sparkles size={20} />
+                  </span>
                   <p className="muted" style={{ fontSize: 13, margin: 0 }}>Ask anything — products, prices, sellers</p>
+                  <p className="ai-welcome-tip" aria-hidden="true">Attach a photo · paste one · or just describe it</p>
                 </div>
               )}
 
@@ -874,6 +918,7 @@ export function AiConsole({
       >
         <VisualSearch compact onResults={onPhotoResults} />
       </Modal>
+      </div>
     </div>
   );
 }
