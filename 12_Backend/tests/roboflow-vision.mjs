@@ -46,6 +46,10 @@ let lastNvidiaBody = null;
 //   overload-nemotron-fallback— nemotron ALWAYS 503, kimi-k2 must answer
 //   overload-everything       — every model answers 503 (full outage)
 let overloadOnceUsed = false;
+// 'empty' makes the caption model return NOTHING (the silent failure that made
+// "detected" fall back to the user's question). Tests flip it to prove the
+// fallback is honest and never reports the question as the item.
+let stubCaptionMode = 'ok';
 const OVERLOAD_BODY = JSON.stringify({
   error: { message: 'Service temporarily overloaded', type: 'Service Unavailable', code: 503 },
 });
@@ -108,6 +112,14 @@ const nvidiaStub = http.createServer((req, res) => {
         res.end(OVERLOAD_BODY);
         return;
       }
+    }
+
+    // Simulate a silent caption failure: the vision model answers 200 with an
+    // EMPTY message (this is what happened when "detected" became the prompt).
+    if (imgUrl && stubCaptionMode === 'empty') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ choices: [{ message: { content: '' } }] }));
+      return;
     }
 
     let reply = `NVIDIA says: the catalogue has items matching "${prompt.slice(0, 60)}".`;
@@ -429,6 +441,9 @@ const main = async () => {
   check('diagnostics probe succeeds against the configured endpoint',
     diag.data?.nvidia?.ok === true,
     JSON.stringify(diag.data?.nvidia?.error));
+  check('diagnostics vision probe: the caption model accepts image_url',
+    diag.data?.nvidia?.vision?.ok === true,
+    JSON.stringify(diag.data?.nvidia?.vision));
   if (status.data?.nvidiaVisionConfigured) {
     check('NVIDIA NIM receives image_url requests from the search endpoint',
       nvidiaHits > 0, `hits=${nvidiaHits}`);
@@ -506,6 +521,26 @@ const main = async () => {
         /base64-test photo/.test(askPhotoData.photoAnalysis?.detected || '') &&
         typeof askPhotoData.photoAnalysis?.matchCount === 'number',
       JSON.stringify(askPhotoData.photoAnalysis));
+
+    // A silent caption failure must NEVER surface the user's question as the
+    // detected item — it must say it could not identify the photo, with the
+    // reason, and not pretend matches are photo matches.
+    stubCaptionMode = 'empty';
+    const askNoCaption = await fetch(`${API}/ai/v2/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'what do you see in this photo?', imageData: TINY_PNG }),
+    });
+    stubCaptionMode = 'ok';
+    const askNoCaptionData = await askNoCaption.json().catch(() => ({}));
+    check('silent caption failure: detected is NOT the user question',
+      /could not identify this photo/.test(askNoCaptionData.photoAnalysis?.detected || ''),
+      JSON.stringify(askNoCaptionData.photoAnalysis));
+    check('silent caption failure: no fake matches + reason is surfaced',
+      askNoCaptionData.photoAnalysis?.matchCount === 0 &&
+        typeof askNoCaptionData.photoAnalysis?.error === 'string' &&
+        askNoCaptionData.photoAnalysis.error.length > 0,
+      JSON.stringify(askNoCaptionData.photoAnalysis));
   } else {
     console.log('  (NVIDIA_API_KEY not set on the live server — caption checks skipped)');
   }

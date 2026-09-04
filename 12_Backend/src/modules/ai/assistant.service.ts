@@ -170,6 +170,59 @@ export interface NvidiaProbeResult {
     firstByteMs?: number;
     latencyMs?: number;
   };
+  /** Does the configured VISION model actually accept an image and answer?
+   *  The chat probe never exercises image_url — this one does, with a real
+   *  (tiny) image, so "captions silently return nothing" becomes visible. */
+  vision?: { ok: boolean; status?: number; error?: string; latencyMs?: number };
+}
+
+/** 1×1 PNG used to test that the vision model accepts image_url input. */
+const NVIDIA_VISION_PROBE_IMAGE =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+
+/** Probe the configured vision caption model with a real image payload. */
+async function probeNvidiaVision(): Promise<{ ok: boolean; status?: number; error?: string; latencyMs?: number } | undefined> {
+  if (!process.env.NVIDIA_API_KEY?.trim()) return undefined;
+  const url = process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL;
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25_000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.NVIDIA_API_KEY}` },
+      body: JSON.stringify({
+        model: nvidiaVisionModel(),
+        max_tokens: 16,
+        temperature: 0,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Name the main object in this image in 2-4 words.' },
+              { type: 'image_url', image_url: { url: NVIDIA_VISION_PROBE_IMAGE } },
+            ],
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      return { ok: false, status: res.status, error: body.slice(0, 300), latencyMs: Date.now() - started };
+    }
+    const data = await res.json();
+    const text = extractReply(data?.choices?.[0]?.message);
+    return {
+      ok: Boolean(text),
+      error: text ? undefined : 'vision model returned an empty response',
+      latencyMs: Date.now() - started,
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err), latencyMs: Date.now() - started };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function probeNvidia(): Promise<NvidiaProbeResult> {
@@ -267,6 +320,11 @@ export async function probeNvidia(): Promise<NvidiaProbeResult> {
     };
     base.error = gotByte ? undefined : `no first token within 40s (chunk: "${firstChunk.slice(0, 80)}")`;
     if (gotByte) base.latencyMs = firstByteMs;
+    // The chat probe never exercises image_url — that is exactly the silent
+    // failure the user hit ("detected" fell back to their own question).
+    // Probe the vision model with a real image so a caption timeout or a
+    // non-multimodal model is visible in diagnostics.
+    base.vision = await probeNvidiaVision();
     return base;
   } catch (err) {
     const e = err as { name?: string; message?: string };
@@ -330,8 +388,9 @@ export interface AskResult {
    *  reason (e.g. "nvidia error 401: …") instead of a mysterious label. */
   llmError?: string;
   /** Present when a photo was attached: what the vision pipeline saw and how
-   *  many live listings it matched. */
-  photoAnalysis?: { detected: string; matchCount: number };
+   *  many live listings it matched. `error` explains when nothing was
+   *  detected (provider timeout/failure) instead of hiding it. */
+  photoAnalysis?: { detected: string; matchCount: number; error?: string };
 }
 
 /**
@@ -350,26 +409,56 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
   //    it never sees the bytes, it reads the analysis + matched listings as
   //    text, so it can genuinely answer "what is this / can I buy it / is it
   //    a fair price" without ever claiming it cannot see photos.
-  let photoAnalysis: { detected: string; matchCount: number } | undefined;
+  let photoAnalysis: { detected: string; matchCount: number; error?: string } | undefined;
   let photoMatches: RetrievedProduct[] = [];
   let photoContext = '';
   if (imageData || imageUrl) {
     try {
-      const found = await imageSearch(db, { imageData, imageUrl, hint: prompt }, 12);
-      photoMatches = (found.products ?? []) as RetrievedProduct[];
+      // Chat can wait longer than the interactive search modal: a cold
+      // kimi-k3 caption call can exceed the 8s interactive cap.
+      const found = await imageSearch(
+        db,
+        { imageData, imageUrl, hint: prompt, searchDeadlineMs: 10_000, describeDeadlineMs: 25_000 },
+        12
+      );
+      const rawDetected = found.detected?.trim() || '';
+      // The search terms always include the user's own prompt — when no
+      // caption/labels came back, "detected" is empty now; never present the
+      // question (or a fragment of it) as the item in the photo.
+      const promptFragment = prompt.trim().slice(0, 32).toLowerCase();
+      const detectedOk =
+        Boolean(rawDetected) &&
+        !/^(what|which|how|is|are|do|does|can|could|find|show|compare|tell|why|where|who|when)\b/i.test(
+          rawDetected
+        ) &&
+        (prompt.trim().length < 8 || !rawDetected.toLowerCase().includes(promptFragment));
+      photoMatches = detectedOk ? ((found.products ?? []) as RetrievedProduct[]) : [];
       photoAnalysis = {
-        detected: found.detected?.trim() || 'could not read this photo (no labels returned)',
+        detected: detectedOk ? rawDetected : 'could not identify this photo',
         matchCount: photoMatches.length,
+        ...(detectedOk ? {} : { error: found.visionError ?? 'no detection came back from the vision providers' }),
       };
       const blocks: string[] = [];
-      if (found.detected) blocks.push(`Detected: ${found.detected}`);
-      if (found.query && found.query !== found.detected) blocks.push(`Search terms used: ${found.query}`);
-      blocks.push(
-        `LIVE catalogue matches (ranked, with price/stock/seller):\n${productsToContext(photoMatches)}`
-      );
+      if (detectedOk) {
+        blocks.push(`Detected: ${rawDetected}`);
+        if (found.query) blocks.push(`Search terms used: ${found.query}`);
+        blocks.push(
+          `LIVE catalogue matches (ranked, with price/stock/seller):\n${productsToContext(photoMatches)}`
+        );
+      } else {
+        blocks.push(
+          `The platform could not identify the item in the photo (${photoAnalysis.error}). ` +
+            'Do not invent what the photo shows; say so plainly and suggest trying another angle or describing it in words.'
+        );
+      }
       photoContext = blocks.join('\n');
     } catch (err) {
       console.warn(`[ai] photo analysis failed (${err instanceof Error ? err.message : 'error'})`);
+      photoAnalysis = {
+        detected: 'could not identify this photo',
+        matchCount: 0,
+        error: err instanceof Error ? err.message.slice(0, 200) : 'photo analysis failed',
+      };
     }
   }
 
@@ -437,10 +526,16 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
 
 /** Grounded answer built purely from the photo analysis + live matches. */
 function composePhotoAnswer(
-  analysis: { detected: string; matchCount: number },
+  analysis: { detected: string; matchCount: number; error?: string },
   matches: RetrievedProduct[]
 ): string {
-  const lines = [`From your photo I can see: **${analysis.detected}**.`];
+  const identified = analysis.detected && !/^could not identify/.test(analysis.detected);
+  const lines = identified
+    ? [`From your photo I can see: **${analysis.detected}**.`]
+    : [
+        `I could not identify the item in your photo${analysis.error ? ` (${analysis.error})` : ''}.`,
+        'Try a clearer, straight-on photo, or just describe it — for example "red sneakers" or "55-inch smart TV".',
+      ];
   if (matches.length) {
     lines.push('', 'Here is what the live catalogue has for it:');
     for (const p of matches.slice(0, 6)) {
@@ -908,7 +1003,18 @@ export async function aiSearch(db: pg.Pool, query: string, limit = 24) {
  */
 export async function imageSearch(
   db: pg.Pool,
-  opts: { imageUrl?: string; imageData?: string; hint?: string; labels?: string[] },
+  opts: {
+    imageUrl?: string;
+    imageData?: string;
+    hint?: string;
+    labels?: string[];
+    /** Override the Roboflow deadline (interactive search wants 6s; the chat
+     *  can afford 10s because it already waits on the LLM). */
+    searchDeadlineMs?: number;
+    /** Override the caption deadline (chat uses 25s — a cold kimi-k3 call
+     *  easily exceeds the 8s interactive cap). */
+    describeDeadlineMs?: number;
+  },
   limit = 24
 ) {
   const raw = opts.imageData || opts.imageUrl || '';
@@ -927,25 +1033,34 @@ export async function imageSearch(
   //   NVIDIA / LLM — general vision captions (what IS in the photo), which is
   //                  what makes search names the item the Roboflow workflow
   //                  may only classify coarsely.
+  const searchDeadline = opts.searchDeadlineMs ?? VISION_SEARCH_DEADLINE_MS;
+  const describeDeadline = opts.describeDeadlineMs ?? VISION_DESCRIBE_DEADLINE_MS;
   let vision: Awaited<ReturnType<typeof analyzeImage>> = null;
-  let described = '';
+  let caption: { text: string; error?: string } = { text: '' };
+  let visionError = '';
   if (raw) {
     const robof = Promise.race([
       analyzeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), VISION_SEARCH_DEADLINE_MS)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), searchDeadline)),
     ]);
-    const caption = Promise.race([
+    const captionCall = Promise.race([
       describeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData }),
-      new Promise<string>((resolve) => setTimeout(() => resolve(''), VISION_DESCRIBE_DEADLINE_MS)),
+      new Promise<{ text: string; error?: string }>((resolve) =>
+        setTimeout(() => resolve({ text: '', error: `caption timed out after ${describeDeadline}ms` }), describeDeadline)
+      ),
     ]);
-    [vision, described] = await Promise.all([robof, caption]);
+    [vision, caption] = await Promise.all([robof, captionCall]);
     if (!vision && roboflowConfigured()) {
-      console.warn('[vision] image search skipped Roboflow after its deadline — answering from caption/heuristic.');
+      console.warn(`[vision] image search skipped Roboflow after its ${searchDeadline}ms deadline — answering from caption/heuristic.`);
+      visionError = `Roboflow analysis did not answer within ${searchDeadline}ms`;
     }
-    if (!described && nvidiaVisionConfigured()) {
-      console.warn('[vision] image search skipped NVIDIA caption after its deadline.');
+    if (!caption.text) {
+      console.warn(`[vision] image search without a caption (${caption.error ?? 'no vision provider configured'})`);
+      if (caption.error) visionError = visionError ? `${visionError}; ${caption.error}` : caption.error;
+      else if (nvidiaVisionConfigured()) visionError = 'NVIDIA caption did not answer';
     }
   }
+  const described = caption.text;
 
   // Merge every signal; dedupe word-by-word. The caption is the strongest
   // "what is it" signal, so it leads.
@@ -1014,19 +1129,21 @@ export async function imageSearch(
     }
   }
 
-  // What we *tell* the user we detected. The NVIDIA caption is the most
-  // human-readable; Roboflow labels follow; then merged terms (a
-  // decision-only workflow response must never blank the answer). `query` is
-  // the full search expression actually used, so the UI/debug can see all
-  // signals (caption + labels + hint + filename) merged into one query.
+  // What we *tell* the user we detected. Only VISION output may be a
+  // detection: the NVIDIA caption (most human-readable) then Roboflow labels.
+  // The search terms always include the hint/question, so they can never be
+  // shown as "detected" — that is exactly how a photo ask ended up reporting
+  // the user's own question as the item. `query` still carries every signal
+  // (caption + labels + hint + filename) for the actual catalogue search.
   const visionLabel = vision
     ? [vision.productTitle, vision.category, ...vision.tags].filter(Boolean).join(' ')
     : '';
-  const detectedLabel = described || visionLabel || terms;
+  const detectedLabel = (described || visionLabel).trim();
   return {
     ...result,
     detected: detectedLabel,
     query: terms,
+    visionError: visionError || undefined,
     explanation: detectedLabel
       ? `Image looks like **${detectedLabel}** — ${result.products.length} similar item${
           result.products.length === 1 ? '' : 's'
@@ -1039,11 +1156,15 @@ export async function imageSearch(
  * Describe a photo with a vision model — NVIDIA NIM (configurable, defaults
  * to the kimi-k3 vision class) first, then the legacy OpenRouter vision path
  * when only LLM_API_KEY is set. Accepts either a public URL or a base64 data
- * URL (file uploads). Never throws; returns '' when unconfigured or on error.
+ * URL (file uploads). Never throws; returns { text, error } so callers can
+ * say WHY nothing was detected instead of silently degrading.
  */
-async function describeImage(input: { imageUrl?: string; imageData?: string }): Promise<string> {
+async function describeImage(input: {
+  imageUrl?: string;
+  imageData?: string;
+}): Promise<{ text: string; error?: string }> {
   const imageUrl = input.imageData || input.imageUrl;
-  if (!imageUrl) return '';
+  if (!imageUrl) return { text: '' };
 
   // ── NVIDIA NIM (preferred: strong general vision captions) ───────────────
   if (process.env.NVIDIA_API_KEY?.trim()) {
@@ -1066,16 +1187,17 @@ async function describeImage(input: { imageUrl?: string; imageData?: string }): 
         // text-only) and skip thinking so the caption is fast.
         { model: nvidiaVisionModel(), think: false }
       );
-      return r.text.slice(0, 120);
+      return { text: r.text.slice(0, 120) };
     } catch (err) {
-      console.warn(`[vision] NVIDIA describe failed (${err instanceof Error ? err.name : 'error'})`);
-      return '';
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`[vision] NVIDIA describe failed (${reason.slice(0, 200)})`);
+      return { text: '', error: reason.slice(0, 200) };
     }
   }
 
   // ── Legacy OpenRouter vision path (LLM_API_KEY / AI_VISION_MODEL) ─────────
   const key = process.env.LLM_API_KEY;
-  if (!key) return '';
+  if (!key) return { text: '' };
   const model = process.env.AI_VISION_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct';
 
   const res = await fetch(openRouterUrl(), {
@@ -1103,10 +1225,13 @@ async function describeImage(input: { imageUrl?: string; imageData?: string }): 
       ],
     }),
   });
-  if (!res.ok) return '';
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    return { text: '', error: `vision model HTTP ${res.status}: ${detail.slice(0, 200)}` };
+  }
   const data = await res.json();
   // Vision models reason too — strip the thinking or it becomes the caption.
-  return extractReply(data?.choices?.[0]?.message).slice(0, 80);
+  return { text: extractReply(data?.choices?.[0]?.message).slice(0, 80) };
 }
 
 // ── Seller listing generation ───────────────────────────────────────────────
@@ -1128,8 +1253,8 @@ export async function generateProduct(
     const labels = [vision?.productTitle, vision?.category, ...(vision?.tags ?? [])]
       .filter(Boolean)
       .join(' ');
-    detected =
-      labels || (await describeImage({ imageUrl: opts.imageUrl }).catch(() => ''));
+    const caption = await describeImage({ imageUrl: opts.imageUrl }).catch(() => ({ text: '' }));
+    detected = labels || caption.text;
   }
 
   const heuristic = heuristicGenerateProduct(opts.imageUrl ?? '', detected || hint);

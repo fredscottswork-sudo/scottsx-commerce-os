@@ -106,8 +106,9 @@ export interface AiAnswer {
   grounded: boolean;
   /** Filled when the model call failed and the app fell back offline. */
   llmError?: string;
-  /** Filled when a photo was attached: what the vision pipeline saw + matches. */
-  photoAnalysis?: { detected: string; matchCount: number };
+  /** Filled when a photo was attached: what the vision pipeline saw + matches.
+   *  `error` explains why nothing was detected (provider timeout/failure). */
+  photoAnalysis?: { detected: string; matchCount: number; error?: string };
 }
 
 export interface AiSearchResult {

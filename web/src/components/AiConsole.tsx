@@ -67,7 +67,7 @@ interface Turn {
   photo?: string;
   photoName?: string;
   /** Assistant: what the vision pipeline saw in the attached photo. */
-  photoAnalysis?: { detected: string; matchCount: number };
+  photoAnalysis?: { detected: string; matchCount: number; error?: string };
 }
 
 /** Copy any text with a legacy fallback (clipboard API can be absent in
@@ -509,12 +509,21 @@ export function AiConsole({
                           />
                         )}
                         <RichText text={t.content} />
-                        {t.role === 'assistant' && t.photoAnalysis?.detected && (
+                        {t.role === 'assistant' && t.photoAnalysis && (
                           <p className="tiny muted-2" style={{ margin: '8px 0 0' }}>
-                            🔍 Photo analyzed: <strong>{t.photoAnalysis.detected.slice(0, 90)}</strong>
-                            {t.photoAnalysis.matchCount > 0
-                              ? ` · ${t.photoAnalysis.matchCount} matching listing${t.photoAnalysis.matchCount === 1 ? '' : 's'}`
-                              : ' · no live matches yet'}
+                            {t.photoAnalysis.error ? (
+                              <>
+                                ⚠️ Could not identify the photo
+                                {t.photoAnalysis.error ? ` — ${t.photoAnalysis.error.slice(0, 90)}` : ''}
+                              </>
+                            ) : (
+                              <>
+                                🔍 Photo analyzed: <strong>{t.photoAnalysis.detected.slice(0, 90)}</strong>
+                                {t.photoAnalysis.matchCount > 0
+                                  ? ` · ${t.photoAnalysis.matchCount} matching listing${t.photoAnalysis.matchCount === 1 ? '' : 's'}`
+                                  : ' · no live matches yet'}
+                              </>
+                            )}
                           </p>
                         )}
                         {t.role === 'assistant' && (
