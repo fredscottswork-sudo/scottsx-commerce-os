@@ -33,14 +33,52 @@ function loadFacets(): Promise<Facets> {
   return facetPromise;
 }
 
+/* Alibaba-style comprehensive categories — 16 even, with icons */
+const STATIC_CATEGORIES = [
+  'Electronics',
+  'Fashion',
+  'Beauty',
+  'Home & Living',
+  'Sports',
+  'Toys',
+  'Automotive',
+  'Health',
+  'Jewelry',
+  'Bags & Shoes',
+  'Groceries',
+  'Industrial',
+  'Phones',
+  'Computers',
+  'Agriculture',
+  'Pets',
+] as const;
+
 const CATEGORY_ICONS: Record<string, ReactNode> = {
   Electronics: <Smartphone size={16} />,
   Fashion: <Shirt size={16} />,
   Sports: <Dumbbell size={16} />,
+  'Sports & Outdoors': <Dumbbell size={16} />,
   Beauty: <Sparkle size={16} />,
   'Home & Living': <Sofa size={16} />,
   Groceries: <Apple size={16} />,
+  'Groceries & Food': <Apple size={16} />,
   Automotive: <Car size={16} />,
+  Toys: <Package size={16} />,
+  'Toys & Kids': <Package size={16} />,
+  Health: <Heart size={16} />,
+  'Health & Medical': <Heart size={16} />,
+  Jewelry: <Sparkle size={16} />,
+  'Jewelry & Watches': <Sparkle size={16} />,
+  'Bags & Shoes': <ShoppingBag size={16} />,
+  Industrial: <Package size={16} />,
+  'Industrial & Tools': <Package size={16} />,
+  Phones: <Smartphone size={16} />,
+  'Phones & Tablets': <Smartphone size={16} />,
+  Computers: <Package size={16} />,
+  'Computers & Office': <Package size={16} />,
+  Agriculture: <Apple size={16} />,
+  Pets: <Heart size={16} />,
+  'Pets & Animals': <Heart size={16} />,
 };
 function categoryIcon(name: string): ReactNode {
   return CATEGORY_ICONS[name] ?? <Package size={16} />;
@@ -82,7 +120,23 @@ export function MainNav({ role, counts }: Props) {
     };
   }, [open]);
 
-  const categories = facets?.categories ?? [];
+  const categories = useMemo(() => {
+    const live = facets?.categories ?? [];
+    if (live.length === 0) {
+      return STATIC_CATEGORIES.map((name) => ({ name, count: 0 }));
+    }
+    // Merge live with static to keep even grid and ensure Alibaba-like breadth
+    const liveMap = new Map(live.map((c) => [c.name, c]));
+    const merged: { name: string; count: number }[] = [];
+    // Include all live first
+    for (const c of live) merged.push(c);
+    // Fill with static that aren't already in live to reach at least 16
+    for (const name of STATIC_CATEGORIES) {
+      if (!liveMap.has(name)) merged.push({ name, count: 0 });
+    }
+    // Ensure even count for balanced grid
+    return merged;
+  }, [facets]);
   const brands = useMemo(() => (facets?.brands ?? []).slice(0, 8), [facets]);
 
   const links: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [

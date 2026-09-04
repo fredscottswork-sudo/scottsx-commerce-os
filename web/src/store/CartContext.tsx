@@ -9,11 +9,6 @@ import { useToast } from './ToastContext';
 interface CartState {
   cart: Cart;
   loading: boolean;
-  /**
-   * Set when the cart could not be loaded (backend asleep, network dropped).
-   * Distinct from "loaded successfully and it is empty" — conflating the two
-   * tells a buyer their cart was wiped when it is really still on the server.
-   */
   loadError: string | null;
   favoriteSellerIds: Set<string>;
   savedIds: Set<string>;
@@ -27,7 +22,47 @@ interface CartState {
 }
 
 const EMPTY: Cart = { items: [], subtotalMinor: 0, itemCount: 0, currency: 'UGX' };
+const GUEST_CART_KEY = 'guest_cart_v1';
 const CartContext = createContext<CartState | null>(null);
+
+function loadGuestCart(): Cart {
+  try {
+    const raw = localStorage.getItem(GUEST_CART_KEY);
+    if (!raw) return EMPTY;
+    const parsed = JSON.parse(raw) as Cart;
+    if (!parsed || !Array.isArray(parsed.items)) return EMPTY;
+    return parsed;
+  } catch {
+    return EMPTY;
+  }
+}
+function saveGuestCart(c: Cart) {
+  try { localStorage.setItem(GUEST_CART_KEY, JSON.stringify(c)); } catch {}
+}
+function buildGuestCartItem(p: Product, qty: number) {
+  return {
+    productId: p.id,
+    quantity: qty,
+    title: p.title,
+    priceMinor: p.priceMinor,
+    stockQuantity: p.stockQuantity ?? 999,
+    imageUrl: p.imageUrl || '',
+    status: p.status || 'approved',
+    sellerId: p.seller?.id || '',
+    sellerName: p.seller?.name || '',
+    lineTotalMinor: p.priceMinor * qty,
+  };
+}
+function recalcGuestCart(items: any[]): Cart {
+  let subtotal = 0;
+  let count = 0;
+  for (const it of items) {
+    subtotal += (it.priceMinor || 0) * (it.quantity || 0);
+    count += it.quantity || 0;
+    it.lineTotalMinor = (it.priceMinor || 0) * (it.quantity || 0);
+  }
+  return { items, subtotalMinor: subtotal, itemCount: count, currency: 'UGX' };
+}
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -41,7 +76,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const isBuyer = !!user && user.role === 'buyer';
 
   const refresh = useCallback(async () => {
-    if (!isBuyer) { setCart(EMPTY); setFavoriteSellerIds(new Set()); setSavedIds(new Set()); setLoadError(null); return; }
+    if (!isBuyer) {
+      const g = loadGuestCart();
+      setCart(g);
+      setFavoriteSellerIds(new Set());
+      setSavedIds(new Set());
+      setLoadError(null);
+      return;
+    }
     setLoading(true);
     try {
       const [c, f, b] = await Promise.allSettled([
@@ -49,10 +91,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
         socialService.favorites(),
         buyerService.bookmarks(),
       ]);
-      // The cart is the one call whose failure must be visible: falling back to
-      // an empty cart silently would read as "we deleted your items".
-      if (c.status === 'fulfilled') { setCart(c.value); setLoadError(null); }
-      else setLoadError((c.reason as Error)?.message || 'Could not load your cart');
+      if (c.status === 'fulfilled') {
+        let nextCart = c.value as Cart;
+        try {
+          const guest = loadGuestCart();
+          if (guest.items.length > 0) {
+            for (const it of guest.items) {
+              try { await socialService.addToCart(it.productId, it.quantity); } catch {}
+            }
+            localStorage.removeItem(GUEST_CART_KEY);
+            try {
+              const merged = await socialService.cart();
+              nextCart = merged;
+            } catch {}
+          }
+        } catch {}
+        setCart(nextCart);
+        setLoadError(null);
+      } else setLoadError((c.reason as Error)?.message || 'Could not load your cart');
       if (f.status === 'fulfilled') setFavoriteSellerIds(new Set(f.value.sellers.map((s) => s.id)));
       if (b.status === 'fulfilled') setSavedIds(new Set(b.value.products.map((p) => p.id)));
     } finally {
@@ -63,8 +119,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const add = useCallback(async (product: Product, quantity = 1) => {
-    if (!isBuyer) { toast('Sign in as a buyer to use the cart', 'warning'); return; }
-    // Optimistic bump so the header badge reacts instantly.
+    if (!isBuyer) {
+      const current = loadGuestCart();
+      const existing = current.items.find((i: any) => i.productId === product.id);
+      let nextItems: any[];
+      if (existing) {
+        nextItems = current.items.map((i: any) => i.productId === product.id ? { ...i, quantity: i.quantity + quantity } : i);
+      } else {
+        nextItems = [...current.items, buildGuestCartItem(product, quantity)];
+      }
+      const nextCart = recalcGuestCart(nextItems);
+      saveGuestCart(nextCart);
+      setCart(nextCart);
+      toast(`${product.title} added to cart — sign in to checkout`, 'success');
+      return;
+    }
     setCart((c) => ({ ...c, itemCount: c.itemCount + quantity }));
     try {
       const next = await socialService.addToCart(product.id, quantity);
@@ -77,6 +146,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [isBuyer, refresh, toast]);
 
   const setQty = useCallback(async (productId: string, quantity: number) => {
+    if (!isBuyer) {
+      const current = loadGuestCart();
+      let nextItems: any[];
+      if (quantity <= 0) {
+        nextItems = current.items.filter((i: any) => i.productId !== productId);
+      } else {
+        nextItems = current.items.map((i: any) => i.productId === productId ? { ...i, quantity } : i);
+      }
+      const nextCart = recalcGuestCart(nextItems);
+      saveGuestCart(nextCart);
+      setCart(nextCart);
+      return;
+    }
     if (quantity <= 0) {
       try {
         setCart(await socialService.removeFromCart(productId)); setLoadError(null);
@@ -92,22 +174,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
       await refresh();
       toast(e?.message || 'Could not update quantity', 'error');
     }
-  }, [refresh, toast]);
+  }, [isBuyer, refresh, toast]);
 
   const remove = useCallback(async (productId: string) => {
+    if (!isBuyer) {
+      const current = loadGuestCart();
+      const nextCart = recalcGuestCart(current.items.filter((i: any) => i.productId !== productId));
+      saveGuestCart(nextCart);
+      setCart(nextCart);
+      return;
+    }
     try {
       setCart(await socialService.removeFromCart(productId)); setLoadError(null);
     } catch (e: any) {
       await refresh();
       toast(e?.message || 'Could not remove item', 'error');
     }
-  }, [refresh, toast]);
+  }, [isBuyer, refresh, toast]);
 
   const clear = useCallback(async () => {
+    if (!isBuyer) {
+      saveGuestCart(EMPTY);
+      setCart(EMPTY);
+      return;
+    }
     try {
       setCart(await socialService.clearCart()); setLoadError(null);
     } catch { await refresh(); }
-  }, [refresh]);
+  }, [isBuyer, refresh]);
 
   const toggleFavoriteSeller = useCallback(async (sellerId: string, sellerName?: string) => {
     if (!isBuyer) { toast('Sign in as a buyer to follow sellers', 'warning'); return; }

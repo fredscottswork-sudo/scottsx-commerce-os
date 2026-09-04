@@ -9,8 +9,27 @@ import ExtraDealDisplay from '../components/ExtraDealDisplay';
 import { Empty, ErrorBox, Loading, Btn } from '../components/ui';
 import { useSeo } from '../hooks/useSeo';
 import { BrandMark } from '../components/BrandLogo';
+import { useCart } from '../store/CartContext';
 
-const CATEGORIES = ['All', 'Electronics', 'Fashion', 'Sports', 'Beauty', 'Home & Living', 'Groceries', 'Automotive'] as const;
+/* Alibaba-style comprehensive categories — 16 total (even) for balanced grid */
+const CATEGORIES = [
+  'All',
+  'Electronics',
+  'Fashion',
+  'Beauty',
+  'Home & Living',
+  'Sports',
+  'Toys',
+  'Automotive',
+  'Health',
+  'Jewelry',
+  'Bags & Shoes',
+  'Groceries',
+  'Industrial',
+  'Phones',
+  'Computers',
+  'Agriculture',
+] as const;
 
 const BENEFITS = [
   { anim: 'pay', icon: <CreditCard size={22} />, title: 'Mobile Money & Cards' },
@@ -93,6 +112,7 @@ export default function Home() {
   const [stores, setStores] = useState<NearbySeller[]>([]);
   const [storesLoading, setStoresLoading] = useState(true);
   const [storesPrecise, setStoresPrecise] = useState(false);
+  const { add } = useCart();
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim().toLowerCase()), 250);
@@ -193,7 +213,7 @@ export default function Home() {
       <h2 className="mb-16">All products</h2>
       {loading ? <Loading /> : error ? <ErrorBox message={error} onRetry={() => load(category)} /> :
         filtered.length === 0 ? <Empty icon={<Search size={28} />} title="No products found" subtitle="Try another category or search." /> :
-          <ProductGrid products={filtered} />}
+          <ProductGrid products={filtered} onAddToCart={(p) => void add(p)} />}
 
       <div className="card card-pad mt-24 row-between wrap" style={{ contentVisibility: 'auto', containIntrinsicSize: '80px' } as any}>
         <div><strong>Are you a seller?</strong><div className="muted">List products, manage inventory and track orders on the web.</div></div>

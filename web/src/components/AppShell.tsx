@@ -130,6 +130,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               <NavLink to="/nearby" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Nearby</NavLink>
               <NavLink to="/ai" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>AI Shopper</NavLink>
             </nav>
+            <Link to="/cart" className="btn btn-icon icon-badge-wrap" title="Cart" aria-label="Cart">
+              <ShoppingCart size={17} />
+              {cart.itemCount > 0 && <span className="icon-badge">{cart.itemCount > 9 ? '9+' : cart.itemCount}</span>}
+            </Link>
             <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
               {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
@@ -154,7 +158,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </form>
           )}
         </header>
-        {!isAiRoute && <MainNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />}
+        {!isAiRoute && <MainNav role={null} counts={{ cart: cart.itemCount, messages: 0, notifications: 0 }} />}
         <main className={`public-content ${isAiRoute ? 'public-content--ai' : ''}`}>{children}</main>
         {!isAiRoute && (
           <footer className="public-footer">
@@ -167,7 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="tiny muted-2 center mt-8">© {new Date().getFullYear()} ScottsTechX · Kampala, Uganda</p>
           </footer>
         )}
-        <BottomNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
+        <BottomNav role={null} counts={{ cart: cart.itemCount, messages: 0, notifications: 0 }} />
       </div>
     );
   }

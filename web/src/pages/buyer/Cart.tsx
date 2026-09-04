@@ -62,7 +62,14 @@ export default function Cart() {
     setBusyId('');
   };
 
+  const isGuest = !user || user.role !== 'buyer';
+
   const placeOrder = async () => {
+    if (isGuest) {
+      toast('Please sign in to place your order — your cart is saved', 'warning');
+      navigate('/login', { state: { from: '/cart' } });
+      return;
+    }
     if (unavailable.length > 0) {
       toast('Remove the unavailable items first', 'warning');
       return;
@@ -204,7 +211,7 @@ export default function Cart() {
           ))}
         </div>
 
-        {/* ── Summary / checkout ──────────────────────────────────────── */}
+        {/* ── Summary / checkout — guest sees login prompt, buyer sees full form */}
         <aside className="card checkout-summary">
           <h3 className="card-title mb-12">Order summary</h3>
 
@@ -216,42 +223,62 @@ export default function Cart() {
             <span className="sum-total">{formatUgx(cart.subtotalMinor)}</span>
           </div>
 
-          <div className="col mt-16">
-            {addresses.length > 0 ? (
-              <Field label="Deliver to">
-                <Select value={addressId} onChange={(e) => setAddressId(e.target.value)}>
-                  {addresses.map((a) => (
-                    <option key={a.id} value={a.id}>{a.label} — {a.line1}, {a.city}</option>
-                  ))}
-                </Select>
-              </Field>
-            ) : (
-              <div className="tiny muted">
-                <MapPin size={13} style={{ verticalAlign: -2 }} /> No saved address.{' '}
-                <Link to="/buyer/addresses">Add one</Link> so sellers know where to deliver.
+          {isGuest ? (
+            <div className="col mt-16">
+              <div className="card" style={{ background: 'var(--primary-soft)', borderColor: 'var(--primary)', padding: 12 }}>
+                <strong>Sign in to checkout</strong>
+                <p className="tiny muted mt-4">Your cart is saved on this device. Create an account or sign in to place your order and track delivery.</p>
               </div>
-            )}
+              <Btn variant="primary" size="lg" className="w-full mt-12" onClick={() => navigate('/login', { state: { from: '/cart' } })}>
+                Sign in to checkout · {formatUgx(cart.subtotalMinor)}
+              </Btn>
+              <Btn size="lg" className="w-full" onClick={() => navigate('/register')}>Create account</Btn>
+              <ul className="trust-list">
+                <li><ShieldCheck size={14} /> Buyer protection on every order</li>
+                <li><Truck size={14} /> Pay on delivery — no card needed</li>
+                <li><CheckCircle2 size={14} /> Sellers are notified instantly</li>
+              </ul>
+            </div>
+          ) : (
+            <>
+              <div className="col mt-16">
+                {addresses.length > 0 ? (
+                  <Field label="Deliver to">
+                    <Select value={addressId} onChange={(e) => setAddressId(e.target.value)}>
+                      {addresses.map((a) => (
+                        <option key={a.id} value={a.id}>{a.label} — {a.line1}, {a.city}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                ) : (
+                  <div className="tiny muted">
+                    <MapPin size={13} style={{ verticalAlign: -2 }} /> No saved address.{' '}
+                    <Link to="/buyer/addresses">Add one</Link> so sellers know where to deliver.
+                  </div>
+                )}
 
-            <Field label="Phone for delivery" hint="The seller calls this number to arrange handover.">
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
-            </Field>
+                <Field label="Phone for delivery" hint="The seller calls this number to arrange handover.">
+                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
+                </Field>
 
-            <Field label="Note for the seller (optional)">
-              <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
-                placeholder="e.g. call when you reach the gate" />
-            </Field>
-          </div>
+                <Field label="Note for the seller (optional)">
+                  <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. call when you reach the gate" />
+                </Field>
+              </div>
 
-          <Btn variant="primary" size="lg" className="w-full mt-12" loading={placing}
-            disabled={unavailable.length > 0} onClick={placeOrder}>
-            Place order · {formatUgx(cart.subtotalMinor)}
-          </Btn>
+              <Btn variant="primary" size="lg" className="w-full mt-12" loading={placing}
+                disabled={unavailable.length > 0} onClick={placeOrder}>
+                Place order · {formatUgx(cart.subtotalMinor)}
+              </Btn>
 
-          <ul className="trust-list">
-            <li><ShieldCheck size={14} /> Buyer protection on every order</li>
-            <li><Truck size={14} /> Pay on delivery — no card needed</li>
-            <li><CheckCircle2 size={14} /> Sellers are notified instantly</li>
-          </ul>
+              <ul className="trust-list">
+                <li><ShieldCheck size={14} /> Buyer protection on every order</li>
+                <li><Truck size={14} /> Pay on delivery — no card needed</li>
+                <li><CheckCircle2 size={14} /> Sellers are notified instantly</li>
+              </ul>
+            </>
+          )}
         </aside>
       </div>
 

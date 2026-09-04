@@ -50,7 +50,7 @@ export default function ProductDetail() {
   });
 
   async function buy() {
-    if (!user) { navigate('/login'); return; }
+    if (!user) { toast('Please sign in to buy — we saved this product for you', 'warning'); navigate('/login', { state: { from: `/product/${id}` } }); return; }
     setBuying(true);
     try {
       const r = await paymentService.checkout(id!, quantity, user.phone);
@@ -64,7 +64,7 @@ export default function ProductDetail() {
   }
 
   async function messageSeller() {
-    if (!user) { navigate('/login'); return; }
+    if (!user) { toast('Sign in to message this seller', 'warning'); navigate('/login', { state: { from: `/product/${id}` } }); return; }
     try {
       const r = await chatService.open(product!.seller.id, product!.id);
       navigate(`/messages/${r.conversation.id}`);
@@ -74,7 +74,7 @@ export default function ProductDetail() {
   }
 
   async function handleToggleSaved() {
-    if (!user) { navigate('/login'); return; }
+    if (!user) { toast('Sign in to save products', 'warning'); navigate('/login', { state: { from: `/product/${id}` } }); return; }
     try {
       await toggleSaved(product!.id);
     } catch (e: any) {

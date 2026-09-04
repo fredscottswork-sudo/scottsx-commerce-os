@@ -152,6 +152,9 @@ export default function App() {
           <Route path="/ai" element={<Ai />} />
           <Route path="/cms/:slug" element={<CmsPage />} />
 
+          {/* public cart — guest browsing, login deferred to checkout */}
+          <Route path="/cart" element={<Cart />} />
+
           {/* buyer */}
           <Route path="/buyer" element={<RequireRole role="buyer"><BuyerDashboard /></RequireRole>} />
           <Route path="/buyer/orders" element={<RequireRole role="buyer"><Orders /></RequireRole>} />
@@ -162,7 +165,6 @@ export default function App() {
           <Route path="/buyer/support" element={<RequireRole role="buyer"><Support /></RequireRole>} />
           <Route path="/buyer/settings" element={<RequireRole role="buyer"><SettingsPage /></RequireRole>} />
           <Route path="/buyer/ai" element={<RequireRole role="buyer"><AiChat /></RequireRole>} />
-          <Route path="/cart" element={<RequireRole role="buyer"><Cart /></RequireRole>} />
 
           {/* seller */}
           <Route path="/seller" element={<RequireRole role="seller"><SellerDashboard /></RequireRole>} />
