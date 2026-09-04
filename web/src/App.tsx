@@ -21,7 +21,6 @@ import BuyerDashboard from './pages/buyer/BuyerDashboard';
 import Orders from './pages/buyer/Orders';
 import Saved from './pages/buyer/Saved';
 import Addresses from './pages/buyer/Addresses';
-import Payments from './pages/buyer/Payments';
 import Refunds from './pages/buyer/Refunds';
 import Support from './pages/buyer/Support';
 import SettingsPage from './pages/buyer/Settings';
@@ -161,12 +160,13 @@ export default function App() {
         <Route path="/buyer/orders" element={<RequireRole role="buyer"><Orders /></RequireRole>} />
         <Route path="/buyer/saved" element={<RequireRole role="buyer"><Saved /></RequireRole>} />
         <Route path="/buyer/addresses" element={<RequireRole role="buyer"><Addresses /></RequireRole>} />
-        <Route path="/buyer/payments" element={<RequireRole role="buyer"><Payments /></RequireRole>} />
         <Route path="/buyer/refunds" element={<RequireRole role="buyer"><Refunds /></RequireRole>} />
         <Route path="/buyer/support" element={<RequireRole role="buyer"><Support /></RequireRole>} />
         <Route path="/buyer/settings" element={<RequireRole role="buyer"><SettingsPage /></RequireRole>} />
         <Route path="/buyer/ai" element={<RequireRole role="buyer"><AiChat /></RequireRole>} />
-        <Route path="/cart" element={<RequireRole role="buyer"><Cart /></RequireRole>} />
+        {/* Guests may browse + hold an inquiry cart; the page itself
+            prompts sign-in only at checkout / messaging. */}
+        <Route path="/cart" element={<Cart />} />
 
         {/* seller */}
         <Route path="/seller" element={<RequireRole role="seller"><SellerDashboard /></RequireRole>} />

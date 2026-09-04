@@ -622,8 +622,8 @@ section('6. Cart and checkout');
   check('subtotal matches the server total',
     t.replace(/[^\d]/g, '').includes(String(expectedSubtotal)),
     `expected ${expectedSubtotal}`);
-  check('place-order button present', /Place order/i.test(t));
-  check('shows the pay-on-delivery promise', /pay on delivery/i.test(t));
+  check('send-inquiry button present', /Send inquiry/i.test(t));
+  check('cart is messaging-first (no online payment)', /no online payment/i.test(t));
 
   // Increment quantity through the UI and confirm the server agrees.
   const plusButtons = app.$$('.qty-stepper button').filter((b) => b.getAttribute('aria-label') === 'Increase quantity');
@@ -1072,8 +1072,14 @@ section('14. Route guards');
 }
 {
   const app = await mount('/cart');
-  check('anonymous visitor is sent to login for the cart',
-    app.text().includes('Sign in') || app.window.location.pathname === '/login');
+  check('anonymous visitor can browse the cart (no forced login)',
+    app.window.location.pathname === '/cart',
+    `got ${app.window.location.pathname}`);
+  check('guest sees the cart page instead of a login wall',
+    /Your inquiry cart|Start shopping/i.test(app.text()),
+    app.text().slice(0, 140));
+  const guestBadge = app.$('.public-topbar a[aria-label="Your cart"]');
+  check('guest chrome exposes the cart entry point', !!guestBadge);
   app.close();
 }
 

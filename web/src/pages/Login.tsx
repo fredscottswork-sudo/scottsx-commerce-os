@@ -36,8 +36,8 @@ export default function Login() {
         <div style={{ fontSize: 40, marginBottom: 12 }}>🛍️</div>
         <h1 style={{ fontSize: 34, margin: 0 }}>ScottsTechX</h1>
         <p style={{ opacity: 0.9, fontSize: 16, maxWidth: 420 }}>
-          Uganda's marketplace. Same account, same data on mobile and web — buy from local
-          sellers, pay with Mobile Money, and chat in real time.
+          Uganda's marketplace. Same account, same data on mobile and web — browse freely,
+          chat with local sellers in real time, and agree everything in the conversation.
         </p>
       </div>
       <div className="auth-form">

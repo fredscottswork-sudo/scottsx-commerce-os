@@ -3,7 +3,7 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingBag, Heart, MapPin, MessageCircle, Bell,
   Settings, Store, BarChart3, Users, LogOut, Sun, Moon, PlusCircle,
-  Receipt, Wallet, LifeBuoy, Sparkles, ShieldCheck, ShoppingCart, X, Search,
+  Receipt, LifeBuoy, Sparkles, ShieldCheck, ShoppingCart, X, Search,
   Upload, ClipboardCheck, Headphones, Camera, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth } from '../store/AuthContext';
@@ -122,13 +122,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             <NavLink to="/nearby" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Nearby</NavLink>
             <NavLink to="/ai" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>AI Shopper</NavLink>
           </nav>
+          <Link to="/cart" className="btn btn-icon icon-badge-wrap" title="Your cart" aria-label="Your cart">
+            <ShoppingCart size={17} />
+            {cart.itemCount > 0 && <span className="icon-badge">{cart.itemCount > 9 ? '9+' : cart.itemCount}</span>}
+          </Link>
           <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
             {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
           <Link to="/login" className="btn btn-sm">Sign in</Link>
           <Link to="/register" className="btn btn-primary btn-sm join-cta">Get started</Link>
         </header>
-        <MainNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
+        <MainNav role={null} counts={{ cart: cart.itemCount, messages: 0, notifications: 0 }} />
         <main className="public-content">{children}</main>
         <footer className="public-footer">
           <div className="row wrap" style={{ gap: 18, justifyContent: 'center' }}>
@@ -139,7 +143,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <p className="tiny muted-2 center mt-8">© {new Date().getFullYear()} ScottsTechX · Kampala, Uganda</p>
         </footer>
-        <BottomNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
+        <BottomNav role={null} counts={{ cart: cart.itemCount, messages: 0, notifications: 0 }} />
 
         <Modal open={imgSearchOpen} onClose={() => setImgSearchOpen(false)} title="Search by image"
           footer={<Btn onClick={() => setImgSearchOpen(false)}>Close</Btn>}>
@@ -186,7 +190,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             { to: '/buyer/saved', label: 'Saved & following', icon: <Heart size={17} /> },
             { to: '/messages', label: 'Messages', icon: <MessageCircle size={17} />, badge: unreadMsgs },
             { to: '/notifications', label: 'Notifications', icon: <Bell size={17} />, badge: unreadNotifs },
-            { to: '/buyer/payments', label: 'Payments', icon: <Wallet size={17} /> },
             { to: '/buyer/addresses', label: 'Addresses', icon: <MapPin size={17} /> },
             { to: '/buyer/refunds', label: 'Refunds', icon: <Receipt size={17} /> },
             { to: '/buyer/support', label: 'Support', icon: <LifeBuoy size={17} /> },

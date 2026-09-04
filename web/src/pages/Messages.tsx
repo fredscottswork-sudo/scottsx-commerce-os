@@ -126,6 +126,9 @@ export default function Messages() {
       />
 
       <div className="inbox-toolbar">
+        <span className="live-dot" title="Live — updates automatically" aria-label="Live">
+          <i /> Live
+        </span>
         <div className="chip-row">
           {FILTERS.map((f) => {
             const n = counts[f.key];
@@ -227,6 +230,7 @@ export default function Messages() {
 
       {!loading && !error && items.length > 0 && (
         <p className="muted mt-16" style={{ fontSize: 'var(--fs-xs)', textAlign: 'center' }}>
+          <span className="live-dot" style={{ marginRight: 6 }}><i /> Live</span>
           <Inbox size={12} style={{ verticalAlign: -2 }} /> Showing {items.length} of {counts.all} conversation
           {counts.all === 1 ? '' : 's'}
           {counts.archived > 0 && ` · ${counts.archived} archived`}

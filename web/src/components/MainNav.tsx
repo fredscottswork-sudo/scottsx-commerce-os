@@ -208,9 +208,16 @@ export function MainNav({ role, counts }: Props) {
             </Link>
           )}
           {!role && (
-            <Link to="/register" className="mainnav-link mainnav-cta">
-              <Store size={15} /> <span>Sell on ScottsTechX</span>
-            </Link>
+            <>
+              <Link to="/cart" className={`mainnav-link ${location.pathname === '/cart' ? 'active' : ''}`}>
+                <ShoppingCart size={15} />
+                <span>Cart</span>
+                {counts.cart > 0 && <span className="badge badge-blue">{counts.cart > 99 ? '99+' : counts.cart}</span>}
+              </Link>
+              <Link to="/register" className="mainnav-link mainnav-cta">
+                <Store size={15} /> <span>Sell on ScottsTechX</span>
+              </Link>
+            </>
           )}
         </nav>
       </div>
@@ -237,7 +244,9 @@ export function BottomNav({ role, counts }: Props) {
       { to: account, label: 'Account', icon: <User size={19} />, badge: 0 },
     ];
 
-    if (role === 'buyer') {
+    // Buyers and guests both get a cart (guests hold it locally until sign-in);
+    // sellers/admin keep just their role entry points.
+    if (role === 'buyer' || role === null) {
       base.push({ to: '/cart', label: 'Cart', icon: <ShoppingCart size={19} />, badge: counts.cart });
     } else if (role === 'admin') {
       base.push({ to: '/admin/queue', label: 'Queue', icon: <ShieldCheck size={19} />, badge: 0 });

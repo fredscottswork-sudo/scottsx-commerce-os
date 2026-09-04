@@ -321,13 +321,24 @@ img { max-width: 100%; }
 
 /* Topbar search + icon badges */
 .topbar-search { max-width: 460px; flex: 1; }
-.icon-badge-wrap { position: relative; }
-.icon-badge {
-  position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px;
-  padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff;
-  font-size: 10.5px; font-weight: 800; line-height: 17px; text-align: center;
-  border: 2px solid var(--surface); animation: popIn var(--dur) var(--ease-spring);
+.icon-badge-wrap {
+  position: relative;
+  /* `.btn` sets overflow:hidden for the ripple — that clips a badge that
+     deliberately sticks out past the button edge. Badges must be visible. */
+  overflow: visible !important;
 }
+.btn.btn-icon.icon-badge-wrap { overflow: visible !important; }
+.icon-badge {
+  position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px;
+  padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff;
+  font-size: 10.5px; font-weight: 800; line-height: 18px; text-align: center;
+  border: 2px solid var(--surface); z-index: 3; pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  animation: popIn var(--dur) var(--ease-spring);
+}
+/* Bottom nav badges live in .bottomnav-ico, which also used to clip them. */
+.bottomnav-ico { position: relative; overflow: visible !important; }
+.bottomnav-ico .icon-badge { top: -8px; right: -11px; }
 
 /* ═══ PUBLIC (logged-out) CHROME ══════════════════════════════════════════ */
 .public-shell { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg); }
@@ -1721,7 +1732,7 @@ tbody tr.row-click { cursor: pointer; }
 .mainnav-inner {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 14px;
   padding: 0 22px;
   height: 46px;
   max-width: 1340px;
@@ -1792,10 +1803,11 @@ tbody tr.row-click { cursor: pointer; }
 .mega-all:hover { text-decoration: underline; }
 
 /* Primary links ----------------------------------------------------------- */
-.mainnav-links, .mainnav-right { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.mainnav-links, .mainnav-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mainnav-right { gap: 12px; margin-left: 8px; }
 .mainnav-link {
   display: inline-flex; align-items: center; gap: 7px;
-  height: 32px; padding: 0 11px; border-radius: var(--radius-sm);
+  height: 32px; padding: 0 13px; border-radius: var(--radius-sm);
   color: var(--text-2); font-size: var(--fs-sm); font-weight: 600;
   text-decoration: none; white-space: nowrap; position: relative;
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
@@ -2538,4 +2550,70 @@ tbody tr.row-click { cursor: pointer; }
   .cat-ico { width: 30px; height: 30px; border-radius: 9px; }
   .ai-hero { padding: 16px; border-radius: var(--radius); }
   .ai-cap { font-size: var(--fs-xs); padding: 5px 9px; }
+}
+
+/* ── Nearby — original sizing, only a few px smaller on phones ────────────── */
+@media (max-width: 620px) {
+  .place-banner { gap: 10px; }
+  .store-card .avatar-lg { width: 50px; height: 50px; }
+  .store-distance { min-width: 70px; padding: 8px 10px; }
+  .place-parts { gap: 3px 12px; }
+}
+
+/* ── Messaging — extra reliability & polish ───────────────────────────────── */
+.live-dot {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-xs); font-weight: 700; color: var(--success);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.live-dot i {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--success);
+  box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.5);
+  animation: livePulse 2s ease-out infinite;
+}
+@keyframes livePulse {
+  0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.5); }
+  70% { box-shadow: 0 0 0 7px rgba(22, 163, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
+/* Consecutive messages from the same person sit tighter (WhatsApp style). */
+.bubble-row.adjacent { margin-top: -3px; }
+.bubble-row.adjacent .bubble { border-radius: var(--radius-sm); }
+.bubble-row.adjacent.user .bubble { border-top-right-radius: 4px; }
+.bubble-row.adjacent.assistant .bubble { border-top-left-radius: 4px; }
+
+.bubble-quote {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; margin-bottom: 4px; border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  border-left: 2.5px solid var(--primary);
+  font-size: var(--fs-xs); color: var(--text-2); max-width: 100%;
+}
+.bubble-sending { color: var(--text-3); font-size: 10px; margin-right: 3px; }
+
+.bubble-del { display: inline-flex; padding: 2px; border: none; background: none; color: var(--text-3); cursor: pointer; }
+.bubble-del:hover { color: var(--danger); }
+
+.thread-reply-bar {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 14px; margin: 0 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border-bottom: none; font-size: var(--fs-sm); color: var(--text-2);
+}
+.thread-reply-bar svg { color: var(--primary); flex-shrink: 0; }
+
+.thread-jump {
+  position: absolute; right: 22px; bottom: 92px; z-index: 6;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--primary); color: #fff; border: none; cursor: pointer;
+  box-shadow: var(--shadow-brand);
+  animation: popIn var(--dur) var(--ease-spring);
+}
+.thread-body { position: relative; }
+.lightbox-img {
+  display: block; max-width: 100%; max-height: 66vh;
+  margin: 0 auto; border-radius: var(--radius-sm); object-fit: contain;
 }

@@ -27,12 +27,12 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 1 | Backend end-to-end | 279 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 3 | Android ⇆ backend contract | 105 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 226 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 228 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Kotlin syntax (55 files) | — | clean |
 | 7 | Kotlin parsers vs real API JSON | — | passing |
 
-**633 checks.** Every suite cleans up after itself; the database returns to 7
+**635 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -112,6 +112,38 @@ light up with a real model automatically.
 **Navigation** — the top menu button now works on desktop too: it collapses
 the sidebar (content gets the full width) and toggles it back, remembering the
 choice in `localStorage`. On mobile it still opens the slide-in drawer.
+
+**Topbar polish** — notification/cart/message badges are never clipped
+(`overflow: visible` on the badge wrappers, higher z-index, shadow) and the
+main nav has real breathing room between the left and right link groups
+(Orders ↔ Messages), with 8/12px gaps and wider link padding.
+
+**Guest-first browsing** — nobody is forced to sign up. Guests browse the
+whole marketplace, hold a cart in `localStorage` (`guest_cart_v1`), and see a
+cart entry point in the public topbar, mega-nav and bottom bar. `/cart` is a
+public route that shows a "browsing as a guest" banner and only asks for
+sign-in at the action (send inquiry / chat). On buyer login the guest cart
+merges into the backend cart automatically. Product actions (chat, save)
+prompt sign-in only when pressed.
+
+**No online payments — messaging first.** The buyer Payments page, route and
+nav entry are removed; product detail's "Buy now"/Nylon Pay flow is replaced
+by **Add to inquiry + Chat with seller** ("No online payment — message the
+seller to agree on price and delivery"). The cart is now an inquiry hub:
+items grouped by seller with a **Message** button per store, **Message all
+sellers** (pre-fills a per-store inquiry and opens the chat), **Send inquiry**
+(order recorded for tracking, no gateway), and a messaging trust list.
+
+**Messaging, best level** — the thread now has reply quoting (tap Reply on
+any message to quote it), copy-to-clipboard, tap-to-enlarge photo lightbox,
+WhatsApp-style adjacent-message grouping, "Sending…" state on optimistic
+messages, a jump-to-latest button when you scroll up, polling that pauses
+while the tab is hidden, and a live badge with pulse animation on the inbox.
+Day separators, read receipts, typing indicators, offers, retraction, pin/
+mute, quick replies and image messages all continue to work.
+
+**Nearby** — restored to its proper size (full cards, 56px avatars, readable
+distance chips) with only a *few-px* reduction on phones.
 
 ---
 
