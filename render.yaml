@@ -146,6 +146,15 @@ services:
       - key: ROBOFLOW_TIMEOUT_MS
         sync: false
 
+      # NVIDIA NIM vision captions — names whatever is in a photo, alongside
+      # Roboflow's moderation labels. Server-side ONLY.
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_BASE_URL
+        sync: false
+      - key: NVIDIA_VISION_MODEL
+        sync: false
+
       # Public origin of THIS API if it differs from the request host (custom
       # domain). Used to build absolute photo URLs for Roboflow.
       - key: PUBLIC_API_URL

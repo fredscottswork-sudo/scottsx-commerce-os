@@ -14,7 +14,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
 import { verifyJwt } from '../../auth.js';
-import { ask, generateProduct, aiSearch, imageSearch, aiConfigured, AGENTS } from './assistant.service.js';
+import {
+  ask, generateProduct, aiSearch, imageSearch, aiConfigured,
+  nvidiaVisionConfigured, AGENTS,
+} from './assistant.service.js';
 import { roboflowConfigured } from '../vision/roboflow.service.js';
 
 const askSchema = z.object({
@@ -54,13 +57,20 @@ export default async function registerAiRoute(app: FastifyInstance) {
     // `visionConfigured` (Roboflow key present) and `visionProvider` instead.
     configured: aiConfigured(),
     chatConfigured: aiConfigured(),
-    visionConfigured: roboflowConfigured(),
+    visionConfigured: roboflowConfigured() || nvidiaVisionConfigured() || aiConfigured(),
+    nvidiaVisionConfigured: nvidiaVisionConfigured(),
     provider: aiConfigured() ? process.env.AI_PROVIDER || 'openrouter' : 'scottstechx-local',
     model: aiConfigured()
       ? process.env.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct'
       : 'catalog-grounded',
     grounded: true,
-    visionProvider: roboflowConfigured() ? 'roboflow' : aiConfigured() ? 'llm' : 'none',
+    visionProvider: roboflowConfigured()
+      ? 'roboflow'
+      : nvidiaVisionConfigured()
+        ? 'nvidia'
+        : aiConfigured()
+          ? 'llm'
+          : 'none',
     capabilities: {
       chat: true,
       agents: true,
@@ -68,7 +78,7 @@ export default async function registerAiRoute(app: FastifyInstance) {
       imageSearch: true,
       voiceSearch: true,
       listingGeneration: true,
-      vision: roboflowConfigured() || aiConfigured(),
+      vision: roboflowConfigured() || nvidiaVisionConfigured() || aiConfigured(),
     },
   }));
 

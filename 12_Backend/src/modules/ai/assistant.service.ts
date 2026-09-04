@@ -28,6 +28,17 @@ import { analyzeImage, rankByEmbedding, roboflowConfigured } from '../vision/rob
 
 /** How long interactive image search waits on the Roboflow workflow (ms). */
 const VISION_SEARCH_DEADLINE_MS = 4000;
+/** How long interactive image search waits on the NVIDIA/LLM describe call (ms). */
+const VISION_DESCRIBE_DEADLINE_MS = 5500;
+
+/** NVIDIA NIM (OpenAI-compatible) vision endpoint used to describe photos. */
+const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
+const NVIDIA_VISION_MODEL = 'moonshotai/kimi-k3';
+
+/** True when an NVIDIA NIM key is configured (server-side only). */
+export function nvidiaVisionConfigured(): boolean {
+  return Boolean(process.env.NVIDIA_API_KEY?.trim());
+}
 import { PRODUCT_SELECT, rowsToProducts } from '../products/products.service.js';
 
 /**
@@ -69,6 +80,11 @@ export { AGENTS };
 /** True when ANY AI provider has a key configured. */
 export function aiConfigured(): boolean {
   return Boolean(process.env.LLM_API_KEY || process.env.APIFREELLM_API_KEY);
+}
+
+/** Vision describer readiness: NVIDIA NIM, OpenRouter vision, or Roboflow. */
+export function visionCaptionConfigured(): boolean {
+  return nvidiaVisionConfigured() || Boolean(process.env.LLM_API_KEY);
 }
 
 function activeProvider(): string {
@@ -340,46 +356,44 @@ export async function imageSearch(
     .filter((w, i, all) => w && all.indexOf(w) === i)
     .join(' ');
 
-  // Roboflow: labels + embedding. Never throws — null on unconfigured/error.
-  // The search path ALSO caps how long it waits: image search is interactive,
-  // and a slow/hung workflow (or a Render cold start in front of it) must not
-  // leave the user staring at a spinner. If vision doesn't answer within the
-  // deadline we answer from the hint/filename heuristic and quietly drop the
-  // embedding boost (the abandoned call still self-aborts at its own timeout).
+  // Vision in parallel, each under its own deadline so a hung provider never
+  // holds the spinner (image search is interactive):
+  //   Roboflow — moderation decision + catalogue-trained labels + embedding.
+  //   NVIDIA / LLM — general vision captions (what IS in the photo), which is
+  //                  what makes search names the item the Roboflow workflow
+  //                  may only classify coarsely.
   let vision: Awaited<ReturnType<typeof analyzeImage>> = null;
+  let described = '';
   if (raw) {
-    const deadline = new Promise<null>((resolve) => setTimeout(() => resolve(null), VISION_SEARCH_DEADLINE_MS));
-    const startedAt = Date.now();
-    vision = await Promise.race([
+    const robof = Promise.race([
       analyzeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData }),
-      deadline,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), VISION_SEARCH_DEADLINE_MS)),
     ]);
+    const caption = Promise.race([
+      describeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData }),
+      new Promise<string>((resolve) => setTimeout(() => resolve(''), VISION_DESCRIBE_DEADLINE_MS)),
+    ]);
+    [vision, described] = await Promise.all([robof, caption]);
     if (!vision && roboflowConfigured()) {
-      console.warn(`[vision] image search skipped Roboflow after ${Date.now() - startedAt} ms — answering from heuristic.`);
+      console.warn('[vision] image search skipped Roboflow after its deadline — answering from caption/heuristic.');
+    }
+    if (!described && nvidiaVisionConfigured()) {
+      console.warn('[vision] image search skipped NVIDIA caption after its deadline.');
     }
   }
 
-  if (vision) {
-    const labelTerms = [
-      vision.productTitle,
-      vision.category,
-      vision.subcategory,
-      ...vision.tags,
-    ]
-      .filter(Boolean)
-      .join(' ');
-    const merged = `${terms} ${labelTerms}`
-      .split(/\s+/)
-      .filter((w, i, all) => w && all.indexOf(w) === i)
-      .join(' ')
-      .trim();
-    if (merged) terms = merged;
-  }
+  // Merge every signal; dedupe word-by-word. The caption is the strongest
+  // "what is it" signal, so it leads.
+  const labelTerms = vision
+    ? [vision.productTitle, vision.category, vision.subcategory, ...vision.tags].filter(Boolean).join(' ')
+    : '';
+  const merged = `${described} ${terms} ${labelTerms}`
+    .split(/\s+/)
+    .filter((w, i, all) => w && all.indexOf(w) === i)
+    .join(' ')
+    .trim();
+  if (merged) terms = merged;
 
-  if (!terms && raw) {
-    const described = await describeImage(raw).catch(() => '');
-    terms = described;
-  }
   if (!terms && opts.imageUrl) {
     // Last resort: mine the filename/URL for keywords.
     terms = decodeURIComponent(opts.imageUrl)
@@ -424,15 +438,19 @@ export async function imageSearch(
     }
   }
 
-  // What we *tell* the user we detected. Roboflow labels win when present;
-  // otherwise the merged hint/filename terms are the only signal and must be
-  // surfaced (a decision-only workflow response must never blank the answer).
-  const detectedLabel = vision
-    ? [vision.productTitle, vision.category, ...vision.tags].filter(Boolean).join(' ') || terms
-    : terms;
+  // What we *tell* the user we detected. The NVIDIA caption is the most
+  // human-readable; Roboflow labels follow; then merged terms (a
+  // decision-only workflow response must never blank the answer). `query` is
+  // the full search expression actually used, so the UI/debug can see all
+  // signals (caption + labels + hint + filename) merged into one query.
+  const visionLabel = vision
+    ? [vision.productTitle, vision.category, ...vision.tags].filter(Boolean).join(' ')
+    : '';
+  const detectedLabel = described || visionLabel || terms;
   return {
     ...result,
     detected: detectedLabel,
+    query: terms,
     explanation: detectedLabel
       ? `Image looks like **${detectedLabel}** — ${result.products.length} similar item${
           result.products.length === 1 ? '' : 's'
@@ -441,8 +459,63 @@ export async function imageSearch(
   };
 }
 
-/** Ask a vision model what the photo shows (only when a key is configured). */
-async function describeImage(imageUrl: string): Promise<string> {
+/**
+ * Describe a photo with a vision model — NVIDIA NIM (configurable, defaults
+ * to the kimi-k3 vision class) first, then the legacy OpenRouter vision path
+ * when only LLM_API_KEY is set. Accepts either a public URL or a base64 data
+ * URL (file uploads). Never throws; returns '' when unconfigured or on error.
+ */
+async function describeImage(input: { imageUrl?: string; imageData?: string }): Promise<string> {
+  const imageUrl = input.imageData || input.imageUrl;
+  if (!imageUrl) return '';
+
+  // ── NVIDIA NIM (preferred: strong general vision captions) ───────────────
+  const ninKey = process.env.NVIDIA_API_KEY?.trim();
+  if (ninKey) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ninKey}`,
+        },
+        body: JSON.stringify({
+          model: process.env.NVIDIA_VISION_MODEL?.trim() || NVIDIA_VISION_MODEL,
+          max_tokens: 64,
+          temperature: 0,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'What is in this image? Name the product in 2-6 words for an e-commerce search (brand + item type only, no sentence).',
+                },
+                { type: 'image_url', image_url: { url: imageUrl } },
+              ],
+            },
+          ],
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        console.warn(`[vision] NVIDIA describe HTTP ${res.status}`);
+        return '';
+      }
+      const data = await res.json();
+      const reply = extractReply(data?.choices?.[0]?.message);
+      return reply.slice(0, 120);
+    } catch (err) {
+      console.warn(`[vision] NVIDIA describe failed (${err instanceof Error ? err.name : 'error'})`);
+      return '';
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // ── Legacy OpenRouter vision path (LLM_API_KEY / AI_VISION_MODEL) ─────────
   const key = process.env.LLM_API_KEY;
   if (!key) return '';
   const model = process.env.AI_VISION_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct';
@@ -491,13 +564,14 @@ export async function generateProduct(
   const hint = (opts.hint ?? '').trim();
   let detected = hint;
   if (!detected && opts.imageUrl) {
-    // Roboflow first: its product_title/category/tags are trained on the
-    // catalogue's own categories, so they beat a generic LLM description.
+    // Roboflow labels are catalogue-trained, so they win when present; the
+    // NVIDIA/LLM caption is the fallback (and the general "what is it").
     const vision = await analyzeImage({ imageUrl: opts.imageUrl });
+    const labels = [vision?.productTitle, vision?.category, ...(vision?.tags ?? [])]
+      .filter(Boolean)
+      .join(' ');
     detected =
-      [vision?.productTitle, vision?.category, ...(vision?.tags ?? [])]
-        .filter(Boolean)
-        .join(' ') || (await describeImage(opts.imageUrl).catch(() => ''));
+      labels || (await describeImage({ imageUrl: opts.imageUrl }).catch(() => ''));
   }
 
   const heuristic = heuristicGenerateProduct(opts.imageUrl ?? '', detected || hint);

@@ -13,6 +13,7 @@ import { buildApp } from './app.js';
 import { initDatabase, closeDatabase, getPool } from './db.js';
 import { mailConfigured, devCodesAllowed } from './mail.js';
 import { roboflowConfigured } from './modules/vision/roboflow.service.js';
+import { nvidiaVisionConfigured } from './modules/ai/assistant.service.js';
 
 async function main() {
   await initDatabase();
@@ -30,6 +31,11 @@ async function main() {
     roboflowConfigured()
       ? '[server] Roboflow vision: ENABLED (workflow ready)'
       : '[server] Roboflow vision: disabled — no ROBOFLOW_API_KEY set'
+  );
+  console.log(
+    nvidiaVisionConfigured()
+      ? '[server] NVIDIA vision captions: ENABLED'
+      : '[server] NVIDIA vision captions: disabled — no NVIDIA_API_KEY set'
   );
 
   // Say plainly which verification mode this server is in. A silent fallback

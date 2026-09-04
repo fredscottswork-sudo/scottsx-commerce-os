@@ -23,6 +23,7 @@ import http from 'node:http';
 
 const API = `${process.env.API_BASE || 'http://127.0.0.1:3001'}/api/v1`;
 const STUB_PORT = 9701;
+const NVIDIA_STUB_PORT = 9702;
 
 let failures = 0;
 let checks = 0;
@@ -31,6 +32,28 @@ const check = (name, ok, detail = '') => {
   console.log(`  ${ok ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m'} ${name}${ok ? '' : ` — ${detail}`}`);
   if (!ok) failures++;
 };
+
+/** NVIDIA NIM stand-in: returns an OpenAI-style chat completion with a
+ *  request-aware caption so each test can assert its own signal reached the
+ *  search query. */
+let nvidiaHits = 0;
+const nvidiaStub = http.createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    nvidiaHits++;
+    let imgUrl = '';
+    try {
+      const p = JSON.parse(body || '{}');
+      imgUrl = String(p?.messages?.[0]?.content?.find?.((c) => c?.type === 'image_url')?.image_url?.url ?? '');
+    } catch { /* ignore */ }
+    let caption = 'vision caption test';
+    if (imgUrl.startsWith('data:')) caption = 'base64-test photo';
+    else if (/approved-headphones|wrapped-approved/.test(imgUrl)) caption = 'AirSound Pro Headphones';
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: caption } }] }));
+  });
+});
 
 let lastBody = null;
 let lastAuth = null;
@@ -144,7 +167,8 @@ async function login(email, password) {
 
 const main = async () => {
   await new Promise((r) => stub.listen(STUB_PORT, '127.0.0.1', r));
-  console.log(`[stub] Roboflow workflow listening on :${STUB_PORT}`);
+  await new Promise((r) => nvidiaStub.listen(NVIDIA_STUB_PORT, '127.0.0.1', r));
+  console.log(`[stub] Roboflow workflow on :${STUB_PORT}, NVIDIA NIM on :${NVIDIA_STUB_PORT}`);
 
   // 1. Confirm the live server was started with Roboflow configured.
   const status = await api('/ai/status');
@@ -152,9 +176,13 @@ const main = async () => {
     console.log('\nSKIPPED — live server has no ROBOFLOW_API_KEY configured.');
     console.log('Start it with ROBOFLOW_WORKFLOW_URL=http://127.0.0.1:9701/... and rerun.');
     stub.close();
+    nvidiaStub.close();
     process.exit(0);
   }
   check('status advertises the Roboflow vision provider', status.data.visionProvider === 'roboflow');
+  check('status exposes nvidiaVisionConfigured as a boolean',
+    typeof status.data.nvidiaVisionConfigured === 'boolean',
+    JSON.stringify(status.data.nvidiaVisionConfigured));
   check('status exposes visionConfigured = true (chat configured stays independent)',
     status.data.visionConfigured === true && typeof status.data.chatConfigured === 'boolean',
     JSON.stringify({ visionConfigured: status.data.visionConfigured, chatConfigured: status.data.chatConfigured }));
@@ -278,9 +306,11 @@ const main = async () => {
   form2.append('hint', 'red nike trainers');
   const hintRes = await fetch(`${API}/ai/image-upload-search`, { method: 'POST', body: form2 });
   const hintData = await hintRes.json().catch(() => ({}));
+  // `detected` may now be a vision caption; the hint's real proof is that it
+  // reached the search QUERY.
   check('hint sent after the file still reaches the search',
-    hintRes.status === 200 && /nike/i.test(hintData.detected || ''),
-    JSON.stringify(hintData.detected));
+    hintRes.status === 200 && /nike/i.test(hintData.query || ''),
+    JSON.stringify({ query: hintData.query, detected: hintData.detected }));
 
   stub.removeAllListeners('request');
   stub.on('request', mainListener);
@@ -317,6 +347,19 @@ const main = async () => {
     wrappedData.products?.[0]?.title === 'Vision Approved Test',
     JSON.stringify((wrappedData.products || []).slice(0, 2).map((p) => p.title)));
 
+  // 5b2. NVIDIA caption path: when the live server has NVIDIA_API_KEY set the
+  //      caption must be merged into the search query (and the NIM stand-in
+  //      must have been called).
+  if (status.data?.nvidiaVisionConfigured) {
+    check('NVIDIA NIM receives image_url requests from the search endpoint',
+      nvidiaHits > 0, `hits=${nvidiaHits}`);
+    check('NVIDIA caption is merged into the search query',
+      /AirSound/.test(jsonData.query || ''),
+      JSON.stringify(jsonData.query));
+  } else {
+    console.log('  (NVIDIA_API_KEY not set on the live server — caption checks skipped)');
+  }
+
   // 5c. A HUNG workflow must never hold the spinner: the stub sleeps 20s for
   //     "slow" URLs, the search endpoint must still answer quickly with the
   //     hint/filename heuristic.
@@ -345,9 +388,9 @@ const main = async () => {
   check('hung workflow does not block image search (>answer within 8s)',
     slowRes.status === 200 && slowMs < 8_000,
     `status=${slowRes.status} took ${slowMs}ms`);
-  check('hung workflow falls back to the hint',
-    /bicycle/i.test(slowData.detected || ''),
-    JSON.stringify(slowData.detected));
+  check('hung workflow falls back to the hint (query still built)',
+    /bicycle/i.test(slowData.query || ''),
+    JSON.stringify({ query: slowData.query, detected: slowData.detected }));
 
   // ── Cleanup: remove the test listings so reruns start from a bare DB. ────
   for (const id of createdIds) {
@@ -356,11 +399,13 @@ const main = async () => {
 
   console.log('\n[done] vision contract checks complete');
   stub.close();
+  nvidiaStub.close();
   process.exit(failures ? 1 : 0);
 };
 
 main().catch((e) => {
   console.error(e);
   stub.close();
+  nvidiaStub.close();
   process.exit(1);
 });

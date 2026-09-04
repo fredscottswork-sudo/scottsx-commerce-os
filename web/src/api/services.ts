@@ -386,8 +386,9 @@ export const aiService = {
   status: () =>
     api<{
       configured: boolean; chatConfigured: boolean; visionConfigured: boolean;
+      nvidiaVisionConfigured?: boolean;
       provider: string; model: string; grounded: boolean;
-      visionProvider: 'roboflow' | 'llm' | 'none';
+      visionProvider: 'roboflow' | 'nvidia' | 'llm' | 'none';
       capabilities: Record<string, boolean>;
     }>('/ai/status', { auth: false }),
   search: (q: string, limit = 24) =>
