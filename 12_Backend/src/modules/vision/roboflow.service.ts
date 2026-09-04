@@ -170,6 +170,7 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs());
+  const startedAt = Date.now();
   try {
     const res = await fetch(workflowUrl(), {
       method: 'POST',
@@ -184,7 +185,7 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
       // Surfaces as a warning in Render logs — body is truncated and the key
       // is never logged. Callers still fall back gracefully.
       const detail = await res.text().catch(() => '');
-      console.warn(`[vision] Roboflow workflow HTTP ${res.status}: ${detail.slice(0, 300)}`);
+      console.warn(`[vision] Roboflow workflow HTTP ${res.status} in ${Date.now() - startedAt}ms: ${detail.slice(0, 300)}`);
       return null;
     }
     const payload = await res.json();
@@ -195,19 +196,28 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
     const embedding = asEmbedding(
       dig(payload, ['visual_search_embedding', 'embedding', 'vector', 'image_embedding', 'search_embedding'])
     );
+    const category = asString(dig(payload, ['category', 'category_name', 'class', 'type']));
+    const subcategory = asString(dig(payload, ['subcategory', 'sub_category', 'subcategory_name', 'sub_class']));
+    const productTitle = asString(
+      dig(payload, ['product_title', 'title', 'product_name', 'prediction', 'name'])
+    );
+    const tags = asStringArray(
+      dig(payload, ['tags', 'labels', 'classes', 'predictions', 'class_names', 'object_classes', 'detections'])
+    );
+    const rejectionReasons = asStringArray(
+      dig(payload, ['rejection_reasons', 'rejectionReasons', 'rejection_reason', 'reasons'])
+    );
+    console.info(
+      `[vision] Roboflow answered decision=${decision} in ${Date.now() - startedAt}ms ` +
+        `(category=${category ?? '-'} tags=${tags.length} embedding=${embedding ? embedding.length : 0})`
+    );
     return {
       decision,
-      category: asString(dig(payload, ['category', 'category_name', 'class', 'type'])),
-      subcategory: asString(dig(payload, ['subcategory', 'sub_category', 'subcategory_name', 'sub_class'])),
-      productTitle: asString(
-        dig(payload, ['product_title', 'title', 'product_name', 'prediction', 'name'])
-      ),
-      tags: asStringArray(
-        dig(payload, ['tags', 'labels', 'classes', 'predictions', 'class_names', 'object_classes', 'detections'])
-      ),
-      rejectionReasons: asStringArray(
-        dig(payload, ['rejection_reasons', 'rejectionReasons', 'rejection_reason', 'reasons'])
-      ),
+      category,
+      subcategory,
+      productTitle,
+      tags,
+      rejectionReasons,
       embedding,
       checkedAt: new Date().toISOString(),
     };

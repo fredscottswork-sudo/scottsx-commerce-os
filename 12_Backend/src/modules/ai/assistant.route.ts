@@ -145,40 +145,44 @@ export default async function registerAiRoute(app: FastifyInstance) {
    * Nothing is persisted, so this is safe for anonymous visitors.
    */
   app.post('/api/v1/ai/image-upload-search', async (request, reply) => {
-    // Read parts in ORDER of arrival: `request.file()` only sees fields that
-    // arrived BEFORE the file, and browsers may append the hint after the
-    // image — a silently dropped hint is exactly the kind of thing that makes
-    // image search feel broken.
-    let file: Awaited<ReturnType<typeof request.file>> | null = null;
+    // Read parts in ORDER of arrival and consume the file stream inside the
+    // loop. `request.file()` only sees fields that arrived BEFORE the file,
+    // and browsers append the optional hint AFTER the image — the old code
+    // silently dropped it. Buffering the file part inline is also the only
+    // canonical way to guarantee the iterator advances on larger uploads.
+    let buffer: Buffer | null = null;
+    let mime = '';
+    let filename = '';
     let hint = '';
     for await (const part of request.parts()) {
-      if (part.type === 'file' && part.fieldname === 'image' && !file) {
-        file = part;
+      if (part.type === 'file' && part.fieldname === 'image' && !buffer) {
+        mime = part.mimetype;
+        filename = part.filename || '';
+        buffer = await part.toBuffer();
       } else if (part.type === 'field' && part.fieldname === 'hint') {
         hint = String(part.value ?? '').trim().slice(0, 200);
       }
     }
-    if (!file) {
+    if (!buffer) {
       return reply.code(400).send({ error: 'No image uploaded (field "image")' });
     }
     const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
-    if (!ALLOWED.has(file.mimetype)) {
+    if (!ALLOWED.has(mime)) {
       return reply
         .code(400)
-        .send({ error: `Unsupported type ${file.mimetype} — use JPEG, PNG or WEBP` });
+        .send({ error: `Unsupported type ${mime} — use JPEG, PNG or WEBP` });
     }
-    const buffer = await file.toBuffer();
     if (buffer.length === 0) return reply.code(400).send({ error: 'The file is empty' });
 
     // A filename like "nike-air-max.jpg" is free search signal, even without a
     // model: turn it into terms instead of throwing the photo away.
-    const filenameTerms = (file.filename || '')
+    const filenameTerms = filename
       .replace(/\.[a-z0-9]+$/i, '')
       .replace(/[-_+]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
-    const imageData = `data:${file.mimetype};base64,${buffer.toString('base64')}`;
+    const imageData = `data:${mime};base64,${buffer.toString('base64')}`;
     const result = await imageSearch(pool, { imageData, hint, labels: filenameTerms ? [filenameTerms] : [] }, 24);
     const who = await softUser(request);
     if (who.id) {

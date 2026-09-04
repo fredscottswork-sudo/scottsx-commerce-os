@@ -24,7 +24,10 @@ import {
   type AgentId,
 } from './agents.js';
 import { parseIntent, retrieveProducts, fmtUgx } from './catalog-context.js';
-import { analyzeImage, rankByEmbedding } from '../vision/roboflow.service.js';
+import { analyzeImage, rankByEmbedding, roboflowConfigured } from '../vision/roboflow.service.js';
+
+/** How long interactive image search waits on the Roboflow workflow (ms). */
+const VISION_SEARCH_DEADLINE_MS = 4000;
 import { PRODUCT_SELECT, rowsToProducts } from '../products/products.service.js';
 
 /**
@@ -338,7 +341,23 @@ export async function imageSearch(
     .join(' ');
 
   // Roboflow: labels + embedding. Never throws — null on unconfigured/error.
-  const vision = raw ? await analyzeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData }) : null;
+  // The search path ALSO caps how long it waits: image search is interactive,
+  // and a slow/hung workflow (or a Render cold start in front of it) must not
+  // leave the user staring at a spinner. If vision doesn't answer within the
+  // deadline we answer from the hint/filename heuristic and quietly drop the
+  // embedding boost (the abandoned call still self-aborts at its own timeout).
+  let vision: Awaited<ReturnType<typeof analyzeImage>> = null;
+  if (raw) {
+    const deadline = new Promise<null>((resolve) => setTimeout(() => resolve(null), VISION_SEARCH_DEADLINE_MS));
+    const startedAt = Date.now();
+    vision = await Promise.race([
+      analyzeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData }),
+      deadline,
+    ]);
+    if (!vision && roboflowConfigured()) {
+      console.warn(`[vision] image search skipped Roboflow after ${Date.now() - startedAt} ms — answering from heuristic.`);
+    }
+  }
 
   if (vision) {
     const labelTerms = [

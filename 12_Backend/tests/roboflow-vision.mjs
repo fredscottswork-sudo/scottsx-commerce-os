@@ -314,6 +314,38 @@ const main = async () => {
     wrappedData.products?.[0]?.title === 'Vision Approved Test',
     JSON.stringify((wrappedData.products || []).slice(0, 2).map((p) => p.title)));
 
+  // 5c. A HUNG workflow must never hold the spinner: the stub sleeps 20s for
+  //     "slow" URLs, the search endpoint must still answer quickly with the
+  //     hint/filename heuristic.
+  const slowListener = (req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      setTimeout(() => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ outputs: { decision: 'approved', tags: ['slow-answer'] } }));
+      }, 20_000);
+    });
+  };
+  stub.removeAllListeners('request');
+  stub.on('request', slowListener);
+  const slowStarted = Date.now();
+  const slowRes = await fetch(`${API}/ai/image-search`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ imageUrl: 'https://example.com/photos/slow.jpg', hint: 'blue bicycle' }),
+  });
+  const slowMs = Date.now() - slowStarted;
+  const slowData = await slowRes.json().catch(() => ({}));
+  stub.removeAllListeners('request');
+  stub.on('request', mainListener);
+  check('hung workflow does not block image search (>answer within 8s)',
+    slowRes.status === 200 && slowMs < 8_000,
+    `status=${slowRes.status} took ${slowMs}ms`);
+  check('hung workflow falls back to the hint',
+    /bicycle/i.test(slowData.detected || ''),
+    JSON.stringify(slowData.detected));
+
   // ── Cleanup: remove the test listings so reruns start from a bare DB. ────
   for (const id of createdIds) {
     await api(`/seller/products/${id}`, { method: 'DELETE', headers: auth }).catch(() => undefined);

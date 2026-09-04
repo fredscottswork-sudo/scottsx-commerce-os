@@ -197,6 +197,33 @@ function rewriteMedia(node: unknown): void {
   }
 }
 
+/**
+ * Hard cap on any single request. Backend calls are fast (<1s) and the
+ * slowest path is image search, which the server caps at ~4s + its own work.
+ * A render cold start or a hung proxy can still take much longer — without a
+ * client timeout the user just stares at a spinner forever. With it, the UI
+ * always gets an answer: results or a clear "took too long" message.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(
+        0,
+        'That took too long — please try again (large photos or a slow server can cause this).'
+      );
+    }
+    throw new ApiError(0, 'Network error — check your connection and try again.');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true, rawBody = false } = opts;
   const headers: Record<string, string> = {};
@@ -208,13 +235,13 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
 
   let res: Response;
   try {
-    res = await fetch(`${API_ROOT}${path}`, {
+    res = await fetchWithTimeout(`${API_ROOT}${path}`, {
       method,
       headers,
       body: rawBody ? (body as BodyInit) : body !== undefined ? JSON.stringify(body) : undefined,
     });
-  } catch {
-    throw new ApiError(0, 'Network error — check your connection and try again.');
+  } catch (e) {
+    throw e instanceof ApiError ? e : new ApiError(0, 'Network error — check your connection and try again.');
   }
 
   // A JSON API must answer with JSON. If the static host's SPA catch-all (or a
@@ -265,7 +292,7 @@ export function multipart(path: string, form: FormData): Promise<unknown> {
   const headers: Record<string, string> = {};
   const token = tokenStore.get();
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(`${API_ROOT}${path}`, { method: 'POST', headers, body: form }).then(async (res) => {
+  return fetchWithTimeout(`${API_ROOT}${path}`, { method: 'POST', headers, body: form }).then(async (res) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401) onUnauthorized.current?.();
