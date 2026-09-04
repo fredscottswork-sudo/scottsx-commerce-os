@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Sparkles, Send, RotateCcw, Zap, AlertCircle,
-  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot,
+  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, Camera,
 } from 'lucide-react';
 import { aiService } from '../api/services';
-import type { AiAgent, Product } from '../api/types';
+import type { AiAgent, AiSearchResult, Product } from '../api/types';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
 import { ProductGrid } from './ProductCard';
-import { Btn, RichText, Badge, Empty } from './ui';
+import { Btn, RichText, Badge, Empty, Modal } from './ui';
+import { VisualSearch } from './VisualSearch';
 
 /**
  * The API describes each agent with a lucide icon NAME ('shopping-bag',
@@ -86,6 +87,8 @@ export function AiConsole({
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [imgOpen, setImgOpen] = useState(false);
   const [status, setStatus] = useState<{ provider: string; grounded: boolean; configured: boolean } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -208,6 +211,44 @@ export function AiConsole({
     }
   }, [agentId, agents, busy, screen, toast, turns]);
 
+  /** Voice — speak your request, the assistant answers. */
+  const startVoice = useCallback(() => {
+    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Ctor) {
+      toast('Voice input needs Chrome or Edge on this device', 'warning');
+      return;
+    }
+    if (listening) return;
+    const rec: any = new Ctor();
+    rec.lang = 'en-UG';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onresult = (e: any) => {
+      const heard = e.results?.[0]?.[0]?.transcript ?? '';
+      setListening(false);
+      if (heard.trim()) void send(heard);
+    };
+    rec.onerror = () => { setListening(false); toast('Could not hear you — try again', 'error'); };
+    rec.onend = () => setListening(false);
+    rec.start();
+    setListening(true);
+  }, [listening, send, toast]);
+
+  /** Photo — find products by image, then show them as a grounded answer. */
+  const onPhotoResults = useCallback((r: AiSearchResult) => {
+    setImgOpen(false);
+    setTurns((t) => [
+      ...t,
+      { role: 'user', content: 'Find this in the marketplace 📷' },
+      {
+        role: 'assistant',
+        content: r.explanation || 'Here is what matches the photo.',
+        products: r.products,
+        grounded: true,
+      },
+    ]);
+  }, []);
+
   return (
     <div className={`ai-console${fullHeight ? ' ai-console-full ai-console--noagents' : ''}`}>
       {/* Agent picker removed for extraordinary full-screen chat — user asked to remove agent words above */}
@@ -249,14 +290,46 @@ export function AiConsole({
 
       {/* ── Conversation — now full, no agent words above, bigger & flexible ── */}
       <div className="card ai-chat card-flush ai-chat--full">
-        {turns.length > 0 && (
-          <div className="ai-chat-head ai-chat-head--minimal">
-            <span className="grow" />
-            <Btn size="sm" variant="ghost" icon={<RotateCcw size={14} />} onClick={() => setTurns([])}>
-              New chat
-            </Btn>
+        <div className="ai-chat-head ai-chat-head--brand">
+          <div className="ai-brand" aria-label="ScottsTechX AI">
+            <span className="ai-brand-orb" aria-hidden="true"><Sparkles size={18} /></span>
+            <div className="ai-brand-copy">
+              <strong className="ai-brand-name">ScottsTechX <em>AI</em></strong>
+              <span className="ai-brand-sub">{title} · grounded in the live marketplace</span>
+            </div>
+            <span className={`ai-live ${status?.configured ? 'ai-live--on' : ''}`}>
+              <span className="ai-live-dot" aria-hidden="true" />
+              {status?.configured ? 'Live' : 'Catalogue mode'}
+            </span>
           </div>
-        )}
+          <div className="ai-cap-row">
+            <button
+              type="button"
+              className={`ai-cap ${listening ? 'ai-cap--active' : ''}`}
+              onClick={startVoice}
+              title="Ask by voice"
+              aria-label="Ask by voice"
+            >
+              <Mic size={15} />
+              {listening ? 'Listening…' : 'Voice'}
+            </button>
+            <button
+              type="button"
+              className="ai-cap"
+              onClick={() => setImgOpen(true)}
+              title="Search by photo"
+              aria-label="Search by photo"
+            >
+              <Camera size={15} />
+              Photo
+            </button>
+            {turns.length > 0 && (
+              <Btn size="sm" variant="ghost" icon={<RotateCcw size={14} />} onClick={() => setTurns([])}>
+                New chat
+              </Btn>
+            )}
+          </div>
+        </div>
 
         <div className="ai-chat-body" ref={scrollRef}>
           {turns.length === 0 ? (
@@ -362,6 +435,15 @@ export function AiConsole({
           </Btn>
         </form>
       </div>
+
+      <Modal
+        open={imgOpen}
+        onClose={() => setImgOpen(false)}
+        title="Search by photo"
+        footer={<Btn onClick={() => setImgOpen(false)}>Close</Btn>}
+      >
+        <VisualSearch compact onResults={onPhotoResults} />
+      </Modal>
     </div>
   );
 }

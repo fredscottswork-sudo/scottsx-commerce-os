@@ -58,7 +58,6 @@ const MobileAdvert = memo(function MobileAdvert() {
             <span className="madvert-cycle-dots">{AD_ITEMS.map((_, i) => (<span key={i} className={`madvert-dot ${i === idx ? 'active' : ''}`} />))}</span>
           </div>
         </div>
-        <div className="madvert-cta"><Search size={12} /></div>
       </div>
     </div>
   );
@@ -199,7 +198,7 @@ export default function Home() {
       <div className="home-search-wrap" style={{ contentVisibility: 'auto', containIntrinsicSize: '60px' } as any}>
         <div className="home-searchbar">
           <div className="home-searchbar-bg" aria-hidden="true"><div className="home-searchbar-orb" /></div>
-          <Search size={15} className="home-searchbar-icon" />
+          <Search size={18} className="home-searchbar-icon" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={watermark} aria-label="Search products" />
           {q && <button className="home-searchbar-clear" onClick={() => setQ('')} aria-label="Clear search"><span>×</span></button>}
           <div className="home-searchbar-divider" aria-hidden="true" />

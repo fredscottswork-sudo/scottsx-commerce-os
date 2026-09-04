@@ -301,6 +301,9 @@ section('1. Public marketplace (logged out)');
   check('dark theme is the default', app.window.document.documentElement.getAttribute('data-theme') === 'dark',
     `got ${app.window.document.documentElement.getAttribute('data-theme')}`);
   check('no runtime errors on the home page', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  check('home has exactly one search bar (nothing small above it)',
+    app.$$('.home-searchbar input').length === 1 && app.$$('.public-search').length === 0,
+    `${app.$$('.public-search').length} topbar search bars on the home page`);
   check('home opens with the first even row of categories', app.$$('.cat-grid-even .cat-tile').length === 8,
     `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
   check('category tiles link into filtered search',
@@ -825,7 +828,30 @@ section('9b. Public STX AI page');
   check('guests can type to the assistant', !!app.$('.ai-chat-input textarea'));
   check('no account is needed to use the AI', !/Sign in/i.test(t) || app.window.location.pathname === '/ai',
     `path ${app.window.location.pathname}`);
+  const aiBrand = app.$('.ai-brand');
+  check('AI page carries the animated ScottsTechX brand', !!aiBrand && /ScottsTechX/i.test(aiBrand.textContent || ''),
+    aiBrand ? aiBrand.textContent : 'no brand bar');
+  check('AI page shows its marketplace identity mark', !!app.$('.ai-brand-orb'));
+  check('AI page offers extra capabilities (voice + photo)',
+    app.$$('.ai-cap').length >= 2, `${app.$$('.ai-cap').length} capability buttons`);
   check('no runtime errors on the AI page', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  app.close();
+}
+
+// ── 9c. Dashboard top nav: Orders must never hide under Messages ────────────
+section('9c. Dashboard top nav overlap');
+{
+  const app = await mount('/seller', seller);
+  const inner = app.$('.mainnav-inner');
+  const linksText = inner ? inner.textContent : '';
+  check('seller nav shows Orders and Messages together',
+    /Orders/.test(linksText) && /Messages/.test(linksText) && !!inner,
+    'expected both words in the primary nav row');
+  check('primary links row scrolls instead of hiding under the right cluster',
+    /\.mainnav-links\{[^}]*overflow-x:\s*auto/.test(bundleCss));
+  check('right nav cluster never shrinks under the word links',
+    /\.mainnav-right\{[^}]*flex-shrink:\s*0/.test(bundleCss));
+  check('no runtime errors on the seller dashboard', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
 
