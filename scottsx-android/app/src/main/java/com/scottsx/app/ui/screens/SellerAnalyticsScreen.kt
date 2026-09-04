@@ -185,7 +185,7 @@ private fun ChartCard(points: List<Pair<String, Long>>) {
     ) {
         if (points.isEmpty()) {
             Text("No sales yet", color = ScottsTechXColors.OnLightSecondary, fontSize = 13.sp)
-            return
+            return@Box
         }
         Column {
             Text("Sales trend", color = ScottsTechXColors.OnLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)

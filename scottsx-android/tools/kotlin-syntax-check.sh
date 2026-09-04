@@ -90,6 +90,26 @@ IGNORE="$IGNORE|assignment type mismatch"
 IGNORE="$IGNORE|return type mismatch"
 IGNORE="$IGNORE|condition type mismatch"
 IGNORE="$IGNORE|delegate .* type mismatch"
+# `by lazy { FirebaseAuth.getInstance() }`: with the Firebase types unresolved
+# the compiler cannot pick a `getValue` overload, so it reports the delegate
+# itself as broken — the message names the unresolved qualified type.
+IGNORE="$IGNORE|property delegate must have a .getValue"
+# `this` inside an unresolved DrawScope / graphicsLayer / Canvas lambda: the
+# receiver type is unknown, so `this` has no defined context.
+IGNORE="$IGNORE|.this. is not defined in this context"
+# `@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)`:
+# class literals of unresolved annotations cannot be compile-time constants.
+IGNORE="$IGNORE|annotation argument must be a compile-time constant"
+# `for ((i, uri) in batch.withIndex())` where the element type is unresolved:
+# iterator()/componentN() resolution becomes ambiguous.
+IGNORE="$IGNORE|is ambiguous for this expression"
+# `granted[Manifest.permission...] == true` where `granted` is unresolved.
+IGNORE="$IGNORE|operator .==. cannot be applied to"
+# `val (w, h) = size` (DrawScope) on an unresolved receiver type.
+IGNORE="$IGNORE|destructuring of type"
+# `list.remove(p)` where the collection element type is unresolved: Kotlin
+# falls back to the deprecated `remove(index: Int)` overload.
+IGNORE="$IGNORE|MutableList.*remove.index.* is deprecated"
 IGNORE="$IGNORE|type mismatch: inferred type"
 IGNORE="$IGNORE|inferred type .* but .* was expected"
 IGNORE="$IGNORE|not applicable to target"

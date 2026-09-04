@@ -4,28 +4,35 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * ScottsTechX — dashboard domain models.
- *
- * These mirror `web/src/api/types.ts` 1:1 (SellerDashboard, SalesPoint,
- * TopProduct…) so the Android app renders exactly the same numbers as the
- * website — one backend, same payloads. The app is buyer + seller only;
- * platform admin lives on the web.
+ * JSON helpers the dashboard parsers rely on. `optString` in org.json returns
+ * the string "null" (not Kotlin null) when the key is JSON null, so callers
+ * that must distinguish "no value" from the literal string use these.
  */
+internal fun JSONObject.optStringOrNull(key: String): String? =
+    if (isNull(key)) null else optString(key)
 
-/** One day of the 14-day sales series (seller + admin dashboards). */
-data class SalesPoint(
+/** `optStringOrNull` but with a fallback when the key is absent or null. */
+internal fun JSONObject.optStringSafe(key: String, fallback: String = ""): String =
+    optStringOrNull(key) ?: fallback
+
+/**
+ * One day of the 14-day sales series (seller + admin dashboards). Named
+ * separately from the legacy [SalesPoint] chart model so both can exist in
+ * the same module; this one mirrors `web/src/api/types.ts` 1:1.
+ */
+data class DashboardSalesPoint(
     val date: String = "",
     val orders: Int = 0,
     val revenue: Long = 0,
 ) {
     companion object {
-        fun fromJson(o: JSONObject): SalesPoint = SalesPoint(
+        fun fromJson(o: JSONObject): DashboardSalesPoint = DashboardSalesPoint(
             date = o.optString("date"),
             orders = o.optInt("orders", 0),
             revenue = o.optLong("revenue", 0),
         )
 
-        fun fromJsonArray(arr: JSONArray?): List<SalesPoint> =
+        fun fromJsonArray(arr: JSONArray?): List<DashboardSalesPoint> =
             if (arr == null) emptyList()
             else (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
     }
@@ -95,7 +102,7 @@ data class SellerDashboard(
     val pendingApproval: Int = 0,
     val topProducts: List<TopProduct> = emptyList(),
     val recentOrders: List<SellerRecentOrder> = emptyList(),
-    val salesSeries: List<SalesPoint> = emptyList(),
+    val salesSeries: List<DashboardSalesPoint> = emptyList(),
 ) {
     companion object {
         fun fromJson(root: JSONObject): SellerDashboard {
@@ -121,7 +128,7 @@ data class SellerDashboard(
                 pendingApproval = s.optInt("pendingApproval", 0),
                 topProducts = TopProduct.fromJsonArray(root.optJSONArray("topProducts")),
                 recentOrders = SellerRecentOrder.fromJsonArray(root.optJSONArray("recentOrders")),
-                salesSeries = SalesPoint.fromJsonArray(root.optJSONArray("salesSeries")),
+                salesSeries = DashboardSalesPoint.fromJsonArray(root.optJSONArray("salesSeries")),
             )
         }
     }

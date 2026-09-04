@@ -13,8 +13,7 @@ KOTLINC="${1:-${KOTLINC:-kotlinc}}"
 OJ="${2:-${ORG_JSON_JAR:-}}"
 API="${API_BASE:-http://127.0.0.1:3001}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MODELS="$ROOT/app/src/main/java/com/scottsx/app/data/domain/MarketplaceModels.kt"
-SCREENS="$ROOT/app/src/main/java/com/scottsx/app/ui/screens/MessagesScreen.kt"
+MODELS="$ROOT/app/src/main/java/com/scottsx/app/data/domain/DashboardModels.kt"
 
 if [ -z "$OJ" ]; then
   # Try the PySpark-bundled copy documented in the README.
@@ -34,7 +33,7 @@ echo "Capturing live backend responses from $API…"
 node "$ROOT/tools/parser-check/capture.mjs" "$WORK" "$API" || exit 1
 
 echo "Building the harness from the shipping model source…"
-python3 "$ROOT/tools/parser-check/build_harness.py" "$MODELS" "$SCREENS" "$WORK" || exit 1
+python3 "$ROOT/tools/parser-check/build_harness.py" "$MODELS" "$WORK" || exit 1
 
 "$KOTLINC" -cp "$OJ" "$WORK/Parse.kt" -d "$WORK/out" 2>&1 | grep -E "error:" && exit 1
 
