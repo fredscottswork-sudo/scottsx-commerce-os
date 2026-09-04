@@ -20,8 +20,8 @@ ALTER TABLE products
   ADD COLUMN IF NOT EXISTS vision_subcategory     text,
   ADD COLUMN IF NOT EXISTS vision_title           text,
   ADD COLUMN IF NOT EXISTS vision_tags            jsonb,
-  ADD COLUMN IF NOT EXISTS visual_embedding       jsonb,
+  ADD COLUMN IF NOT EXISTS visual_search_embedding jsonb,
   ADD COLUMN IF NOT EXISTS vision_checked_at      timestamptz;
 
 CREATE INDEX IF NOT EXISTS idx_products_vision_embedding
-  ON products (id) WHERE visual_embedding IS NOT NULL;
+  ON products (id) WHERE visual_search_embedding IS NOT NULL;

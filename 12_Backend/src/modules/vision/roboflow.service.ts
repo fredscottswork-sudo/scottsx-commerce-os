@@ -189,12 +189,12 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
- * Rank catalogue rows (each with an `id` and `visual_embedding`) by cosine
+ * Rank catalogue rows (each with an `id` and `visual_search_embedding`) by cosine
  * similarity to the query embedding. Returns ids best-first. Includes nothing
  * below `threshold` (the vector search is a *booster*, not a gate — the text
  * search still supplies results on its own).
  */
-export function rankByEmbedding<T extends { id: string; visual_embedding: unknown }>(
+export function rankByEmbedding<T extends { id: string; visual_search_embedding: unknown }>(
   rows: T[],
   query: number[],
   threshold = 0.4
@@ -202,7 +202,7 @@ export function rankByEmbedding<T extends { id: string; visual_embedding: unknow
   return rows
     .map((r) => ({
       id: r.id,
-      score: cosineSimilarity(query, asEmbedding(r.visual_embedding) || []),
+      score: cosineSimilarity(query, asEmbedding(r.visual_search_embedding) || []),
     }))
     .filter((x) => x.score >= threshold)
     .sort((a, b) => b.score - a.score)
@@ -275,7 +275,7 @@ export async function reviewListing(
             vision_subcategory = $5,
             vision_title = $6,
             vision_tags = $7,
-            visual_embedding = $8,
+            visual_search_embedding = $8,
             vision_checked_at = $9,
             status = $10,
             rejection_reason = CASE WHEN $10 = 'rejected' THEN $11 ELSE rejection_reason END,

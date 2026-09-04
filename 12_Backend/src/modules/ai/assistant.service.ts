@@ -378,9 +378,9 @@ export async function imageSearch(
   let rankedIds: string[] = [];
   if (vision?.embedding) {
     const rows = await db.query(
-      `SELECT id, visual_embedding
+      `SELECT id, visual_search_embedding
          FROM products
-        WHERE status = 'approved' AND visual_embedding IS NOT NULL`
+        WHERE status = 'approved' AND visual_search_embedding IS NOT NULL`
     );
     rankedIds = rankByEmbedding(rows.rows as any[], vision.embedding, 0.35);
     if (rankedIds.length) {
