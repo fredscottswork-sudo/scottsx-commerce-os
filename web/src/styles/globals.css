@@ -5878,6 +5878,17 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   .cat-count { font-size: 9.5px; }
   .cat-ico { width: 30px; height: 30px; border-radius: 9px; }
 }
+.cat-show-all {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 14px; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2);
+  font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
+  transition: border-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.cat-show-all:hover { border-color: var(--primary); color: var(--primary); }
+.cat-show-all svg { transition: transform var(--dur) var(--ease-out); }
+.cat-show-all svg.flip { transform: rotate(180deg); }
 
 /* ── Home search bar camera shortcut ─────────────────────────────────────── */
 .home-searchbar-cam {

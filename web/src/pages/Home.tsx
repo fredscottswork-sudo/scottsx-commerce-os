@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, memo } from 'react';
 import { Link } from 'react-router-dom';
-import { CreditCard, MessageCircle, MapPin, Search, ShoppingBag, Sparkles, Camera } from 'lucide-react';
+import { CreditCard, MessageCircle, MapPin, Search, ShoppingBag, Sparkles, Camera, ChevronDown } from 'lucide-react';
 import { productService, geoService } from '../api/services';
 import type { Product, NearbySeller } from '../api/types';
 import { ProductGrid } from '../components/ProductCard';
@@ -104,6 +104,14 @@ export default function Home() {
   }, []);
 
   const categoryTiles = facets ? mergedCategories(facets) : [];
+
+  // The showcase opens with one even row (8 tiles); the rest stay hidden
+  // behind a toggle so the page above the fold stays focused.
+  const SHOWCASE_PREVIEW = 8;
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const visibleCategoryTiles = showAllCategories
+    ? categoryTiles
+    : categoryTiles.slice(0, SHOWCASE_PREVIEW);
 
   /** Camera shortcut: open the (more capable) search page image modal. */
   const openImageSearch = () => {
@@ -211,7 +219,7 @@ export default function Home() {
             <Link to="/search" className="link-arrow">Browse all →</Link>
           </div>
           <div className="cat-grid cat-grid-even">
-            {categoryTiles.map((c, i) => (
+            {visibleCategoryTiles.map((c, i) => (
               <Link
                 key={c.name}
                 to={`/search?category=${encodeURIComponent(c.name)}`}
@@ -224,6 +232,17 @@ export default function Home() {
               </Link>
             ))}
           </div>
+          {categoryTiles.length > SHOWCASE_PREVIEW && (
+            <button
+              type="button"
+              className="cat-show-all"
+              aria-expanded={showAllCategories}
+              onClick={() => setShowAllCategories((v) => !v)}
+            >
+              {showAllCategories ? 'Show fewer categories' : `Show all ${categoryTiles.length} categories`}
+              <ChevronDown size={14} className={showAllCategories ? 'flip' : ''} />
+            </button>
+          )}
         </section>
       )}
 

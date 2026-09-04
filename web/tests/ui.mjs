@@ -301,10 +301,29 @@ section('1. Public marketplace (logged out)');
   check('dark theme is the default', app.window.document.documentElement.getAttribute('data-theme') === 'dark',
     `got ${app.window.document.documentElement.getAttribute('data-theme')}`);
   check('no runtime errors on the home page', app.consoleErrors.length === 0, app.consoleErrors[0]);
-  check('home shows the even category showcase', app.$$('.cat-grid-even .cat-tile').length === 16,
+  check('home opens with the first even row of categories', app.$$('.cat-grid-even .cat-tile').length === 8,
     `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
   check('category tiles link into filtered search',
     !!app.$('.cat-grid-even a[href^="/search?category="]'));
+  const catsToggle = app.$('.cat-show-all');
+  check('remaining categories are hidden behind a toggle', !!catsToggle);
+  check('toggle reports the hidden count',
+    !!catsToggle && /Show all 16 categories/.test(catsToggle.textContent || ''),
+    catsToggle ? catsToggle.textContent : '');
+  if (catsToggle) {
+    check('toggle starts collapsed', catsToggle.getAttribute('aria-expanded') === 'false');
+    await app.click(catsToggle, 400);
+    check('expanding reveals the full 16-category grid',
+      app.$$('.cat-grid-even .cat-tile').length === 16,
+      `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
+    const expandedBtn = app.$('.cat-show-all');
+    check('expanded toggle reports state',
+      !!expandedBtn && expandedBtn.getAttribute('aria-expanded') === 'true');
+    await app.click(expandedBtn, 400);
+    check('collapsing hides the other categories again',
+      app.$$('.cat-grid-even .cat-tile').length === 8,
+      `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
+  }
   app.close();
 }
 
