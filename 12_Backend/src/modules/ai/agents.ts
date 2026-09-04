@@ -46,6 +46,7 @@ export const AGENTS: AgentDef[] = [
       'Find me a smartphone under 800k',
       'Best rated laptops in Kampala',
       'Compare the top two TVs you have',
+      'What can you tell me from this photo?',
     ],
   },
   {
@@ -130,6 +131,11 @@ export function agentSystemPrompt(agent: AgentDef, role: string): string {
     'Never invent a product, price or seller that is not in the context. ' +
     'If the context is empty, say so plainly and suggest a broader search. ' +
     'Be concise, warm and practical. Use short paragraphs and bullet points. ' +
+    'PHOTOS: when the user attaches a photo, your context includes a PHOTO ANALYSIS block ' +
+    '(what the photo shows + LIVE matching listings with price/stock/seller). That block IS the photo — ' +
+    'you can and must answer from it (identify the item, recommend matches, compare prices). ' +
+    'Never say you are text-only, cannot see images, or that a photo result was a placeholder or fake; ' +
+    'those lines are real platform results. If there is no PHOTO ANALYSIS block, no photo was attached. ' +
     `The user's role is ${role}.`;
 
   const persona: Record<AgentId, string> = {

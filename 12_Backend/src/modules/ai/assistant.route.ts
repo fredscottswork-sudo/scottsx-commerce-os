@@ -22,6 +22,11 @@ import { roboflowConfigured } from '../vision/roboflow.service.js';
 
 const askSchema = z.object({
   prompt: z.string().min(1),
+  // Attached photo (base64 data URL, compressed on-device ~200-400KB) or a
+  // public URL. Analyzed server-side; the text-only chat model reads the
+  // analysis, never the bytes.
+  imageData: z.string().max(8 * 1024 * 1024).optional(),
+  imageUrl: z.string().max(2048).optional(),
   screen: z.string().optional().default('generic'),
   agent: z.string().optional(),
   history: z
@@ -102,7 +107,9 @@ export default async function registerAiRoute(app: FastifyInstance) {
     roboflow: { configured: roboflowConfigured() },
   }));
 
-  app.post('/api/v1/ai/v2/ask', async (request) => {
+  // bodyLimit: a compressed phone photo as a base64 JSON payload lands in the
+  // 1-8MB range; the default 1MB cap would 413 it.
+  app.post('/api/v1/ai/v2/ask', { bodyLimit: 8 * 1024 * 1024 }, async (request) => {
     const body = askSchema.parse(request.body);
     const who = await softUser(request);
     const result = await ask({
@@ -113,6 +120,8 @@ export default async function registerAiRoute(app: FastifyInstance) {
       role: who.role,
       userId: who.id,
       history: body.history,
+      imageData: body.imageData,
+      imageUrl: body.imageUrl,
     });
     return result;
   });

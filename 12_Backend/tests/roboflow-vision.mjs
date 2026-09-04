@@ -482,6 +482,30 @@ const main = async () => {
     check('total outage: grounded answer + honest llmError (503)',
       down.status === 200 && /scottstechx-local/.test(down.data.provider || '') && /503/.test(down.data.llmError || ''),
       JSON.stringify({ provider: down.data.provider, llmError: down.data.llmError }));
+
+    // ── Chat vision: a photo attached to the chat message must be analyzed
+    //    (caption + labels) and the answer grounded in live matches, so the
+    //    assistant never has to say "I'm text-only".
+    const visionBefore = nvidiaVisionHits;
+    const TINY_PNG =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+    const askPhoto = await fetch(`${API}/ai/v2/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'what is this and is it a good deal?', imageData: TINY_PNG }),
+    });
+    const askPhotoData = await askPhoto.json().catch(() => ({}));
+    check('chat with a photo: assistant answers and never falls back to "text-only"',
+      askPhoto.status === 200 && /NVIDIA says/.test(askPhotoData.text || '') && !askPhotoData.llmError,
+      JSON.stringify({ status: askPhoto.status, provider: askPhotoData.provider, llmError: askPhotoData.llmError }));
+    check('chat with a photo: the vision pipeline analyzed the image',
+      nvidiaVisionHits > visionBefore,
+      `visionHits ${visionBefore} -> ${nvidiaVisionHits}`);
+    check('chat with a photo: photoAnalysis carries the detected result',
+      typeof askPhotoData.photoAnalysis?.detected === 'string' &&
+        /base64-test photo/.test(askPhotoData.photoAnalysis?.detected || '') &&
+        typeof askPhotoData.photoAnalysis?.matchCount === 'number',
+      JSON.stringify(askPhotoData.photoAnalysis));
   } else {
     console.log('  (NVIDIA_API_KEY not set on the live server — caption checks skipped)');
   }

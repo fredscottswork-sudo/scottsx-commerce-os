@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Sparkles, Send, RotateCcw, Zap, AlertCircle,
-  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, Camera,
+  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, Camera, ImagePlus, X,
   Copy, Share2, BookOpen, Store,
 } from 'lucide-react';
 import { aiService } from '../api/services';
 import type { AiAgent, AiSearchResult, Product } from '../api/types';
+import { compressImage } from '../lib/imageSearch';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
 import { ProductGrid } from './ProductCard';
@@ -62,6 +63,11 @@ interface Turn {
   grounded?: boolean;
   pending?: boolean;
   llmError?: string;
+  /** Photo attached to this user turn (compressed data URL) + its filename. */
+  photo?: string;
+  photoName?: string;
+  /** Assistant: what the vision pipeline saw in the attached photo. */
+  photoAnalysis?: { detected: string; matchCount: number };
 }
 
 /** Copy any text with a legacy fallback (clipboard API can be absent in
@@ -129,6 +135,9 @@ export function AiConsole({
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
+  /** Photo attached to the NEXT message (compressed on-device, ~200-400KB). */
+  const [photo, setPhoto] = useState<{ dataUrl: string; name: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ provider: string; grounded: boolean; configured: boolean; visionProvider?: 'roboflow' | 'nvidia' | 'llm' | 'none'; visionConfigured?: boolean; nvidiaVisionConfigured?: boolean } | null>(null);
   const [openSources, setOpenSources] = useState<number | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
@@ -205,23 +214,36 @@ export function AiConsole({
 
   const activeAgent = agents.find((a) => a.id === agentId);
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, imageData?: string) => {
     const prompt = text.trim();
     if (!prompt || busy) return;
 
     // Snapshot the history *before* adding this turn — the backend wants the
-    // prior context, not the message it is about to answer.
+    // prior context, not the message it is about to answer. A photo's analysis
+    // stays attached to the answer it produced, so follow-up questions
+    // ("and how much is delivery?") still have the photo in context.
     const history = turns
       .filter((t) => !t.pending)
       .slice(-8)
-      .map((t) => ({ role: t.role, content: t.content }));
+      .map((t) => ({
+        role: t.role,
+        content:
+          t.role === 'assistant' && t.photoAnalysis?.detected
+            ? `${t.content}\n[Photo from earlier: ${t.photoAnalysis.detected} — ${t.photoAnalysis.matchCount} live matches]`
+            : t.content,
+      }));
 
-    setTurns((t) => [...t, { role: 'user', content: prompt }, { role: 'assistant', content: '', pending: true }]);
+    setTurns((t) => [
+      ...t,
+      { role: 'user', content: prompt, photo: imageData, photoName: photo?.name },
+      { role: 'assistant', content: '', pending: true },
+    ]);
     setInput('');
+    setPhoto(null);
     setBusy(true);
 
     try {
-      const r = await aiService.ask(prompt, { screen, agent: agentId || undefined, history });
+      const r = await aiService.ask(prompt, { screen, agent: agentId || undefined, history, imageData });
       setTurns((t) => {
         const next = [...t];
         next[next.length - 1] = {
@@ -233,6 +255,7 @@ export function AiConsole({
           model: r.model,
           grounded: r.grounded,
           llmError: (r as any).llmError,
+          photoAnalysis: (r as any).photoAnalysis,
         };
         return next;
       });
@@ -254,7 +277,7 @@ export function AiConsole({
       setBusy(false);
       inputRef.current?.focus();
     }
-  }, [agentId, agents, busy, screen, toast, turns]);
+  }, [agentId, agents, busy, photo, screen, toast, turns]);
 
   /** Voice — speak your request, the assistant answers. */
   const startVoice = useCallback(() => {
@@ -292,9 +315,31 @@ export function AiConsole({
         grounded: true,
         agent: 'Photo search',
         provider: status?.provider,
+        photoAnalysis: { detected: r.detected ?? '', matchCount: r.products?.length ?? 0 },
       },
     ]);
   }, [status]);
+
+  /** Attach a photo to the next CHAT message (compressed on-device first). */
+  const onAttachFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const c = await compressImage(file);
+        if (c.dataUrl.length > 7 * 1024 * 1024) {
+          toast('That photo is still too large — try a smaller one.', 'warning');
+          return;
+        }
+        setPhoto({ dataUrl: c.dataUrl, name: c.filename });
+        toast('Photo attached — ask me about it!', 'success');
+      } catch (err: any) {
+        toast(err?.message || 'Could not read that image.', 'error');
+      }
+    },
+    [toast]
+  );
 
   /** Copy one assistant answer to the clipboard. */
   const copyAnswer = useCallback(async (t: Turn, i: number) => {
@@ -453,7 +498,25 @@ export function AiConsole({
                       <span className="typing"><i /><i /><i /></span>
                     ) : (
                       <>
+                        {t.role === 'user' && t.photo && (
+                          <img
+                            src={t.photo}
+                            alt={t.photoName || 'attached photo'}
+                            style={{
+                              display: 'block', maxWidth: 160, maxHeight: 120,
+                              objectFit: 'cover', borderRadius: 10, marginBottom: 6,
+                            }}
+                          />
+                        )}
                         <RichText text={t.content} />
+                        {t.role === 'assistant' && t.photoAnalysis?.detected && (
+                          <p className="tiny muted-2" style={{ margin: '8px 0 0' }}>
+                            🔍 Photo analyzed: <strong>{t.photoAnalysis.detected.slice(0, 90)}</strong>
+                            {t.photoAnalysis.matchCount > 0
+                              ? ` · ${t.photoAnalysis.matchCount} matching listing${t.photoAnalysis.matchCount === 1 ? '' : 's'}`
+                              : ' · no live matches yet'}
+                          </p>
+                        )}
                         {t.role === 'assistant' && (
                           <div className="ai-answer-meta">
                             <span className="ai-answer-wm" title="AI-generated content">
@@ -552,13 +615,59 @@ export function AiConsole({
 
         <form
           className="ai-chat-input"
-          onSubmit={(e) => { e.preventDefault(); void send(input); }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = input.trim() || (photo ? 'What can you tell me from this photo?' : '');
+            if (!text) return;
+            const img = photo?.dataUrl;
+            setPhoto(null);
+            void send(text, img);
+          }}
         >
+          {photo && (
+            <div className="ai-chat-photo" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+              <img
+                src={photo.dataUrl}
+                alt={photo.name}
+                style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border, #ddd)' }}
+              />
+              <span className="tiny muted-2" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {photo.name} — attached to your message
+              </span>
+              <button
+                type="button"
+                className="ai-answer-act"
+                title="Remove photo"
+                aria-label="Remove photo"
+                onClick={() => setPhoto(null)}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => void onAttachFile(e)}
+            aria-hidden
+            tabIndex={-1}
+          />
+          <button
+            type="button"
+            className="ai-chat-img"
+            onClick={() => fileRef.current?.click()}
+            title="Attach a photo for the assistant to analyze"
+            aria-label="Attach a photo"
+          >
+            <ImagePlus size={16} />
+          </button>
           <button
             type="button"
             className="ai-chat-img"
             onClick={() => setImgOpen(true)}
-            title="Search by photo"
+            title="Search the catalogue by photo"
             aria-label="Search by photo"
           >
             <Camera size={16} />
@@ -569,7 +678,14 @@ export function AiConsole({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input); }
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                const text = input.trim() || (photo ? 'What can you tell me from this photo?' : '');
+                if (!text) return;
+                const img = photo?.dataUrl;
+                setPhoto(null);
+                void send(text, img);
+              }
             }}
             placeholder={
               /* The long examples wrap to five lines in a 320px composer and
@@ -583,7 +699,13 @@ export function AiConsole({
             }
             aria-label="Message the assistant"
           />
-          <Btn variant="primary" type="submit" loading={busy} disabled={!input.trim()} icon={<Send size={15} />}>
+          <Btn
+            variant="primary"
+            type="submit"
+            loading={busy}
+            disabled={!input.trim() && !photo}
+            icon={<Send size={15} />}
+          >
             Send
           </Btn>
         </form>

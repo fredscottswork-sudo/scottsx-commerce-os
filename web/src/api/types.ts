@@ -106,6 +106,8 @@ export interface AiAnswer {
   grounded: boolean;
   /** Filled when the model call failed and the app fell back offline. */
   llmError?: string;
+  /** Filled when a photo was attached: what the vision pipeline saw + matches. */
+  photoAnalysis?: { detected: string; matchCount: number };
 }
 
 export interface AiSearchResult {

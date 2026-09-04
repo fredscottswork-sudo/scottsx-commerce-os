@@ -376,13 +376,26 @@ export const chatService = {
 export const aiService = {
   ask: (
     prompt: string,
-    opts: { screen?: string; agent?: string; history?: { role: 'user' | 'assistant'; content: string }[] } = {}
+    opts: {
+      screen?: string;
+      agent?: string;
+      history?: { role: 'user' | 'assistant'; content: string }[];
+      /** Compressed photo (data URL) — the assistant analyzes it + matches it. */
+      imageData?: string;
+    } = {}
   ) =>
     api<AiAnswer>('/ai/v2/ask', {
       method: 'POST',
-      body: { prompt, screen: opts.screen ?? 'web', agent: opts.agent, history: opts.history ?? [] },
-      // nemotron-3 reasoning can take 30-90s; a 30s client cap would kill it.
-      timeoutMs: 150_000,
+      body: {
+        prompt,
+        screen: opts.screen ?? 'web',
+        agent: opts.agent,
+        history: opts.history ?? [],
+        ...(opts.imageData ? { imageData: opts.imageData } : {}),
+      },
+      // nemotron-3 reasoning can take 30-90s (photo analysis adds ~10s);
+      // a 30s client cap would kill it.
+      timeoutMs: 180_000,
     }),
   agents: () => api<{ agents: AiAgent[] }>('/ai/agents', { auth: false }),
   status: () =>

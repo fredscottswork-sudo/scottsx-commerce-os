@@ -23,7 +23,7 @@ import {
   composeOfflineAnswer,
   type AgentId,
 } from './agents.js';
-import { parseIntent, retrieveProducts, fmtUgx } from './catalog-context.js';
+import { parseIntent, retrieveProducts, productsToContext, fmtUgx, type RetrievedProduct } from './catalog-context.js';
 import { analyzeImage, rankByEmbedding, roboflowConfigured } from '../vision/roboflow.service.js';
 
 /** How long interactive image search waits on the Roboflow workflow (ms).
@@ -311,6 +311,11 @@ export interface AskOptions {
   role?: 'buyer' | 'seller' | 'admin';
   userId?: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** Attached photo (base64 data URL) — analyzed server-side; text-only chat
+   *  models never receive the bytes, only the analysis. */
+  imageData?: string;
+  /** Attached photo as a public URL. */
+  imageUrl?: string;
 }
 
 export interface AskResult {
@@ -324,6 +329,9 @@ export interface AskResult {
   /** Set when the provider call failed and we fell back — shows the real
    *  reason (e.g. "nvidia error 401: …") instead of a mysterious label. */
   llmError?: string;
+  /** Present when a photo was attached: what the vision pipeline saw and how
+   *  many live listings it matched. */
+  photoAnalysis?: { detected: string; matchCount: number };
 }
 
 /**
@@ -331,54 +339,127 @@ export interface AskResult {
  * AI search bar, support AI mode).
  */
 export async function ask(opts: AskOptions): Promise<AskResult> {
-  const { db, prompt, screen = 'generic', role = 'buyer', history = [] } = opts;
+  const { db, prompt, screen = 'generic', role = 'buyer', history = [], imageData, imageUrl } = opts;
 
   const agent = getAgent(opts.agent ?? routeAgent(prompt, role));
   const ctx = await buildContext(db, agent, prompt);
+
+  // ── Attached photo: analyze it with the real vision pipeline (Roboflow
+  //    labels + embedding, NVIDIA/LLM caption) and ground the answer in the
+  //    LIVE matches. The chat model itself may be text-only (nemotron-3) —
+  //    it never sees the bytes, it reads the analysis + matched listings as
+  //    text, so it can genuinely answer "what is this / can I buy it / is it
+  //    a fair price" without ever claiming it cannot see photos.
+  let photoAnalysis: { detected: string; matchCount: number } | undefined;
+  let photoMatches: RetrievedProduct[] = [];
+  let photoContext = '';
+  if (imageData || imageUrl) {
+    try {
+      const found = await imageSearch(db, { imageData, imageUrl, hint: prompt }, 12);
+      photoMatches = (found.products ?? []) as RetrievedProduct[];
+      photoAnalysis = {
+        detected: found.detected?.trim() || 'could not read this photo (no labels returned)',
+        matchCount: photoMatches.length,
+      };
+      const blocks: string[] = [];
+      if (found.detected) blocks.push(`Detected: ${found.detected}`);
+      if (found.query && found.query !== found.detected) blocks.push(`Search terms used: ${found.query}`);
+      blocks.push(
+        `LIVE catalogue matches (ranked, with price/stock/seller):\n${productsToContext(photoMatches)}`
+      );
+      photoContext = blocks.join('\n');
+    } catch (err) {
+      console.warn(`[ai] photo analysis failed (${err instanceof Error ? err.message : 'error'})`);
+    }
+  }
 
   const meta = {
     screen,
     agent: { id: agent.id, name: agent.name, tagline: agent.tagline },
     // When the strict search misses we still talk about the relaxed matches in
     // the answer text, so ship those same products as cards — otherwise the
-    // reply names items the shopper has no way to tap through to.
-    products: ctx.products.length ? ctx.products : ctx.fallbackProducts,
+    // reply names items the shopper has no way to tap through to. A photo ask
+    // shows the photo's matches first (they ARE the answer).
+    products: photoMatches.length
+      ? photoMatches
+      : ctx.products.length
+        ? ctx.products
+        : ctx.fallbackProducts,
     grounded: true,
   };
 
   if (!aiConfigured()) {
     return {
-      text: composeOfflineAnswer(agent, prompt, ctx),
+      text: photoAnalysis
+        ? composePhotoAnswer(photoAnalysis, photoMatches)
+        : composeOfflineAnswer(agent, prompt, ctx),
       provider: 'scottstechx-local',
       model: 'catalog-grounded',
+      photoAnalysis,
       ...meta,
     };
   }
 
   const system = agentSystemPrompt(agent, role);
-  const grounded = `LIVE CATALOG CONTEXT (retrieved from the database just now):\n${ctx.contextText}\n\nUSER QUESTION: ${prompt}`;
+  const grounded =
+    `LIVE CATALOG CONTEXT (retrieved from the database just now):\n${ctx.contextText}\n\n` +
+    (photoContext
+      ? `PHOTO ANALYSIS (the user attached this photo — this is what the photo shows, treat it as ground truth, never say you cannot see it):\n${photoContext}\n\n`
+      : '') +
+    `USER QUESTION: ${prompt}`;
 
   try {
     const llm =
       activeProvider() === 'apifreellm'
         ? await askApiFreeLlm(system, grounded, history)
         : await askOpenRouter(system, grounded, history);
-    return { text: llm.text, provider: llm.provider, model: llm.model, ...meta };
+    return { text: llm.text, provider: llm.provider, model: llm.model, photoAnalysis, ...meta };
   } catch (err) {
     // A provider outage must never take the assistant down — fall back to the
     // grounded local composer and label it honestly, carrying the real error
     // so the UI can explain it (and so a bad model name is visible, not
-    // swallowed).
+    // swallowed). With a photo, the local answer is built from the real
+    // analysis + matches instead of a generic catalogue blast.
     const reason = err instanceof Error ? err.message : String(err);
     console.warn(`[ai] LLM unavailable, falling back to composer: ${reason.slice(0, 300)}`);
     return {
-      text: composeOfflineAnswer(agent, prompt, ctx),
+      text: photoAnalysis
+        ? composePhotoAnswer(photoAnalysis, photoMatches)
+        : composeOfflineAnswer(agent, prompt, ctx),
       provider: 'scottstechx-local (llm unavailable)',
       model: 'catalog-grounded',
       llmError: reason.slice(0, 200),
+      photoAnalysis,
       ...meta,
     };
   }
+}
+
+/** Grounded answer built purely from the photo analysis + live matches. */
+function composePhotoAnswer(
+  analysis: { detected: string; matchCount: number },
+  matches: RetrievedProduct[]
+): string {
+  const lines = [`From your photo I can see: **${analysis.detected}**.`];
+  if (matches.length) {
+    lines.push('', 'Here is what the live catalogue has for it:');
+    for (const p of matches.slice(0, 6)) {
+      lines.push(
+        `• **${p.title}** — ${fmtUgx(p.priceMinor)} | ${
+          p.stockQuantity > 0 ? `${p.stockQuantity} in stock` : '**out of stock**'
+        } | seller ${p.sellerName}${p.verified ? ' ✓' : ''}${p.city ? `, ${p.city}` : ''}${
+          p.isFlashDeal ? ` · 🔥 ${p.discountPercent}% off` : ''
+        }`
+      );
+    }
+    lines.push('', 'Ask me about any of these — price, stock, seller or how to order.');
+  } else {
+    lines.push(
+      '',
+      'I could not match that photo to anything currently listed. Describe it in a few words or try another angle, and I will search again.'
+    );
+  }
+  return lines.join('\n');
 }
 
 /**
