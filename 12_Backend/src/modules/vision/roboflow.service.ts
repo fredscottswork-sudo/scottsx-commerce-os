@@ -29,6 +29,10 @@
 interface RoboflowInput {
   imageUrl?: string;
   imageData?: string; // data URL or bare base64
+  /** Per-call timeout override (clamped 2s-30s). The interactive search keeps
+   *  the env default (10s); the chat passes 25s because it already waits on
+   *  the LLM and a serverless cold start routinely exceeds 10s. */
+  timeoutMs?: number;
 }
 
 export interface VisionAnalysis {
@@ -58,6 +62,61 @@ function timeoutMs(): number {
   const raw = Number(process.env.ROBOFLOW_TIMEOUT_MS);
   if (!Number.isFinite(raw) || raw <= 0) return 10_000;
   return Math.min(Math.max(raw, 2_000), 30_000);
+}
+
+/** Effective timeout for one call: caller override, otherwise env/default. */
+function effectiveTimeout(override?: number): number {
+  if (!override) return timeoutMs();
+  return Math.min(Math.max(override, 2_000), 30_000);
+}
+
+/** 1×1 PNG used by the diagnostics probe (a real payload, not a HEAD). */
+const PROBE_IMAGE =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+
+/**
+ * Live diagnostics probe for the Roboflow workflow: sends a real tiny image
+ * and reports status + latency, so "configured" is not the same as "answers".
+ * Returns the raw HTTP status/error — the workflow URL, key scope, cold start
+ * or a model error all show up here. Never throws; never logs the key.
+ */
+export async function probeRoboflow(): Promise<{
+  ok: boolean;
+  status?: number;
+  error?: string;
+  latencyMs?: number;
+}> {
+  if (!roboflowConfigured()) return { ok: false, error: 'ROBOFLOW_API_KEY not set' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  const startedAt = Date.now();
+  try {
+    const res = await fetch(workflowUrl(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.ROBOFLOW_API_KEY}`,
+      },
+      body: JSON.stringify({
+        inputs: { image: { type: 'base64', value: PROBE_IMAGE.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '') } },
+      }),
+      signal: controller.signal,
+    });
+    const latencyMs = Date.now() - startedAt;
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      return { ok: false, status: res.status, error: detail.slice(0, 300), latencyMs };
+    }
+    return { ok: true, status: 200, latencyMs };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      latencyMs: Date.now() - startedAt,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Normalise a key for comparison: "visualSearchEmbedding" == "visual_search_embedding". */
@@ -169,7 +228,7 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs());
+  const timer = setTimeout(() => controller.abort(), effectiveTimeout(input.timeoutMs));
   const startedAt = Date.now();
   try {
     const res = await fetch(workflowUrl(), {

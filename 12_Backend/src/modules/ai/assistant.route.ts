@@ -18,7 +18,7 @@ import {
   ask, generateProduct, aiSearch, imageSearch, aiConfigured,
   nvidiaVisionConfigured, llmStatusSummary, probeNvidia, AGENTS,
 } from './assistant.service.js';
-import { roboflowConfigured } from '../vision/roboflow.service.js';
+import { roboflowConfigured, probeRoboflow } from '../vision/roboflow.service.js';
 
 const askSchema = z.object({
   prompt: z.string().min(1),
@@ -90,22 +90,27 @@ export default async function registerAiRoute(app: FastifyInstance) {
   app.get('/api/v1/ai/agents', async () => ({ agents: AGENTS }));
 
   /**
-   * Live AI diagnostics — public, no secrets. Runs a REAL tiny NVIDIA chat
-   * request and reports the outcome, so a bad model name, invalid key, credit
-   * exhaustion or unreachable endpoint is visible in one call:
+   * Live AI diagnostics — public, no secrets. Runs a REAL tiny NVIDIA chat +
+   * vision request and a REAL tiny Roboflow workflow request, reporting each
+   * outcome, so "configured" is never mistaken for "answers":
    *
    *   GET /api/v1/ai/diagnostics
-   *   { env: {...booleans}, nvidia: { ok, status, error, latencyMs, model }, roboflow: {...} }
+   *   { env: {...booleans},
+   *     nvidia: { ok, status, error, latencyMs, model, models, completion, vision },
+   *     roboflow: { configured, ok, status, error, latencyMs } }
    */
-  app.get('/api/v1/ai/diagnostics', async () => ({
-    env: {
-      chat: aiConfigured(),
-      nvidia: nvidiaVisionConfigured(),
-      roboflow: roboflowConfigured(),
-    },
-    nvidia: await probeNvidia(),
-    roboflow: { configured: roboflowConfigured() },
-  }));
+  app.get('/api/v1/ai/diagnostics', async () => {
+    const rf = roboflowConfigured();
+    return {
+      env: {
+        chat: aiConfigured(),
+        nvidia: nvidiaVisionConfigured(),
+        roboflow: rf,
+      },
+      nvidia: await probeNvidia(),
+      roboflow: rf ? { configured: true, ...(await probeRoboflow()) } : { configured: false },
+    };
+  });
 
   // bodyLimit: a compressed phone photo as a base64 JSON payload lands in the
   // 1-8MB range; the default 1MB cap would 413 it.

@@ -393,9 +393,10 @@ export const aiService = {
         history: opts.history ?? [],
         ...(opts.imageData ? { imageData: opts.imageData } : {}),
       },
-      // nemotron-3 reasoning can take 30-90s (photo analysis adds ~10s);
-      // a 30s client cap would kill it.
-      timeoutMs: 180_000,
+      // nemotron-3 reasoning can take 30-90s and a photo ask waits up to 40s
+      // on the vision providers (serverless cold starts) — the 30s default
+      // cap would kill it. 240s covers the worst realistic combination.
+      timeoutMs: 240_000,
     }),
   agents: () => api<{ agents: AiAgent[] }>('/ai/agents', { auth: false }),
   status: () =>

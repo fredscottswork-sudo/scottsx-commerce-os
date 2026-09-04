@@ -444,6 +444,9 @@ const main = async () => {
   check('diagnostics vision probe: the caption model accepts image_url',
     diag.data?.nvidia?.vision?.ok === true,
     JSON.stringify(diag.data?.nvidia?.vision));
+  check('diagnostics Roboflow probe: the workflow answers with a status',
+    diag.data?.roboflow?.ok === true,
+    JSON.stringify(diag.data?.roboflow));
   if (status.data?.nvidiaVisionConfigured) {
     check('NVIDIA NIM receives image_url requests from the search endpoint',
       nvidiaHits > 0, `hits=${nvidiaHits}`);

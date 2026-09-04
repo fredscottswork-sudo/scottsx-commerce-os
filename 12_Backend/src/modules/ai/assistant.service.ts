@@ -32,6 +32,14 @@ import { analyzeImage, rankByEmbedding, roboflowConfigured } from '../vision/rob
 const VISION_SEARCH_DEADLINE_MS = 6000;
 /** How long interactive image search waits on the NVIDIA/LLM describe call (ms). */
 const VISION_DESCRIBE_DEADLINE_MS = 8000;
+/**
+ * The CHAT already waits on the LLM, so a photo ask can afford the time a
+ * serverless Roboflow cold start and a cold kimi-k3 call really need (the
+ * 10s interactive caps routinely dropped both on Render — the user's photo
+ * was answered with "analysis timed out" even though chat worked).
+ */
+const VISION_CHAT_SEARCH_DEADLINE_MS = 25_000;
+const VISION_CHAT_DESCRIBE_DEADLINE_MS = 40_000;
 
 /** NVIDIA NIM (OpenAI-compatible) endpoints. */
 const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
@@ -414,11 +422,19 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
   let photoContext = '';
   if (imageData || imageUrl) {
     try {
-      // Chat can wait longer than the interactive search modal: a cold
-      // kimi-k3 caption call can exceed the 8s interactive cap.
+      // Chat can wait longer than the interactive search modal: a serverless
+      // Roboflow cold start and a cold kimi-k3 call routinely exceed the 6s/8s
+      // interactive caps — the user's photo ask timed out on BOTH while chat
+      // itself worked.
       const found = await imageSearch(
         db,
-        { imageData, imageUrl, hint: prompt, searchDeadlineMs: 10_000, describeDeadlineMs: 25_000 },
+        {
+          imageData,
+          imageUrl,
+          hint: prompt,
+          searchDeadlineMs: VISION_CHAT_SEARCH_DEADLINE_MS,
+          describeDeadlineMs: VISION_CHAT_DESCRIBE_DEADLINE_MS,
+        },
         12
       );
       const rawDetected = found.detected?.trim() || '';
@@ -1039,8 +1055,10 @@ export async function imageSearch(
   let caption: { text: string; error?: string } = { text: '' };
   let visionError = '';
   if (raw) {
+    // The internal abort must match the outer deadline or the inner 10s cap
+    // wins and a serverless cold start is killed before the chat's wait ends.
     const robof = Promise.race([
-      analyzeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData }),
+      analyzeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData, timeoutMs: searchDeadline }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), searchDeadline)),
     ]);
     const captionCall = Promise.race([
