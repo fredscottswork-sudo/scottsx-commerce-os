@@ -129,6 +129,11 @@ export default function Messages() {
       <PageHeader
         title={user?.role === 'seller' ? 'Buyer messages' : 'Messages'}
         sub="One shared inbox — everything syncs with the mobile app in real time."
+        actions={
+          <span className="live-dot" title="Live — updates automatically" aria-label="Live">
+            <i /> Live
+          </span>
+        }
       />
 
       <div className="inbox-toolbar">
@@ -233,6 +238,7 @@ export default function Messages() {
 
       {!loading && !error && items.length > 0 && (
         <p className="muted mt-16" style={{ fontSize: 'var(--fs-xs)', textAlign: 'center' }}>
+          <span className="live-dot" style={{ marginRight: 6 }}><i /> Live</span>
           <Inbox size={12} style={{ verticalAlign: -2 }} /> {filter !== 'all' ? `${FILTERS.find(f=>f.key===filter)?.label} · ` : ''}{items.length} conversation{items.length === 1 ? '' : 's'}
           {user?.role === 'buyer' && (
             <>

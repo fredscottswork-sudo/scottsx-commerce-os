@@ -301,6 +301,10 @@ section('1. Public marketplace (logged out)');
   check('dark theme is the default', app.window.document.documentElement.getAttribute('data-theme') === 'dark',
     `got ${app.window.document.documentElement.getAttribute('data-theme')}`);
   check('no runtime errors on the home page', app.consoleErrors.length === 0, app.consoleErrors[0]);
+  check('home shows the even category showcase', app.$$('.cat-grid-even .cat-tile').length === 16,
+    `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
+  check('category tiles link into filtered search',
+    !!app.$('.cat-grid-even a[href^="/search?category="]'));
   app.close();
 }
 
@@ -330,8 +334,14 @@ section('1b. Main navigation bar');
     check('clicking opens the category mega-menu', !!app.$('#mainnav-mega'));
     check('trigger reports expanded state', catsBtn.getAttribute('aria-expanded') === 'true');
     const items = app.$$('.mega-item');
-    check('mega-menu lists every live category', items.length === liveCats.length,
-      `${items.length} rendered vs ${liveCats.length} from /products/facets`);
+    // The curated 16-category set is merged with live facets, so the grid is
+    // always full and even (16 = 4×4) even when the DB has no listings in a
+    // category — but every LIVE category must still be present and linked.
+    check('mega-menu renders the 16-category grid', items.length === 16,
+      `${items.length} rendered (expected 16)`);
+    check('mega-menu still lists every live category',
+      liveCats.every((c) => items.some((e) => (e.textContent || '').includes(c.name))),
+      JSON.stringify(liveCats.map((c) => c.name)));
     if (liveCats.length) {
       const first = liveCats[0];
       const row = items.find((e) => (e.textContent || '').includes(first.name));
@@ -612,8 +622,8 @@ section('6. Cart and checkout');
   check('subtotal matches the server total',
     t.replace(/[^\d]/g, '').includes(String(expectedSubtotal)),
     `expected ${expectedSubtotal}`);
-  check('place-order button present', /Place order/i.test(t));
-  check('shows the pay-on-delivery promise', /pay on delivery/i.test(t));
+  check('send-inquiry button present', /Send inquiry/i.test(t));
+  check('cart is messaging-first (no online payment)', /no online payment/i.test(t));
 
   // Increment quantity through the UI and confirm the server agrees.
   const plusButtons = app.$$('.qty-stepper button').filter((b) => b.getAttribute('aria-label') === 'Increase quantity');
@@ -752,9 +762,9 @@ section('9. AI console');
 {
   const app = await mount('/buyer/ai', buyer);
   const t = app.text();
-  check('AI page renders the agent picker', app.$$('.agent-card').length > 0,
-    `${app.$$('.agent-card').length} agents`);
-  check('shows store-aware grounding status', /Store-aware|Limited/i.test(t));
+  check('AI console boots with its welcome screen', /Ask anything/i.test(t));
+  check('offers agent starter suggestions', app.$$('.ai-chat-body .chip').length > 0,
+    `${app.$$('.ai-chat-body .chip').length} chips`);
   check('offers conversation starters', app.$$('.chip').length > 0);
   check('message composer is present', !!app.$('.ai-chat-input textarea'));
 
@@ -773,6 +783,21 @@ section('9. AI console');
   } else {
     check('assistant produced a reply bubble', false, 'composer not found');
   }
+  app.close();
+}
+
+// ── 9b. Public STX AI page (guest, no login) ────────────────────────────────
+section('9b. Public STX AI page');
+{
+  const app = await mount('/ai');
+  const t = app.text();
+  check('public AI chat renders for guests', /Ask anything|AI shopper/i.test(t));
+  check('starter suggestions are shown', app.$$('.ai-chat-body .chip').length >= 2,
+    `${app.$$('.ai-chat-body .chip').length} chips`);
+  check('guests can type to the assistant', !!app.$('.ai-chat-input textarea'));
+  check('no account is needed to use the AI', !/Sign in/i.test(t) || app.window.location.pathname === '/ai',
+    `path ${app.window.location.pathname}`);
+  check('no runtime errors on the AI page', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
 
@@ -1048,8 +1073,14 @@ section('14. Route guards');
 }
 {
   const app = await mount('/cart');
-  check('anonymous visitor is sent to login for the cart',
-    app.text().includes('Sign in') || app.window.location.pathname === '/login');
+  check('anonymous visitor can browse the cart (no forced login)',
+    app.window.location.pathname === '/cart',
+    `got ${app.window.location.pathname}`);
+  check('guest sees the cart page instead of a login wall',
+    /Your inquiry cart|Start shopping/i.test(app.text()),
+    app.text().slice(0, 140));
+  const guestBadge = app.$('.public-topbar a[aria-label="Your cart"]');
+  check('guest chrome exposes the cart entry point', !!guestBadge);
   app.close();
 }
 

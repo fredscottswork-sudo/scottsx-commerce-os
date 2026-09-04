@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Star, Heart, MessageCircle, ExternalLink, ShoppingCart, Store, ShieldCheck, Package, BadgeCheck } from 'lucide-react';
-import { productService, paymentService, chatService } from '../api/services';
+import { Star, Heart, MessageCircle, ShoppingCart, Store, ShieldCheck, BadgeCheck } from 'lucide-react';
+import { productService, chatService } from '../api/services';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
-import { Btn, Card, ErrorBox, Loading, Modal, Badge } from '../components/ui';
+import { Btn, Card, ErrorBox, Loading, Badge } from '../components/ui';
 import { useSeo } from '../hooks/useSeo';
 import { IMAGE_FALLBACK, ProductGrid } from '../components/ProductCard';
 import { resolveMediaUrl } from '../api/client';
@@ -22,8 +22,6 @@ export default function ProductDetail() {
   const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [buying, setBuying] = useState(false);
-  const [payModal, setPayModal] = useState<{ mode: string; link: string | null; ref: string; status: string } | null>(null);
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
@@ -49,17 +47,11 @@ export default function ProductDetail() {
     type: 'product',
   });
 
-  async function buy() {
-    if (!user) { toast('Please sign in to buy — we saved this product for you', 'warning'); navigate('/login', { state: { from: `/product/${id}` } }); return; }
-    setBuying(true);
-    try {
-      const r = await paymentService.checkout(id!, quantity, user.phone);
-      setPayModal({ mode: r.paymentMode, link: r.paymentLink, ref: r.paymentReference, status: r.status });
-      toast(r.paymentMode === 'collect' ? 'Payment request sent to your phone' : 'Payment link ready', 'success');
-    } catch (e: any) {
-      toast(e.message || 'Could not create payment', 'error');
-    } finally {
-      setBuying(false);
+  function addToInquiry() {
+    const target = product;
+    if (target && target.stockQuantity > 0) {
+      add(target, quantity);
+      toast(`Added to inquiry — ${quantity} × ${target.title}`, 'success');
     }
   }
 
@@ -145,15 +137,21 @@ export default function ProductDetail() {
           </div>
 
           <div className="row mt-16 wrap product-actions" style={{ gap: 8 }}>
-            <Btn variant="primary" size="lg" onClick={buy} disabled={buying || p.stockQuantity === 0} style={{ flex: '1 1 180px' }} icon={<ShoppingCart size={16} />}>
-              {buying ? 'Creating payment…' : p.stockQuantity === 0 ? 'Out of stock' : `Buy now · ${formatUgx(p.priceMinor * quantity)}`}
+            <Btn variant="primary" size="lg" onClick={messageSeller} style={{ flex: '1 1 180px' }} icon={<MessageCircle size={16} />}>
+              Chat with seller
             </Btn>
-            <Btn size="lg" variant="outline" onClick={() => void add(p, quantity)} icon={<Package size={16} />}>Add to cart</Btn>
-            <Btn size="lg" onClick={messageSeller} icon={<MessageCircle size={16} />}>Message</Btn>
+            <Btn size="lg" variant="outline" onClick={addToInquiry} disabled={p.stockQuantity === 0} icon={<ShoppingCart size={16} />}>
+              Add to inquiry
+            </Btn>
             <Btn size="lg" variant={isSaved ? 'primary' : 'default'} onClick={handleToggleSaved} aria-label="Save" icon={<Heart size={16} fill={isSaved ? 'currentColor' : 'none'} />}>
               {isSaved ? 'Saved' : 'Save'}
             </Btn>
           </div>
+
+          <p className="tiny muted-2 mt-12 row" style={{ gap: 7 }}>
+            <ShieldCheck size={14} className="t-success" />
+            No online payment — message the seller to agree on price, delivery and payment (Mobile Money, bank or collect).
+          </p>
         </div>
       </div>
 
@@ -163,29 +161,6 @@ export default function ProductDetail() {
           <ProductGrid products={related} onAddToCart={(prod) => void add(prod)} favoriteSellerIds={new Set()} />
         </section>
       )}
-
-      <Modal open={payModal !== null} onClose={() => setPayModal(null)} title={payModal?.mode === 'collect' ? 'Payment initiated 📲' : 'Payment ready 🎉'}
-        footer={
-          <>
-            {payModal?.mode === 'collect'
-              ? <Btn variant="primary" onClick={() => setPayModal(null)}>OK</Btn>
-              : <Btn variant="primary" onClick={() => { if (payModal?.link) window.open(payModal.link, '_blank'); }}>
-                  <ExternalLink size={16} /> Open payment page
-                </Btn>}
-          </>
-        }
-      >
-        {payModal?.mode === 'collect' ? (
-          <p>
-            A Mobile Money request for <strong>{formatUgx(p.priceMinor * quantity)}</strong> was sent to your phone
-            (MTN MoMo / Airtel Money). Enter your PIN to approve. <br />
-            <span className="muted tiny">Status: {payModal.status} · Ref: {payModal.ref.slice(0, 8)}</span>
-          </p>
-        ) : (
-          <p>Open your secure payment link to complete the purchase. <br />
-            <a href={payModal?.link ?? '#'} target="_blank" rel="noreferrer">{payModal?.link}</a></p>
-        )}
-      </Modal>
     </>
   );
 }

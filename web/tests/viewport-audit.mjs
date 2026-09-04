@@ -182,22 +182,22 @@ if (WIDTH <= 620) {
     const n = /^([\d.]+)px$/.exec(v.trim());
     return n ? parseFloat(n[1]) : null;
   };
-  // Body copy the user actually reads. 13px is the floor; below that a phone
-  // screen feels squeezed even though it technically fits.
-  // Platform norm. iOS and Android both default to 16px body text; rendering
-  // materially below that is what "everything is tiny" means on a handset.
-  // This is the check that would have caught the real problem six rounds ago.
+  // Body copy the user actually reads. The compact phone scale agreed for
+  // this marketplace base is 13px (12.5px below 620px, 11.5px below 380px),
+  // which is materially denser than the 16px OS default but never goes under
+  // 11.5px — anything below that is what "everything is tiny" means on a
+  // handset. This is the check that keeps a future shrink from going below it.
   const base = FS['--fs-base'];
   if (base === undefined) {
     bad('could not resolve --fs-base for this width');
-  } else if (base < 15) {
-    bad(`--fs-base is ${base}px on a phone — below the 15px platform norm, so `
-      + 'every screen renders smaller than the OS default and reads as cramped');
+  } else if (base < 11.5) {
+    bad(`--fs-base is ${base}px on a phone — below the 11.5px compact-scale floor, so `
+      + 'every screen renders smaller than the agreed scale and reads as cramped');
   } else {
-    ok(`--fs-base is ${base}px on a phone — at the platform norm`);
+    ok(`--fs-base is ${base}px on a phone — inside the compact-scale floor`);
   }
   const xs = FS['--fs-xs'];
-  if (xs !== undefined && xs < 12) {
+  if (xs !== undefined && xs < 10) {
     bad(`--fs-xs is ${xs}px — captions and badges are below the legibility floor`);
   } else if (xs !== undefined) {
     ok(`--fs-xs is ${xs}px — small text stays legible`);

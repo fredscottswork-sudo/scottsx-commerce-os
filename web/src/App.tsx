@@ -1,52 +1,51 @@
-import { useEffect, type ReactNode, lazy, Suspense } from 'react';
+import { useEffect, type ReactNode, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './store/AuthContext';
 import { AppShell } from './components/AppShell';
 import { useSeo } from './hooks/useSeo';
 import { Loading } from './components/ui';
 
-const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
-const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const ResetPassword = lazy(() => import('./pages/ResetPassword'));
-const Home = lazy(() => import('./pages/Home'));
-const ProductDetail = lazy(() => import('./pages/ProductDetail'));
-const SellerStorefront = lazy(() => import('./pages/SellerStorefront'));
-const Nearby = lazy(() => import('./pages/Nearby'));
-const Search = lazy(() => import('./pages/Search'));
-const Ai = lazy(() => import('./pages/Ai'));
-const CmsPage = lazy(() => import('./pages/CmsPage'));
-const NotFound = lazy(() => import('./pages/NotFound'));
+import Login from './pages/Login';
+import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import Home from './pages/Home';
+import ProductDetail from './pages/ProductDetail';
+import SellerStorefront from './pages/SellerStorefront';
+import Nearby from './pages/Nearby';
+import Search from './pages/Search';
+import Ai from './pages/Ai';
+import CmsPage from './pages/CmsPage';
+import NotFound from './pages/NotFound';
 
-const BuyerDashboard = lazy(() => import('./pages/buyer/BuyerDashboard'));
-const Orders = lazy(() => import('./pages/buyer/Orders'));
-const Saved = lazy(() => import('./pages/buyer/Saved'));
-const Addresses = lazy(() => import('./pages/buyer/Addresses'));
-const Payments = lazy(() => import('./pages/buyer/Payments'));
-const Refunds = lazy(() => import('./pages/buyer/Refunds'));
-const Support = lazy(() => import('./pages/buyer/Support'));
-const SettingsPage = lazy(() => import('./pages/buyer/Settings'));
-const AiChat = lazy(() => import('./pages/buyer/AiChat'));
-const Cart = lazy(() => import('./pages/buyer/Cart'));
-const Messages = lazy(() => import('./pages/Messages'));
-const Thread = lazy(() => import('./pages/Thread'));
-const Notifications = lazy(() => import('./pages/Notifications'));
+import BuyerDashboard from './pages/buyer/BuyerDashboard';
+import Orders from './pages/buyer/Orders';
+import Saved from './pages/buyer/Saved';
+import Addresses from './pages/buyer/Addresses';
+import Refunds from './pages/buyer/Refunds';
+import Support from './pages/buyer/Support';
+import SettingsPage from './pages/buyer/Settings';
+import AiChat from './pages/buyer/AiChat';
+import Cart from './pages/buyer/Cart';
+import Messages from './pages/Messages';
+import Thread from './pages/Thread';
+import Notifications from './pages/Notifications';
 
-const SellerDashboard = lazy(() => import('./pages/seller/SellerDashboard'));
-const Inventory = lazy(() => import('./pages/seller/Inventory'));
-const AddProduct = lazy(() => import('./pages/seller/AddProduct'));
-const BulkImport = lazy(() => import('./pages/seller/BulkImport'));
-const SellerOrders = lazy(() => import('./pages/seller/SellerOrders'));
-const SellerAnalytics = lazy(() => import('./pages/seller/SellerAnalytics'));
-const SellerAi = lazy(() => import('./pages/seller/SellerAi'));
-const StoreSettingsPage = lazy(() => import('./pages/seller/StoreSettings'));
+import SellerDashboard from './pages/seller/SellerDashboard';
+import Inventory from './pages/seller/Inventory';
+import AddProduct from './pages/seller/AddProduct';
+import BulkImport from './pages/seller/BulkImport';
+import SellerOrders from './pages/seller/SellerOrders';
+import SellerAnalytics from './pages/seller/SellerAnalytics';
+import SellerAi from './pages/seller/SellerAi';
+import StoreSettingsPage from './pages/seller/StoreSettings';
 
-const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
-const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
-const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'));
-const AdminQueue = lazy(() => import('./pages/admin/AdminQueue'));
-const AdminSupport = lazy(() => import('./pages/admin/AdminSupport'));
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminProducts from './pages/admin/AdminProducts';
+import AdminQueue from './pages/admin/AdminQueue';
+import AdminSupport from './pages/admin/AdminSupport';
 
 function SuspenseFallback() {
   return <div style={{ padding: 24 }}><Loading /></div>;
@@ -160,7 +159,6 @@ export default function App() {
           <Route path="/buyer/orders" element={<RequireRole role="buyer"><Orders /></RequireRole>} />
           <Route path="/buyer/saved" element={<RequireRole role="buyer"><Saved /></RequireRole>} />
           <Route path="/buyer/addresses" element={<RequireRole role="buyer"><Addresses /></RequireRole>} />
-          <Route path="/buyer/payments" element={<RequireRole role="buyer"><Payments /></RequireRole>} />
           <Route path="/buyer/refunds" element={<RequireRole role="buyer"><Refunds /></RequireRole>} />
           <Route path="/buyer/support" element={<RequireRole role="buyer"><Support /></RequireRole>} />
           <Route path="/buyer/settings" element={<RequireRole role="buyer"><SettingsPage /></RequireRole>} />

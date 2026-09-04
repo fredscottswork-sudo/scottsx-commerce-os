@@ -1349,6 +1349,33 @@ tbody tr.row-click { cursor: pointer; }
    iOS Safari zooms a page when a focused input is <16px, which breaks every
    form. Inputs are therefore pinned at 16px even though body copy is smaller.
    ───────────────────────────────────────────────────────────────────────── */
+/* Phones (up to 767px) get their own smaller scale. The tighter 620px block
+   below overrides these where they overlap; the 379px block after it wins on
+   the smallest handsets. */
+@media (max-width: 767px) {
+  :root {
+    --fs-xs: 11px;
+    --fs-sm: 12px;
+    --fs-base: 13px;
+    --fs-md: 13.5px;
+    --fs-lg: 15px;
+    --fs-xl: 17.5px;
+    --fs-2xl: 21px;
+    --fs-3xl: 25px;
+  }
+  body { line-height: 1.5; }
+  h1 { font-size: var(--fs-2xl); }
+  h2 { font-size: var(--fs-xl); }
+  .brand-logo { font-size: 15px; }
+  .hero-title { font-size: clamp(19px, 5.6vw, 24px); }
+  .hero-sub { font-size: var(--fs-base); }
+  .stat-value { font-size: var(--fs-xl); }
+  .pcard-price { font-size: var(--fs-md); }
+  /* iOS Safari zooms the whole page when a focused field is under 16px.
+     Fields keep a 16px floor; labels and copy follow the smaller scale. */
+  .input, .select, textarea.input, select { font-size: max(16px, var(--fs-base)); }
+}
+
 @media (max-width: 620px) {
   :root {
     --fs-xs: 10px;      /* was 11.5 — badges, meta, distance */
@@ -1361,13 +1388,13 @@ tbody tr.row-click { cursor: pointer; }
     --fs-3xl: 26px;     /* was 34 — display */
   }
   /* Keep inputs at 16px to stop iOS zoom on focus; body stays compact. */
-  input, select, textarea { font-size: 16px; }
+  .input, .select, textarea.input, select { font-size: max(16px, var(--fs-base)); }
   /* Tighten a few primitives that otherwise feel loose at the smaller scale */
   body { line-height: 1.5; }
   .card-pad { padding: 13px; }
   .page-head { margin-bottom: 14px; }
   .page-title { font-size: var(--fs-xl); }
-  .page-sub { font-size: var(--fs-sm); }
+  .page-sub { font-size: 13px; }
   .btn { font-size: var(--fs-sm); }
   .btn-sm { font-size: var(--fs-xs); }
   .chip { font-size: var(--fs-xs); padding: 5px 10px; min-height: 32px; }
@@ -1381,6 +1408,31 @@ tbody tr.row-click { cursor: pointer; }
   .pcard-price { font-size: 13.5px; }
   .stat-label { font-size: 9.5px; }
   .stat-value { font-size: 15px; }
+}
+
+/* Smallest handsets: one tighter step. Later in the file, so it wins over
+   both the 767px and 620px scales above. */
+@media (max-width: 379px) {
+  :root {
+    --fs-xs: 10px;
+    --fs-sm: 10.5px;
+    --fs-base: 11.5px;
+    --fs-md: 12px;
+    --fs-lg: 14px;
+    --fs-xl: 17px;
+    --fs-2xl: 20px;
+    --fs-3xl: 23px;
+  }
+  .content, .public-content { padding-left: 8px; padding-right: 8px; }
+  .public-topbar { padding-left: 5px; padding-right: 5px; }
+  .public-topbar .brand { gap: 4px; font-size: 10.5px; }
+  .public-topbar .brand-logo { width: 25px; height: 25px; font-size: 13px; }
+  .public-topbar > .btn-icon { display: none; }
+  .public-topbar > .btn:not(.btn-icon) { padding-left: 5px; padding-right: 5px; }
+  .pgrid { gap: 6px; }
+  .pcard-body { padding-left: 6px; padding-right: 6px; }
+  .mainnav-inner { padding-left: 6px; padding-right: 6px; }
+  .bottomnav-label { font-size: 9px; }
 }
 
 @media (max-width: 620px) { .hide-sm { display: none !important; } }
@@ -2039,7 +2091,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
      Text stays at normal reading size. */
   .ai-welcome { padding: 18px 12px; }
   .ai-welcome h3 { font-size: var(--fs-lg); }
-  .ai-welcome p { font-size: var(--fs-base); line-height: 1.55; }
+  .ai-welcome p { font-size: 13px; line-height: 1.55; }
   .ai-chat-head { padding: 12px 14px; }
   .ai-chat-head .card-title { font-size: var(--fs-md); }
   .ai-agents .agent-card { min-width: 168px; }
@@ -2260,7 +2312,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
      copy at the normal reading size and only trim the oversized display
      heading. */
   .page-title { font-size: var(--fs-xl); line-height: 1.25; }
-  .page-sub { font-size: var(--fs-base); line-height: 1.5; }
+  .page-sub { font-size: 13px; line-height: 1.5; }
   .page-head { gap: 12px; margin-bottom: 16px; }
   .hero { padding: 22px; }
   .toast-stack { left: 13px; right: 13px; bottom: 13px; }
@@ -4540,8 +4592,8 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 }
 .edeal-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; border-radius: 22px; }
 .edeal-orb { position: absolute; border-radius: 50%; filter: blur(28px); opacity: 0.6; }
-.edeal-orb-1 { width: 420px; height: 420px; left: -10%; top: -18%; background: radial-gradient(closest-side, color-mix(in srgb, var(--primary) 36%, transparent), transparent); animation: edealOrb1 18s ease-in-out infinite; }
-.edeal-orb-2 { width: 360px; height: 360px; right: -8%; bottom: -14%; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent-violet) 32%, transparent), transparent); animation: edealOrb2 20s ease-in-out infinite; }
+.edeal-orb-1 { width: min(420px, 92vw); height: min(420px, 92vw); left: -10%; top: -18%; background: radial-gradient(closest-side, color-mix(in srgb, var(--primary) 36%, transparent), transparent); animation: edealOrb1 18s ease-in-out infinite; }
+.edeal-orb-2 { width: min(360px, 88vw); height: min(360px, 88vw); right: -8%; bottom: -14%; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent-violet) 32%, transparent), transparent); animation: edealOrb2 20s ease-in-out infinite; }
 .edeal-orb-3 { width: 280px; height: 280px; left: 42%; top: 28%; background: radial-gradient(closest-side, color-mix(in srgb, #f59e0b 22%, transparent), transparent); animation: edealOrb3 16s ease-in-out infinite; opacity: 0.42; }
 .edeal-grid {
   position: absolute; inset: 0;
@@ -4895,7 +4947,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   .ai-chat-body { padding: 12px 10px; }
   .ai-welcome { padding: 16px 12px; }
   .ai-welcome h3 { font-size: 16px; }
-  .ai-welcome p { font-size: 12px; }
+  .ai-welcome p { font-size: 13px; }
   .bubble { font-size: 12px; padding: 8px 12px; border-radius: 14px; max-width: 92%; }
   .ai-chat-input { padding: 10px; gap: 8px; }
   .ai-chat-input textarea { min-height: 38px; padding: 8px 12px; font-size: 12px; border-radius: 12px; }
@@ -4954,7 +5006,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
     margin: 0;
     width: 100%;
   }
-  .ai-console-full .ai-chat { border-radius: 0; height: 100%; }
+  .ai-console-full .ai-chat { border-radius: 0; height: calc(100dvh - 291px); min-height: 260px; }
   .ai-console-full .ai-chat-body { padding: 10px 8px; }
   .ai-console-full .ai-chat-input { padding: 8px; }
 }
@@ -5751,3 +5803,182 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 }
 
 
+
+/* ── Brand-animated search bars (topbar + search page) ──────────────────────
+   The ring and glow cycle through the ScottsTechX brand colours (deep blue →
+   cyan → violet), with a faint gradient shimmer inside the field itself. */
+.searchbar-glow {
+  background-image: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--surface-2) 93%, var(--brand-400)),
+    color-mix(in srgb, var(--surface-2) 93%, var(--accent-cyan)),
+    color-mix(in srgb, var(--surface-2) 93%, var(--accent-violet)),
+    color-mix(in srgb, var(--surface-2) 93%, var(--brand-400))
+  );
+  background-size: 300% 300%;
+  animation: gradientShift 9s ease infinite;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-400) 45%, transparent),
+              0 0 16px color-mix(in srgb, var(--brand-400) 22%, transparent);
+}
+.searchbar-glow:focus-within {
+  box-shadow: 0 0 0 2px var(--primary), 0 0 26px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+@media (min-width: 1100px) {
+  .topbar-search, .public-search { max-width: 640px; }
+  .topbar .searchbar:not(.searchbar-lg), .public-topbar .searchbar {
+    padding: 11px 10px 11px 19px;
+  }
+  .topbar .searchbar input, .public-topbar .searchbar input { font-size: var(--fs-md); }
+}
+.search-cam { flex-shrink: 0; }
+
+/* ── Alibaba-style even category showcase (Home) ─────────────────────────── */
+.cat-shower .row-between { align-items: baseline; }
+.cat-grid-even {
+  grid-template-columns: repeat(8, 1fr);
+  gap: 12px;
+}
+.cat-tile-modern {
+  position: relative;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: transform var(--dur) var(--ease-spring), border-color var(--dur) var(--ease-out),
+              box-shadow var(--dur) var(--ease-out);
+}
+.cat-tile-modern:hover {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md, var(--shadow));
+}
+.cat-tile-modern::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 80% at 50% -20%,
+    color-mix(in srgb, var(--primary) 14%, transparent), transparent 60%);
+  opacity: 0; transition: opacity var(--dur) var(--ease-out);
+}
+.cat-tile-modern:hover::after { opacity: 1; }
+.cat-ico {
+  width: 40px; height: 40px; border-radius: 12px;
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #1e6fff, #22d3ee 70%);
+  filter: hue-rotate(var(--hue, 0deg));
+  box-shadow: 0 4px 12px rgba(30, 111, 255, 0.25);
+}
+.cat-count { font-size: 10.5px; color: var(--text-3); font-weight: 600; margin-top: 1px; }
+@media (max-width: 960px) {
+  .cat-grid-even { grid-template-columns: repeat(4, 1fr); gap: 9px; }
+  .cat-ico { width: 34px; height: 34px; border-radius: 10px; }
+}
+@media (max-width: 620px) {
+  .cat-grid-even { grid-template-columns: repeat(4, 1fr); gap: 7px; }
+  .cat-tile-modern { padding: 10px 4px; gap: 4px; }
+  .cat-tile-modern .cat-name { font-size: var(--fs-xs); }
+  .cat-count { font-size: 9.5px; }
+  .cat-ico { width: 30px; height: 30px; border-radius: 9px; }
+}
+
+/* ── Home search bar camera shortcut ─────────────────────────────────────── */
+.home-searchbar-cam {
+  position: relative; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; flex: none;
+  border: none; border-radius: 8px; cursor: pointer;
+  background: var(--surface-3); color: var(--text-2);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.home-searchbar-cam:hover { background: var(--primary); color: #fff; }
+
+/* ── Desktop sidebar hide/show toggle ────────────────────────────────────── */
+.menu-btn { display: inline-flex; }
+.sidebar { transition: width var(--dur) var(--ease-out), transform var(--dur) var(--ease-out); }
+@media (min-width: 961px) {
+  .app-shell.sidebar-hidden .sidebar {
+    width: 0; border-right-width: 0; overflow: hidden;
+  }
+  .app-shell.sidebar-hidden .sidebar > * { opacity: 0; }
+  .app-shell.sidebar-hidden .sidebar > * { transition: opacity var(--dur-fast) var(--ease-out); }
+}
+
+/* ── Visual search (snap it, find it) ────────────────────────────────────── */
+.visual-search { display: flex; flex-direction: column; }
+.vs-drop {
+  border: 1.5px dashed color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: var(--radius); background: var(--surface-2);
+  min-height: 118px; display: grid; place-items: center; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.vs-drop:hover { border-color: var(--primary); background: var(--primary-soft); }
+.vs-drop-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px; text-align: center; }
+.vs-preview {
+  max-width: 100%; max-height: 150px; object-fit: contain;
+  border-radius: var(--radius-sm); padding: 8px;
+}
+.vs-or { display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; color: var(--text-3); font-size: var(--fs-sm); }
+.vs-or::before, .vs-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.searchbar-sm { padding: 5px 6px 5px 11px; gap: 6px; border-radius: var(--radius-sm); }
+.searchbar-sm input { font-size: var(--fs-sm); }
+@media (max-width: 1180px) {
+  .visual-side { position: static; }
+}
+
+/* ── Messaging — extra reliability & polish ───────────────────────────────── */
+.live-dot {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-xs); font-weight: 700; color: var(--success);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.live-dot i {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--success);
+  box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.5);
+  animation: livePulse 2s ease-out infinite;
+}
+@keyframes livePulse {
+  0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.5); }
+  70% { box-shadow: 0 0 0 7px rgba(22, 163, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
+/* ── Thread extras: grouping, quotes, sending, jump-to-latest ────────────── */
+.bubble-img { cursor: zoom-in; }
+.bubble-row.adjacent { margin-top: -3px; }
+.bubble-row.adjacent .bubble { border-radius: var(--radius-sm); }
+.bubble-row.adjacent.user .bubble { border-top-right-radius: 4px; }
+.bubble-row.adjacent.assistant .bubble { border-top-left-radius: 4px; }
+
+.bubble-quote {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; margin-bottom: 4px; border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  border-left: 2.5px solid var(--primary);
+  font-size: var(--fs-xs); color: var(--text-2); max-width: 100%;
+}
+.bubble-sending { color: var(--text-3); font-size: 10px; margin-right: 3px; }
+.bubble-del { display: inline-flex; padding: 2px; border: none; background: none; color: var(--text-3); cursor: pointer; }
+.bubble-del:hover { color: var(--danger); }
+
+.thread-reply-bar {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 14px; margin: 0 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border-bottom: none; font-size: var(--fs-sm); color: var(--text-2);
+}
+.thread-reply-bar svg { color: var(--primary); flex-shrink: 0; }
+
+.thread-jump {
+  position: absolute; right: 22px; bottom: 92px; z-index: 6;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--primary); color: #fff; border: none; cursor: pointer;
+  box-shadow: var(--shadow-brand);
+  animation: popIn var(--dur) var(--ease-spring);
+}
+.thread-body { position: relative; }
+.lightbox-img {
+  display: block; max-width: 100%; max-height: 66vh;
+  margin: 0 auto; border-radius: var(--radius-sm); object-fit: contain;
+}
+
+.mega-count { font-size: var(--fs-xs); color: var(--text-3); font-weight: 700; }

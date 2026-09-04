@@ -217,12 +217,12 @@ export default function Nearby() {
     <>
       <PageHeader
         title="Stores near you"
-        sub="Sellers sharing live location update in real time."
+        sub="Sellers sharing live location update in real time. Everyone else stays pinned at their last known position."
         actions={
           usingGps ? (
             <Btn variant="danger" icon={<LocateOff size={13} />} onClick={stopTracking} style={{ padding: '6px 10px', fontSize: 12, minHeight: 32 }}>Stop</Btn>
           ) : (
-            <Btn variant="primary" icon={<LocateFixed size={13} />} onClick={startTracking} style={{ padding: '6px 10px', fontSize: 12, minHeight: 32 }}>Follow</Btn>
+            <Btn variant="primary" icon={<LocateFixed size={13} />} onClick={startTracking} style={{ padding: '6px 10px', fontSize: 12, minHeight: 32 }}>Follow my location</Btn>
           )
         }
       />
@@ -239,8 +239,9 @@ export default function Nearby() {
               <strong className="place-name" data-testid="place-label" style={{ fontSize: 11 }}>{place.label}</strong>
               <div className="tiny muted mt-4 place-parts" style={{ gap: 4, fontSize: 9 }}>
                 {place.village && <span>{place.village}</span>}
-                {place.city && <span>{place.city}</span>}
-                {place.region && <span>{place.region}</span>}
+                {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
+                {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
+                {place.country && <span><span className="muted-2">Country:</span> {place.country}</span>}
               </div>
             </>
           ) : (
@@ -271,7 +272,7 @@ export default function Nearby() {
           <div style={{ flex: '1 1 160px', minWidth: 140 }}>
             <SearchInput value={q} onChange={setQ} placeholder="Filter stores…" />
           </div>
-          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto', padding: '6px 8px', fontSize: 11, minHeight: 30 }}>
+          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort stores" style={{ width: 'auto', padding: '6px 8px', fontSize: 11, minHeight: 30 }}>
             <option value="distance">Nearest</option>
             <option value="rating">Top rated</option>
             <option value="products">Most products</option>

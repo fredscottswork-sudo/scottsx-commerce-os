@@ -1416,9 +1416,9 @@ async function main() {
 
   group('Image upload & serving');
   {
-    // A real 1x1 PNG.
+    // A real 32×32 PNG (a 1×1 pixel is rejected by the product-photo floor).
     const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVR4nO3OIQEAAAgDsCehIv3ViYGZmF9m208REBAQEBAQEBAQEBAQEBD4Dhw4LyyXwrABrwAAAABJRU5ErkJggg==',
       'base64'
     );
     const form = new FormData();

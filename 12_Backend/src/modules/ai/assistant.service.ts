@@ -321,13 +321,21 @@ export async function aiSearch(db: pg.Pool, query: string, limit = 24) {
  */
 export async function imageSearch(
   db: pg.Pool,
-  opts: { imageUrl?: string; hint?: string; labels?: string[] },
+  opts: { imageUrl?: string; imageData?: string; hint?: string; labels?: string[] },
   limit = 24
 ) {
-  let terms = [opts.hint ?? '', ...(opts.labels ?? [])].filter(Boolean).join(' ');
+  const raw = opts.imageData || opts.imageUrl || '';
+  let terms = [opts.hint ?? '', ...(opts.labels ?? [])]
+    .filter(Boolean)
+    .join(' ')
+    // The hint and a filename-derived label often share words ("nike air-max"
+    // + "red Nike trainers") — collapse exact repeats before querying.
+    .split(/\s+/)
+    .filter((w, i, all) => w && all.indexOf(w) === i)
+    .join(' ');
 
-  if (!terms && opts.imageUrl) {
-    const described = await describeImage(opts.imageUrl).catch(() => '');
+  if (!terms && raw) {
+    const described = await describeImage(raw).catch(() => '');
     terms = described;
   }
   if (!terms && opts.imageUrl) {

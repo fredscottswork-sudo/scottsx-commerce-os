@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, memo } from 'react';
 import { Link } from 'react-router-dom';
-import { CreditCard, MapPin, Search, ShoppingBag, Sparkles } from 'lucide-react';
+import { CreditCard, MessageCircle, MapPin, Search, ShoppingBag, Sparkles, Camera } from 'lucide-react';
 import { productService, geoService } from '../api/services';
 import type { Product, NearbySeller } from '../api/types';
 import { ProductGrid } from '../components/ProductCard';
@@ -8,38 +8,20 @@ import VerifiedStoreCarousel from '../components/VerifiedStoreCarousel';
 import ExtraDealDisplay from '../components/ExtraDealDisplay';
 import { Empty, ErrorBox, Loading, Btn } from '../components/ui';
 import { useSeo } from '../hooks/useSeo';
+import { useRotatingPlaceholder, SEARCH_WATERMARKS } from '../hooks/useRotatingPlaceholder';
 import { BrandMark } from '../components/BrandLogo';
 import { useCart } from '../store/CartContext';
-
-/* Alibaba-style comprehensive categories — 16 total (even) for balanced grid */
-const CATEGORIES = [
-  'All',
-  'Electronics',
-  'Fashion',
-  'Beauty',
-  'Home & Living',
-  'Sports',
-  'Toys',
-  'Automotive',
-  'Health',
-  'Jewelry',
-  'Bags & Shoes',
-  'Groceries',
-  'Industrial',
-  'Phones',
-  'Computers',
-  'Agriculture',
-] as const;
+import { mergedCategories, categoryIcon } from '../components/categories';
 
 const BENEFITS = [
-  { anim: 'pay', icon: <CreditCard size={22} />, title: 'Mobile Money & Cards' },
+  { anim: 'chat', icon: <MessageCircle size={22} />, title: 'Chat with sellers' },
   { anim: 'nearby', icon: <MapPin size={22} />, title: 'Nearby sellers' },
   { anim: 'ai', icon: <Sparkles size={22} />, title: 'AI assistant' },
   { anim: 'trust', icon: <ShoppingBag size={22} />, title: 'Local & genuine' },
 ] as const;
 
 const AD_ITEMS = [
-  { icon: <CreditCard size={14} />, label: 'Mobile Money', color: '#0ea5e9' },
+  { icon: <MessageCircle size={14} />, label: 'Chat first', color: '#0ea5e9' },
   { icon: <MapPin size={14} />, label: 'Nearby', color: '#10b981' },
   { icon: <Sparkles size={14} />, label: 'AI Shopper', color: '#8b5cf6' },
   { icon: <ShoppingBag size={14} />, label: 'Genuine', color: '#f59e0b' },
@@ -69,7 +51,7 @@ const MobileAdvert = memo(function MobileAdvert() {
         </div>
         <div className="madvert-text">
           <strong className="madvert-title">ScottsTechX <span className="madvert-title-accent">Marketplace</span></strong>
-          <div className="madvert-sub"><span className="madvert-sub-dot" /><span>Everything • Verified • Nearby • AI • Pay</span></div>
+          <div className="madvert-sub"><span className="madvert-sub-dot" /><span>Everything • Verified • Nearby • AI • Chat</span></div>
           <div className="madvert-cycle">
             <span className="madvert-cycle-icon" style={{ color: active.color, background: `${active.color}14`, borderColor: `${active.color}22` }}>{active.icon}</span>
             <span className="madvert-cycle-label" style={{ color: active.color }}>{active.label}</span>
@@ -112,7 +94,22 @@ export default function Home() {
   const [stores, setStores] = useState<NearbySeller[]>([]);
   const [storesLoading, setStoresLoading] = useState(true);
   const [storesPrecise, setStoresPrecise] = useState(false);
+  const [facets, setFacets] = useState<{ name: string; count: number }[] | null>(null);
+  const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
   const { add } = useCart();
+
+  // Live facet counts feed the 16-category showcase (always full and even).
+  useEffect(() => {
+    productService.facets().then((r) => setFacets(r.categories)).catch(() => undefined);
+  }, []);
+
+  const categoryTiles = facets ? mergedCategories(facets) : [];
+
+  /** Camera shortcut: open the (more capable) search page image modal. */
+  const openImageSearch = () => {
+    try { sessionStorage.setItem('stx:open-image-search', '1'); } catch { /* ignore */ }
+    window.location.href = '/search?img=1';
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim().toLowerCase()), 250);
@@ -195,17 +192,40 @@ export default function Home() {
         <div className="home-searchbar">
           <div className="home-searchbar-bg" aria-hidden="true"><div className="home-searchbar-orb" /></div>
           <Search size={15} className="home-searchbar-icon" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products, brands, stores…" aria-label="Search products" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={watermark} aria-label="Search products" />
           {q && <button className="home-searchbar-clear" onClick={() => setQ('')} aria-label="Clear search"><span>×</span></button>}
           <div className="home-searchbar-divider" aria-hidden="true" />
+          <button className="home-searchbar-cam" onClick={openImageSearch} title="Search by image" aria-label="Search by image">
+            <Camera size={14} />
+          </button>
           <button className="home-searchbar-ai" onClick={() => q.trim() && (window.location.href = `/search?q=${encodeURIComponent(q.trim())}`)}><Sparkles size={12} /> AI</button>
         </div>
         <div className="home-search-hint"><span className="home-search-hint-dot" /> Try “phones”, “shoes”, “nearby”</div>
       </div>
 
-      <div className="category-row mb-16" role="tablist" aria-label="Categories" style={{ contentVisibility: 'auto', containIntrinsicSize: '40px' } as any}>
-        {CATEGORIES.map((c) => (<button key={c} role="tab" aria-selected={category === c} className={`chip category-chip ${category === c ? 'active' : ''}`} onClick={() => setCategory(c)}>{c}</button>))}
-      </div>
+      {/* ── Alibaba-style category showcase: 16 even tiles, live counts ── */}
+      {categoryTiles.length > 0 && (
+        <section className="cat-shower mb-24" style={{ contentVisibility: 'auto', containIntrinsicSize: '180px' } as any}>
+          <div className="row-between mb-14">
+            <h2 className="card-title">Shop by category</h2>
+            <Link to="/search" className="link-arrow">Browse all →</Link>
+          </div>
+          <div className="cat-grid cat-grid-even">
+            {categoryTiles.map((c, i) => (
+              <Link
+                key={c.name}
+                to={`/search?category=${encodeURIComponent(c.name)}`}
+                className="cat-tile cat-tile-modern"
+                style={{ '--hue': (i * 23) % 360 } as CSSProperties}
+              >
+                <span className="cat-ico">{categoryIcon(c.name)}</span>
+                <span className="cat-name">{c.name}</span>
+                {c.count > 0 && <span className="cat-count">{c.count} item{c.count === 1 ? '' : 's'}</span>}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {showStores && <VerifiedStoreCarousel sellers={stores} loading={storesLoading} showDistance={storesPrecise} />}
       {deals.length > 0 && <ExtraDealDisplay deals={deals} />}

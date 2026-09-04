@@ -38,8 +38,10 @@ const registerSchema = z.object({
   city: z.string().optional().default(''),
 });
 
+// The identifier field accepts an email address OR a phone number: many of
+// our shoppers know their number but not their address by heart.
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1),
   password: z.string().min(1),
 });
 
@@ -140,7 +142,14 @@ export default async function registerAuthRoute(app: FastifyInstance) {
 
   app.post('/api/v1/auth/login', async (request, reply) => {
     const body = loginSchema.parse(request.body);
-    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [body.email]);
+    // Email match first; if the identifier looks like a phone (digits, with
+    // optional + and separators), match on the store's phone as well, so
+    // "+256 700 000 000" finds a user registered as "+256700000000".
+    const phoneDigits = (body.email.match(/\+?\d[\d\s\-()]{5,}/) || [null])[0];
+    const { rows } = await pool.query(
+      'SELECT * FROM users WHERE email = $1 OR ($2::text IS NOT NULL AND regexp_replace(phone, \'[^0-9]\', \'\', \'g\') = $2)',
+      [body.email, phoneDigits ? phoneDigits.replace(/\D/g, '') : null]
+    );
     const user = rows[0];
     if (!user || !user.password_hash) throw new UnauthorizedError('Invalid email or password');
     const ok = await comparePassword(body.password, user.password_hash);

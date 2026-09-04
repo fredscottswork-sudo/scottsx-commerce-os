@@ -150,7 +150,7 @@ export default function SellerOrders() {
               key: 'actions', header: '',
               render: (o) => (
                 <div className="row" style={{ gap: 5, justifyContent: 'flex-end' }}>
-                  <Btn size="sm" icon={<MessageCircle size={13} />} onClick={() => messageBuyer(o)} title="Message the buyer" />
+                  <Btn size="sm" icon={<MessageCircle size={13} />} onClick={() => messageBuyer(o)} title="Message the buyer" aria-label="Message the buyer" />
                 </div>
               ),
             },

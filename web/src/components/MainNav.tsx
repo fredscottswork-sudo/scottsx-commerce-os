@@ -199,6 +199,7 @@ export function MainNav({ role, counts }: Props) {
                   >
                     <span className="mega-ico">{categoryIcon(c.name)}</span>
                     <span className="grow ellipsis">{c.name}</span>
+                    {c.count > 0 && <span className="mega-count">{c.count}</span>}
                   </Link>
                 ))}
               </div>

@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState, memo } from 'react';
 import { Link } from 'react-router-dom';
-import { BadgeCheck, ChevronLeft, ChevronRight, MapPin, Star, Sparkles } from 'lucide-react';
+import { BadgeCheck, ChevronLeft, ChevronRight, MapPin, Package, Star, Sparkles } from 'lucide-react';
 import type { NearbySeller } from '../api/types';
 
 function initials(name: string): string {
@@ -75,6 +75,7 @@ const StoreCard = memo(function StoreCard({ seller, showDistance, index }: { sel
       <p className="vstore-desc">{seller.description || `Trusted seller in ${seller.city || 'Uganda'} — verified.`}</p>
       <div className="vstore-stats">
         <span className="vstore-rating"><Star size={12} fill="currentColor" /> {Number(seller.rating || 0).toFixed(1)}</span>
+        <span className="vstore-count"><Package size={10} /> {seller.productCount ?? 0} listings</span>
         {distance ? <span className="vstore-distance"><MapPin size={10} /> {distance}</span> : <span className="vstore-count" style={{ opacity: 0.7 }}><Sparkles size={10} /> Verified</span>}
       </div>
     </Link>

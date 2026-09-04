@@ -11,8 +11,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, BellOff, BellRing, Check, CheckCheck, HandCoins, ImagePlus,
-  Inbox, Pin, PinOff, Send, ShieldCheck, Trash2, Zap,
+  ArrowDown, ArrowLeft, BellOff, BellRing, Check, CheckCheck, Copy, HandCoins, ImagePlus,
+  Inbox, Pin, PinOff, Reply, Send, ShieldCheck, Trash2, X, Zap,
 } from 'lucide-react';
 import { chatService } from '../api/services';
 import type { ChatMessage, Conversation, QuickReply } from '../api/types';
@@ -65,6 +65,9 @@ export default function Thread() {
   const [photoUrl, setPhotoUrl] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<ChatMessage | null>(null);
   const [offerBusy, setOfferBusy] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [scrollOffset, setScrollOffset] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -127,6 +130,37 @@ export default function Thread() {
     }
   }, [messages.length]);
 
+  // Track whether the reader has scrolled up, so the jump-to-latest button
+  // appears instead of silently stealing their position.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const onScroll = () => setScrollOffset(el.scrollHeight - el.scrollTop - el.clientHeight > 220);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [loading]);
+
+  const jumpLatest = () => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+  async function copyText(m: ChatMessage) {
+    const text = m.text || m.attachmentName || '';
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied to clipboard', 'success');
+    } catch {
+      // Clipboard API can be unavailable outside secure contexts.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      toast('Copied to clipboard', 'success');
+    }
+  }
+
   // Typing heartbeat, throttled to one ping per 3s, with auto-stop after 4s idle.
   // When input is cleared we immediately signal stopped typing so the other
   // side doesn't see "typing…" stuck after the user deleted everything.
@@ -177,7 +211,8 @@ export default function Thread() {
     };
     setMessages((m) => [...m, optimistic]);
     try {
-      await chatService.send(id!, { text });
+      await chatService.send(id!, { text, replyToId: replyTarget?.id });
+      setReplyTarget(null);
       await load({ quiet: true });
       window.dispatchEvent(new Event('stx:refresh-badges'));
     } catch (err: any) {
@@ -324,11 +359,17 @@ export default function Thread() {
         {messages.length === 0 ? (
           <Empty icon={<Inbox size={26} />} title="Say hello" subtitle="Ask about price, delivery or availability." />
         ) : (
-          messages.map((m) => {
+          messages.map((m, mi) => {
             const mine = m.senderId === user?.id;
             const day = dayLabel(m.createdAt);
             const showDay = day !== lastDay;
             lastDay = day;
+            // Tight, WhatsApp-style grouping for consecutive messages from the
+            // same person on the same day.
+            const prev = messages[mi - 1];
+            const adjacent = !!prev && prev.senderId === m.senderId && !prev.deletedAt && !m.deletedAt &&
+              dayLabel(prev.createdAt) === day && prev.kind !== 'system' && m.kind !== 'system';
+            const replied = m.replyToId ? messages.find((x) => x.id === m.replyToId) : undefined;
 
             // ---- system events -------------------------------------------
             if (m.kind === 'system') {
@@ -390,27 +431,41 @@ export default function Thread() {
 
             // ---- text / image --------------------------------------------
             const retracted = !!m.deletedAt;
+            const optimistic = String(m.id).startsWith('tmp-');
             return (
               <div key={m.id}>
                 {showDay && <div className="thread-day">{day}</div>}
-                <div className={`bubble-row ${mine ? 'user' : 'assistant'}`}>
+                <div className={`bubble-row ${mine ? 'user' : 'assistant'}${adjacent ? ' adjacent' : ''}`}>
                   <div className={`bubble ${mine ? 'bubble-mine' : 'bubble-other'}${retracted ? ' bubble-retracted' : ''}`}>
                     {retracted ? (
                       <em>This message was deleted</em>
                     ) : (
                       <>
                         {m.imageUrl && (
-                          <img src={m.imageUrl} alt={m.attachmentName ?? 'attachment'} className="bubble-img" loading="lazy" />
+                          <img
+                            src={m.imageUrl}
+                            alt={m.attachmentName ?? 'attachment'}
+                            className="bubble-img"
+                            loading="lazy"
+                            onClick={() => setLightbox(m.imageUrl!)}
+                          />
+                        )}
+                        {replied && (
+                          <span className="bubble-quote">
+                            <Reply size={11} />
+                            <span className="ellipsis">{replied.text || (replied.kind === 'offer' ? 'An offer' : 'Photo')}</span>
+                          </span>
                         )}
                         {m.text && <span>{m.text}</span>}
                       </>
                     )}
                     <div className="bubble-meta">
                       <span>{clock(m.createdAt)}</span>
-                      {mine && !retracted && (
+                      {optimistic && <span className="bubble-sending">Sending…</span>}
+                      {mine && !retracted && !optimistic && (
                         m.readByOther ? <CheckCheck size={13} className="receipt-read" /> : <Check size={13} />
                       )}
-                      {mine && !retracted && !String(m.id).startsWith('tmp-') && (
+                      {mine && !retracted && !optimistic && (
                         <button
                           className="bubble-del"
                           title="Delete message"
@@ -420,12 +475,28 @@ export default function Thread() {
                           <Trash2 size={12} />
                         </button>
                       )}
+                      {!retracted && (
+                        <>
+                          <button className="bubble-del" title="Reply" aria-label="Reply" onClick={() => setReplyTarget(m)}>
+                            <Reply size={12} />
+                          </button>
+                          <button className="bubble-del" title="Copy" aria-label="Copy message" onClick={() => void copyText(m)}>
+                            <Copy size={12} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
             );
           })
+        )}
+
+        {scrollOffset && messages.length > 0 && (
+          <button className="thread-jump" onClick={jumpLatest} aria-label="Jump to latest">
+            <ArrowDown size={16} />
+          </button>
         )}
 
         {otherTyping && messages.length > 0 && (
@@ -446,6 +517,20 @@ export default function Thread() {
               {q}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* -------------------------------------------------- reply preview */}
+      {replyTarget && (
+        <div className="thread-reply-bar">
+          <Reply size={14} />
+          <span className="grow ellipsis">
+            Replying to <strong>{replyTarget.senderId === user?.id ? 'yourself' : other?.name}</strong>:
+            {replyTarget.text || (replyTarget.kind === 'offer' ? ' an offer' : ' a photo')}
+          </span>
+          <button type="button" className="icon-btn" aria-label="Cancel reply" onClick={() => setReplyTarget(null)}>
+            <X size={14} />
+          </button>
         </div>
       )}
 
@@ -510,6 +595,11 @@ export default function Thread() {
         onCancel={() => setConfirmDelete(null)}
         onConfirm={retract}
       />
+
+      {/* ------------------------------------------------- image lightbox */}
+      <Modal open={!!lightbox} onClose={() => setLightbox(null)} title="Photo" footer={<Btn onClick={() => setLightbox(null)}>Close</Btn>}>
+        {lightbox && <img src={lightbox} alt="Full size" className="lightbox-img" />}
+      </Modal>
     </div>
   );
 }

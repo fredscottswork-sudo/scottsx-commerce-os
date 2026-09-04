@@ -36,7 +36,11 @@ const assetsDir = join(DIST, 'assets');
 const cssFile = readdirSync(assetsDir).find((f) => f.endsWith('.css'));
 const jsFile = readdirSync(assetsDir).find((f) => f.endsWith('.js') && f.startsWith('index-'));
 const bundleCss = readFileSync(join(assetsDir, cssFile), 'utf8');
-const bundleJs = readFileSync(join(assetsDir, jsFile), 'utf8');
+// The entry is an ES module: when a chunk is dynamically imported (e.g. the
+// Firebase SDK), Rollup appends `export{...}` to the entry so the chunk can
+// share its helpers. jsdom evals the bundle as a classic script, so strip it.
+const bundleJs = readFileSync(join(assetsDir, jsFile), 'utf8')
+  .replace(/export\s*\{[^}]*\}\s*;?\s*$/, '');
 
 let pass = 0;
 const problems = [];
@@ -120,7 +124,7 @@ async function visit(route, session) {
 }
 
 const PUBLIC_ROUTES = ['/', '/login', '/register', '/nearby', '/search', '/ai', '/cms/about'];
-const BUYER_ROUTES = ['/buyer', '/buyer/orders', '/buyer/saved', '/buyer/addresses', '/buyer/payments',
+const BUYER_ROUTES = ['/buyer', '/buyer/orders', '/buyer/saved', '/buyer/addresses',
   '/buyer/refunds', '/buyer/support', '/buyer/settings', '/buyer/ai', '/cart', '/messages', '/notifications'];
 const SELLER_ROUTES = ['/seller', '/seller/inventory', '/seller/add-product', '/seller/bulk-import',
   '/seller/orders', '/seller/analytics', '/seller/ai', '/seller/store-settings', '/messages', '/notifications'];

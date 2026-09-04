@@ -70,7 +70,7 @@ const TEXT_FLOOR = 11;
 
 const PUBLIC_ROUTES = ['/', '/login', '/register', '/nearby', '/search', '/ai', '/cms/about'];
 const BUYER_ROUTES = ['/buyer', '/buyer/orders', '/buyer/saved', '/buyer/addresses',
-  '/buyer/payments', '/buyer/refunds', '/buyer/support', '/buyer/settings', '/buyer/ai',
+  '/buyer/refunds', '/buyer/support', '/buyer/settings', '/buyer/ai',
   '/cart', '/messages', '/notifications'];
 const SELLER_ROUTES = ['/seller', '/seller/inventory', '/seller/add-product',
   '/seller/bulk-import', '/seller/orders', '/seller/analytics', '/seller/ai',

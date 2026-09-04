@@ -23,6 +23,8 @@ const PRODUCT_SELECT = `
     p.old_price_minor::int AS "oldPriceMinor",
     p.stock_quantity AS "stockQuantity",
     COALESCE(pm.url, p.image_url) AS "imageUrl",
+    (SELECT COALESCE(json_agg(m.url ORDER BY m.sort_order ASC), '[]'::json)
+       FROM product_media m WHERE m.product_id = p.id) AS "mediaUrls",
     p.rating::float AS rating,
     p.rating_count AS "ratingCount",
     p.is_flash_deal AS "isFlashDeal",
@@ -143,12 +145,13 @@ export async function searchProducts(db: pg.Pool, params: SearchParams = {}) {
     clauses.push(`to_tsvector('english', p.title || ' ' || p.description || ' ' || p.category || ' ' || p.brand) @@ plainto_tsquery('english', $${values.length})`);
     const words = term.toLowerCase().split(/\s+/).filter((w) => w.length > 2).slice(0, 3);
     const expansions = new Set<string>();
+    // No artificial cap: the first few expansions are the word's own stems
+    // ("phones" → "phon", "phone", "phoness"), which can fill a small budget
+    // before any synonym lands — and then "galaxy" never matches. Keywords are
+    // bounded to 3 words and each expands to a dozen terms at most, so a few
+    // extra ILIKE clauses are cheap and recall wins.
     for (const w of words) {
-      for (const v of expandTerm(w)) {
-        expansions.add(v);
-        if (expansions.size >= 5) break;
-      }
-      if (expansions.size >= 5) break;
+      for (const v of expandTerm(w)) expansions.add(v);
     }
     for (const v of expansions) {
       values.push(`%${v}%`);
@@ -322,7 +325,17 @@ export async function updateProduct(db: pg.Pool, sellerId: string, id: string, i
   const existing = await db.query('SELECT * FROM products WHERE id = $1 AND seller_id = $2', [id, sellerId]);
   if (!existing.rows[0]) throw new NotFoundError('Product not found');
   const prev = existing.rows[0];
-  const contentChanged = (input.title !== undefined && input.title !== prev.title) || (input.description !== undefined && input.description !== prev.description) || (input.category !== undefined && input.category !== prev.category) || (input.imageUrl !== undefined && input.imageUrl !== prev.image_url);
+  // A gallery change is a content change: an approved listing with new photos
+  // must go back to review so an admin sees what buyers will.
+  const prevMediaRes = await db.query(
+    'SELECT url FROM product_media WHERE product_id = $1 ORDER BY sort_order ASC',
+    [id]
+  );
+  const prevMedia = prevMediaRes.rows.map((r: any) => r.url);
+  const mediaChanged =
+    Array.isArray(input.mediaUrls) &&
+    JSON.stringify(input.mediaUrls.map((u: any) => String(u || '').trim())) !== JSON.stringify(prevMedia);
+  const contentChanged = (input.title !== undefined && input.title !== prev.title) || (input.description !== undefined && input.description !== prev.description) || (input.category !== undefined && input.category !== prev.category) || (input.imageUrl !== undefined && input.imageUrl !== prev.image_url) || mediaChanged;
   const nextStatus = prev.status === 'approved' && contentChanged ? 'pending' : prev.status === 'rejected' ? 'pending' : prev.status;
   const { rows } = await db.query(
     `UPDATE products SET title = COALESCE($3, title), description = COALESCE($4, description), category = COALESCE($5, category), brand = COALESCE($6, brand), price_minor = COALESCE($7, price_minor), old_price_minor = COALESCE($8, old_price_minor), stock_quantity = COALESCE($9, stock_quantity), image_url = COALESCE($10, image_url), location = COALESCE($11, location), is_flash_deal = COALESCE($12, is_flash_deal), discount_percent = COALESCE($13, discount_percent), status = $14, submitted_at = CASE WHEN $14 = 'pending' THEN now() ELSE submitted_at END, rejection_reason = CASE WHEN $14 = 'pending' THEN '' ELSE rejection_reason END, updated_at = now() WHERE id = $1 AND seller_id = $2 RETURNING id`,
