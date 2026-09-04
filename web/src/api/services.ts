@@ -450,24 +450,49 @@ export const aiService = {
     const token = tokenStore.get();
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`${API_ROOT}/ai/v2/ask`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        prompt,
-        screen: opts.screen ?? 'web',
-        agent: opts.agent,
-        history: opts.history ?? [],
-        ...(opts.imageData ? { imageData: opts.imageData } : {}),
-      }),
-      signal: opts.signal,
-    });
+    // Watchdog: a stream that produces nothing for the whole budget is a
+    // broken pipe, not a slow model — cut it and let the caller fall back.
+    const watchdog = new AbortController();
+    let watchdogFired = false;
+    const watchdogId = window.setTimeout(() => {
+      watchdogFired = true;
+      watchdog.abort();
+    }, 240_000);
+    const signal =
+      typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function'
+        ? AbortSignal.any([...(opts.signal ? [opts.signal] : []), watchdog.signal])
+        : opts.signal ?? watchdog.signal;
+
+    let res: Response;
+    try {
+      res = await fetch(`${API_ROOT}/ai/v2/ask`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          prompt,
+          screen: opts.screen ?? 'web',
+          agent: opts.agent,
+          history: opts.history ?? [],
+          ...(opts.imageData ? { imageData: opts.imageData } : {}),
+        }),
+        signal,
+      });
+    } catch (err) {
+      window.clearTimeout(watchdogId);
+      if (watchdogFired) throw new Error('The AI took too long to answer — try again.');
+      if (opts.signal?.aborted) throw err;
+      throw new Error("Can't reach the AI server — it may be waking up after sleep. Try again.");
+    }
 
     if (!res.ok) {
+      window.clearTimeout(watchdogId);
       const body = await res.text().catch(() => '');
       throw new Error(`AI request failed (${res.status}): ${body.slice(0, 200)}`);
     }
-    if (!res.body) throw new Error('AI stream returned no body');
+    if (!res.body) {
+      window.clearTimeout(watchdogId);
+      throw new Error('AI stream returned no body');
+    }
 
     const reader = res.body.getReader();
     const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
@@ -475,29 +500,40 @@ export const aiService = {
     let finalAnswer: AiAnswer | undefined;
     let lastError = '';
 
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decodeSseChunk(value, decoder, true);
-      let sep = buf.indexOf('\n\n');
-      while (sep >= 0) {
-        const frame = buf.slice(0, sep);
-        buf = buf.slice(sep + 2);
-        sep = buf.indexOf('\n\n');
-        for (const line of frame.split('\n')) {
-          if (!line.startsWith('data:')) continue;
-          const payload = line.slice(5).trim();
-          if (!payload || payload === '[DONE]') continue;
-          try {
-            const ev = JSON.parse(payload) as AiStreamEvent;
-            if (ev.type === 'answer' && ev.answer) finalAnswer = ev.answer;
-            if (ev.type === 'error' && ev.message) lastError = ev.message;
-            opts.onEvent(ev);
-          } catch {
-            /* ignore malformed frame */
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decodeSseChunk(value, decoder, true);
+        let sep = buf.indexOf('\n\n');
+        while (sep >= 0) {
+          const frame = buf.slice(0, sep);
+          buf = buf.slice(sep + 2);
+          sep = buf.indexOf('\n\n');
+          for (const line of frame.split('\n')) {
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const ev = JSON.parse(payload) as AiStreamEvent;
+              if (ev.type === 'answer' && ev.answer) finalAnswer = ev.answer;
+              if (ev.type === 'error' && ev.message) lastError = ev.message;
+              opts.onEvent(ev);
+            } catch {
+              /* ignore malformed frame */
+            }
           }
         }
       }
+    } catch (err) {
+      // A stream that dies mid-answer (proxy timeout, network drop) is not a
+      // model failure: if the user didn't stop it, surface a retryable error
+      // so the caller can fall back to the plain JSON ask.
+      if (watchdogFired) throw new Error('The AI took too long to answer — try again.');
+      if (opts.signal?.aborted) throw err;
+      throw new Error("The connection to the AI was interrupted — try again.");
+    } finally {
+      window.clearTimeout(watchdogId);
     }
     if (finalAnswer) return finalAnswer;
     throw new Error(lastError || 'AI stream ended without an answer');

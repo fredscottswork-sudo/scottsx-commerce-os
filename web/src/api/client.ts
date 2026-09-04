@@ -220,7 +220,25 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = REQU
         'That took too long — please try again (large photos or a slow server can cause this).'
       );
     }
-    throw new ApiError(0, 'Network error — check your connection and try again.');
+    // Transport failure (DNS, connection reset, proxy, CORS). Render services
+    // sleep and cold-start: the first request after idle can die on the wire
+    // while the ship is waking. Retry ONCE after a short beat before giving up
+    // — the request never reached the server, so there is nothing to repeat.
+    try {
+      await new Promise((r) => setTimeout(r, 900));
+      return await fetch(url, { ...init, signal: controller.signal });
+    } catch (retryErr) {
+      if (retryErr instanceof DOMException && retryErr.name === 'AbortError') {
+        throw new ApiError(
+          0,
+          'That took too long — please try again (large photos or a slow server can cause this).'
+        );
+      }
+      throw new ApiError(
+        0,
+        "Can't reach the ScottsTechX server — check your connection and try again."
+      );
+    }
   } finally {
     clearTimeout(timer);
   }

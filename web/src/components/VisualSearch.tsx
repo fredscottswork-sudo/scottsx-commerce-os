@@ -11,7 +11,7 @@
  * sent along as search signal so the tool is still useful before a vision
  * model key is configured.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera, Link2, Loader2, Sparkles, Upload, X } from 'lucide-react';
 import type { AiSearchResult } from '../api/types';
 import { searchByImageUrl, searchByUploadedImage } from '../lib/imageSearch';
@@ -23,10 +23,18 @@ export function VisualSearch({
   onResults,
   showResults = true,
   compact = false,
+  bare = false,
+  initialFile = null,
 }: {
   onResults?: (r: AiSearchResult) => void;
   showResults?: boolean;
   compact?: boolean;
+  /** Inline panel mode: the wrapper draws the title bar, this draws the drop
+   *  zone + URL/hint + actions only. */
+  bare?: boolean;
+  /** A file dropped/pasted onto the host surface (search bar) — attached
+   *  immediately. Keyed by the caller so a second drop re-triggers. */
+  initialFile?: File | null;
 }) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -60,6 +68,12 @@ export function VisualSearch({
     if (fileRef.current) fileRef.current.value = '';
   };
 
+  // A photo dropped/pasted onto the host surface lands here pre-loaded.
+  useEffect(() => {
+    if (initialFile && /^image\//.test(initialFile.type)) pick(initialFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFile]);
+
   const run = async () => {
     if (!file && !url.trim()) {
       toast('Upload a photo or paste an image URL first', 'warning');
@@ -91,12 +105,14 @@ export function VisualSearch({
         }
       }}
     >
-      <div className="row-between mb-12">
-        <h3 className="card-title"><Camera size={16} /> Search by photo</h3>
-        {result && (
-          <Btn size="sm" variant="ghost" icon={<X size={13} />} onClick={clear}>Clear</Btn>
-        )}
-      </div>
+      {!bare && (
+        <div className="row-between mb-12">
+          <h3 className="card-title"><Camera size={16} /> Search by photo</h3>
+          {result && (
+            <Btn size="sm" variant="ghost" icon={<X size={13} />} onClick={clear}>Clear</Btn>
+          )}
+        </div>
+      )}
 
       <div
         className={`vs-drop ${dragOver ? 'vs-drop--over' : ''}`}

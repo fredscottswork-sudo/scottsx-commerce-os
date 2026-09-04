@@ -946,6 +946,44 @@ section('9d. Dashboard top nav overlap');
   app.close();
 }
 
+// ── 9e. Search bar image upload is an inline panel (no modal) ──────────────
+section('9e. Inline image search panel');
+{
+  const app = await mount('/cms/about');
+  await new Promise((r) => setTimeout(r, 300));
+  const shellCam = [...app.$$('button[aria-label="Search by image"]')]
+    .find((b) => !!b.closest?.('.searchbar-zone'));
+  check('shell search bar has a camera button', !!shellCam);
+  if (shellCam) {
+    await app.click(shellCam, 350);
+    check('camera opens an inline panel under the search bar (no modal)',
+      !!app.$('.search-img-panel .visual-search') && !app.$('.modal'),
+      app.$('.modal') ? 'modal still opened' : 'no panel');
+    check('panel offers a drop zone', !!app.$('.search-img-panel .vs-drop'));
+    check('panel exposes the image URL field', !!app.$('.search-img-panel input[aria-label="Image URL"]'));
+    check('panel has a close button', !!app.$('.search-img-panel button[aria-label="Close image search"]'));
+    const close = app.$('.search-img-panel button[aria-label="Close image search"]');
+    if (close) await app.click(close, 120);
+    check('panel closes', !app.$('.search-img-panel .visual-search'));
+  } else {
+    check('camera opens an inline panel under the search bar (no modal)', false, 'no shell camera');
+  }
+  app.close();
+
+  const sp = await mount('/search');
+  await new Promise((r) => setTimeout(r, 400));
+  const cam2 = [...sp.$$('button[aria-label="Search by image"]')].find((b) => !b.closest?.('.searchbar-zone'));
+  check('search page has its own search-by-image button', !!cam2);
+  if (cam2) {
+    await sp.click(cam2, 350);
+    check('search page shows the inline panel (no modal)',
+      !!sp.$('.search-img-panel--page .visual-search') && !sp.$('.modal'), 'no panel');
+  } else {
+    check('search page shows the inline panel (no modal)', false, 'no camera button');
+  }
+  sp.close();
+}
+
 // ── 10. Support desk (AI mode + admin escalation) ───────────────────────────
 section('10. Support desk');
 {

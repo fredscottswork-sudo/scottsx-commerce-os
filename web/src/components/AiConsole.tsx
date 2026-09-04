@@ -303,13 +303,18 @@ export function AiConsole({
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
-      const r = await aiService.askStream(prompt, {
-        screen,
-        agent: agentId || undefined,
-        history,
-        imageData,
-        signal: ctrl.signal,
-        onEvent: (ev) => {
+      // Stream the answer; if the SSE transport dies (proxy timeout, network
+      // drop, Render waking up) fall back to the plain JSON ask — the user
+      // still gets the full answer, just without the typewriter effect.
+      let r: AiAnswer;
+      try {
+        r = await aiService.askStream(prompt, {
+          screen,
+          agent: agentId || undefined,
+          history,
+          imageData,
+          signal: ctrl.signal,
+          onEvent: (ev) => {
           if (ev.type === 'stage') {
             setStage(ev.text);
             return;
@@ -333,18 +338,20 @@ export function AiConsole({
             return;
           }
           if (ev.type === 'error' && ev.message) {
+            // The backend emits this just before its own fallback answer; a
+            // death of the stream AFTER the error is reported by the throw
+            // below. Never paint it over live content.
             setStage('');
-            setTurns((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last?.pending) {
-                next[next.length - 1] = { ...last, content: `${last.content}⚠️ ${ev.message}`.trim() };
-              }
-              return next;
-            });
           }
         },
-      });
+        });
+      } catch (streamErr) {
+        if (ctrl.signal.aborted) throw streamErr;
+        // SSE transport died (proxy timeout, network drop, cold start) —
+        // retry once through the plain JSON ask so the user still gets the
+        // full answer instead of a "Failed to fetch" bubble.
+        r = await aiService.ask(prompt, { screen, agent: agentId || undefined, history, imageData });
+      }
       finalize(r);
     } catch (e: any) {
       if (ctrl.signal.aborted) {

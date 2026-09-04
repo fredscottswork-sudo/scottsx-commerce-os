@@ -333,6 +333,24 @@ export default function Search() {
         )}
       </div>
 
+      {imageOpen && (
+        <div className="search-img-panel search-img-panel--page mt-10">
+          <div className="search-img-panel-head">
+            <span className="semi row" style={{ gap: 7 }}>
+              <ImageIcon size={14} /> Search by image
+            </span>
+            <button type="button" className="btn btn-icon search-img-close" aria-label="Close image search"
+              onClick={() => setImageOpen(false)}>
+              <X size={15} />
+            </button>
+          </div>
+          <VisualSearch compact bare showResults={false} onResults={onImageResults} />
+          <p className="tiny muted-2" style={{ margin: '8px 0 0' }}>
+            Drop or paste a photo onto the search bar, or click the box above.
+          </p>
+        </div>
+      )}
+
       {aiNote && (
         <div className="card ai-note anim-up">
           <div className="row" style={{ alignItems: 'flex-start', gap: 11 }}>
@@ -409,15 +427,6 @@ export default function Search() {
         {filterPanel}
       </Modal>
 
-      {/* ── Image search ────────────────────────────────────────────────── */}
-      <Modal
-        open={imageOpen}
-        onClose={() => setImageOpen(false)}
-        title="Search by image"
-        footer={<Btn onClick={() => setImageOpen(false)}>Close</Btn>}
-      >
-        <VisualSearch compact onResults={onImageResults} />
-      </Modal>
     </div>
   );
 }

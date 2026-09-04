@@ -13,7 +13,6 @@ import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
 import { BrandMark } from './BrandLogo';
 import { VisualSearch } from './VisualSearch';
-import { Btn, Modal } from './ui';
 import { stashImageSearchResult } from '../lib/imageSearch';
 import { SEARCH_WATERMARKS, useRotatingPlaceholder } from '../hooks/useRotatingPlaceholder';
 
@@ -34,6 +33,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(readSidebarHidden);
   const [imgSearchOpen, setImgSearchOpen] = useState(false);
+  /** Photo dropped/pasted onto the search bar → pre-loaded into the panel. */
+  const [imgPanelFile, setImgPanelFile] = useState<File | null>(null);
+  const [imgPanelSeq, setImgPanelSeq] = useState(0);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [query, setQuery] = useState('');
@@ -60,6 +62,56 @@ export function AppShell({ children }: { children: ReactNode }) {
     setImgSearchOpen(false);
     navigate('/search?img=1');
   }, [navigate]);
+
+  /** A photo dropped or pasted onto the search bar: open the panel with it. */
+  const openImagePanelWithFile = useCallback((f: File) => {
+    if (!/^image\//.test(f.type)) return;
+    setImgPanelFile(f);
+    setImgPanelSeq((s) => s + 1);
+    setImgSearchOpen(true);
+  }, []);
+
+  const onSearchBarDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (e.dataTransfer?.files?.length) {
+        e.preventDefault();
+        const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith('image/'));
+        if (f) openImagePanelWithFile(f);
+      }
+    },
+    [openImagePanelWithFile]
+  );
+
+  const onSearchBarPaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/'));
+      if (f) {
+        e.preventDefault();
+        openImagePanelWithFile(f);
+      }
+    },
+    [openImagePanelWithFile]
+  );
+
+  /** Inline image panel (Google-Lens style) drawn under the search bar. */
+  const imagePanel = (
+    <div className="search-img-panel" role="dialog" aria-label="Search by image">
+      <div className="search-img-panel-head">
+        <span className="semi row" style={{ gap: 7 }}>
+          <Camera size={14} /> Search by image
+        </span>
+        <button type="button" className="btn btn-icon search-img-close" aria-label="Close image search"
+          onClick={() => setImgSearchOpen(false)}>
+          <X size={15} />
+        </button>
+      </div>
+      <VisualSearch key={imgPanelSeq} compact bare initialFile={imgPanelFile} showResults={false}
+        onResults={onImageResults} />
+      <p className="tiny muted-2 mt-8" style={{ margin: '8px 0 0' }}>
+        Drop or paste a photo onto the search bar, or click the box above.
+      </p>
+    </div>
+  );
 
   useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
@@ -181,19 +233,25 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           </div>
           {!isAiRoute && !isHomeRoute && !isSearchRoute && !isNearbyRoute && (
-            <form className="searchbar public-search searchbar-glow" onSubmit={submitSearch}>
-              <Search size={18} className="muted-2" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={watermark}
-                aria-label="Search products"
-              />
-              <button type="button" className="btn btn-icon search-cam" onClick={() => setImgSearchOpen(true)}
-                title="Search by image" aria-label="Search by image">
-                <Camera size={17} />
-              </button>
-            </form>
+            <div className="searchbar-zone">
+              <form className="searchbar public-search searchbar-glow" onSubmit={submitSearch}
+                onDrop={onSearchBarDrop}
+                onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); }}
+                onPaste={onSearchBarPaste}>
+                <Search size={18} className="muted-2" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={watermark}
+                  aria-label="Search products"
+                />
+                <button type="button" className="btn btn-icon search-cam" onClick={() => setImgSearchOpen((v) => !v)}
+                  title="Search by image" aria-label="Search by image">
+                  <Camera size={17} />
+                </button>
+              </form>
+              {imgSearchOpen && imagePanel}
+            </div>
           )}
         </header>
         {!isAiRoute && <MainNav role={null} counts={{ cart: cart.itemCount, messages: 0, notifications: 0 }} />}
@@ -210,11 +268,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </footer>
         )}
         <BottomNav role={null} counts={{ cart: cart.itemCount, messages: 0, notifications: 0 }} />
-
-        <Modal open={imgSearchOpen} onClose={() => setImgSearchOpen(false)} title="Search by image"
-          footer={<Btn onClick={() => setImgSearchOpen(false)}>Close</Btn>}>
-          <VisualSearch compact showResults={false} onResults={onImageResults} />
-        </Modal>
       </div>
     );
   }
@@ -333,19 +386,25 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
 
           {!isAiRoute && !isHomeRoute && !isSearchRoute && !isNearbyRoute && (
-            <form className="searchbar topbar-search searchbar-glow" onSubmit={submitSearch}>
-              <Search size={18} className="muted-2" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={watermark}
-                aria-label="Search products"
-              />
-              <button type="button" className="btn btn-icon search-cam" onClick={() => setImgSearchOpen(true)}
-                title="Search by image" aria-label="Search by image">
-                <Camera size={17} />
-              </button>
-            </form>
+            <div className="searchbar-zone">
+              <form className="searchbar topbar-search searchbar-glow" onSubmit={submitSearch}
+                onDrop={onSearchBarDrop}
+                onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); }}
+                onPaste={onSearchBarPaste}>
+                <Search size={18} className="muted-2" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={watermark}
+                  aria-label="Search products"
+                />
+                <button type="button" className="btn btn-icon search-cam" onClick={() => setImgSearchOpen((v) => !v)}
+                  title="Search by image" aria-label="Search by image">
+                  <Camera size={17} />
+                </button>
+              </form>
+              {imgSearchOpen && imagePanel}
+            </div>
           )}
 
           <span className="grow" />
@@ -382,11 +441,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className={`content page ${isAiRoute ? 'content--ai' : ''}`} key={location.pathname}>{children}</main>
         <BottomNav role={user.role} counts={navCounts} />
       </div>
-
-      <Modal open={imgSearchOpen} onClose={() => setImgSearchOpen(false)} title="Search by image"
-        footer={<Btn onClick={() => setImgSearchOpen(false)}>Close</Btn>}>
-        <VisualSearch compact showResults={false} onResults={onImageResults} />
-      </Modal>
     </div>
   );
 }
