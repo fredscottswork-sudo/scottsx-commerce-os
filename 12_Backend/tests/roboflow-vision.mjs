@@ -41,17 +41,30 @@ let nvidiaHits = 0;
 let nvidiaVisionHits = 0;
 let nvidiaThinkingHits = 0;
 let lastNvidiaBody = null;
+// Overload simulation, driven by MARKER:<mode> in the user prompt:
+//   overload-once             — nemotron answers 503 exactly once, then 200
+//   overload-nemotron-fallback— nemotron ALWAYS 503, kimi-k2 must answer
+//   overload-everything       — every model answers 503 (full outage)
+let overloadOnceUsed = false;
+const OVERLOAD_BODY = JSON.stringify({
+  error: { message: 'Service temporarily overloaded', type: 'Service Unavailable', code: 503 },
+});
 const nvidiaStub = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   if (req.method === 'GET' && url.pathname.endsWith('/models')) {
+    // Mirrors the REAL /v1/models of the production key (fetched live):
+    // kimi-k2.6 (not "kimi-k2-instruct"), no llama-3.3 — the fallback chain
+    // must be built from the key's actual list, not hard-coded names.
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(
       JSON.stringify({
         data: [
+          { id: '01-ai/yi-large' },
           { id: 'nvidia/nemotron-3-ultra-550b-a55b' },
+          { id: 'moonshotai/kimi-k2.6' },
           { id: 'moonshotai/kimi-k3' },
-          { id: 'moonshotai/kimi-k2-instruct' },
-          { id: 'meta/llama-3.3-70b-instruct' },
+          { id: 'meta/llama-3.2-11b-vision-instruct' },
+          { id: 'mistralai/mistral-large-2-instruct' },
         ],
       })
     );
@@ -64,10 +77,12 @@ const nvidiaStub = http.createServer((req, res) => {
     let imgUrl = '';
     let prompt = '';
     let stream = false;
+    let modelName = '';
     try {
       const p = JSON.parse(body || '{}');
       lastNvidiaBody = p;
       stream = Boolean(p?.stream);
+      modelName = String(p?.model ?? '');
       prompt = String(p?.messages?.[p.messages?.length - 1]?.content ?? '');
       const last = p?.messages?.[p.messages?.length - 1]?.content;
       const parts = Array.isArray(last) ? last : [];
@@ -75,6 +90,26 @@ const nvidiaStub = http.createServer((req, res) => {
       if (imgUrl) nvidiaVisionHits++;
       if (p?.chat_template_kwargs?.enable_thinking === true) nvidiaThinkingHits++;
     } catch { /* ignore */ }
+
+    // ── transient overload simulation (no image involved) ────────────────
+    if (!imgUrl) {
+      const marker = (prompt.match(/MARKER:([a-z-]+)/) || [])[1];
+      let overload = false;
+      if (marker === 'overload-once' && !overloadOnceUsed) {
+        overload = true;
+        overloadOnceUsed = true;
+      } else if (marker === 'overload-nemotron-fallback' && /nemotron-3-ultra/.test(modelName)) {
+        overload = true;
+      } else if (marker === 'overload-everything') {
+        overload = true;
+      }
+      if (overload) {
+        res.writeHead(503, { 'content-type': 'application/json' });
+        res.end(OVERLOAD_BODY);
+        return;
+      }
+    }
+
     let reply = `NVIDIA says: the catalogue has items matching "${prompt.slice(0, 60)}".`;
     if (imgUrl) {
       if (imgUrl.startsWith('data:')) reply = 'base64-test photo';
@@ -424,6 +459,29 @@ const main = async () => {
     check('generate-product uses the configured NVIDIA model',
       typeof status.data.model === 'string' && /nemotron-3-ultra/.test(status.data.model),
       JSON.stringify(status.data.model));
+
+    // NVIDIA's real-world "Service temporarily overloaded" 503 must not take
+    // the assistant down: retry once, then fall through the model chain.
+    const overload = async (marker) => {
+      const r = await fetch(`${API}/ai/v2/ask`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt: `${marker} what is the cheapest phone?` }),
+      });
+      return { status: r.status, data: await r.json().catch(() => ({})) };
+    };
+    const once = await overload('MARKER:overload-once');
+    check('503 overload: chat answers after one retry (no llmError)',
+      once.status === 200 && /NVIDIA says/.test(once.data.text || '') && !once.data.llmError,
+      JSON.stringify({ status: once.status, provider: once.data.provider, model: once.data.model, llmError: once.data.llmError }));
+    const fb = await overload('MARKER:overload-nemotron-fallback');
+    check('sustained overload: chat falls back to the next usable model (kimi-k2.6)',
+      fb.status === 200 && /NVIDIA says/.test(fb.data.text || '') && /kimi-k2\.6/.test(fb.data.model || '') && !fb.data.llmError,
+      JSON.stringify({ status: fb.status, model: fb.data.model, llmError: fb.data.llmError }));
+    const down = await overload('MARKER:overload-everything');
+    check('total outage: grounded answer + honest llmError (503)',
+      down.status === 200 && /scottstechx-local/.test(down.data.provider || '') && /503/.test(down.data.llmError || ''),
+      JSON.stringify({ provider: down.data.provider, llmError: down.data.llmError }));
   } else {
     console.log('  (NVIDIA_API_KEY not set on the live server — caption checks skipped)');
   }

@@ -155,7 +155,14 @@ export interface NvidiaProbeResult {
   status?: number;
   error?: string;
   latencyMs?: number;
-  models?: { ok: boolean; status?: number; error?: string; ids?: string[] | null; latencyMs?: number };
+  models?: {
+    ok: boolean;
+    status?: number;
+    error?: string;
+    ids?: string[] | null;
+    modelFound?: boolean;
+    latencyMs?: number;
+  };
   completion?: {
     streamOk: boolean;
     status?: number;
@@ -175,6 +182,10 @@ export async function probeNvidia(): Promise<NvidiaProbeResult> {
   // 1. Key + reachability + model availability via GET /v1/models (fast, and
   //    a 401/403 is decisive; a network error is decisive too).
   const models = await listNvidiaModels();
+  // ids is trimmed in the response to keep it readable, so also report the
+  // configured model's presence explicitly (the first 40 are alphabetical and
+  // can end before the "nvidia/…" block, which made it LOOK missing).
+  const modelFound = models.ids?.includes(model) ?? false;
   const base: NvidiaProbeResult = {
     configured: true,
     url,
@@ -185,6 +196,7 @@ export async function probeNvidia(): Promise<NvidiaProbeResult> {
       status: models.status,
       error: models.error,
       ids: models.ids?.slice(0, 40),
+      modelFound,
       latencyMs: models.latencyMs,
     },
   };
@@ -196,7 +208,6 @@ export async function probeNvidia(): Promise<NvidiaProbeResult> {
   }
 
   // 2. Does the configured model exist? If not, say so BEFORE wasting a slot.
-  const modelFound = models.ids?.includes(model) ?? false;
   if (!modelFound) {
     base.ok = false;
     base.error = `model "${model}" not in /v1/models for this key`;
@@ -417,9 +428,42 @@ function stripThinking(input: string): string {
     .trim();
 }
 
-/** Models to try when the configured NVIDIA model is rejected as unknown
- *  (build.nvidia.com catalog moves; a wrong name must not kill chat). */
-const NVIDIA_FALLBACK_MODELS = ['moonshotai/kimi-k2-instruct', 'meta/llama-3.3-70b-instruct'];
+/**
+ * Fallback models, ordered by preference. IMPORTANT: names are only used when
+ * they appear in THIS key's actual GET /v1/models response — the catalog moves
+ * (e.g. this key lists "moonshotai/kimi-k2.6", not "kimi-k2-instruct"), and a
+ * fallback that 404s is no fallback. nvidiaFallbackModels() also appends any
+ * other instruct/chat-style listed model as a last resort.
+ * NOTE: kimi-k3 and llama-3.2-11b-vision accept image_url, so the chain also
+ * serves caption requests when the primary vision model is overloaded.
+ */
+const NVIDIA_FALLBACK_PREFERENCE = [
+  'moonshotai/kimi-k2.6',
+  'moonshotai/kimi-k3',
+  'meta/llama-3.2-11b-vision-instruct',
+  'deepseek-ai/deepseek-v4-pro-0813',
+  'mistralai/mistral-large-2-instruct',
+  'minimaxai/minimax-m3',
+  'google/gemma-3-12b-it',
+  'google/gemma-3-4b-it',
+];
+
+/** Build the fallback chain from the models the key can actually use. */
+function nvidiaFallbackModels(ids: string[] | null, primary: string): string[] {
+  const listed = new Set(ids ?? []);
+  const preferred = NVIDIA_FALLBACK_PREFERENCE.filter((m) => m !== primary && listed.has(m));
+  if (preferred.length) return preferred;
+  // Nothing from the preference list exists on this key — use any listed
+  // instruct/chat-style model rather than failing offline.
+  return (ids ?? [])
+    .filter(
+      (m) =>
+        m !== primary &&
+        /instruct|chat|kimi|nemotron|qwen|llama|gemma|mistral|deepseek|minimax/i.test(m) &&
+        !/guard|code|deplot|kosmos|fuyu|diffusion/i.test(m)
+    )
+    .slice(0, 3);
+}
 
 /** Resolve which NVIDIA model to use (NVIDIA_MODEL wins, then NVIDIA_VISION_MODEL). */
 /** Chat model (text): NVIDIA_MODEL wins, else the nemotron-3-ultra default. */
@@ -505,7 +549,13 @@ async function listNvidiaModels(): Promise<{
         ids = null;
       }
     }
-    nvidiaModelsCache = { at: Date.now(), ids, ok: res.ok, status: res.status };
+    // Only cache authoritative answers: a 200 listing, or a definitive auth
+    // rejection. Transient 5xx overloads (and network blips) self-heal in
+    // seconds — caching them would make chat + diagnostics report failure
+    // for a full minute after recovery.
+    if (res.ok || res.status === 401 || res.status === 403) {
+      nvidiaModelsCache = { at: Date.now(), ids, ok: res.ok, status: res.status };
+    }
     return {
       ok: res.ok,
       status: res.status,
@@ -514,7 +564,7 @@ async function listNvidiaModels(): Promise<{
       latencyMs: Date.now() - t0,
     };
   } catch (err) {
-    nvidiaModelsCache = { at: Date.now(), ids: null, ok: false };
+    // No cache write: a fetch blip is transient by definition.
     return {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
@@ -535,7 +585,6 @@ async function nvidiaChatCompletion(
   if (!key) throw new ServiceUnavailableError('NVIDIA_API_KEY is not set');
   const url = process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL;
   const primary = opts.model || nvidiaModel();
-  const candidates = [primary, ...NVIDIA_FALLBACK_MODELS.filter((m) => m !== primary)];
   const think = opts.think ?? nvidiaThinkingEnabled();
 
   // Fail fast on bad key / unreachable host instead of hanging 25s. A 200
@@ -551,53 +600,90 @@ async function nvidiaChatCompletion(
       throw new ServiceUnavailableError(`nvidia endpoint unreachable: ${msg.slice(0, 200)}`);
     }
   }
-  const usable = models.ids?.length
-    ? candidates.filter((m) => models.ids!.includes(m))
-    : candidates;
+  // Chain = configured primary + models the key can actually use (in
+  // preference order, then any listed instruct/chat-style model as a last
+  // resort). A hard-coded partner name that 404s would defeat the fallback.
+  const candidates = [primary, ...nvidiaFallbackModels(models.ids, primary)];
 
+  // Transient failures (NVIDIA's 'Service temporarily overloaded' 503, rate
+  // limits, 5xx) recover in seconds. Retry the same model once, then move
+  // down the usable-model chain — a talking answer from kimi-k2 beats an
+  // offline fallback. Hard errors (auth/credits) and network failures abort
+  // immediately: no model switch fixes those.
+  const TRANSIENT_HTTP = new Set([408, 429, 500, 502, 503, 504]);
+  const budgetMs = nvidiaTimeoutMs();
+  const startedAt = Date.now();
   let lastError: unknown;
-  for (const model of usable.length ? usable : candidates) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), nvidiaTimeoutMs());
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature: 0.4,
-          // Reasoning models (nemotron-3) expect the thinking toggle as
-          // chat_template_kwargs — the raw-JSON equivalent of the Python SDK's
-          // extra_body={"chat_template_kwargs":{"enable_thinking":true}}.
-          ...(think ? { chat_template_kwargs: { enable_thinking: true } } : {}),
-        }),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        const err = new ServiceUnavailableError(
-          `nvidia error ${res.status}: ${body.slice(0, 300)}`
-        ) as ServiceUnavailableError & { nvidiaStatus?: number; nvidiaBody?: string };
-        err.nvidiaStatus = res.status;
-        err.nvidiaBody = body;
-        console.warn(`[ai] nvidia ${model} -> HTTP ${res.status}: ${body.slice(0, 200)}`);
-        throw err;
+  let hardStop = false;
+
+  for (const model of candidates) {
+    if (hardStop) break;
+    let attemptsLeft = 2; // 1 retry on this model before trying the next
+    while (attemptsLeft > 0 && !hardStop) {
+      attemptsLeft--;
+      const remaining = budgetMs - (Date.now() - startedAt);
+      if (remaining < 3000 && attemptsLeft > 0) {
+        lastError ??= new ServiceUnavailableError('nvidia retry budget exhausted');
+        hardStop = true;
+        break;
       }
-      const data = await res.json();
-      const text = extractReply(data?.choices?.[0]?.message);
-      if (!text) throw new ServiceUnavailableError('nvidia returned an empty response');
-      return { text, model };
-    } catch (err) {
-      lastError = err;
-      const status = (err as { nvidiaStatus?: number }).nvidiaStatus;
-      const body = String((err as { nvidiaBody?: string }).nvidiaBody ?? '');
-      const modelIssue = (status === 400 || status === 404 || status === 422) && /model/i.test(body);
-      if (!modelIssue) break; // auth / credit / network — retrying another model won't help
-      console.warn(`[ai] nvidia model "${model}" rejected — trying next.`);
-    } finally {
-      clearTimeout(timer);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), remaining);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model,
+            messages,
+            max_tokens: maxTokens,
+            temperature: 0.4,
+            // Reasoning models (nemotron-3) expect the thinking toggle as
+            // chat_template_kwargs — the raw-JSON equivalent of the Python SDK's
+            // extra_body={"chat_template_kwargs":{"enable_thinking":true}}.
+            ...(think ? { chat_template_kwargs: { enable_thinking: true } } : {}),
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          const err = new ServiceUnavailableError(
+            `nvidia error ${res.status}: ${body.slice(0, 300)}`
+          ) as ServiceUnavailableError & { nvidiaStatus?: number; nvidiaBody?: string };
+          err.nvidiaStatus = res.status;
+          err.nvidiaBody = body;
+          console.warn(`[ai] nvidia ${model} -> HTTP ${res.status}: ${body.slice(0, 200)}`);
+          throw err;
+        }
+        const data = await res.json();
+        const text = extractReply(data?.choices?.[0]?.message);
+        if (!text) throw new ServiceUnavailableError('nvidia returned an empty response');
+        return { text, model };
+      } catch (err) {
+        lastError = err;
+        const status = (err as { nvidiaStatus?: number }).nvidiaStatus ?? 0;
+        const body = String((err as { nvidiaBody?: string }).nvidiaBody ?? '');
+        const modelIssue = (status === 400 || status === 404 || status === 422) && /model/i.test(body);
+        const hard = status === 401 || status === 402 || status === 403;
+        const transient = TRANSIENT_HTTP.has(status) || status === 0; // 0 = network/timeout
+        if (modelIssue) {
+          console.warn(`[ai] nvidia model "${model}" rejected — trying next.`);
+          break; // wrong model name — the next candidate may be listed
+        }
+        if (hard) {
+          hardStop = true;
+          break; // auth / credits / no permission — no model will fix it
+        }
+        if (transient && attemptsLeft > 0) {
+          const backoff = Math.min(300 + 400 * (2 - attemptsLeft) + Math.round(Math.random() * 200), Math.max(remaining - 1000, 100));
+          await new Promise((r) => setTimeout(r, backoff));
+          continue; // retry the same model
+        }
+        if (status === 0) hardStop = true; // network/egress — next model uses the same network
+        break; // retries exhausted on this model — try the next usable one
+      } finally {
+        clearTimeout(timer);
+      }
     }
   }
   throw lastError instanceof Error ? lastError : new ServiceUnavailableError('nvidia call failed');
