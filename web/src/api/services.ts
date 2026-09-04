@@ -385,7 +385,8 @@ export const aiService = {
   agents: () => api<{ agents: AiAgent[] }>('/ai/agents', { auth: false }),
   status: () =>
     api<{
-      configured: boolean; provider: string; model: string; grounded: boolean;
+      configured: boolean; chatConfigured: boolean; visionConfigured: boolean;
+      provider: string; model: string; grounded: boolean;
       visionProvider: 'roboflow' | 'llm' | 'none';
       capabilities: Record<string, boolean>;
     }>('/ai/status', { auth: false }),

@@ -128,7 +128,7 @@ export function AiConsole({
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
-  const [status, setStatus] = useState<{ provider: string; grounded: boolean; configured: boolean; visionProvider?: 'roboflow' | 'llm' | 'none' } | null>(null);
+  const [status, setStatus] = useState<{ provider: string; grounded: boolean; configured: boolean; visionProvider?: 'roboflow' | 'llm' | 'none'; visionConfigured?: boolean } | null>(null);
   const [openSources, setOpenSources] = useState<number | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
 
@@ -360,9 +360,12 @@ export function AiConsole({
               Engine: <strong>{status.provider}</strong>
               {!status.configured && ' · local catalogue mode'}
               {status.visionProvider === 'roboflow' && (
-                <span className="t-success"> · Vision: Roboflow</span>
+                <span className="t-success"> · Vision: Roboflow (enabled)</span>
               )}
               {status.visionProvider === 'llm' && <> · Vision: LLM</>}
+              {status.visionProvider === 'none' && status.visionConfigured === false && (
+                <span className="muted-2"> · Vision not configured</span>
+              )}
             </p>
           )}
         </aside>

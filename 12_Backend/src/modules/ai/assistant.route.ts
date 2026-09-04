@@ -48,7 +48,13 @@ export default async function registerAiRoute(app: FastifyInstance) {
   const pool = getPool();
 
   app.get('/api/v1/ai/status', async () => ({
+    // NOTE ON SEMANTICS — `configured` is the LLM *chat* engine (OpenRouter /
+    // apifreellm). It is NOT the vision stack: robots and dashboards keep
+    // misreading `configured: false` as "Roboflow not set up". Check
+    // `visionConfigured` (Roboflow key present) and `visionProvider` instead.
     configured: aiConfigured(),
+    chatConfigured: aiConfigured(),
+    visionConfigured: roboflowConfigured(),
     provider: aiConfigured() ? process.env.AI_PROVIDER || 'openrouter' : 'scottstechx-local',
     model: aiConfigured()
       ? process.env.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct'

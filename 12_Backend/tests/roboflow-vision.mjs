@@ -155,6 +155,9 @@ const main = async () => {
     process.exit(0);
   }
   check('status advertises the Roboflow vision provider', status.data.visionProvider === 'roboflow');
+  check('status exposes visionConfigured = true (chat configured stays independent)',
+    status.data.visionConfigured === true && typeof status.data.chatConfigured === 'boolean',
+    JSON.stringify({ visionConfigured: status.data.visionConfigured, chatConfigured: status.data.chatConfigured }));
 
   // Warm-up: confirm the live server is actually pointed at the stub (it may
   // be pointed at the real endpoint — then this suite skips instead of lying).

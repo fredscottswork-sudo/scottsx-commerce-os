@@ -616,8 +616,12 @@ async function main() {
   {
     const status = await call('/ai/status');
     check('AI status endpoint', status.status === 200 && typeof status.data?.configured === 'boolean');
+    check('AI status separates chat from vision configuration',
+      typeof status.data?.chatConfigured === 'boolean' && typeof status.data?.visionConfigured === 'boolean' &&
+      typeof status.data?.visionProvider === 'string',
+      JSON.stringify({ chat: status.data?.chatConfigured, vision: status.data?.visionConfigured, provider: status.data?.visionProvider }));
     check('AI reports grounded capability', status.data?.grounded === true);
-    console.log(`      provider=${status.data?.provider} model=${status.data?.model}`);
+    console.log(`      provider=${status.data?.provider} model=${status.data?.model} vision=${status.data?.visionProvider}`);
 
     const agents = await call('/ai/agents');
     check('agent roster exposed', (agents.data?.agents ?? []).length >= 6, `${agents.data?.agents?.length} agents`);
