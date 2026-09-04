@@ -1,16 +1,20 @@
 /**
- * Nearby stores — fast Google Maps village detection
- * - Gets lat/lng via navigator.geolocation (high accuracy)
- * - In background calls /geo/reverse which uses Google Maps with <1s timeout
- * - Shows village name on frontend within 1 second
- * - Distance calc uses GPS lat/lng directly
+ * Nearby stores — global, self-locating.
+ *
+ * The marketplace is worldwide, so this screen has no radius control and no
+ * hard-coded city list. It detects where you are, names the spot
+ * (village / city / region / country) and lists every store sorted by distance,
+ * re-sorting continuously as you move.
+ *
+ * Position semantics the buyer can trust:
+ *   • a seller sharing location   → the pin follows their live GPS fix,
+ *   • a seller not sharing        → the pin stays at their last known position.
  */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MapPin, BadgeCheck, Navigation, Radio, Clock, Truck, Star,
-  LocateFixed, LocateOff, Package, Globe2,
+  LocateFixed, LocateOff, Package, Globe2, AlertCircle,
 } from 'lucide-react';
 import { productService, geoService } from '../api/services';
 import type { NearbySeller, Place } from '../api/types';
@@ -20,9 +24,10 @@ import { useAuth } from '../store/AuthContext';
 import {
   Btn, Empty, ErrorBox, PageHeader, Select, SkeletonRows, Switch, Badge, SearchInput,
 } from '../components/ui';
-import { useSeo } from '../hooks/useSeo';
 
 type Sort = 'distance' | 'rating' | 'products' | 'newest';
+
+/** Metres the buyer must move before we re-query the server. */
 const REFETCH_METRES = 250;
 
 function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -36,11 +41,6 @@ function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: n
 }
 
 export default function Nearby() {
-  useSeo({
-    title: 'Stores near you',
-    description: 'Find shops near you on ScottsTechX. Uses GPS + Google Maps to identify your village in under 1 second.',
-  });
-
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -49,7 +49,6 @@ export default function Nearby() {
   const [usingGps, setUsingGps] = useState(false);
   const [locating, setLocating] = useState(true);
   const [geoDenied, setGeoDenied] = useState(false);
-  const [accuracyM, setAccuracyM] = useState<number | null>(null);
 
   const [sort, setSort] = useState<Sort>('distance');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
@@ -68,6 +67,7 @@ export default function Nearby() {
   const lastFetchCenter = useRef<{ lat: number; lng: number } | null>(null);
   const savedOnce = useRef(false);
 
+  // ── Fetch: no radius — the API returns every store, nearest first ────────
   const fetchSellers = useCallback(async (at: { lat: number; lng: number }) => {
     setError('');
     try {
@@ -82,6 +82,7 @@ export default function Nearby() {
       setSellers(r.sellers);
       setTotal(r.total ?? r.count);
       setLiveCount(r.liveCount);
+      if (r.place) setPlace(r.place);
       setUpdatedAt(new Date());
       lastFetchCenter.current = at;
       setMoved(false);
@@ -92,38 +93,31 @@ export default function Nearby() {
     }
   }, [q, verifiedOnly, openOnly, sort]);
 
-  // Fast Google Maps reverse in background — must be <1s
-  const resolveVillage = useCallback(async (lat: number, lng: number) => {
-    try {
-      // Fire in background, don't block seller fetch
-      const rev = await geoService.reverse(lat, lng);
-      if (rev.place) {
-        setPlace(rev.place);
-      }
-    } catch {
-      // silent — offline fallback already tried on backend
-    }
-  }, []);
-
-  const applyPosition = useCallback(async (next: { lat: number; lng: number }, accuracy?: number) => {
+  /** Apply a new position: name it, remember it, and refresh the list. */
+  const applyPosition = useCallback((next: { lat: number; lng: number }, accuracyM?: number) => {
     setCenter(next);
-    setAccuracyM(typeof accuracy === 'number' ? Math.round(accuracy) : null);
     setLocating(false);
-
-    // Background Google Maps village lookup — <1s
-    void resolveVillage(next.lat, next.lng);
-
-    // Save my location in background
+    // Persist for signed-in users so the account knows where they are.
     if (user && !savedOnce.current) {
       savedOnce.current = true;
-      geoService.saveMyLocation(next.lat, next.lng, accuracy).catch(() => {});
+      geoService.saveMyLocation(next.lat, next.lng, accuracyM)
+        .then((r) => { if (r.place) setPlace(r.place); })
+        .catch(() => undefined);
+    } else {
+      geoService.reverse(next.lat, next.lng)
+        .then((r) => setPlace(r.place))
+        .catch(() => undefined);
     }
-  }, [user, resolveVillage]);
+  }, [user]);
 
+  // ── Detect the buyer's position automatically on arrival ─────────────────
   useEffect(() => {
     let cancelled = false;
-    async function fallbackToSaved(reason: string) {
+
+    async function fallbackToSavedLocation(reason: string) {
       if (cancelled) return;
+      // A signed-in user has a stored last-known position — use it so the page
+      // is never empty just because the browser refused a fresh fix.
       if (user) {
         try {
           const r = await geoService.myLocation();
@@ -133,7 +127,7 @@ export default function Nearby() {
             setLocating(false);
             return;
           }
-        } catch {}
+        } catch { /* fall through */ }
       }
       if (cancelled) return;
       setLocating(false);
@@ -143,7 +137,7 @@ export default function Nearby() {
     }
 
     if (!navigator.geolocation) {
-      void fallbackToSaved('This browser cannot detect your location.');
+      void fallbackToSavedLocation('This browser cannot detect your location.');
       return () => { cancelled = true; };
     }
 
@@ -153,24 +147,27 @@ export default function Nearby() {
         applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy);
       },
       (err) => {
-        void fallbackToSaved(
+        void fallbackToSavedLocation(
           err.code === err.PERMISSION_DENIED
             ? 'Location permission denied. Allow location access to see stores near you.'
             : 'Could not detect your location. Check that location services are on.'
         );
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
     );
+
     return () => { cancelled = true; };
   }, [user, applyPosition]);
 
+  // Refresh whenever the position or a filter changes.
   useEffect(() => {
     if (!center) return;
     setLoading(true);
-    const t = setTimeout(() => void fetchSellers(center), 150);
+    const t = setTimeout(() => void fetchSellers(center), 220);
     return () => clearTimeout(t);
   }, [center, fetchSellers]);
 
+  // ── Continuous tracking: stores re-sort as the buyer moves ───────────────
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       toast('This browser cannot share your location', 'error');
@@ -181,25 +178,29 @@ export default function Nearby() {
     watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
         const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        const from = lastFetchCenter.current;
-        const movedM = from ? metresBetween(from, next) : Infinity;
-        setAccuracyM(Math.round(pos.coords.accuracy ?? 0));
+        // Re-sort locally on every fix (instant); re-query only after real movement.
         setSellers((prev) =>
           prev
             .map((s) => ({ ...s, distanceKm: Number((metresBetween(next, s) / 1000).toFixed(2)) }))
             .sort((a, b) => (sort === 'distance' ? a.distanceKm - b.distanceKm : 0))
         );
-        if (!from || movedM > REFETCH_METRES) {
+        const from = lastFetchCenter.current;
+        if (!from || metresBetween(from, next) > REFETCH_METRES) {
           setMoved(true);
-          savedOnce.current = false;
+          savedOnce.current = false; // a real move is worth persisting again
           applyPosition(next, pos.coords.accuracy);
         }
       },
       (err) => {
         setUsingGps(false);
-        toast(err.code === err.PERMISSION_DENIED ? 'Location permission denied' : 'Could not get your location', 'warning');
+        toast(
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied'
+            : 'Could not get your location',
+          'warning'
+        );
       },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
     );
   }, [sort, toast, applyPosition]);
 
@@ -213,6 +214,7 @@ export default function Nearby() {
     if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
   }, []);
 
+  /** Ask the browser again after a denial (or first visit without a fix). */
   const retryLocate = useCallback(() => {
     setLocating(true);
     setGeoDenied(false);
@@ -224,7 +226,7 @@ export default function Nearby() {
         setGeoDenied(true);
         setError('Location permission is still blocked. Enable it in your browser settings.');
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 15000 }
     );
   }, [applyPosition]);
 
@@ -238,7 +240,7 @@ export default function Nearby() {
     <>
       <PageHeader
         title="Stores near you"
-        sub="GPS + Google Maps finds your village in under 1 second. Sellers update in real time."
+        sub="Sellers sharing live location update in real time. Everyone else stays pinned at their last known position."
         actions={
           usingGps ? (
             <Btn variant="danger" icon={<LocateOff size={15} />} onClick={stopTracking}>Stop tracking</Btn>
@@ -248,91 +250,151 @@ export default function Nearby() {
         }
       />
 
+      {/* ── Where you are ───────────────────────────────────────────── */}
       <div className="card card-pad mb-16 place-banner">
         <span className="place-ico"><MapPin size={18} /></span>
         <div className="grow" style={{ minWidth: 0 }}>
-          <div className="tiny muted-2 semi">Your location {place?.source && <Badge tone={place.source === 'google' ? 'violet' : 'default'}>{place.source}</Badge>}</div>
+          <div className="tiny muted-2 semi">Your location</div>
           {locating ? (
             <strong className="place-name">Detecting your location…</strong>
           ) : place ? (
             <>
               <strong className="place-name" data-testid="place-label">{place.label}</strong>
-              <div className="tiny muted mt-4 place-parts row wrap" style={{ gap: 8 }}>
-                {accuracyM !== null && <span>GPS ±{accuracyM} m</span>}
-                {place.village && <span>Village: {place.village}</span>}
-                {place.city && <span>City: {place.city}</span>}
-                {place.region && <span>Region: {place.region}</span>}
-                {place.country && <span>Country: {place.country}</span>}
+              <div className="tiny muted mt-4 place-parts">
+                {place.village && <span><span className="muted-2">Village:</span> {place.village}</span>}
+                {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
+                {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
+                {place.country && <span><span className="muted-2">Country:</span> {place.country}</span>}
               </div>
             </>
           ) : (
             <strong className="place-name">Location unavailable</strong>
           )}
         </div>
+        <div className="row" style={{ gap: 8 }}>
+          {usingGps && <Badge tone="green" live>Live GPS</Badge>}
+          {!usingGps && !locating && (
+            <Btn variant="ghost" icon={<LocateFixed size={14} />} onClick={retryLocate}>Update</Btn>
+          )}
+        </div>
       </div>
 
       {geoDenied && (
         <div className="card card-pad mb-16 row" style={{ gap: 10, borderColor: 'var(--warning)' }}>
+          <AlertCircle size={18} className="t-warning" />
           <div className="grow">
             <strong>We could not detect your location</strong>
-            <div className="tiny muted">Allow location access, then try again — Google Maps will name your village in under 1 second.</div>
+            <div className="tiny muted">Allow location access, then try again — no city list needed, it works anywhere in the world.</div>
           </div>
           <Btn variant="primary" onClick={retryLocate}>Try again</Btn>
         </div>
       )}
 
+      {/* ── Filters (no radius: the whole world is in range) ─────────── */}
       <div className="card mb-16">
         <div className="row wrap" style={{ gap: 14 }}>
           <div style={{ flex: '1 1 220px', minWidth: 200 }}>
             <SearchInput value={q} onChange={setQ} placeholder="Filter stores or products…" />
           </div>
-          <Select aria-label="Sort stores" value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
+
+          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
             <option value="distance">Nearest first</option>
             <option value="rating">Top rated</option>
             <option value="products">Most products</option>
             <option value="newest">Newest stores</option>
           </Select>
+
           <Switch checked={verifiedOnly} onChange={setVerifiedOnly} label="Verified" />
           <Switch checked={openOnly} onChange={setOpenOnly} label="Open now" />
         </div>
       </div>
 
+      {/* ── Live status strip ───────────────────────────────────────── */}
       <div className="row wrap mb-16" style={{ gap: 9 }}>
-        <Badge tone="primary"><Globe2 size={11} style={{ verticalAlign: -1, marginRight: 4 }} />{stats.shown} of {total} stores</Badge>
-        {liveCount > 0 && <Badge tone="green" live>{liveCount} sharing live</Badge>}
+        <Badge tone="primary">
+          <Globe2 size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+          {stats.shown} of {total} store{total === 1 ? '' : 's'}
+        </Badge>
+        {liveCount > 0 && <Badge tone="green" live>{liveCount} sharing live location</Badge>}
         <Badge tone="cyan">{stats.open} open now</Badge>
         <Badge tone="violet">{stats.delivering} deliver to you</Badge>
-        {updatedAt && <span className="tiny muted-2"><Clock size={11} style={{ verticalAlign: -1 }} /> Updated {updatedAt.toLocaleTimeString()}</span>}
+        {updatedAt && (
+          <span className="tiny muted-2">
+            <Clock size={11} style={{ verticalAlign: -1 }} /> Updated {updatedAt.toLocaleTimeString()}
+          </span>
+        )}
         {moved && <span className="tiny t-primary semi">You moved — refreshing…</span>}
       </div>
 
+      {/* ── Results ─────────────────────────────────────────────────── */}
       {loading ? (
         <SkeletonRows rows={5} height={116} />
       ) : error ? (
         <ErrorBox message={error} onRetry={center ? () => void fetchSellers(center) : retryLocate} />
       ) : sellers.length === 0 ? (
-        <Empty icon={<MapPin size={28} />} title="No stores match" subtitle="Clear filters to see every store, sorted by GPS distance." action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }}>Clear filters</Btn>} />
+        <Empty
+          icon={<MapPin size={28} />}
+          title="No stores match"
+          subtitle="Clear the filters to see every store, sorted by distance from you."
+          action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }}>
+            Clear filters
+          </Btn>}
+        />
       ) : (
         <div className="grid grid-2 stagger">
           {sellers.map((s, i) => (
-            <Link key={s.id} to={`/seller/${s.id}`} className="card card-hover store-card stagger-item" style={{ '--i': i } as React.CSSProperties}>
+            <Link key={s.id} to={`/seller/${s.id}`} className="card card-hover store-card stagger-item"
+              style={{ '--i': i } as React.CSSProperties}>
               <div className="row" style={{ alignItems: 'flex-start', gap: 12 }}>
-                <span className="avatar avatar-lg">{s.logoUrl ? <img src={s.logoUrl} alt="" /> : (s.storeName || s.name || 'S')[0].toUpperCase()}</span>
+                <span className="avatar avatar-lg">
+                  {s.logoUrl ? <img src={s.logoUrl} alt="" /> : (s.storeName || s.name || 'S')[0].toUpperCase()}
+                </span>
+
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row" style={{ gap: 6 }}>
                     <strong className="ellipsis">{s.storeName || s.name}</strong>
-                    {s.verified && <BadgeCheck size={15} className="t-success" />}
+                    {s.verified && <BadgeCheck size={15} className="t-success" aria-label="Verified" />}
                     {s.isOpen ? <Badge tone="green">Open</Badge> : <Badge>Closed</Badge>}
                   </div>
-                  <div className="tiny muted mt-4"><Star size={11} style={{ verticalAlign: -1, color: 'var(--warning)' }} fill="currentColor" /> {Number(s.rating || 0).toFixed(1)}{s.newThisWeek > 0 && <span className="t-success"> · {s.newThisWeek} new</span>}</div>
-                  <div className="tiny muted mt-4 ellipsis"><MapPin size={11} style={{ verticalAlign: -1 }} /> {s.placeLabel || s.address || s.city || '—'}</div>
+
+                  <div className="tiny muted mt-4">
+                    <Star size={11} style={{ verticalAlign: -1, color: 'var(--warning)' }} fill="currentColor" />
+                    {' '}{Number(s.rating || 0).toFixed(1)} · <Package size={11} style={{ verticalAlign: -1 }} /> {s.productCount} products
+                    {s.newThisWeek > 0 && <span className="t-success"> · {s.newThisWeek} new</span>}
+                  </div>
+
+                  <div className="tiny muted mt-4 ellipsis">
+                    <MapPin size={11} style={{ verticalAlign: -1 }} /> {s.placeLabel || s.address || s.city || '—'}
+                  </div>
+
+                  {/* The live / last-known distinction the buyer must be able to trust. */}
                   <div className="row wrap mt-8" style={{ gap: 6 }}>
-                    {s.live ? <Badge tone="green" live>Live · {s.locationAgeMinutes !== null ? `${s.locationAgeMinutes}m ago` : 'now'}</Badge> : <Badge tone="amber"><Radio size={10} style={{ verticalAlign: -1, marginRight: 3 }} />{s.locationSharing ? 'Last seen' : 'Fixed address'}</Badge>}
-                    {s.withinServiceRadius ? <Badge tone="cyan"><Truck size={10} style={{ verticalAlign: -1, marginRight: 3 }} />{s.deliveryFeeUgx > 0 ? formatUgx(s.deliveryFeeUgx) : 'Free delivery'}</Badge> : <Badge>Outside delivery zone</Badge>}
+                    {s.live ? (
+                      <Badge tone="green" live>
+                        Live · {s.locationAgeMinutes !== null ? `${s.locationAgeMinutes}m ago` : 'now'}
+                      </Badge>
+                    ) : (
+                      <Badge tone="amber">
+                        <Radio size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
+                        {s.locationSharing ? 'Last seen' : 'Fixed address'}
+                      </Badge>
+                    )}
+                    {s.withinServiceRadius ? (
+                      <Badge tone="cyan"><Truck size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
+                        {s.deliveryFeeUgx > 0 ? formatUgx(s.deliveryFeeUgx) : 'Free delivery'}
+                      </Badge>
+                    ) : (
+                      <Badge>Outside delivery zone</Badge>
+                    )}
                     {s.codEnabled && <Badge tone="violet">Pay on delivery</Badge>}
                   </div>
                 </div>
-                <div className="store-distance"><Navigation size={14} /><strong>{s.distanceKm} km</strong><span className="tiny muted-2">~{s.etaMinutes} min</span></div>
+
+                <div className="store-distance">
+                  <Navigation size={14} />
+                  <strong>{s.distanceKm} km</strong>
+                  <span className="tiny muted-2">~{s.etaMinutes} min</span>
+                </div>
               </div>
             </Link>
           ))}

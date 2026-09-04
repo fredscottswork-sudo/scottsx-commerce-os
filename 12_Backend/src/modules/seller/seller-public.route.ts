@@ -16,7 +16,13 @@ import { reverseGeocode } from '../../geo/gazetteer.js';
 const nearbySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
+  /**
+   * Optional. The marketplace is global: with no radius the API returns every
+   * store on earth sorted by distance, so a buyer anywhere sees their nearest
+   * sellers instead of an empty list outside some arbitrary circle.
+   */
   radiusKm: z.coerce.number().min(0).max(20000).optional(),
+  /** Cap the result set (distance-sorted) rather than capping the distance. */
   limit: z.coerce.number().min(1).max(500).optional().default(60),
   category: z.string().optional(),
   q: z.string().optional(),
@@ -33,29 +39,6 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
-}
-
-// Tiny LRU for nearby — 20s TTL, keyed by rounded position + filters
-type NearbyCacheEntry = { at: number; data: any };
-const nearbyCache = new Map<string, NearbyCacheEntry>();
-const NEARBY_TTL_MS = 20_000;
-function nearbyCacheKey(lat: number, lng: number, params: Record<string, any>): string {
-  const rLat = Math.round(lat * 100) / 100;
-  const rLng = Math.round(lng * 100) / 100;
-  return `${rLat}:${rLng}:${params.radiusKm ?? ''}:${params.limit}:${params.category ?? ''}:${params.q ?? ''}:${params.verifiedOnly}:${params.openOnly}:${params.sort}`;
-}
-function getNearbyCache(key: string) {
-  const e = nearbyCache.get(key);
-  if (!e) return null;
-  if (Date.now() - e.at > NEARBY_TTL_MS) { nearbyCache.delete(key); return null; }
-  return e.data;
-}
-function setNearbyCache(key: string, data: any) {
-  if (nearbyCache.size > 200) {
-    const first = nearbyCache.keys().next().value;
-    if (first) nearbyCache.delete(first);
-  }
-  nearbyCache.set(key, { at: Date.now(), data });
 }
 
 export default async function registerSellerPublicRoute(app: FastifyInstance) {
@@ -75,12 +58,8 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
    * ordering recompute continuously as the buyer moves.
    */
   app.get('/api/v1/sellers/nearby', async (request) => {
-    const parsed = nearbySchema.parse(request.query);
-    const { lat, lng, radiusKm, limit, category, q, verifiedOnly, openOnly, sort } = parsed;
-
-    const cacheKey = nearbyCacheKey(lat, lng, parsed as any);
-    const cached = getNearbyCache(cacheKey);
-    if (cached) return cached;
+    const { lat, lng, radiusKm, limit, category, q, verifiedOnly, openOnly, sort } =
+      nearbySchema.parse(request.query);
 
     const values: any[] = [];
     const filters: string[] = [`u.role = 'seller'`];
@@ -100,19 +79,6 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
       );
     }
 
-    if (radiusKm !== undefined && radiusKm < 20000) {
-      const latDelta = radiusKm / 111;
-      const cosLat = Math.cos((lat * Math.PI) / 180) || 0.0001;
-      const lngDelta = radiusKm / (111 * cosLat);
-      values.push(lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta);
-      const idx = values.length;
-      filters.push(
-        `COALESCE(s.last_lat, s.lat) BETWEEN $${idx - 3} AND $${idx - 2} AND COALESCE(s.last_lng, s.lng) BETWEEN $${idx - 1} AND $${idx}`
-      );
-    }
-
-    const fetchLimit = Math.min(500, Math.max(limit * 4, 80));
-
     const { rows } = await pool.query(
       `SELECT
          u.id, u.display_name AS name, u.profile_photo_url AS logo_url, u.created_at,
@@ -127,20 +93,21 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
        JOIN store_settings s ON s.user_id = u.id
        WHERE ${filters.join(' AND ')}
          AND COALESCE(s.last_lat, s.lat) IS NOT NULL
-         AND COALESCE(s.last_lng, s.lng) IS NOT NULL
-       LIMIT ${fetchLimit}`,
+         AND COALESCE(s.last_lng, s.lng) IS NOT NULL`,
       values
     );
 
     const now = Date.now();
     const sellers = rows
       .map((r) => {
+        // Live fix when sharing, otherwise the sticky last-known position.
         const sLat = Number(r.last_lat ?? r.lat);
         const sLng = Number(r.last_lng ?? r.lng);
         const distanceKm = haversineKm(lat, lng, sLat, sLng);
         const updatedAt = r.location_updated_at ? new Date(r.location_updated_at) : null;
         const ageMinutes = updatedAt ? Math.round((now - updatedAt.getTime()) / 60000) : null;
         const live = Boolean(r.location_sharing) && ageMinutes !== null && ageMinutes <= 30;
+
         return {
           id: r.id,
           name: r.store_name || r.name,
@@ -153,6 +120,7 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
           logoUrl: r.store_logo_url || r.logo_url || null,
           lat: sLat,
           lng: sLng,
+          /** true = following a live GPS fix; false = last known / fixed address. */
           live,
           locationSharing: !!r.location_sharing,
           locationUpdatedAt: r.location_updated_at ?? null,
@@ -165,11 +133,14 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
           productCount: r.product_count ?? 0,
           newThisWeek: r.new_this_week ?? 0,
           distanceKm: Math.round(distanceKm * 100) / 100,
+          /** Rough walking/boda ETA, useful on the card. */
           etaMinutes: Math.max(1, Math.round((distanceKm / 25) * 60)),
           withinServiceRadius: distanceKm <= (r.service_radius_km ?? 20),
-          placeLabel: r.city ?? '',
+          /** Human place for the store's pin: "Kireka, Kampala, Central Region". */
+          placeLabel: reverseGeocode(sLat, sLng)?.shortLabel ?? (r.city ?? ''),
         };
       })
+      // Global by default: only filter when the caller asked for a radius.
       .filter((s) => radiusKm === undefined || s.distanceKm <= radiusKm);
 
     switch (sort) {
@@ -189,39 +160,65 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
     const total = sellers.length;
     const page = sellers.slice(0, limit);
 
-    const result = {
+    return {
       sellers: page,
       count: page.length,
       total,
       liveCount: page.filter((s) => s.live).length,
+      /** Where the buyer is, named — "Kabalagala, Kampala, Central Region, Uganda". */
       place: reverseGeocode(lat, lng),
       center: { lat, lng, radiusKm: radiusKm ?? null },
       generatedAt: new Date().toISOString(),
     };
-    setNearbyCache(cacheKey, result);
-    return result;
   });
 
   app.get('/api/v1/sellers/:id', async (request) => {
     const { id } = request.params as { id: string };
     const { rows } = await pool.query(
       `SELECT
-         u.id, u.display_name AS name, u.profile_photo_url AS logo_url, u.created_at,
+         u.id, u.display_name AS name,
+         COALESCE(NULLIF(s.store_logo_url, ''), u.profile_photo_url) AS logo_url,
+         u.city AS user_city, u.created_at,
          s.store_name, s.store_description, s.city, s.address, s.verified, s.rating,
-         s.lat, s.lng, s.service_radius_km, s.contact_email, s.contact_phone,
+         COALESCE(s.last_lat, s.lat) AS lat, COALESCE(s.last_lng, s.lng) AS lng,
+         s.service_radius_km, s.contact_email, s.contact_phone,
          s.delivery_fee_ugx, s.free_above_ugx, s.cod_enabled
        FROM users u
-       JOIN store_settings s ON s.user_id = u.id
+       LEFT JOIN store_settings s ON s.user_id = u.id
        WHERE u.id = $1 AND u.role = 'seller'`,
       [id]
     );
     if (!rows[0]) throw new NotFoundError('Seller not found');
     const seller = rows[0];
+    // Storefronts are public, so they must expose the same complete, approved
+    // product shape as the catalog. Returning pending/draft rows here leaked
+    // unpublished listings and left ProductCard with missing seller/price
+    // fields, which later crashed favorite and cart actions.
     const products = await pool.query(
-      `SELECT id, title, category, price_minor::int AS "priceMinor", stock_quantity AS "stockQuantity",
-              COALESCE((SELECT url FROM product_media pm WHERE pm.product_id = p.id ORDER BY sort_order LIMIT 1), p.image_url) AS "imageUrl",
-              rating::float AS rating, rating_count AS "ratingCount", is_flash_deal AS "isFlashDeal"
-       FROM products p WHERE p.seller_id = $1 ORDER BY p.created_at DESC`,
+      `SELECT
+         p.id, p.title, p.description, p.category, p.brand,
+         p.price_minor::int AS "priceMinor",
+         p.old_price_minor::int AS "oldPriceMinor",
+         p.stock_quantity AS "stockQuantity",
+         COALESCE((SELECT url FROM product_media pm WHERE pm.product_id = p.id ORDER BY sort_order LIMIT 1), p.image_url) AS "imageUrl",
+         COALESCE((SELECT json_agg(url ORDER BY sort_order) FROM product_media pm WHERE pm.product_id = p.id), '[]'::json) AS "mediaUrls",
+         p.rating::float AS rating, p.rating_count AS "ratingCount",
+         p.is_flash_deal AS "isFlashDeal", p.discount_percent AS "discountPercent",
+         p.location, p.status, p.rejection_reason AS "rejectionReason",
+         p.view_count AS "viewCount", p.created_at AS "createdAt",
+         json_build_object(
+           'id', u.id,
+           'name', COALESCE(s.store_name, u.display_name),
+           'rating', COALESCE(s.rating, 0)::float,
+           'location', COALESCE(s.city, p.location),
+           'verified', COALESCE(s.verified, false),
+           'logoUrl', COALESCE(NULLIF(s.store_logo_url, ''), u.profile_photo_url)
+         ) AS seller
+       FROM products p
+       JOIN users u ON u.id = p.seller_id
+       LEFT JOIN store_settings s ON s.user_id = p.seller_id
+       WHERE p.seller_id = $1 AND p.status = 'approved'
+       ORDER BY p.created_at DESC`,
       [id]
     );
     return {
@@ -230,13 +227,13 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
         name: seller.store_name || seller.name,
         storeName: seller.store_name || seller.name,
         description: seller.store_description ?? '',
-        city: seller.city ?? '',
+        city: seller.city || seller.user_city || '',
         address: seller.address ?? '',
         verified: !!seller.verified,
         rating: seller.rating ? Number(seller.rating) : 0,
         logoUrl: seller.logo_url ?? null,
-        lat: seller.lat ? Number(seller.lat) : null,
-        lng: seller.lng ? Number(seller.lng) : null,
+        lat: seller.lat === null || seller.lat === undefined ? null : Number(seller.lat),
+        lng: seller.lng === null || seller.lng === undefined ? null : Number(seller.lng),
         serviceRadiusKm: seller.service_radius_km ?? 20,
         deliveryFeeUgx: seller.delivery_fee_ugx ?? 0,
         freeAboveUgx: seller.free_above_ugx ?? 0,
@@ -244,7 +241,11 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
         contactEmail: seller.contact_email ?? '',
         contactPhone: seller.contact_phone ?? '',
       },
-      products: products.rows.map((p) => ({ ...p, currency: 'UGX' })),
+      products: products.rows.map((p) => ({
+        ...p,
+        currency: 'UGX',
+        seller: typeof p.seller === 'string' ? JSON.parse(p.seller) : p.seller,
+      })),
     };
   });
 
@@ -386,8 +387,10 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
           [seller.id]
         ),
         pool.query(
-          `SELECT o.id, o.buyer_id AS "buyerId", o.product_title AS "productTitle",
+          `SELECT o.id, o.buyer_id AS "buyerId", o.product_id AS "productId", o.product_title AS "productTitle",
                   o.price_minor::int AS amount, o.quantity, o.status, o.created_at AS "createdAt",
+                  o.delivery_address AS "deliveryAddress", o.delivery_phone AS "deliveryPhone",
+                  o.delivery_note AS "deliveryNote",
                   COALESCE(u.display_name, 'Buyer') AS "buyerName"
            FROM orders o LEFT JOIN users u ON u.id = o.buyer_id
            WHERE o.seller_id = $1 ORDER BY o.created_at DESC LIMIT 10`,
@@ -457,8 +460,10 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
   app.get('/api/v1/seller/orders', { preHandler: requireAuth }, async (request) => {
     const seller = requireSeller(request);
     const { rows } = await pool.query(
-      `SELECT id, buyer_id AS "buyerId", product_title AS title, price_minor::int AS amount,
+      `SELECT id, buyer_id AS "buyerId", product_id AS "productId", product_title AS title, price_minor::int AS amount,
               quantity, status, created_at AS "createdAt",
+              delivery_address AS "deliveryAddress", delivery_phone AS "deliveryPhone",
+              delivery_note AS "deliveryNote",
               (SELECT display_name FROM users WHERE id = o.buyer_id) AS "buyerName"
        FROM orders o
        WHERE seller_id = $1

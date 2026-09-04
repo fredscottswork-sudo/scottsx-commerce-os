@@ -176,13 +176,10 @@ export interface NearbySeller {
   placeLabel: string;
 }
 
-/** Offline reverse-geocoding result: where a coordinate actually is. */
+/** Reverse-geocoding result: where a coordinate is (Google Maps in background) */
 export interface Place {
   village: string | null;
-  neighbourhood?: string | null;
-  suburb?: string | null;
   city: string | null;
-  district?: string | null;
   region: string | null;
   country: string | null;
   countryCode: string | null;
@@ -191,17 +188,7 @@ export interface Place {
   label: string;
   /** "Kabalagala, Central Region" */
   shortLabel: string;
-  /** Human-friendly uncertain label: "Location near X" */
-  displayLabel?: string;
-  source: 'offline-gazetteer' | 'google' | 'user_confirmed';
-  confidence?: number;
-  isUncertain?: boolean;
-  requiresConfirmation?: boolean;
-  isUserConfirmed?: boolean;
-  villageSource?: string;
-  villageConfirmed?: boolean;
-  alternatives?: Array<{ name: string; distanceKm: number; type: string }>;
-  gpsAccuracyM?: number | null;
+  source: 'offline-gazetteer' | 'google';
 }
 
 export interface ChatParty {

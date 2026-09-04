@@ -1,12 +1,9 @@
 /**
- * ScottsTechX — location endpoints (reverted to fast Google Maps)
+ * ScottsTechX — location endpoints (original + fast Google Maps in background)
  *
- * Flow:
- * - Frontend gets lat/lng via navigator.geolocation
- * - Calls GET /api/v1/geo/reverse?lat=&lng= in background
- * - Backend tries Google Maps reverse geocode with 800ms timeout (<1s)
- * - Falls back to offline gazetteer instantly if Google missing/slow
- * - Returns village/city/region/country fast
+ * Original behavior restored: simple village/city/region/country, no selection UI.
+ * Enhancement: uses lat/lng to query Google Maps in background with <1s timeout
+ * to identify village, then names it on frontend quickly.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -18,7 +15,6 @@ import type { ReverseResult } from '../../geo/gazetteer.js';
 import { googleReverseGeocode, googleGeocoderConfigured } from '../../geo/google-geocoder.js';
 import { ServiceUnavailableError } from '../../errors.js';
 
-// Cache for reverse geocode — 60s TTL, ~11m precision (4 decimals)
 const geoCache = new Map<string, { at: number; value: ReverseResult | null }>();
 const GEO_CACHE_TTL = 60_000;
 function geoCacheKey(lat: number, lng: number): string {
@@ -33,7 +29,7 @@ async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | n
   const cached = geoCache.get(key);
   if (cached && Date.now() - cached.at < GEO_CACHE_TTL) return cached.value;
 
-  // Try Google in background with <1s timeout for speed
+  // Background Google Maps — must be <1s
   if (googleGeocoderConfigured()) {
     try {
       const googlePromise = googleReverseGeocode(lat, lng);
@@ -47,12 +43,10 @@ async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | n
         }
         return viaGoogle;
       }
-    } catch {
-      // fall through to offline
-    }
+    } catch {}
   }
 
-  // Offline fallback — instant
+  // Fallback offline — instant
   const viaOffline = reverseGeocode(lat, lng);
   geoCache.set(key, { at: Date.now(), value: viaOffline });
   if (geoCache.size > 500) {
@@ -65,7 +59,6 @@ async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | n
 const coordSchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
-  accuracy: z.coerce.number().min(0).max(100000).optional(),
 });
 
 const saveSchema = z.object({
@@ -77,11 +70,10 @@ const saveSchema = z.object({
 export default async function registerGeoRoute(app: FastifyInstance) {
   const pool = getPool();
 
-  /** Public: reverse geocode any coordinate — fast Google Maps in background */
   app.get('/api/v1/geo/reverse', async (request) => {
     const { lat, lng } = coordSchema.parse(request.query);
     const place = await resolvePlace(lat, lng);
-    if (!place) throw new ServiceUnavailableError('Reverse geocoding unavailable');
+    if (!place) throw new ServiceUnavailableError('Reverse geocoding is unavailable on this server');
     return { place, query: { lat, lng } };
   });
 
@@ -91,7 +83,6 @@ export default async function registerGeoRoute(app: FastifyInstance) {
     coverage: 'global',
   }));
 
-  /** Persist user's position — simple save, no confirmation logic */
   app.post('/api/v1/me/location', { preHandler: requireAuth }, async (request) => {
     const me = authedUser(request);
     const { lat, lng, accuracyM } = saveSchema.parse(request.body);
@@ -100,11 +91,8 @@ export default async function registerGeoRoute(app: FastifyInstance) {
     await pool.query(
       `UPDATE users
        SET lat = $2, lng = $3,
-           village = COALESCE($4, village),
-           region = COALESCE($5, region),
-           country = COALESCE($6, country),
-           country_code = COALESCE($7, country_code),
-           place_label = COALESCE($8, place_label),
+           village = $4, region = $5, country = $6, country_code = $7,
+           place_label = $8,
            city = CASE WHEN $9 <> '' THEN $9 ELSE city END,
            location_updated_at = now(), updated_at = now()
        WHERE id = $1`,
