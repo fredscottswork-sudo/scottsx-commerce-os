@@ -2,15 +2,25 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingBag, Heart, MapPin, MessageCircle, Bell,
-  Settings, Store, BarChart3, Users, Menu, LogOut, Sun, Moon, PlusCircle,
+  Settings, Store, BarChart3, Users, LogOut, Sun, Moon, PlusCircle,
   Receipt, Wallet, LifeBuoy, Sparkles, ShieldCheck, ShoppingCart, X, Search,
-  Upload, ClipboardCheck, Headphones,
+  Upload, ClipboardCheck, Headphones, Camera, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../store/ThemeContext';
 import { useCart } from '../store/CartContext';
 import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
+import { VisualSearch } from './VisualSearch';
+import { Modal, Btn } from './ui';
+import { stashImageSearchResult } from '../lib/imageSearch';
+import { SEARCH_WATERMARKS, useRotatingPlaceholder } from '../hooks/useRotatingPlaceholder';
+
+/** Remembers the desktop sidebar preference across visits. */
+const SIDEBAR_KEY = 'stx:sidebar-hidden';
+function readSidebarHidden(): boolean {
+  try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch { return false; }
+}
 
 interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }
 
@@ -21,13 +31,37 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(readSidebarHidden);
+  const [imgSearchOpen, setImgSearchOpen] = useState(false);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [query, setQuery] = useState('');
+  const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
   const mounted = useRef(true);
 
   useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
+
+  // Desktop: the top menu button collapses the whole sidebar so content gets
+  // the full width — pressed again and it comes back. Mobile: same button
+  // opens the slide-in drawer (unchanged behaviour).
+  const toggleSidebar = useCallback(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 960px)').matches) {
+      setDrawerOpen(true);
+      return;
+    }
+    setSidebarHidden((v) => {
+      const next = !v;
+      try { localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const onImageResults = useCallback((r: any) => {
+    stashImageSearchResult(r);
+    setImgSearchOpen(false);
+    navigate('/search?img=1');
+  }, [navigate]);
 
   // Poll the two badge counters. Cheap endpoints, 20s cadence, paused when the
   // tab is hidden so a backgrounded dashboard costs nothing.
@@ -69,14 +103,18 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="public-shell">
         <header className="public-topbar">
           <Link to="/" className="brand"><span className="brand-logo">S</span> ScottsTechX</Link>
-          <form className="searchbar public-search" onSubmit={submitSearch}>
-            <Search size={17} className="muted-2" />
+          <form className="searchbar public-search searchbar-glow" onSubmit={submitSearch}>
+            <Search size={18} className="muted-2" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search products, brands and stores…"
+              placeholder={watermark}
               aria-label="Search products"
             />
+            <button type="button" className="btn btn-icon search-cam" onClick={() => setImgSearchOpen(true)}
+              title="Search by image" aria-label="Search by image">
+              <Camera size={17} />
+            </button>
           </form>
           <span className="grow" />
           <nav className="row public-links">
@@ -102,6 +140,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           <p className="tiny muted-2 center mt-8">© {new Date().getFullYear()} ScottsTechX · Kampala, Uganda</p>
         </footer>
         <BottomNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
+
+        <Modal open={imgSearchOpen} onClose={() => setImgSearchOpen(false)} title="Search by image"
+          footer={<Btn onClick={() => setImgSearchOpen(false)}>Close</Btn>}>
+          <VisualSearch
+            compact
+            showResults={false}
+            onResults={(r) => { onImageResults(r); }}
+          />
+        </Modal>
       </div>
     );
   }
@@ -208,24 +255,30 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarHidden ? 'sidebar-hidden' : ''}`}>
       <aside className={`sidebar ${drawerOpen ? 'open' : ''}`} aria-label="Main navigation">{sidebar}</aside>
       {drawerOpen && <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} aria-hidden />}
 
       <div className="main">
         <header className="topbar">
-          <button className="btn btn-icon menu-btn" aria-label="Open menu" onClick={() => setDrawerOpen(true)}>
-            <Menu size={19} />
+          <button className="btn btn-icon menu-btn" aria-label={sidebarHidden ? 'Show navigation' : 'Hide navigation'}
+            title={sidebarHidden ? 'Show navigation' : 'Hide navigation'}
+            onClick={toggleSidebar}>
+            {sidebarHidden ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
           </button>
 
-          <form className="searchbar topbar-search" onSubmit={submitSearch}>
-            <Search size={16} className="muted-2" />
+          <form className="searchbar topbar-search searchbar-glow" onSubmit={submitSearch}>
+            <Search size={18} className="muted-2" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search the whole store…"
+              placeholder={watermark}
               aria-label="Search products"
             />
+            <button type="button" className="btn btn-icon search-cam" onClick={() => setImgSearchOpen(true)}
+              title="Search by image" aria-label="Search by image">
+              <Camera size={17} />
+            </button>
           </form>
 
           <span className="grow" />
@@ -254,6 +307,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="content page" key={location.pathname}>{children}</main>
         <BottomNav role={user.role} counts={navCounts} />
       </div>
+
+      <Modal open={imgSearchOpen} onClose={() => setImgSearchOpen(false)} title="Search by image"
+        footer={<Btn onClick={() => setImgSearchOpen(false)}>Close</Btn>}>
+        <VisualSearch
+          compact
+          showResults={false}
+          onResults={(r) => { onImageResults(r); }}
+        />
+      </Modal>
     </div>
   );
 }

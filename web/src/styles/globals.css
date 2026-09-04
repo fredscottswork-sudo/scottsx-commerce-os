@@ -1747,7 +1747,7 @@ tbody tr.row-click { cursor: pointer; }
 .mainnav-mega {
   position: absolute; top: calc(100% + 7px); left: 0; z-index: 45;
   display: flex; gap: 18px;
-  min-width: 540px; max-width: min(92vw, 720px);
+  min-width: 600px; max-width: min(92vw, 780px);
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1756,7 +1756,8 @@ tbody tr.row-click { cursor: pointer; }
   animation: fadeInUp var(--dur) var(--ease-out) both;
 }
 .mainnav-mega-grid {
-  display: grid; grid-template-columns: repeat(2, minmax(170px, 1fr)); gap: 2px;
+  /* 4 × 4 even grid for the curated 16-category set (Alibaba-style). */
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px;
   flex: 1 1 auto; align-content: start;
 }
 .mainnav-mega-side {
@@ -2354,4 +2355,187 @@ tbody tr.row-click { cursor: pointer; }
 @media (max-width: 390px) {
   .vstore-card { flex-basis: 82%; padding: 10px; gap: 7px; }
   .vstore-desc { -webkit-line-clamp: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STX refresh — brand-animated search, category showcase, AI workspace,
+   desktop sidebar toggle.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+
+/* ── Brand-animated search bar ─────────────────────────────────────────────
+   The ring and glow cycle through the ScottsTechX brand colours (deep blue →
+   cyan → violet), with a faint gradient shimmer inside the field itself. */
+.searchbar-glow {
+  background-image: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--surface-2) 93%, var(--brand-400)),
+    color-mix(in srgb, var(--surface-2) 93%, var(--accent-cyan)),
+    color-mix(in srgb, var(--surface-2) 93%, var(--accent-violet)),
+    color-mix(in srgb, var(--surface-2) 93%, var(--brand-400))
+  );
+  background-size: 300% 300%;
+  animation: gradientShift 9s ease infinite;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-400) 45%, transparent),
+              0 0 16px color-mix(in srgb, var(--brand-400) 22%, transparent);
+}
+.searchbar-glow:focus-within {
+  box-shadow: 0 0 0 2px var(--primary), 0 0 26px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+/* Bigger search on desktop: taller field, wider track, larger type. */
+@media (min-width: 1100px) {
+  .topbar-search, .public-search { max-width: 640px; }
+  .topbar .searchbar:not(.searchbar-lg), .public-topbar .searchbar {
+    padding: 11px 10px 11px 19px;
+  }
+  .topbar .searchbar input, .public-topbar .searchbar input { font-size: var(--fs-md); }
+}
+.search-cam { flex-shrink: 0; }
+
+/* ── Alibaba-style even category showcase ────────────────────────────────── */
+.cat-shower .row-between { align-items: baseline; }
+.cat-grid-even {
+  grid-template-columns: repeat(8, 1fr);
+  gap: 12px;
+}
+.cat-tile-modern {
+  position: relative;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: transform var(--dur) var(--ease-spring), border-color var(--dur) var(--ease-out),
+              box-shadow var(--dur) var(--ease-out);
+}
+.cat-tile-modern:hover {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md, var(--shadow));
+}
+.cat-tile-modern::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 80% at 50% -20%,
+    color-mix(in srgb, var(--primary) 14%, transparent), transparent 60%);
+  opacity: 0; transition: opacity var(--dur) var(--ease-out);
+}
+.cat-tile-modern:hover::after { opacity: 1; }
+.cat-ico {
+  width: 40px; height: 40px; border-radius: 12px;
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #1e6fff, #22d3ee 70%);
+  filter: hue-rotate(var(--hue, 0deg));
+  box-shadow: 0 4px 12px rgba(30, 111, 255, 0.25);
+}
+.cat-count { font-size: 10.5px; color: var(--text-3); font-weight: 600; margin-top: 1px; }
+
+/* ── Desktop sidebar hide/show toggle ────────────────────────────────────── */
+.menu-btn { display: inline-flex; }
+.sidebar { transition: width var(--dur) var(--ease-out), transform var(--dur) var(--ease-out); }
+@media (min-width: 961px) {
+  .app-shell.sidebar-hidden .sidebar {
+    width: 0; border-right-width: 0; overflow: hidden;
+  }
+  .app-shell.sidebar-hidden .sidebar > * { opacity: 0; }
+  .app-shell.sidebar-hidden .sidebar > * { transition: opacity var(--dur-fast) var(--ease-out); }
+}
+
+/* ── STX AI page ─────────────────────────────────────────────────────────── */
+.ai-hero {
+  position: relative; overflow: hidden;
+  padding: 26px 28px; margin-bottom: 20px;
+  background:
+    radial-gradient(700px 260px at 8% -30%, rgba(30, 111, 255, 0.28), transparent 60%),
+    radial-gradient(520px 240px at 96% 0%, rgba(139, 92, 246, 0.22), transparent 55%),
+    var(--surface);
+  border-radius: var(--radius-lg);
+}
+.ai-hero::after {
+  content: ''; position: absolute; inset: -40% -20%; pointer-events: none;
+  background: linear-gradient(115deg, transparent 42%,
+    rgba(34, 211, 238, 0.06) 50%, rgba(139, 92, 246, 0.06) 58%, transparent 66%);
+  background-size: 240% 240%; animation: gradientShift 8s ease infinite;
+}
+.ai-hero > * { position: relative; }
+.ai-hero-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px; border-radius: var(--radius-full);
+  background: var(--gradient-brand); background-size: 180% 180%;
+  animation: gradientShift 7s ease infinite;
+  color: #fff; font-weight: 800; font-size: var(--fs-sm); letter-spacing: 0.04em;
+}
+.ai-hero-title {
+  font-family: var(--font-display); font-size: clamp(22px, 3.4vw, 32px);
+  font-weight: 800; letter-spacing: -0.035em; margin: 14px 0 6px;
+  background: linear-gradient(100deg, var(--brand-300), var(--accent-cyan) 45%, var(--accent-violet) 80%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  background-size: 200% 200%; animation: gradientShift 7s ease infinite;
+  display: inline-block;
+}
+.ai-hero-sub { color: var(--text-2); max-width: 640px; margin: 0; }
+.ai-cap-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.ai-cap {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: var(--radius-full);
+  background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--primary); font-weight: 650; font-size: var(--fs-sm);
+}
+.ai-powerup {
+  display: flex; gap: 13px; align-items: flex-start;
+  padding: 15px 18px; margin-bottom: 20px;
+  border-color: color-mix(in srgb, var(--accent-amber) 45%, var(--border));
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent-amber) 8%);
+}
+.ai-power-ico { color: var(--accent-amber); flex-shrink: 0; margin-top: 2px; }
+.ai-powerup code {
+  background: var(--surface-3); padding: 1px 6px; border-radius: 6px;
+  font-size: 11px; color: var(--text-2);
+}
+.ai-workspace { display: grid; grid-template-columns: 360px 1fr; gap: 20px; align-items: start; }
+.visual-side { position: sticky; top: calc(var(--topbar-h) + 18px); }
+.ai-main { min-width: 0; }
+.ai-main .ai-console { grid-template-columns: 1fr; }
+
+/* ── Visual search card ──────────────────────────────────────────────────── */
+.visual-search { display: flex; flex-direction: column; }
+.vs-drop {
+  border: 1.5px dashed color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: var(--radius); background: var(--surface-2);
+  min-height: 118px; display: grid; place-items: center; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.vs-drop:hover { border-color: var(--primary); background: var(--primary-soft); }
+.vs-drop-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px; text-align: center; }
+.vs-preview {
+  max-width: 100%; max-height: 150px; object-fit: contain;
+  border-radius: var(--radius-sm); padding: 8px;
+}
+.vs-or { display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; color: var(--text-3); font-size: var(--fs-sm); }
+.vs-or::before, .vs-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.searchbar-sm { padding: 5px 6px 5px 11px; gap: 6px; border-radius: var(--radius-sm); }
+.searchbar-sm input { font-size: var(--fs-sm); }
+
+@media (max-width: 1180px) {
+  .ai-workspace { grid-template-columns: 1fr; }
+  .visual-side { position: static; }
+}
+
+@media (max-width: 960px) {
+  .cat-grid-even { grid-template-columns: repeat(4, 1fr); gap: 9px; }
+  .cat-ico { width: 34px; height: 34px; border-radius: 10px; }
+  .ai-hero { padding: 20px; }
+}
+
+@media (max-width: 620px) {
+  .cat-grid-even { grid-template-columns: repeat(4, 1fr); gap: 7px; }
+  .cat-tile-modern { padding: 10px 4px; gap: 4px; }
+  .cat-tile-modern .cat-name { font-size: var(--fs-xs); }
+  .cat-count { font-size: 9.5px; }
+  .cat-ico { width: 30px; height: 30px; border-radius: 9px; }
+  .ai-hero { padding: 16px; border-radius: var(--radius); }
+  .ai-cap { font-size: var(--fs-xs); padding: 5px 9px; }
 }

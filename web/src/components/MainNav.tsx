@@ -15,10 +15,11 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   ChevronDown, Grid3x3, Heart, Home, LayoutDashboard, MapPin, MessageCircle,
   Package, Search, ShieldCheck, ShoppingBag, ShoppingCart, Sparkles, Store, Tag,
-  Shirt, Dumbbell, Sparkle, Sofa, Apple, Car, Smartphone, User,
+  User,
 } from 'lucide-react';
 import { productService } from '../api/services';
 import type { Facets } from '../api/types';
+import { categoryIcon, mergedCategories } from './categories';
 
 /** Facets change rarely; fetch once per page load and share across mounts. */
 let facetCache: Facets | null = null;
@@ -31,19 +32,6 @@ function loadFacets(): Promise<Facets> {
       .catch((e) => { facetPromise = null; throw e; });
   }
   return facetPromise;
-}
-
-const CATEGORY_ICONS: Record<string, ReactNode> = {
-  Electronics: <Smartphone size={16} />,
-  Fashion: <Shirt size={16} />,
-  Sports: <Dumbbell size={16} />,
-  Beauty: <Sparkle size={16} />,
-  'Home & Living': <Sofa size={16} />,
-  Groceries: <Apple size={16} />,
-  Automotive: <Car size={16} />,
-};
-function categoryIcon(name: string): ReactNode {
-  return CATEGORY_ICONS[name] ?? <Package size={16} />;
 }
 
 export interface MainNavCounts {
@@ -82,7 +70,12 @@ export function MainNav({ role, counts }: Props) {
     };
   }, [open]);
 
-  const categories = facets?.categories ?? [];
+  // Merge the LIVE facet categories with the fixed 16 so the mega-menu grid
+  // stays even and complete even when the DB has no listings in a category.
+  const categories = useMemo(
+    () => (facets ? mergedCategories(facets.categories) : []),
+    [facets]
+  );
   const brands = useMemo(() => (facets?.brands ?? []).slice(0, 8), [facets]);
   const totalItems = useMemo(
     () => categories.reduce((s, c) => s + (c.count || 0), 0),
@@ -149,7 +142,7 @@ export function MainNav({ role, counts }: Props) {
                   >
                     <span className="mega-ico">{categoryIcon(c.name)}</span>
                     <span className="grow ellipsis">{c.name}</span>
-                    <span className="mega-count">{c.count}</span>
+                    {c.count > 0 && <span className="mega-count">{c.count}</span>}
                   </Link>
                 ))}
               </div>

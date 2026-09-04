@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Send, RotateCcw, Zap, AlertCircle } from 'lucide-react';
+import { Sparkles, Send, RotateCcw, Zap, AlertCircle, Mic, MicOff } from 'lucide-react';
 import { aiService } from '../api/services';
 import type { AiAgent, Product } from '../api/types';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
 import { ProductGrid } from './ProductCard';
-import { Btn, RichText, Badge, Empty } from './ui';
+import { Btn, RichText, Badge } from './ui';
+
+/** Minimal typing for the vendor-prefixed Web Speech API. */
+type SpeechLike = {
+  lang: string; continuous: boolean; interimResults: boolean;
+  start: () => void; stop: () => void;
+  onresult: ((e: any) => void) | null;
+  onerror: ((e: any) => void) | null;
+  onend: (() => void) | null;
+};
 
 interface Turn {
   role: 'user' | 'assistant';
@@ -36,7 +45,9 @@ export function AiConsole({
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<{ provider: string; grounded: boolean; configured: boolean } | null>(null);
+  const [status, setStatus] = useState<{ provider: string; model?: string; grounded: boolean; configured: boolean } | null>(null);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechLike | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -55,6 +66,7 @@ export function AiConsole({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns]);
+  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
 
   const activeAgent = agents.find((a) => a.id === agentId);
 
@@ -106,6 +118,34 @@ export function AiConsole({
     }
   }, [agentId, agents, busy, screen, toast, turns]);
 
+  /** Speak the request the same way the search page does (Web Speech API). */
+  const toggleVoice = useCallback(() => {
+    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Ctor) { toast('Voice input needs Chrome or Edge on this device', 'warning'); return; }
+    if (listening) { recognitionRef.current?.stop(); setListening(false); return; }
+
+    const rec: SpeechLike = new Ctor();
+    rec.lang = 'en-UG';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onresult = (e: any) => {
+      const transcript = e.results?.[0]?.[0]?.transcript ?? '';
+      setInput(transcript);
+      setListening(false);
+      if (transcript) void send(transcript);
+    };
+    rec.onerror = () => { setListening(false); toast('Could not hear you — try again', 'error'); };
+    rec.onend = () => setListening(false);
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+      setListening(true);
+    } catch {
+      setListening(false);
+      toast('Voice input could not start — try again', 'error');
+    }
+  }, [listening, send, toast]);
+
   return (
     <div className="ai-console">
       {/* ── Agent picker ────────────────────────────────────────────── */}
@@ -138,6 +178,9 @@ export function AiConsole({
         {status && (
           <p className="tiny muted-2 mt-16">
             Engine: <strong>{status.provider}</strong>
+            {status.model && status.model !== 'catalog-grounded' && (
+              <> · <span className="mono">{status.model}</span></>
+            )}
             {!status.configured && ' · local catalogue mode'}
           </p>
         )}
@@ -233,6 +276,15 @@ export function AiConsole({
             }
             aria-label="Message the assistant"
           />
+          <button
+            type="button"
+            className={`btn btn-icon ${listening ? 'btn-danger' : ''}`}
+            onClick={toggleVoice}
+            title={listening ? 'Stop listening' : 'Speak your request'}
+            aria-label={listening ? 'Stop listening' : 'Speak your request'}
+          >
+            {listening ? <MicOff size={16} /> : <Mic size={16} />}
+          </button>
           <Btn variant="primary" type="submit" loading={busy} disabled={!input.trim()} icon={<Send size={15} />}>
             Send
           </Btn>

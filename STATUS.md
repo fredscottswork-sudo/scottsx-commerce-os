@@ -27,12 +27,12 @@ scottsx-android/tools/fetch-toolchain.sh && source /tmp/stx-toolchain.env
 | 1 | Backend end-to-end | 279 | passing |
 | 2 | Google Sign-In (local IdP, no egress) | 23 | passing |
 | 3 | Android ⇆ backend contract | 105 | passing |
-| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 218 | passing |
+| 4 | Web UI (real bundle in jsdom, real backend, no mocks) | 226 | passing |
 | 5 | TypeScript (backend + web) | — | clean |
 | 6 | Kotlin syntax (55 files) | — | clean |
 | 7 | Kotlin parsers vs real API JSON | — | passing |
 
-**625 checks.** Every suite cleans up after itself; the database returns to 7
+**633 checks.** Every suite cleans up after itself; the database returns to 7
 users and 24 approved seeded products with zero residue — including the stock
 that checkout consumes, so the suites are repeatable.
 
@@ -86,6 +86,32 @@ search. Works with zero API key (local engine); upgrades to an LLM when
 
 **Theming** — dark blue/black by default, black↔white switch, identical tokens
 in `web/src/styles/globals.css` and `ScottsTechXColors.kt`.
+
+**Search & discovery** — the topbar search is bigger on desktop and animated in
+the brand colours (deep blue → cyan → violet ring + shimmer), with continuously
+rotating watermark phrases ("Snap a photo and search by image…", "Try 'cheapest
+phone under 1.5M'…"). A camera button on both the public and signed-in topbars
+opens photo search — no login required: `POST /api/v1/ai/image-upload-search`
+is public, compresses client-side (canvas → ~200 KB JPEG) and mines the
+filename + hint for terms, or passes the photo to a vision model once an
+`OPENROUTER_API_KEY` is set.
+
+**Category showcase** — the home page now shows an Alibaba-style even grid of
+16 curated categories (8×2 desktop, 4×4 mobile) with brand-gradient icons,
+live product counts and hover lift. The nav mega-menu merges the same 16 with
+live facets, so the grid never looks half-empty even when the DB has no
+listings in a category.
+
+**STX AI** — the public AI page is now an intelligence workspace: animated
+brand hero with capability chips, an inline photo-search card, voice input in
+the chat composer, agent picker, and live engine/model readout. When no LLM key
+is configured it says exactly what to set (`OPENROUTER_API_KEY` or
+`APIFREELLM_API_KEY` + `AI_PROVIDER`, plus `AI_MODEL`) — the same endpoints
+light up with a real model automatically.
+
+**Navigation** — the top menu button now works on desktop too: it collapses
+the sidebar (content gets the full width) and toggles it back, remembering the
+choice in `localStorage`. On mobile it still opens the slide-in drawer.
 
 ---
 

@@ -298,6 +298,10 @@ section('1. Public marketplace (logged out)');
   check('shows a real seeded product title', t.includes(sampleProduct.title),
     `expected "${sampleProduct.title}"`);
   check('prices are formatted as UGX', /UGX\s[\d,]+/.test(t));
+  check('home shows the even category showcase', app.$$('.cat-grid-even .cat-tile').length === 16,
+    `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
+  check('category tiles link into filtered search',
+    !!app.$('.cat-grid-even a[href^="/search?category="]'));
   check('dark theme is the default', app.window.document.documentElement.getAttribute('data-theme') === 'dark',
     `got ${app.window.document.documentElement.getAttribute('data-theme')}`);
   check('no runtime errors on the home page', app.consoleErrors.length === 0, app.consoleErrors[0]);
@@ -330,8 +334,14 @@ section('1b. Main navigation bar');
     check('clicking opens the category mega-menu', !!app.$('#mainnav-mega'));
     check('trigger reports expanded state', catsBtn.getAttribute('aria-expanded') === 'true');
     const items = app.$$('.mega-item');
-    check('mega-menu lists every live category', items.length === liveCats.length,
-      `${items.length} rendered vs ${liveCats.length} from /products/facets`);
+    // The curated 16-category set is merged with live facets, so the grid is
+    // always full and even (16 = 4×4) even when the DB has no listings in a
+    // category — but every LIVE category must still be present and linked.
+    check('mega-menu renders the 16-category grid', items.length === 16,
+      `${items.length} rendered (expected 16)`);
+    check('mega-menu still lists every live category',
+      liveCats.every((c) => items.some((e) => (e.textContent || '').includes(c.name))),
+      JSON.stringify(liveCats.map((c) => c.name)));
     if (liveCats.length) {
       const first = liveCats[0];
       const row = items.find((e) => (e.textContent || '').includes(first.name));
@@ -773,6 +783,20 @@ section('9. AI console');
   } else {
     check('assistant produced a reply bubble', false, 'composer not found');
   }
+  app.close();
+}
+
+// ── 9b. Public STX AI page (guest, no login) ────────────────────────────────
+section('9b. Public STX AI page');
+{
+  const app = await mount('/ai');
+  const t = app.text();
+  check('STX AI hero renders for guests', /STX AI/.test(t));
+  check('capability chips are shown', app.$$('.ai-cap').length >= 3,
+    `${app.$$('.ai-cap').length} chips`);
+  check('photo search card is present', !!app.$('.vs-drop'));
+  check('voice + chat composer are present', !!app.$('.ai-chat-input textarea') && app.$$('.ai-chat-input button').length >= 2);
+  check('no runtime errors on the AI page', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
 

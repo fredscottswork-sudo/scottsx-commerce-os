@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { productService, geoService } from '../api/services';
-import type { Product, NearbySeller } from '../api/types';
+import type { Product, NearbySeller, Facets } from '../api/types';
 import { ProductCard } from '../components/ProductCard';
 import VerifiedStoreCarousel from '../components/VerifiedStoreCarousel';
+import { categoryIcon, mergedCategories } from '../components/categories';
 import { Empty, ErrorBox, Loading, PageHeader, SearchInput, Btn } from '../components/ui';
-
-const CATEGORIES = ['All', 'Electronics', 'Fashion', 'Sports', 'Beauty', 'Home & Living', 'Groceries', 'Automotive'];
+import { SEARCH_WATERMARKS, useRotatingPlaceholder } from '../hooks/useRotatingPlaceholder';
 
 /**
  * Kampala — the marketplace's home city, and the fallback centre for the
@@ -72,8 +72,9 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [category, setCategory] = useState('All');
   const [q, setQ] = useState('');
+  const [facets, setFacets] = useState<Facets | null>(null);
+  const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
 
   const [stores, setStores] = useState<NearbySeller[]>([]);
   const [storesLoading, setStoresLoading] = useState(true);
@@ -92,6 +93,9 @@ export default function Home() {
     }
   }
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    productService.facets().then(setFacets).catch(() => undefined);
+  }, []);
 
   /**
    * Verified stores, nearest/best first.
@@ -128,22 +132,40 @@ export default function Home() {
   }, []);
 
   const filtered = products.filter((p) =>
-    (category === 'All' || p.category === category) &&
     (q.trim() === '' || (p.title + ' ' + p.brand + ' ' + p.description).toLowerCase().includes(q.toLowerCase()))
   );
   const flash = products.filter((p) => p.isFlashDeal).slice(0, 6);
   const showStores = storesLoading || stores.length > 0;
+  const categoryTiles = facets ? mergedCategories(facets.categories) : [];
 
   return (
     <>
       <PageHeader title="Marketplace" sub="Live catalog from the ScottsTechX backend — same data as the mobile app."
-        actions={<SearchInput value={q} onChange={setQ} placeholder="Search products…" />} />
+        actions={<SearchInput value={q} onChange={setQ} placeholder={watermark} />} />
 
-      <div className="row wrap mb-16">
-        {CATEGORIES.map((c) => (
-          <button key={c} className={`chip ${category === c ? 'active' : ''}`} onClick={() => setCategory(c)}>{c}</button>
-        ))}
-      </div>
+      {/* ── Alibaba-style category showcase: 16 even tiles, live counts ── */}
+      {categoryTiles.length > 0 && (
+        <section className="cat-shower mb-24">
+          <div className="row-between mb-14">
+            <h2 className="card-title">Shop by category</h2>
+            <Link to="/search" className="link-arrow">Browse all →</Link>
+          </div>
+          <div className="cat-grid cat-grid-even">
+            {categoryTiles.map((c, i) => (
+              <Link
+                key={c.name}
+                to={`/search?category=${encodeURIComponent(c.name)}`}
+                className="cat-tile cat-tile-modern"
+                style={{ '--hue': (i * 23) % 360 } as CSSProperties}
+              >
+                <span className="cat-ico">{categoryIcon(c.name)}</span>
+                <span className="cat-name">{c.name}</span>
+                {c.count > 0 && <span className="cat-count">{c.count} item{c.count === 1 ? '' : 's'}</span>}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {showStores && (
         <VerifiedStoreCarousel
