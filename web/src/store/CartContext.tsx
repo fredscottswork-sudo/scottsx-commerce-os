@@ -9,6 +9,12 @@ import { useToast } from './ToastContext';
 interface CartState {
   cart: Cart;
   loading: boolean;
+  /**
+   * Set when the cart could not be loaded (backend asleep, network dropped).
+   * Distinct from "loaded successfully and it is empty" — conflating the two
+   * tells a buyer their cart was wiped when it is really still on the server.
+   */
+  loadError: string | null;
   favoriteSellerIds: Set<string>;
   savedIds: Set<string>;
   refresh: () => Promise<void>;
@@ -28,13 +34,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [cart, setCart] = useState<Cart>(EMPTY);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [favoriteSellerIds, setFavoriteSellerIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
   const isBuyer = !!user && user.role === 'buyer';
 
   const refresh = useCallback(async () => {
-    if (!isBuyer) { setCart(EMPTY); setFavoriteSellerIds(new Set()); setSavedIds(new Set()); return; }
+    if (!isBuyer) { setCart(EMPTY); setFavoriteSellerIds(new Set()); setSavedIds(new Set()); setLoadError(null); return; }
     setLoading(true);
     try {
       const [c, f, b] = await Promise.allSettled([
@@ -42,7 +49,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
         socialService.favorites(),
         buyerService.bookmarks(),
       ]);
-      if (c.status === 'fulfilled') setCart(c.value);
+      // The cart is the one call whose failure must be visible: falling back to
+      // an empty cart silently would read as "we deleted your items".
+      if (c.status === 'fulfilled') { setCart(c.value); setLoadError(null); }
+      else setLoadError((c.reason as Error)?.message || 'Could not load your cart');
       if (f.status === 'fulfilled') setFavoriteSellerIds(new Set(f.value.sellers.map((s) => s.id)));
       if (b.status === 'fulfilled') setSavedIds(new Set(b.value.products.map((p) => p.id)));
     } finally {
@@ -58,7 +68,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCart((c) => ({ ...c, itemCount: c.itemCount + quantity }));
     try {
       const next = await socialService.addToCart(product.id, quantity);
-      setCart(next);
+      setCart(next); setLoadError(null);
       toast(`${product.title} added to cart`, 'success');
     } catch (e: any) {
       await refresh();
@@ -67,8 +77,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [isBuyer, refresh, toast]);
 
   const setQty = useCallback(async (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      try {
+        setCart(await socialService.removeFromCart(productId)); setLoadError(null);
+      } catch (e: any) {
+        await refresh();
+        toast(e?.message || 'Could not remove item', 'error');
+      }
+      return;
+    }
     try {
-      setCart(await socialService.updateCartItem(productId, quantity));
+      setCart(await socialService.updateCartItem(productId, quantity)); setLoadError(null);
     } catch (e: any) {
       await refresh();
       toast(e?.message || 'Could not update quantity', 'error');
@@ -77,7 +96,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const remove = useCallback(async (productId: string) => {
     try {
-      setCart(await socialService.removeFromCart(productId));
+      setCart(await socialService.removeFromCart(productId)); setLoadError(null);
     } catch (e: any) {
       await refresh();
       toast(e?.message || 'Could not remove item', 'error');
@@ -86,7 +105,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clear = useCallback(async () => {
     try {
-      setCart(await socialService.clearCart());
+      setCart(await socialService.clearCart()); setLoadError(null);
     } catch { await refresh(); }
   }, [refresh]);
 
@@ -133,8 +152,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [toast, user]);
 
   const value = useMemo(
-    () => ({ cart, loading, favoriteSellerIds, savedIds, refresh, add, setQty, remove, clear, toggleFavoriteSeller, toggleSaved }),
-    [cart, loading, favoriteSellerIds, savedIds, refresh, add, setQty, remove, clear, toggleFavoriteSeller, toggleSaved]
+    () => ({ cart, loading, loadError, favoriteSellerIds, savedIds, refresh, add, setQty, remove, clear, toggleFavoriteSeller, toggleSaved }),
+    [cart, loading, loadError, favoriteSellerIds, savedIds, refresh, add, setQty, remove, clear, toggleFavoriteSeller, toggleSaved]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

@@ -24,11 +24,36 @@ import { useAuth } from '../store/AuthContext';
 import {
   Btn, Empty, ErrorBox, PageHeader, Select, SkeletonRows, Switch, Badge, SearchInput,
 } from '../components/ui';
+import { useSeo } from '../hooks/useSeo';
 
 type Sort = 'distance' | 'rating' | 'products' | 'newest';
 
 /** Metres the buyer must move before we re-query the server. */
 const REFETCH_METRES = 250;
+
+/**
+ * A fix at or under this radius is treated as a real GPS lock. Anything much
+ * larger is a network estimate (Wi-Fi/cell) that can land in the wrong suburb,
+ * so we keep listening for something better and tell the buyer it is rough.
+ */
+const GOOD_ACCURACY_M = 100;
+
+/**
+ * Stop refining early only at this radius. A true GNSS lock outdoors reaches
+ * 5-20 m; 100 m is merely "good enough to show something" and can still sit in
+ * the wrong suburb, which is exactly the complaint. So we keep listening past
+ * GOOD_ACCURACY_M and only cut the watch short once the fix is genuinely
+ * precise — the watch is cheap and stops on its own at REFINE_MS.
+ */
+const EXCELLENT_ACCURACY_M = 25;
+
+/**
+ * How long to keep waiting for a sharper fix after a coarse first reading.
+ * A cold GPS chip indoors or under cloud routinely needs 20-30 s to go from a
+ * Wi-Fi estimate to a satellite lock; cutting off at 12 s often left the buyer
+ * pinned to the network fix, in the wrong village.
+ */
+const REFINE_MS = 30000;
 
 function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371000;
@@ -41,6 +66,13 @@ function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: n
 }
 
 export default function Nearby() {
+  useSeo({
+    title: 'Stores near you',
+    description:
+      'Find shops near you on ScottsTechX. Stores are sorted by distance and ' +
+      're-sort as you move, so the closest seller is always first.',
+  });
+
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -49,6 +81,8 @@ export default function Nearby() {
   const [usingGps, setUsingGps] = useState(false);
   const [locating, setLocating] = useState(true);
   const [geoDenied, setGeoDenied] = useState(false);
+  /** Radius of uncertainty, in metres, reported by the device for the fix in use. */
+  const [accuracyM, setAccuracyM] = useState<number | null>(null);
 
   const [sort, setSort] = useState<Sort>('distance');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
@@ -66,6 +100,8 @@ export default function Nearby() {
   const watchId = useRef<number | null>(null);
   const lastFetchCenter = useRef<{ lat: number; lng: number } | null>(null);
   const savedOnce = useRef(false);
+  /** Accuracy of the fix currently displayed, so a worse one cannot replace it. */
+  const bestAccuracy = useRef<number>(Number.POSITIVE_INFINITY);
 
   // ── Fetch: no radius — the API returns every store, nearest first ────────
   const fetchSellers = useCallback(async (at: { lat: number; lng: number }) => {
@@ -94,13 +130,14 @@ export default function Nearby() {
   }, [q, verifiedOnly, openOnly, sort]);
 
   /** Apply a new position: name it, remember it, and refresh the list. */
-  const applyPosition = useCallback((next: { lat: number; lng: number }, accuracyM?: number) => {
+  const applyPosition = useCallback((next: { lat: number; lng: number }, accuracy?: number) => {
     setCenter(next);
+    setAccuracyM(typeof accuracy === 'number' ? Math.round(accuracy) : null);
     setLocating(false);
     // Persist for signed-in users so the account knows where they are.
     if (user && !savedOnce.current) {
       savedOnce.current = true;
-      geoService.saveMyLocation(next.lat, next.lng, accuracyM)
+      geoService.saveMyLocation(next.lat, next.lng, accuracy)
         .then((r) => { if (r.place) setPlace(r.place); })
         .catch(() => undefined);
     } else {
@@ -109,6 +146,33 @@ export default function Nearby() {
         .catch(() => undefined);
     }
   }, [user]);
+
+  /**
+   * Briefly watch for a sharper reading after a coarse first fix. The GPS chip
+   * needs a few seconds to acquire satellites; until then the browser answers
+   * from Wi-Fi. Without this the buyer is shown the wrong neighbourhood and it
+   * never corrects itself while they stand still.
+   */
+  const refineFix = useCallback(() => {
+    if (!navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
+        if (acc < bestAccuracy.current) {
+          bestAccuracy.current = acc;
+          savedOnce.current = false; // a better fix is worth persisting
+          applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, acc);
+        }
+        // Only stop early on a genuinely precise lock. Stopping at 100 m used
+        // to freeze the buyer on a coarse network fix that named the wrong
+        // suburb, even though a satellite fix was seconds away.
+        if (acc <= EXCELLENT_ACCURACY_M) navigator.geolocation.clearWatch(id);
+      },
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 0, timeout: REFINE_MS }
+    );
+    window.setTimeout(() => navigator.geolocation.clearWatch(id), REFINE_MS);
+  }, [applyPosition]);
 
   // ── Detect the buyer's position automatically on arrival ─────────────────
   useEffect(() => {
@@ -141,10 +205,18 @@ export default function Nearby() {
       return () => { cancelled = true; };
     }
 
+    // The first callback is often a cached, network-derived fix accurate to
+    // several kilometres — enough to name the wrong suburb. Take it so the page
+    // is not empty, then let watchPosition refine it as the GPS chip warms up.
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (cancelled) return;
+        bestAccuracy.current = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
         applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy);
+        // Refine unless the very first reading is already precise. The old
+        // threshold (100 m) accepted a coarse Wi-Fi fix as final, which is how
+        // a buyer ended up being shown a village they were not in.
+        if (bestAccuracy.current > EXCELLENT_ACCURACY_M) refineFix();
       },
       (err) => {
         void fallbackToSavedLocation(
@@ -153,11 +225,11 @@ export default function Nearby() {
             : 'Could not detect your location. Check that location services are on.'
         );
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 
     return () => { cancelled = true; };
-  }, [user, applyPosition]);
+  }, [user, applyPosition, refineFix]);
 
   // Refresh whenever the position or a filter changes.
   useEffect(() => {
@@ -178,14 +250,25 @@ export default function Nearby() {
     watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
         const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
+        const from = lastFetchCenter.current;
+        const movedM = from ? metresBetween(from, next) : Infinity;
+
+        // Ignore a fix that is much vaguer than the one on screen unless the
+        // buyer has genuinely travelled: GPS periodically drops back to a
+        // cell-tower estimate, which would otherwise yank the pin kilometres
+        // away and reshuffle the whole list.
+        if (acc > bestAccuracy.current * 2 && acc > GOOD_ACCURACY_M && movedM < REFETCH_METRES) return;
+        bestAccuracy.current = acc;
+        setAccuracyM(Math.round(acc));
+
         // Re-sort locally on every fix (instant); re-query only after real movement.
         setSellers((prev) =>
           prev
             .map((s) => ({ ...s, distanceKm: Number((metresBetween(next, s) / 1000).toFixed(2)) }))
             .sort((a, b) => (sort === 'distance' ? a.distanceKm - b.distanceKm : 0))
         );
-        const from = lastFetchCenter.current;
-        if (!from || metresBetween(from, next) > REFETCH_METRES) {
+        if (!from || movedM > REFETCH_METRES) {
           setMoved(true);
           savedOnce.current = false; // a real move is worth persisting again
           applyPosition(next, pos.coords.accuracy);
@@ -219,14 +302,18 @@ export default function Nearby() {
     setLocating(true);
     setGeoDenied(false);
     setError('');
+    bestAccuracy.current = Number.POSITIVE_INFINITY;
     navigator.geolocation?.getCurrentPosition(
-      (pos) => applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy),
+      (pos) => {
+        bestAccuracy.current = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
+        applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy);
+      },
       () => {
         setLocating(false);
         setGeoDenied(true);
         setError('Location permission is still blocked. Enable it in your browser settings.');
       },
-      { enableHighAccuracy: true, timeout: 15000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   }, [applyPosition]);
 
@@ -261,6 +348,14 @@ export default function Nearby() {
             <>
               <strong className="place-name" data-testid="place-label">{place.label}</strong>
               <div className="tiny muted mt-4 place-parts">
+                {accuracyM !== null && (
+                  <span data-testid="gps-accuracy">
+                    <span className="muted-2">Precision:</span>{' '}
+                    {accuracyM <= GOOD_ACCURACY_M
+                      ? `±${accuracyM} m`
+                      : `±${accuracyM >= 1000 ? `${(accuracyM / 1000).toFixed(1)} km` : `${accuracyM} m`} — approximate`}
+                  </span>
+                )}
                 {place.village && <span><span className="muted-2">Village:</span> {place.village}</span>}
                 {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
                 {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
@@ -297,7 +392,7 @@ export default function Nearby() {
             <SearchInput value={q} onChange={setQ} placeholder="Filter stores or products…" />
           </div>
 
-          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
+          <Select aria-label="Sort stores" value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
             <option value="distance">Nearest first</option>
             <option value="rating">Top rated</option>
             <option value="products">Most products</option>
@@ -359,7 +454,7 @@ export default function Nearby() {
 
                   <div className="tiny muted mt-4">
                     <Star size={11} style={{ verticalAlign: -1, color: 'var(--warning)' }} fill="currentColor" />
-                    {' '}{Number(s.rating || 0).toFixed(1)} · <Package size={11} style={{ verticalAlign: -1 }} /> {s.productCount} products
+                    {' '}{Number(s.rating || 0).toFixed(1)}
                     {s.newThisWeek > 0 && <span className="t-success"> · {s.newThisWeek} new</span>}
                   </div>
 

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   TrendingUp, ShoppingBag, Package, AlertTriangle, Eye, Users, MessageCircle,
-  PlusCircle, Clock, ArrowRight, LocateFixed, LocateOff, Store, Sparkles, CheckCircle2,
+  PlusCircle, Clock, ArrowRight, LocateFixed, LocateOff, Store, Sparkles,
 } from 'lucide-react';
-import { sellerService, adminService } from '../../api/services';
+import { sellerService } from '../../api/services';
 import type { SellerDashboard as Dash } from '../../api/types';
 import { formatUgx } from '../../api/types';
 import { useToast } from '../../store/ToastContext';
@@ -18,6 +18,7 @@ import { AreaChart } from '../../components/charts';
 export default function SellerDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const nav = useNavigate();
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,10 +61,20 @@ export default function SellerDashboard() {
         setSharing(false);
         toast(r.message, 'info');
       } else {
-        if (!navigator.geolocation) { toast('This browser cannot share location', 'error'); return; }
-        const pos = await new Promise<GeolocationPosition>((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 20000 })
-        );
+        if (!navigator.geolocation) {
+          toast('This browser cannot share location', 'error');
+          return;
+        }
+        let pos: GeolocationPosition;
+        try {
+          pos = await new Promise<GeolocationPosition>((res, rej) =>
+            navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 20000 })
+          );
+        } catch (geoErr: any) {
+          const msg = geoErr?.message || 'Location permission denied';
+          toast(msg, 'error');
+          return;
+        }
         const r = await sellerService.publishLocation(pos.coords.latitude, pos.coords.longitude);
         setSharing(true);
         setLastFix(r.location.updatedAt);
@@ -110,8 +121,8 @@ export default function SellerDashboard() {
         sub="Your store at a glance — revenue, stock health and what needs attention today."
         actions={
           <>
-            <Btn icon={<Sparkles size={15} />} onClick={() => window.location.assign('/seller/ai')}>AI copilot</Btn>
-            <Btn variant="primary" icon={<PlusCircle size={15} />} onClick={() => window.location.assign('/seller/add-product')}>
+            <Btn icon={<Sparkles size={15} />} onClick={() => nav('/seller/ai')}>AI copilot</Btn>
+            <Btn variant="primary" icon={<PlusCircle size={15} />} onClick={() => nav('/seller/add-product')}>
               Add product
             </Btn>
           </>
@@ -152,13 +163,13 @@ export default function SellerDashboard() {
         <StatCard index={1} label="Orders" value={<CountUp value={stats.orders} />}
           icon={<ShoppingBag size={18} />} hint={`${stats.orders30} in last 30 days`} />
         <StatCard index={2} label="Avg order value" value={formatUgx(stats.avgOrderValueUgx)}
-          icon={<Package size={18} />} color="var(--accent-violet)" hint={`${stats.totalProducts} products listed`} />
+          icon={<Package size={18} />} color="var(--accent-violet)" hint="Per order average" />
         <StatCard index={3} label="Followers" value={<CountUp value={stats.followers} />}
           icon={<Users size={18} />} color="var(--accent-pink)"
-          hint={`${stats.totalViews.toLocaleString()} product views`} />
+          hint={`${stats.totalViews.toLocaleString()} views`} />
       </div>
 
-      <div className="grid grid-2 mt-16" style={{ gridTemplateColumns: '1.6fr 1fr' }}>
+      <div className="grid grid-2 dash-split mt-16">
         {/* ── Revenue chart ─────────────────────────────────────────── */}
         <section className="card">
           <div className="card-head">
@@ -234,7 +245,7 @@ export default function SellerDashboard() {
               {topProducts.map((p, i) => {
                 const max = Math.max(...topProducts.map((x) => x.sold), 1);
                 return (
-                  <div key={p.title} className="rank-row stagger-item" style={{ '--i': i } as React.CSSProperties}>
+                  <div key={`${p.title}-${i}`} className="rank-row stagger-item" style={{ '--i': i } as React.CSSProperties}>
                     <span className="rank-num">{i + 1}</span>
                     <div className="grow" style={{ minWidth: 0 }}>
                       <div className="tiny semi ellipsis">{p.title}</div>

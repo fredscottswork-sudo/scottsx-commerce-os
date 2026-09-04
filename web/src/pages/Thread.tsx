@@ -16,12 +16,15 @@ import {
 } from 'lucide-react';
 import { chatService } from '../api/services';
 import type { ChatMessage, Conversation, QuickReply } from '../api/types';
+import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { Avatar, Badge, Btn, ConfirmModal, Empty, ErrorBox, Field, Input, Modal } from '../components/ui';
 
 const money = (minor?: number | null) =>
   minor == null ? '' : `UGX ${(minor / 100).toLocaleString('en-UG')}`;
+const productMoney = (major?: number | null) =>
+  major == null ? '' : formatUgx(major);
 
 const DEFAULT_QUICK = ['Is this still available?', 'What is your best price?', 'Do you deliver?', 'Thanks!'];
 
@@ -64,8 +67,10 @@ export default function Thread() {
   const [offerBusy, setOfferBusy] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const typingSentAt = useRef(0);
   const lastCount = useRef(0);
+  const typingTimeout = useRef<number | null>(null);
 
   const load = useCallback(async (opts: { quiet?: boolean } = {}) => {
     if (!id) return;
@@ -101,29 +106,61 @@ export default function Thread() {
     return () => clearInterval(t);
   }, [id, load]);
 
-  // Only autoscroll when the transcript actually grew.
+  // Only autoscroll when the transcript actually grew AND user is near bottom.
   useEffect(() => {
     if (messages.length !== lastCount.current) {
+      const wasNearBottom = (() => {
+        const el = bodyRef.current;
+        if (!el) return true;
+        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+        return distance < 140;
+      })();
       lastCount.current = messages.length;
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      if (wasNearBottom) {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
     }
   }, [messages.length]);
 
-  // Typing heartbeat, throttled to one ping per 3s.
+  // Typing heartbeat, throttled to one ping per 3s, with auto-stop after 4s idle.
+  // When input is cleared we immediately signal stopped typing so the other
+  // side doesn't see "typing…" stuck after the user deleted everything.
   function onInputChange(value: string) {
     setInput(value);
     const now = Date.now();
-    if (value && now - typingSentAt.current > 3000) {
+    if (!value.trim()) {
+      if (typingTimeout.current) window.clearTimeout(typingTimeout.current);
+      typingTimeout.current = null;
+      typingSentAt.current = 0;
+      chatService.typing(id!, false).catch(() => undefined);
+      return;
+    }
+    if (now - typingSentAt.current > 3000) {
       typingSentAt.current = now;
       chatService.typing(id!, true).catch(() => undefined);
     }
+    if (typingTimeout.current) window.clearTimeout(typingTimeout.current);
+    typingTimeout.current = window.setTimeout(() => {
+      chatService.typing(id!, false).catch(() => undefined);
+    }, 4000) as unknown as number;
   }
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeout.current) window.clearTimeout(typingTimeout.current);
+      if (id) chatService.typing(id, false).catch(() => undefined);
+    };
+  }, [id]);
 
   async function send(e?: FormEvent) {
     e?.preventDefault();
     const text = input.trim();
     if (!text || sending) return;
     setInput('');
+    if (typingTimeout.current) window.clearTimeout(typingTimeout.current);
+    typingTimeout.current = null;
+    typingSentAt.current = 0;
+    chatService.typing(id!, false).catch(() => undefined);
     setSending(true);
     // Optimistic echo keeps the UI instant; the poll reconciles it.
     const optimistic: ChatMessage = {
@@ -271,14 +308,14 @@ export default function Thread() {
           {conv.productImageUrl && <img src={conv.productImageUrl} alt="" loading="lazy" />}
           <div className="grow" style={{ minWidth: 0 }}>
             <span className="ellipsis">{conv.productTitle}</span>
-            {conv.productPriceMinor != null && <strong>{money(conv.productPriceMinor)}</strong>}
+            {conv.productPriceMinor != null && <strong>{productMoney(conv.productPriceMinor)}</strong>}
           </div>
           <Badge tone="primary">View</Badge>
         </Link>
       )}
 
       {/* ------------------------------------------------------ transcript */}
-      <div className="thread-body">
+      <div className="thread-body" ref={bodyRef}>
         {messages.length === 0 ? (
           <Empty icon={<Inbox size={26} />} title="Say hello" subtitle="Ask about price, delivery or availability." />
         ) : (
@@ -449,7 +486,7 @@ export default function Thread() {
       <Modal open={offerOpen} title="Make an offer" onClose={() => setOfferOpen(false)}
         footer={<><Btn onClick={() => setOfferOpen(false)}>Cancel</Btn><Btn variant="primary" onClick={sendOffer}>Send offer</Btn></>}>
         {conv?.productPriceMinor != null && (
-          <p className="muted mb-16">Listed at {money(conv.productPriceMinor)}. Offers are negotiable — the seller can accept or decline.</p>
+          <p className="muted mb-16">Listed at {productMoney(conv.productPriceMinor)}. Offers are negotiable — the seller can accept or decline.</p>
         )}
         <Field label="Your price per unit (UGX)">
           <Input type="number" min="1" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} placeholder="e.g. 450000" />

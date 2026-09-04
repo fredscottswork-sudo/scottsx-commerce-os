@@ -160,8 +160,21 @@ export function agentSystemPrompt(agent: AgentDef, role: string): string {
 export interface GroundedContext {
   intent: Intent;
   products: RetrievedProduct[];
+  /** Near-misses shown when the strict search finds nothing. */
+  fallbackProducts: RetrievedProduct[];
   contextText: string;
   overview: Awaited<ReturnType<typeof storeOverview>>;
+}
+
+/** One catalog row rendered as a chat bullet. */
+function productLine(p: RetrievedProduct): string {
+  const deal = p.isFlashDeal ? ` · 🔥 **-${p.discountPercent}%**` : '';
+  const stock = p.stockQuantity > 0 ? `${p.stockQuantity} in stock` : '**out of stock**';
+  return (
+    `• **${p.title}** — ${fmtUgx(p.priceMinor)}${deal}\n` +
+    `  ${p.rating}/5 (${p.ratingCount} reviews) · ${stock} · ${p.sellerName}` +
+    `${p.verified ? ' ✓' : ''}${p.city ? ` · ${p.city}` : ''}`
+  );
 }
 
 /** Retrieve everything the agent needs to answer this prompt. */
@@ -175,7 +188,34 @@ export async function buildContext(
   const intent = parseIntent(prompt, categories);
 
   const limit = agent.id === 'growth' || agent.id === 'store' ? 12 : 8;
-  const products = await retrieveProducts(db, intent, limit);
+  // A greeting is not a search. Running one returned eight arbitrary products
+  // to somebody who just said "hi".
+  const products = intent.isGreeting ? [] : await retrieveProducts(db, intent, limit);
+
+  // When the strict search finds nothing, work out what IS available instead of
+  // replying with a dead end. Drop the price cap first (the usual cause - the
+  // budget is simply below anything in stock), then drop keywords to the single
+  // strongest one.
+  let fallbackProducts: RetrievedProduct[] = [];
+  if (!intent.isGreeting && products.length === 0) {
+    if (intent.maxPriceMinor || intent.minPriceMinor) {
+      fallbackProducts = await retrieveProducts(
+        db, { ...intent, maxPriceMinor: undefined, minPriceMinor: undefined }, 5
+      );
+    }
+    if (!fallbackProducts.length && intent.keywords.length > 1) {
+      fallbackProducts = await retrieveProducts(
+        db,
+        { ...intent, keywords: [intent.keywords[intent.keywords.length - 1]], maxPriceMinor: undefined },
+        5
+      );
+    }
+    if (!fallbackProducts.length && intent.category) {
+      fallbackProducts = await retrieveProducts(
+        db, { ...intent, keywords: [], maxPriceMinor: undefined }, 5
+      );
+    }
+  }
 
   const parts: string[] = [];
   parts.push(
@@ -205,7 +245,7 @@ export async function buildContext(
     }
   }
 
-  return { intent, products, contextText: parts.join('\n\n'), overview };
+  return { intent, products, fallbackProducts, contextText: parts.join('\n\n'), overview };
 }
 
 /**
@@ -213,6 +253,56 @@ export async function buildContext(
  * This is NOT a canned string — it reads the retrieved rows and composes a
  * real answer, so the assistant is genuinely useful with zero configuration.
  */
+/** What each agent actually does, in its own words. */
+function capabilityBlurb(id: AgentId): string {
+  switch (id) {
+    case 'shopping':
+      return [
+        'I search the whole catalogue for you and explain the trade-offs:',
+        '• Find products by need, budget, brand or category',
+        '• Compare two or three options side by side',
+        '• Show what is in stock, and which seller has it',
+      ].join('\n');
+    case 'negotiator':
+      return [
+        'I watch prices so you do not overpay:',
+        '• Spot the live flash deals and genuine discounts',
+        '• Tell you whether a price is fair for that item',
+        '• Suggest how to open a negotiation with the seller',
+      ].join('\n');
+    case 'support':
+      return [
+        'I handle everything after the "buy" button:',
+        '• Order status, delivery and tracking',
+        '• Refunds, returns and cancellations',
+        '• Payments — MoMo, card and cash on delivery',
+        '• Account, login and verification problems',
+      ].join('\n');
+    case 'listing':
+      return [
+        'I help you publish products that actually sell:',
+        '• Write the title, description and specs from a few details',
+        '• Suggest a competitive price using what similar items sell for here',
+        '• Point out what buyers ask for that your listing is missing',
+      ].join('\n');
+    case 'growth':
+      return [
+        'I look at the market and tell you where the money is:',
+        '• Which categories are busy and which are crowded',
+        '• What to stock next, and at what price',
+        '• How your range compares with other sellers',
+      ].join('\n');
+    case 'store':
+    default:
+      return [
+        'I know the marketplace as a whole:',
+        '• What is on sale, from whom, and where they are',
+        '• How buying, delivery and payment work here',
+        '• Which sellers are verified, and what they specialise in',
+      ].join('\n');
+  }
+}
+
 export function composeOfflineAnswer(
   agent: AgentDef,
   prompt: string,
@@ -220,6 +310,28 @@ export function composeOfflineAnswer(
 ): string {
   const { products, intent, overview } = ctx;
   const lines: string[] = [];
+
+  // "What can you do?" is the single most likely opening message, and it is a
+  // question about the assistant rather than a product search. Answering it
+  // with "I couldn't find anything matching 'what can you help me with?'" made
+  // every agent look broken. Each agent introduces its own job and offers real
+  // examples drawn from the live catalogue.
+  if (intent.isCapabilityQuestion) {
+    const starters = agent.starters.slice(0, 3).map((s) => `• "${s.toLowerCase()}"`);
+    return [
+      `**${agent.name}** — ${agent.tagline.toLowerCase()}.`,
+      ``,
+      capabilityBlurb(agent.id),
+      ``,
+      `I can see the whole store: **${overview.productCount} products** from ` +
+        `**${overview.sellerCount} sellers**, priced ` +
+        `${fmtUgx(overview.minPrice)}–${fmtUgx(overview.maxPrice)}` +
+        `${overview.dealCount ? `, with **${overview.dealCount}** flash deals on` : ''}.`,
+      ``,
+      `Try asking:`,
+      ...starters,
+    ].join('\n');
+  }
 
   if (agent.id === 'store') {
     lines.push(
@@ -245,7 +357,50 @@ export function composeOfflineAnswer(
     return listingAnswer(prompt, products);
   }
 
+  // Greet back and offer a way in, rather than apologising for finding no
+  // products in response to "hello".
+  if (intent.isGreeting) {
+    const topCats = (overview.categories ?? []).slice(0, 4).map((c: any) => c.category);
+    return [
+      `Hi! I'm ${agent.name} — I can see everything in the ScottsTechX store.`,
+      ``,
+      `Right now there are **${overview.productCount} products** from **${overview.sellerCount} sellers**, ` +
+        `priced ${fmtUgx(overview.minPrice)}–${fmtUgx(overview.maxPrice)}` +
+        `${overview.dealCount ? `, with **${overview.dealCount}** flash deals running` : ''}.`,
+      ``,
+      `Ask me things like:`,
+      `• "show me phones under 2m"`,
+      `• "cheapest laptop you have"`,
+      `• "best rated ${topCats[0] ? topCats[0].toLowerCase() : 'electronics'}"`,
+      `• "what deals are on today?"`,
+    ].join('\n');
+  }
+
   if (!products.length) {
+    // Say what IS available near the request instead of a dead end. The
+    // fallbacks are attached by buildContext when the strict search misses.
+    const near = ctx.fallbackProducts;
+    if (near && near.length) {
+      // When the shopper named a budget we promise these are "listed by
+      // price", so actually sort them cheapest-first — the nearest thing to
+      // what they asked for should lead, not whatever the search ranked top.
+      const ordered = intent.maxPriceMinor
+        ? [...near].sort((a, b) => a.priceMinor - b.priceMinor)
+        : near;
+      const relaxed = [
+        `Nothing matched **${prompt.trim()}** exactly, but here's the closest I have:`,
+        ``,
+        ...ordered.slice(0, 5).map((p) => productLine(p)),
+      ];
+      if (intent.maxPriceMinor) {
+        relaxed.push(
+          ``,
+          `*Everything above your ${fmtUgx(intent.maxPriceMinor)} budget has been left out where possible — ` +
+            `the closest options are listed by price.*`
+        );
+      }
+      return relaxed.join('\n');
+    }
     lines.push(
       `I couldn't find anything matching **${prompt.trim()}** in the live catalog right now.`,
       ``,
@@ -277,15 +432,7 @@ export function composeOfflineAnswer(
     lines.push(`Here's what I found for "${prompt.trim()}":`, ``);
   }
 
-  for (const p of products.slice(0, 5)) {
-    const deal = p.isFlashDeal ? ` · 🔥 **-${p.discountPercent}%**` : '';
-    const stock = p.stockQuantity > 0 ? `${p.stockQuantity} in stock` : '**out of stock**';
-    lines.push(
-      `• **${p.title}** — ${fmtUgx(p.priceMinor)}${deal}`,
-      `  ${p.rating}/5 (${p.ratingCount} reviews) · ${stock} · ${p.sellerName}` +
-        `${p.verified ? ' ✓' : ''}${p.city ? ` · ${p.city}` : ''}`
-    );
-  }
+  for (const p of products.slice(0, 5)) lines.push(productLine(p));
 
   const cheapest = [...products].sort((a, b) => a.priceMinor - b.priceMinor)[0];
   const best = [...products].sort((a, b) => b.rating - a.rating)[0];
@@ -372,10 +519,36 @@ function supportAnswer(prompt: string): string {
 }
 
 function listingAnswer(prompt: string, products: RetrievedProduct[]): string {
+  // Strip the instruction wrapper to leave the product itself. This MUST be
+  // word-bounded: the old pattern had bare alternatives like `a ` and `for`,
+  // so "what can you help me with" lost the "an" inside "can" and became
+  // "What Cyou Help Me With? - Quality Guaranteed" — a title generated from a
+  // question. \b prevents matching inside a word.
   const subject = prompt
-    .replace(/write|create|make|a |an |the |listing|description|for|title|please/gi, '')
+    .replace(
+      /\b(please|write|create|make|generate|draft|suggest|a|an|the|listing|description|title|copy|for|me|my)\b/gi,
+      ' '
+    )
+    .replace(/\s+/g, ' ')
     .trim();
-  const name = subject || 'your product';
+
+  // If nothing recognisable is left, the user has not named a product yet.
+  // Inventing a listing out of their question is worse than asking.
+  if (subject.length < 3) {
+    return [
+      `**Listing Copilot** — tell me what you are selling and I'll write it.`,
+      ``,
+      `Give me any of these and I'll turn it into a full listing:`,
+      `• the item and its condition — "iPhone 13, 128GB, used, clean"`,
+      `• a brand and model — "Samsung A55 5G"`,
+      `• even a rough note — "gaming laptop, 16gb ram, needs a fast sale"`,
+      ``,
+      `You'll get a title, a description, pricing guidance from comparable ` +
+        `listings already on ScottsTechX, and the details buyers usually ask for.`,
+    ].join('\n');
+  }
+
+  const name = subject;
   const lines: string[] = [];
 
   lines.push(`**Suggested title**`, `${titleCase(name)} — Quality Guaranteed, Fast Delivery`, ``);

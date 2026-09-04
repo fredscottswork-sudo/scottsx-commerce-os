@@ -9,13 +9,12 @@ import { formatUgx } from '../../api/types';
 import { useCart } from '../../store/CartContext';
 import { useToast } from '../../store/ToastContext';
 import { useAuth } from '../../store/AuthContext';
-import { PRODUCT_IMAGE_FALLBACK } from '../../components/ProductCard';
 import {
-  Btn, Empty, Field, Input, Select, TextArea, Modal, PageHeader, ConfirmModal, SkeletonRows,
+  Btn, Empty, ErrorBox, Field, Input, Select, TextArea, Modal, PageHeader, ConfirmModal, SkeletonRows,
 } from '../../components/ui';
 
 export default function Cart() {
-  const { cart, loading, setQty, remove, clear, refresh } = useCart();
+  const { cart, loading, loadError, setQty, remove, clear, refresh } = useCart();
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -52,6 +51,12 @@ export default function Cart() {
   const unavailable = cart.items.filter((i) => i.status !== 'approved' || i.stockQuantity < i.quantity);
 
   const changeQty = async (productId: string, qty: number) => {
+    if (qty <= 0) {
+      setBusyId(productId);
+      await remove(productId);
+      setBusyId('');
+      return;
+    }
     setBusyId(productId);
     await setQty(productId, qty);
     setBusyId('');
@@ -81,6 +86,18 @@ export default function Cart() {
       <>
         <PageHeader title="Your cart" />
         <SkeletonRows rows={4} height={82} />
+      </>
+    );
+  }
+
+  // A failed load must never masquerade as an empty cart: the items are still
+  // on the server, and telling the buyer otherwise invites them to re-add
+  // everything (or abandon the purchase).
+  if (loadError && cart.items.length === 0 && !placed) {
+    return (
+      <>
+        <PageHeader title="Your cart" />
+        <ErrorBox message={`${loadError} — your items are safe, this device just could not reach the server.`} onRetry={() => { void refresh(); }} />
       </>
     );
   }
@@ -138,13 +155,13 @@ export default function Cart() {
                   return (
                     <div key={it.productId} className={`cart-line ${bad ? 'cart-line-bad' : ''}`}>
                       <Link to={`/product/${it.productId}`}>
-                        <img
-                          src={it.imageUrl || PRODUCT_IMAGE_FALLBACK}
-                          alt={it.title}
-                          className="cart-thumb"
-                          loading="lazy"
-                          onError={(e) => { e.currentTarget.src = PRODUCT_IMAGE_FALLBACK; }}
-                        />
+                        {it.imageUrl ? (
+                          <img src={it.imageUrl} alt={it.title} className="cart-thumb" loading="lazy" />
+                        ) : (
+                          <span className="cart-thumb center" style={{ fontWeight: 800, background: "var(--surface-3)", color: "var(--text-3)" }}>
+                            {it.title?.[0]?.toUpperCase() || "•"}
+                          </span>
+                        )}
                       </Link>
 
                       <div className="grow" style={{ minWidth: 0 }}>

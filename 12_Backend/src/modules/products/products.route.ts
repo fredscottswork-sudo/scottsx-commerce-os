@@ -36,14 +36,25 @@ import {
 } from './products.service.js';
 import { notify } from '../notifications/notify.service.js';
 
+/**
+ * Postgres `integer` (and the `price_minor::int` casts every read uses) top out
+ * at 2,147,483,647. Without this ceiling the INSERT commits and the *read back*
+ * throws, so the seller sees a 500 while the product silently exists. Reject it
+ * up front instead — 2.1bn UGX is far beyond any real listing.
+ */
+const INT4_MAX = 2147483647;
+
+const money = () => z.number().int().nonnegative().max(INT4_MAX);
+const count = () => z.number().int().nonnegative().max(INT4_MAX);
+
 const newProductSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional().default(''),
   category: z.string().optional().default('Other'),
   brand: z.string().optional().default(''),
-  priceMinor: z.number().int().nonnegative(),
-  oldPriceMinor: z.number().int().nonnegative().optional().nullable(),
-  stockQuantity: z.number().int().nonnegative().optional().default(1),
+  priceMinor: money(),
+  oldPriceMinor: money().optional().nullable(),
+  stockQuantity: count().optional().default(1),
   imageUrl: z.string().optional().default(''),
   mediaUrls: z.array(z.string()).optional().default([]),
   location: z.string().optional().default(''),
@@ -70,11 +81,11 @@ const updateProductSchema = z.object({
   description: z.string().optional(),
   category: z.string().optional(),
   brand: z.string().optional(),
-  priceMinor: z.number().int().nonnegative().optional(),
-  oldPriceMinor: z.number().int().nonnegative().nullable().optional(),
-  stockQuantity: z.number().int().nonnegative().optional(),
+  priceMinor: money().optional(),
+  oldPriceMinor: money().nullable().optional(),
+  stockQuantity: count().optional(),
   imageUrl: z.string().optional(),
-  mediaUrls: z.array(z.string()).max(10).optional(),
+  mediaUrls: z.array(z.string()).optional(),
   location: z.string().optional(),
   isFlashDeal: z.boolean().optional(),
   discountPercent: z.number().int().min(0).max(100).optional(),
@@ -84,9 +95,9 @@ const listQuerySchema = z.object({
   q: z.string().optional(),
   category: z.string().optional(),
   brand: z.string().optional(),
-  minPrice: z.coerce.number().int().nonnegative().optional(),
-  maxPrice: z.coerce.number().int().nonnegative().optional(),
-  minRating: z.coerce.number().min(0).max(5).optional(),
+  minPrice: z.coerce.number().optional(),
+  maxPrice: z.coerce.number().optional(),
+  minRating: z.coerce.number().optional(),
   verifiedOnly: z.coerce.boolean().optional(),
   inStock: z.coerce.boolean().optional(),
   flashOnly: z.coerce.boolean().optional(),
@@ -108,7 +119,11 @@ function assertListingReady(input: {
   priceMinor?: number;
 }) {
   const image = input.imageUrl || input.mediaUrls?.[0] || '';
-  if (!/^https?:\/\//i.test(image)) {
+  // Either an external link or one of our own uploads. The upload path form is
+  // accepted because sellers list from a phone, where the photo comes from the
+  // camera roll and there is no public URL to paste.
+  const isUpload = /^\/api\/v1\/uploads\/images\/[0-9a-f-]{36}$/i.test(image);
+  if (!/^https?:\/\//i.test(image) && !isUpload) {
     throw new ValidationError('A product photo is required before submitting for review');
   }
   if (!input.title || input.title.trim().length < 3) {

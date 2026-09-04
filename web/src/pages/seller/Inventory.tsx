@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Package, PlusCircle, Trash2, Send, Pencil, AlertTriangle, Eye, Clock, XCircle, Search as SearchIcon,
 } from 'lucide-react';
@@ -16,6 +16,7 @@ type TabId = 'all' | ProductStatus;
 
 export default function Inventory() {
   const { toast } = useToast();
+  const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = (params.get('status') as TabId) || 'all';
 
@@ -28,28 +29,8 @@ export default function Inventory() {
 
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
-  // The backend PATCH is a full-form update and the gallery is full-replace,
-  // so the form carries the whole photo set — first slot is the main image.
-  const [form, setForm] = useState({ title: '', description: '', priceMinor: 0, stockQuantity: 0, category: '', brand: '', gallery: [] as string[] });
-  const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [form, setForm] = useState({ title: '', description: '', priceMinor: 0, stockQuantity: 0, category: '', brand: '', imageUrl: '' });
   const [saving, setSaving] = useState(false);
-
-  const galleryOf = (p: Product) =>
-    p.mediaUrls && p.mediaUrls.length > 0 ? p.mediaUrls : p.imageUrl ? [p.imageUrl] : [];
-
-  const addPhoto = () => {
-    const u = newPhotoUrl.trim();
-    if (!u || form.gallery.length >= 10) return;
-    setForm({ ...form, gallery: [...form.gallery, u] });
-    setNewPhotoUrl('');
-  };
-  const removePhoto = (i: number) =>
-    setForm({ ...form, gallery: form.gallery.filter((_, j) => j !== i) });
-  const makeMain = (i: number) => {
-    const g = [...form.gallery];
-    const [u] = g.splice(i, 1);
-    setForm({ ...form, gallery: [u, ...g] });
-  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,30 +72,19 @@ export default function Inventory() {
     setForm({
       title: p.title, description: p.description || '', priceMinor: p.priceMinor,
       stockQuantity: p.stockQuantity, category: p.category || '', brand: p.brand || '',
-      gallery: [...galleryOf(p)],
+      imageUrl: p.imageUrl || '',
     });
-    setNewPhotoUrl('');
   };
 
   const saveEdit = async () => {
     if (!editing) return;
-    if (form.gallery.length === 0) {
-      toast('Keep at least one photo — listings without a real image cannot be published', 'error');
-      return;
-    }
     setSaving(true);
     try {
-      // No explicit imageUrl: the backend syncs the main image to the first
-      // gallery slot, so form and server can never disagree.
-      await sellerService.updateProduct(editing.id, {
-        title: form.title, description: form.description, priceMinor: form.priceMinor,
-        stockQuantity: form.stockQuantity, category: form.category, brand: form.brand,
-        mediaUrls: form.gallery,
-      });
+      await sellerService.updateProduct(editing.id, form);
       const contentChanged =
         form.title !== editing.title ||
         form.description !== (editing.description || '') ||
-        form.gallery.join('\u0000') !== galleryOf(editing).join('\u0000');
+        form.imageUrl !== (editing.imageUrl || '');
       toast(
         contentChanged && editing.status === 'approved'
           ? 'Saved — content edits go back to admin review before they show publicly'
@@ -161,7 +131,7 @@ export default function Inventory() {
         title="Inventory"
         sub="Drafts stay private. Submitted listings need admin approval before buyers can see them."
         actions={
-          <Btn variant="primary" icon={<PlusCircle size={15} />} onClick={() => window.location.assign('/seller/add-product')}>
+          <Btn variant="primary" icon={<PlusCircle size={15} />} onClick={() => nav('/seller/add-product')}>
             Add product
           </Btn>
         }
@@ -196,7 +166,7 @@ export default function Inventory() {
           icon={<Package size={28} />}
           title={q ? 'Nothing matched that filter' : tab === 'all' ? 'No products yet' : `No ${tab} products`}
           subtitle={q ? 'Try a different search term.' : 'Add your first product — it takes under a minute with AI help.'}
-          action={!q ? <Btn variant="primary" onClick={() => window.location.assign('/seller/add-product')}>Add product</Btn> : undefined}
+          action={!q ? <Btn variant="primary" onClick={() => nav('/seller/add-product')}>Add product</Btn> : undefined}
         />
       ) : (
         <Table<Product>
@@ -306,42 +276,10 @@ export default function Inventory() {
             <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
           </Field>
         </div>
-        <Field label="Photos" hint="The first photo is the main image; the rest appear in the product gallery. Public http(s) links.">
-          {form.gallery.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
-              {form.gallery.map((u, i) => (
-                <div key={`${u}-${i}`} style={{ position: 'relative', width: 76, height: 76, borderRadius: 10, overflow: 'hidden' }}>
-                  <img src={u} alt={i === 0 ? 'Main photo' : `Photo ${i + 1}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  {i === 0 && (
-                    <span style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 6 }}>
-                      main
-                    </span>
-                  )}
-                  {i > 0 && (
-                    <button type="button" title="Make main photo"
-                      onClick={() => makeMain(i)}
-                      style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 6, cursor: 'pointer' }}>
-                      make main
-                    </button>
-                  )}
-                  <button type="button" title="Remove photo" aria-label="Remove photo"
-                    onClick={() => removePhoto(i)}
-                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,.65)', color: '#fff', border: 0, borderRadius: 6, width: 20, height: 20, cursor: 'pointer' }}>
-                    <XCircle size={12} style={{ margin: 4 }} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Input value={newPhotoUrl} onChange={(e) => setNewPhotoUrl(e.target.value)} placeholder="https://…  (up to 10 photos)" />
-            <Btn variant="outline" icon={<PlusCircle size={14} />} onClick={addPhoto}
-              disabled={!newPhotoUrl.trim() || form.gallery.length >= 10}>
-              Add
-            </Btn>
-          </div>
+        <Field label="Image URL" hint="Must be a public http(s) link. Listings without a real image cannot be published.">
+          <Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
         </Field>
+        {form.imageUrl && <img src={form.imageUrl} alt="" className="img-preview" />}
       </Modal>
 
       <ConfirmModal

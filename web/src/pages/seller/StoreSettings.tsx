@@ -58,7 +58,7 @@ export default function StoreSettingsPage() {
   return (
     <>
       <PageHeader title="Store settings" sub="The 9 settings sections — one PATCH endpoint, same as the mobile app." />
-      <div className="grid" style={{ gridTemplateColumns: '220px 1fr' }}>
+      <div className="grid settings-split">
         <div className="card" style={{ padding: 8, alignSelf: 'start' }}>
           {SECTIONS.map((s) => (
             <button key={s.key} className={`nav-link ${section === s.key ? 'active' : ''}`} style={{ width: '100%' }} onClick={() => setSection(s.key)}>

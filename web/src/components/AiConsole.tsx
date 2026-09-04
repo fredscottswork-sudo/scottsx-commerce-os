@@ -1,11 +1,53 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Send, RotateCcw, Zap, AlertCircle } from 'lucide-react';
+import {
+  Sparkles, Send, RotateCcw, Zap, AlertCircle,
+  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot,
+} from 'lucide-react';
 import { aiService } from '../api/services';
 import type { AiAgent, Product } from '../api/types';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
 import { ProductGrid } from './ProductCard';
 import { Btn, RichText, Badge, Empty } from './ui';
+
+/**
+ * The API describes each agent with a lucide icon NAME ('shopping-bag',
+ * 'tag', ...). Rendering `a.icon` directly printed those slugs as visible
+ * text, so the agent chips on /ai literally read "shopping-bag Shopping".
+ * Map the names to components, and fall back to a generic bot for any agent
+ * the backend adds later so a new id degrades to an icon, never to a slug.
+ */
+const AGENT_ICONS: Record<string, typeof ShoppingBag> = {
+  'shopping-bag': ShoppingBag,
+  tag: Tag,
+  'life-buoy': LifeBuoy,
+  sparkles: Sparkles,
+  'trending-up': TrendingUp,
+  compass: Compass,
+};
+
+function AgentIcon({ name }: { name?: string }) {
+  const Icon = (name && AGENT_ICONS[name]) || Bot;
+  return <Icon size={17} aria-hidden />;
+}
+
+/**
+ * True on phone-width screens. Used to swap in shorter copy where the long
+ * form would wrap past the space available and be clipped.
+ */
+function useNarrowScreen(maxWidth = 480): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(`(max-width: ${maxWidth}px)`).matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [maxWidth]);
+  return narrow;
+}
 
 interface Turn {
   role: 'user' | 'assistant';
@@ -21,12 +63,20 @@ interface Turn {
  * agent roster differs (filtered server-side by audience).
  */
 export function AiConsole({
-  audience, screen, title, subtitle,
+  audience, screen, title, subtitle, fullHeight = false,
 }: {
   audience: 'buyer' | 'seller';
   screen: string;
   title: string;
   subtitle: string;
+  /**
+   * Let the console own the full height of the content area. Used by the
+   * dedicated AI pages, which no longer render a PageHeader above the chat:
+   * that heading cost ~90px of vertical space on a phone and pushed the
+   * conversation into a small box. The same wording now appears in the chat
+   * header and the welcome panel instead.
+   */
+  fullHeight?: boolean;
 }) {
   const { toast } = useToast();
   const { add, favoriteSellerIds, toggleFavoriteSeller } = useCart();
@@ -40,6 +90,7 @@ export function AiConsole({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const narrow = useNarrowScreen();
 
   useEffect(() => {
     aiService.agents()
@@ -55,6 +106,57 @@ export function AiConsole({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns]);
+
+  /**
+   * On the dedicated AI routes the conversation is the whole app surface, the
+   * way it is on Alibaba's or ChatGPT's assistant pages: the page itself must
+   * not scroll, only the transcript inside it. A class on <body> is the only
+   * place that can express that, because the scrolling document is an
+   * ancestor of this component. Removed on unmount so every other route
+   * scrolls normally again.
+   */
+  useEffect(() => {
+    if (!fullHeight) return;
+    document.body.classList.add('ai-immersive');
+
+    // How much chrome sits above the surface cannot be hardcoded: the public
+    // layout stacks a header AND a 45px category bar (158px measured), while
+    // the signed-in layout differs again. --topbar-h is only 62px, and using
+    // it pushed the composer 40px below the fold on a 360px phone. So measure
+    // the real offset and re-measure whenever the chrome can change.
+    const root = document.documentElement;
+    const surface =
+      (document.querySelector('.public-content') as HTMLElement | null) ??
+      (document.querySelector('.content') as HTMLElement | null);
+
+    const measure = () => {
+      if (!surface) return;
+      // Distance from the top of the viewport to the top of the surface.
+      const top = Math.max(0, Math.round(surface.getBoundingClientRect().top));
+      root.style.setProperty('--ai-surface-top', `${top}px`);
+
+      const nav = document.querySelector('.bottomnav') as HTMLElement | null;
+      const navVisible = nav && getComputedStyle(nav).display !== 'none';
+      root.style.setProperty(
+        '--bottom-chrome',
+        navVisible ? `${Math.round(nav!.getBoundingClientRect().height)}px` : '0px'
+      );
+    };
+
+    measure();
+    // Orientation changes, the URL bar collapsing, and the breakpoint that
+    // shows/hides the bottom nav all move these numbers.
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+      document.body.classList.remove('ai-immersive');
+      root.style.removeProperty('--ai-surface-top');
+      root.style.removeProperty('--bottom-chrome');
+    };
+  }, [fullHeight]);
 
   const activeAgent = agents.find((a) => a.id === agentId);
 
@@ -107,108 +209,125 @@ export function AiConsole({
   }, [agentId, agents, busy, screen, toast, turns]);
 
   return (
-    <div className="ai-console">
-      {/* ── Agent picker ────────────────────────────────────────────── */}
-      <aside className="card ai-agents">
-        <div className="row-between mb-12">
-          <h3 className="card-title"><Sparkles size={16} /> Agents</h3>
-          {status && (
-            <Badge tone={status.grounded ? 'green' : 'amber'}>
-              {status.grounded ? 'Store-aware' : 'Limited'}
-            </Badge>
-          )}
-        </div>
-
-        <div className="col" style={{ gap: 7 }}>
-          {agents.map((a) => (
-            <button
-              key={a.id}
-              className={`agent-card ${agentId === a.id ? 'active' : ''}`}
-              onClick={() => setAgentId(a.id)}
-            >
-              <span className="agent-emoji">{a.icon || '🤖'}</span>
-              <span style={{ minWidth: 0 }}>
-                <span className="agent-name">{a.name}</span>
-                <span className="agent-tag">{a.tagline}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {status && (
-          <p className="tiny muted-2 mt-16">
-            Engine: <strong>{status.provider}</strong>
-            {!status.configured && ' · local catalogue mode'}
-          </p>
-        )}
-      </aside>
-
-      {/* ── Conversation ────────────────────────────────────────────── */}
-      <div className="card ai-chat card-flush">
-        <div className="ai-chat-head">
-          <div style={{ minWidth: 0 }}>
-            <h2 className="card-title">{activeAgent?.icon} {activeAgent?.name || title}</h2>
-            <p className="tiny muted ellipsis">{activeAgent?.tagline || subtitle}</p>
+    <div className={`ai-console${fullHeight ? ' ai-console-full ai-console--noagents' : ''}`}>
+      {/* Agent picker removed for extraordinary full-screen chat — user asked to remove agent words above */}
+      {!fullHeight && (
+        <aside className="card ai-agents">
+          <div className="row-between mb-12">
+            <h3 className="card-title"><Sparkles size={16} /> Agents</h3>
+            {status && (
+              <Badge tone={status.grounded ? 'green' : 'amber'}>
+                {status.grounded ? 'Store-aware' : 'Limited'}
+              </Badge>
+            )}
           </div>
-          {turns.length > 0 && (
+
+          <div className="col" style={{ gap: 7 }}>
+            {agents.map((a) => (
+              <button
+                key={a.id}
+                className={`agent-card ${agentId === a.id ? 'active' : ''}`}
+                onClick={() => setAgentId(a.id)}
+              >
+                <span className="agent-emoji"><AgentIcon name={a.icon} /></span>
+                <span style={{ minWidth: 0 }}>
+                  <span className="agent-name">{a.name}</span>
+                  <span className="agent-tag">{a.tagline}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {status && (
+            <p className="tiny muted-2 mt-16">
+              Engine: <strong>{status.provider}</strong>
+              {!status.configured && ' · local catalogue mode'}
+            </p>
+          )}
+        </aside>
+      )}
+
+      {/* ── Conversation — now full, no agent words above, bigger & flexible ── */}
+      <div className="card ai-chat card-flush ai-chat--full">
+        {turns.length > 0 && (
+          <div className="ai-chat-head ai-chat-head--minimal">
+            <span className="grow" />
             <Btn size="sm" variant="ghost" icon={<RotateCcw size={14} />} onClick={() => setTurns([])}>
               New chat
             </Btn>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="ai-chat-body" ref={scrollRef}>
           {turns.length === 0 ? (
-            <div className="ai-welcome">
-              <div className="ai-avatar" style={{ width: 46, height: 46, borderRadius: 14 }}>
-                <Sparkles size={22} />
-              </div>
-              <h3 className="mt-12" style={{ fontFamily: 'var(--font-display)' }}>{title}</h3>
-              <p className="muted mt-4" style={{ maxWidth: 460 }}>{subtitle}</p>
+            <div className={`ai-welcome ${fullHeight ? 'ai-welcome--bare' : ''}`}>
+              {!fullHeight ? (
+                <>
+                  <div className="ai-avatar" style={{ width: 44, height: 44, borderRadius: 12 }}>
+                    <Sparkles size={20} />
+                  </div>
+                  <h3 className="mt-10" style={{ fontFamily: 'var(--font-display)', fontSize: 15 }}>{title}</h3>
+                  <p className="muted mt-4" style={{ maxWidth: 'min(460px, 100%)' }}>{subtitle}</p>
+                </>
+              ) : (
+                <div className="ai-welcome-bare">
+                  <Sparkles size={18} className="muted-2" />
+                  <p className="muted" style={{ fontSize: 13, margin: 0 }}>Ask anything — products, prices, sellers</p>
+                </div>
+              )}
 
-              <div className="row wrap center mt-16" style={{ gap: 8, justifyContent: 'center' }}>
+              <div className="row wrap center mt-14" style={{ gap: 6, justifyContent: 'center' }}>
                 {(activeAgent?.starters ?? []).map((s) => (
-                  <button key={s} className="chip" onClick={() => void send(s)}>{s}</button>
+                  <button key={s} className="chip" style={{ fontSize: 12, padding: '6px 12px' }} onClick={() => void send(s)}>{s}</button>
                 ))}
               </div>
             </div>
           ) : (
             turns.map((t, i) => (
-              <div key={i} className={`bubble-row ${t.role}`}>
-                {t.role === 'assistant' && (
-                  <span className="ai-avatar" style={{ width: 28, height: 28 }}><Sparkles size={13} /></span>
-                )}
-                <div className={`bubble ${t.role === 'user' ? 'bubble-user' : 'bubble-ai'}`}>
-                  {t.pending ? (
-                    <span className="typing"><i /><i /><i /></span>
-                  ) : (
-                    <>
-                      <RichText text={t.content} />
-                      {t.role === 'assistant' && t.grounded === false && (
-                        <p className="tiny muted-2 mt-8">
-                          <AlertCircle size={11} style={{ verticalAlign: -1 }} /> Answered without live catalogue data.
-                        </p>
-                      )}
-                      {!!t.products?.length && (
-                        <div className="mt-12">
-                          <p className="tiny semi muted mb-8">
-                            <Zap size={12} style={{ verticalAlign: -2 }} /> {t.products.length} matching product{t.products.length > 1 ? 's' : ''}
-                          </p>
-                          <ProductGrid
-                            products={t.products.slice(0, 6)}
-                            onAddToCart={audience === 'buyer' ? (p) => void add(p) : undefined}
-                            onToggleFavorite={audience === 'buyer'
-                              ? (p) => {
-                                  if (p.seller?.id) void toggleFavoriteSeller(p.seller.id, p.seller.name);
-                                }
-                              : undefined}
-                            favoriteSellerIds={favoriteSellerIds}
-                          />
-                        </div>
-                      )}
-                    </>
+              // A turn is the bubble PLUS, for the assistant, any products it
+              // found. The products used to live inside the bubble, which is
+              // capped at 88% of the row and indented past the avatar — on a
+              // 360px phone that left ~202px, so a two-column grid rendered
+              // 95px-wide cards: images the size of a thumbnail and truncated
+              // titles. Product results are the answer on a shopping
+              // assistant, so they now sit OUTSIDE the bubble and take the
+              // full width of the conversation.
+              <div key={i} className="ai-turn">
+                <div className={`bubble-row ${t.role}`}>
+                  {t.role === 'assistant' && (
+                    <span className="ai-avatar" style={{ width: 28, height: 28 }}><Sparkles size={13} /></span>
                   )}
+                  <div className={`bubble ${t.role === 'user' ? 'bubble-user' : 'bubble-ai'}`}>
+                    {t.pending ? (
+                      <span className="typing"><i /><i /><i /></span>
+                    ) : (
+                      <>
+                        <RichText text={t.content} />
+                        {t.role === 'assistant' && t.grounded === false && (
+                          <p className="tiny muted-2 mt-8">
+                            <AlertCircle size={11} style={{ verticalAlign: -1 }} /> Answered without live catalogue data.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
+
+                {!t.pending && !!t.products?.length && (
+                  <div className="ai-results">
+                    <p className="tiny semi muted ai-results-head">
+                      <Zap size={12} style={{ verticalAlign: -2 }} /> Matching products
+                    </p>
+                    <ProductGrid
+                      products={t.products.slice(0, 6)}
+                      onAddToCart={audience === 'buyer' ? (p) => void add(p) : undefined}
+                      onToggleFavorite={audience === 'buyer'
+                        ? (p) => void toggleFavoriteSeller(p.seller.id, p.seller.name)
+                        : undefined}
+                      favoriteSellerIds={favoriteSellerIds}
+                    />
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -227,9 +346,14 @@ export function AiConsole({
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input); }
             }}
             placeholder={
-              audience === 'buyer'
-                ? 'Ask anything — “cheapest phones under 2M”, “compare these two”…'
-                : 'Ask about pricing, listings, buyers — “what should I stock next?”'
+              /* The long examples wrap to five lines in a 320px composer and
+                 get clipped, so the hint is unreadable exactly where space is
+                 tightest. Show the short form on narrow screens. */
+              narrow
+                ? (audience === 'buyer' ? 'Ask anything…' : 'Ask about your store…')
+                : audience === 'buyer'
+                  ? 'Ask anything — “cheapest phones under 2M”, “compare these two”…'
+                  : 'Ask about pricing, listings, buyers — “what should I stock next?”'
             }
             aria-label="Message the assistant"
           />

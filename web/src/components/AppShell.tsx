@@ -11,6 +11,7 @@ import { useTheme } from '../store/ThemeContext';
 import { useCart } from '../store/CartContext';
 import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
+import { BrandMark } from './BrandLogo';
 
 interface NavItem { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }
 
@@ -63,44 +64,106 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate(`/search?q=${encodeURIComponent(query.trim())}`);
   };
 
-  // ── Public chrome (logged out) ────────────────────────────────────────────
-  if (!user) {
+  // ── Auth chrome (login / register) ────────────────────────────────────────
+  // Sign-in and sign-up are focused, single-purpose screens. They were being
+  // wrapped in the full marketplace shell: a product search bar, the category
+  // nav, four footer links and a five-item bottom nav — 474px of furniture on
+  // a 360x780 phone, 55% of the page, none of it usable while signing in. The
+  // form itself did not start until 302px down.
+  //
+  // Give these two routes a minimal shell instead: just the brand (a link
+  // home) and the theme toggle, so the form is the first thing on screen.
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
+  const isAiRoute = location.pathname === '/ai' || location.pathname.startsWith('/buyer/ai') || location.pathname.startsWith('/seller/ai');
+  const isHomeRoute = location.pathname === '/';
+  const isSearchRoute = location.pathname === '/search';
+  const isNearbyRoute = location.pathname === '/nearby';
+  if (!user && isAuthRoute) {
     return (
-      <div className="public-shell">
-        <header className="public-topbar">
-          <Link to="/" className="brand"><span className="brand-logo">S</span> ScottsTechX</Link>
-          <form className="searchbar public-search" onSubmit={submitSearch}>
-            <Search size={17} className="muted-2" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search products, brands and stores…"
-              aria-label="Search products"
-            />
-          </form>
+      <div className="auth-shell auth-shell--extra auth-shell--github">
+        {/* STX logo style extraordinary */}
+        <div className="auth-bg auth-bg--stx" aria-hidden="true">
+          <div className="auth-stx-mesh" />
+          <div className="auth-stx-grid" />
+          <div className="auth-logo-bg auth-logo-bg--main" />
+          <div className="auth-logo-bg auth-logo-bg--mark" />
+          <div className="auth-logo-bg auth-logo-bg--mark2" />
+          <div className="auth-logo-bg auth-logo-bg--mark3" />
+          <div className="auth-logo-glow" />
+          <div className="auth-logo-glow auth-logo-glow--2" />
+          <div className="auth-stx-ring" />
+        </div>
+        <header className="auth-topbar">
+          <Link to="/" className="auth-back" aria-label="Back to marketplace">
+            ← <span className="hide-sm">Marketplace</span><span className="show-sm">Back</span>
+          </Link>
           <span className="grow" />
-          <nav className="row public-links">
-            <NavLink to="/" end className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Market</NavLink>
-            <NavLink to="/nearby" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Nearby</NavLink>
-            <NavLink to="/ai" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>AI Shopper</NavLink>
-          </nav>
           <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
             {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          <Link to="/login" className="btn btn-sm">Sign in</Link>
-          <Link to="/register" className="btn btn-primary btn-sm join-cta">Get started</Link>
         </header>
-        <MainNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
-        <main className="public-content">{children}</main>
-        <footer className="public-footer">
-          <div className="row wrap" style={{ gap: 18, justifyContent: 'center' }}>
-            <Link to="/cms/about" className="muted">About</Link>
-            <Link to="/cms/terms" className="muted">Terms</Link>
-            <Link to="/cms/privacy" className="muted">Privacy</Link>
-            <Link to="/cms/buyer-protection" className="muted">Buyer protection</Link>
+        <main className="auth-main">{children}</main>
+      </div>
+    );
+  }
+
+  // ── Public chrome (logged out) ────────────────────────────────────────────
+  if (!user) {
+    const aiClass = isAiRoute ? ' public-shell--ai' : '';
+    return (
+      <div className={`public-shell${aiClass}`}>
+        {/* Two explicit rows. Everything used to sit on ONE flex line, which
+            needs ~609px; on a 360px phone the only shrinkable item is the
+            wordmark, so "ScottsTechX" collapsed to a single character wide and
+            stacked vertically down the page. Row 1 keeps the brand and the
+            theme switch together; row 2 gives the search bar the full width.
+            On desktop the two rows collapse back onto one line via CSS. */}
+        <header className="public-topbar">
+          <div className="public-topbar-row public-topbar-main">
+            <Link to="/" className="brand"><BrandMark /> <span className="brand-name">ScottsTechX</span></Link>
+            <span className="grow" />
+            <nav className="row public-links">
+              <NavLink to="/" end className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Market</NavLink>
+              <NavLink to="/nearby" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Nearby</NavLink>
+              <NavLink to="/ai" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>AI Shopper</NavLink>
+            </nav>
+            <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
+              {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            {/* "Get started" is 93px at the mobile type scale and pushes row 1
+                23px past a 360px screen. Show the short label on a phone and
+                the full one from 480px up — same link, same destination. */}
+            <Link to="/login" className="btn btn-sm public-cta">Sign in</Link>
+            <Link to="/register" className="btn btn-primary btn-sm public-cta">
+              <span className="cta-long">Get started</span>
+              <span className="cta-short">Join</span>
+            </Link>
           </div>
-          <p className="tiny muted-2 center mt-8">© {new Date().getFullYear()} ScottsTechX · Kampala, Uganda</p>
-        </footer>
+          {!isAiRoute && !isHomeRoute && !isSearchRoute && !isNearbyRoute && (
+            <form className="searchbar public-search" onSubmit={submitSearch}>
+              <Search size={17} className="muted-2" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search products, brands and stores…"
+                aria-label="Search products"
+              />
+            </form>
+          )}
+        </header>
+        {!isAiRoute && <MainNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />}
+        <main className={`public-content ${isAiRoute ? 'public-content--ai' : ''}`}>{children}</main>
+        {!isAiRoute && (
+          <footer className="public-footer">
+            <div className="row wrap" style={{ gap: 18, justifyContent: 'center' }}>
+              <Link to="/cms/about" className="muted">About</Link>
+              <Link to="/cms/terms" className="muted">Terms</Link>
+              <Link to="/cms/privacy" className="muted">Privacy</Link>
+              <Link to="/cms/buyer-protection" className="muted">Buyer protection</Link>
+            </div>
+            <p className="tiny muted-2 center mt-8">© {new Date().getFullYear()} ScottsTechX · Kampala, Uganda</p>
+          </footer>
+        )}
         <BottomNav role={null} counts={{ cart: 0, messages: 0, notifications: 0 }} />
       </div>
     );
@@ -152,7 +215,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sidebar = (
     <>
       <div className="sidebar-head">
-        <Link to={roleHome} className="brand"><span className="brand-logo">S</span> ScottsTechX</Link>
+        <Link to={roleHome} className="brand"><BrandMark /> ScottsTechX</Link>
         <button className="btn btn-ghost btn-icon drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close menu">
           <X size={18} />
         </button>
@@ -212,21 +275,23 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className={`sidebar ${drawerOpen ? 'open' : ''}`} aria-label="Main navigation">{sidebar}</aside>
       {drawerOpen && <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} aria-hidden />}
 
-      <div className="main">
+      <div className={`main ${isAiRoute ? 'main--ai' : ''}`}>
         <header className="topbar">
           <button className="btn btn-icon menu-btn" aria-label="Open menu" onClick={() => setDrawerOpen(true)}>
             <Menu size={19} />
           </button>
 
-          <form className="searchbar topbar-search" onSubmit={submitSearch}>
-            <Search size={16} className="muted-2" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search the whole store…"
-              aria-label="Search products"
-            />
-          </form>
+          {!isAiRoute && !isHomeRoute && !isSearchRoute && !isNearbyRoute && (
+            <form className="searchbar topbar-search" onSubmit={submitSearch}>
+              <Search size={16} className="muted-2" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search the whole store…"
+                aria-label="Search products"
+              />
+            </form>
+          )}
 
           <span className="grow" />
 
@@ -247,11 +312,19 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme">
             {resolved === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
+          {/* Logout lived only in the sidebar footer, and on a phone the
+              sidebar is a drawer behind the hamburger — so there was no way to
+              sign out without knowing to open it. Surface it in the topbar on
+              small screens; the sidebar keeps its own copy on desktop. */}
+          <button className="btn btn-icon show-sm" title="Log out" aria-label="Log out"
+            onClick={() => { logout(); navigate('/'); }}>
+            <LogOut size={17} />
+          </button>
         </header>
 
-        <MainNav role={user.role} counts={navCounts} />
+        {!isAiRoute && <MainNav role={user.role} counts={navCounts} />}
 
-        <main className="content page" key={location.pathname}>{children}</main>
+        <main className={`content page ${isAiRoute ? 'content--ai' : ''}`} key={location.pathname}>{children}</main>
         <BottomNav role={user.role} counts={navCounts} />
       </div>
     </div>

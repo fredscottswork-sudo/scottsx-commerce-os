@@ -22,7 +22,7 @@ export function BarChart({ data, height = 180 }: { data: BarDatum[]; height?: nu
         return (
           <g key={i}>
             <rect x={x} y={height - 20 - h} width={w} height={h} rx={2} fill={d.color ?? `url(#g${gid})`} />
-            <text x={x + w / 2} y={height - 7} textAnchor="middle" fontSize="6" fill="var(--text-2)">{d.label}</text>
+            <text x={x + w / 2} y={height - 7} textAnchor="middle" fontSize="11" fill="var(--text-2)">{d.label}</text>
           </g>
         );
       })}
@@ -129,7 +129,7 @@ export function AreaChart({
 
       {labels && labels.map((l, i) =>
         i % Math.ceil(labels.length / 7) === 0 ? (
-          <text key={i} x={x(i)} y={H - 5} textAnchor="middle" fontSize="10" fill="var(--text-3)">{l}</text>
+          <text key={i} x={x(i)} y={H - 5} textAnchor="middle" fontSize="11.5" fill="var(--text-3)">{l}</text>
         ) : null
       )}
     </svg>

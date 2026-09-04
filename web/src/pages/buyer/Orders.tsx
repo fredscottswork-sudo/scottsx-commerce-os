@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Package, ShoppingBag, Truck, CheckCircle2, XCircle, MessageCircle, Star, Receipt,
 } from 'lucide-react';
@@ -20,6 +20,7 @@ const DEAD = ['cancelled', 'refunded', 'failed'];
 
 export default function Orders() {
   const { toast } = useToast();
+  const nav = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -64,7 +65,7 @@ export default function Orders() {
     if (!o.sellerId) { toast('Seller unavailable for this order', 'warning'); return; }
     try {
       const r = await chatService.open(o.sellerId);
-      window.location.assign(`/messages/${r.conversation.id}`);
+      nav(`/messages/${r.conversation.id}`);
     } catch (e: any) {
       toast(e?.message || 'Could not open the chat', 'error');
     }
@@ -72,8 +73,8 @@ export default function Orders() {
 
   const submitRating = async () => {
     if (!rating) return;
-    const productId = (rating as any).productId as string | undefined;
-    if (!productId) { toast('This order has no linked product to rate', 'warning'); return; }
+    const productId = rating.productId;
+    if (!productId) { toast('This order has no linked product to rate — please contact support', 'warning'); return; }
     setSaving(true);
     try {
       await productService.rate(productId, stars, comment);

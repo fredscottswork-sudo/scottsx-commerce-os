@@ -7,6 +7,7 @@ import { useSeo } from './hooks/useSeo';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
+import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Home from './pages/Home';
 import ProductDetail from './pages/ProductDetail';
@@ -122,6 +123,8 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={user ? <RedirectByRole /> : <Login />} />
         <Route path="/register" element={user ? <RedirectByRole /> : <Register />} />
+        {/* Password recovery — both public */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         {/* Destination of the password-reset email link. Always public: the
             token is the credential, and the person's session is exactly what
             may be compromised. */}

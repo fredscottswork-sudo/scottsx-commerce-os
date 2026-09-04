@@ -38,7 +38,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute('data-theme', resolved);
     // Keep the browser UI (address bar / form controls) in sync.
     const meta = document.querySelector('meta[name="theme-color"]');
-    const color = resolved === 'dark' ? '#05070d' : '#f5f7fc';
+    const color = resolved === 'dark' ? '#0e1420' : '#f4f6fb';
     if (meta) meta.setAttribute('content', color);
   }, [resolved]);
 

@@ -91,7 +91,7 @@ export default function AdminDashboard() {
           hint={`${stats.conversations} conversations`} />
       </div>
 
-      <div className="grid grid-2 mt-16" style={{ gridTemplateColumns: '1.55fr 1fr' }}>
+      <div className="grid grid-2 dash-split-admin mt-16">
         {/* ── Revenue ───────────────────────────────────────────────── */}
         <section className="card">
           <div className="card-head">
@@ -129,7 +129,7 @@ export default function AdminDashboard() {
               );
             })}
           </div>
-          <p className="tiny muted-2 mt-12">{stats.products.total} products total</p>
+          <p className="tiny muted-2 mt-12">Catalogue overview</p>
         </section>
       </div>
 
@@ -177,7 +177,7 @@ export default function AdminDashboard() {
                       {s.storeName}
                       {s.verified && <BadgeCheck size={12} className="t-success" style={{ verticalAlign: -2, marginLeft: 4 }} />}
                     </div>
-                    <div className="tiny muted">{s.productCount} products · {Number(s.rating || 0).toFixed(1)}★</div>
+                    <div className="tiny muted">{Number(s.rating || 0).toFixed(1)}★ · {s.verified ? 'Verified' : 'Seller'}</div>
                   </div>
                   <span className="tiny semi">{formatUgx(s.revenueUgx)}</span>
                 </div>

@@ -1,6 +1,7 @@
 import {
   type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes,
-  type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect, useRef, useState,
+  type SelectHTMLAttributes, type TextareaHTMLAttributes, type ReactElement,
+  cloneElement, isValidElement, useEffect, useId, useRef, useState,
 } from 'react';
 import { X, Search, AlertTriangle, Inbox, Loader2 } from 'lucide-react';
 
@@ -32,12 +33,23 @@ export function Btn({
 export function Field({
   label, error, children, hint, required,
 }: { label: string; error?: string; hint?: string; required?: boolean; children: ReactNode }) {
+  // The label used to be a bare <label> sitting next to the control, which
+  // looks right but is not actually connected to it: screen readers announced
+  // an unlabelled field, and tapping the caption did not focus the input -
+  // which matters most on a phone, where the caption is a big easy target and
+  // the input is a small one. Give the child an id and point the label at it.
+  const autoId = useId();
+  const control = isValidElement(children) ? (children as ReactElement<any>) : null;
+  const controlId = control ? (control.props.id ?? autoId) : undefined;
+  const labelled = control && !control.props.id
+    ? cloneElement(control, { id: autoId })
+    : children;
   return (
     <div className="field">
-      <label>
+      <label htmlFor={controlId}>
         {label} {required && <span className="t-danger">*</span>}
       </label>
-      {children}
+      {labelled}
       {hint && !error && <span className="field-hint">{hint}</span>}
       {error && <span className="field-error">{error}</span>}
     </div>
@@ -490,7 +502,19 @@ export function Table<T>({
               style={{ animation: 'fadeInUp 300ms var(--ease-out) both', animationDelay: `${Math.min(i, 12) * 22}ms` }}
             >
               {columns.map((c) => (
-                <td key={c.key} className={c.hideSm ? 'hide-sm' : ''}>{c.render(r, i)}</td>
+                // data-label carries the column heading so the stacked mobile
+                // layout can print it beside the value; without it a stacked
+                // row is a meaningless list of bare values.
+                <td
+                  key={c.key}
+                  className={c.hideSm ? 'hide-sm' : ''}
+                  // Only a non-empty string heading becomes a label. The
+                  // actions column has an empty header, and data-label="" would
+                  // render an empty label box beside its buttons.
+                  data-label={typeof c.header === 'string' && c.header.trim() ? c.header : undefined}
+                >
+                  {c.render(r, i)}
+                </td>
               ))}
             </tr>
           ))}

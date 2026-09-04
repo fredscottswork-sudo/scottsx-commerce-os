@@ -84,10 +84,6 @@ export function MainNav({ role, counts }: Props) {
 
   const categories = facets?.categories ?? [];
   const brands = useMemo(() => (facets?.brands ?? []).slice(0, 8), [facets]);
-  const totalItems = useMemo(
-    () => categories.reduce((s, c) => s + (c.count || 0), 0),
-    [categories]
-  );
 
   const links: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
     { to: '/', label: 'Market', icon: <Store size={15} />, end: true },
@@ -149,7 +145,6 @@ export function MainNav({ role, counts }: Props) {
                   >
                     <span className="mega-ico">{categoryIcon(c.name)}</span>
                     <span className="grow ellipsis">{c.name}</span>
-                    <span className="mega-count">{c.count}</span>
                   </Link>
                 ))}
               </div>
@@ -170,7 +165,7 @@ export function MainNav({ role, counts }: Props) {
                     ))}
                   </div>
                   <Link to="/search" className="mega-all" role="menuitem">
-                    Browse all {totalItems} products →
+                    Browse all products →
                   </Link>
                 </div>
               )}

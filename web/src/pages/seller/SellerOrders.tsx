@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  Receipt, TrendingUp, Truck, CheckCircle2, MessageCircle, Clock, ShoppingBag,
+  Receipt, TrendingUp, Truck, CheckCircle2, MessageCircle, Clock,
 } from 'lucide-react';
 import { sellerService, chatService } from '../../api/services';
 import type { Order } from '../../api/types';
@@ -16,6 +16,7 @@ type TabId = 'new' | 'shipping' | 'completed' | 'all';
 
 export default function SellerOrders() {
   const { toast } = useToast();
+  const nav = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,11 +63,11 @@ export default function SellerOrders() {
   const pendingValue = groups.new.reduce((s, o) => s + o.amount * (o.quantity || 1), 0);
 
   const messageBuyer = async (o: Order) => {
-    const buyerId = (o as any).buyerId as string | undefined;
-    if (!buyerId) { toast('Buyer contact unavailable for this order', 'warning'); return; }
+    const buyerId = o.buyerId;
+    if (!buyerId) { toast('Buyer contact unavailable for this order — try refreshing', 'warning'); return; }
     try {
       const r = await chatService.open(buyerId);
-      window.location.assign(`/messages/${r.conversation.id}`);
+      nav(`/messages/${r.conversation.id}`);
     } catch (e: any) {
       toast(e?.message || 'Could not open the chat', 'error');
     }
@@ -138,16 +139,6 @@ export default function SellerOrders() {
               ),
             },
             { key: 'buyer', header: 'Buyer', hideSm: true, render: (o) => o.buyerName || '—' },
-            {
-              key: 'delivery', header: 'Deliver to', hideSm: true,
-              render: (o) => (
-                <div className="tiny" style={{ maxWidth: 190 }}>
-                  <div className="ellipsis">{o.deliveryAddress || 'Address not provided'}</div>
-                  {o.deliveryPhone && <div className="muted">{o.deliveryPhone}</div>}
-                  {o.deliveryNote && <div className="muted ellipsis">Note: {o.deliveryNote}</div>}
-                </div>
-              ),
-            },
             { key: 'qty', header: 'Qty', hideSm: true, render: (o) => o.quantity },
             { key: 'amount', header: 'Amount', render: (o) => <span className="semi">{formatUgx(o.amount * (o.quantity || 1))}</span> },
             { key: 'status', header: 'Status', render: (o) => <StatusBadge status={o.status} /> },

@@ -25,7 +25,38 @@ import {
 } from './agents.js';
 import { parseIntent, retrieveProducts, fmtUgx } from './catalog-context.js';
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+/**
+ * The chat-completions endpoint.
+ *
+ * OpenRouter by default, but every major provider (OpenAI, Groq, Together,
+ * DeepInfra, a self-hosted vLLM or Ollama) speaks the same
+ * /chat/completions shape, so pointing LLM_BASE_URL at one of them is enough
+ * to switch — no code change. This was hardcoded, which meant the only way to
+ * use a different provider was to edit the source.
+ *
+ * Set the full endpoint, e.g.
+ *   LLM_BASE_URL=https://api.openai.com/v1/chat/completions
+ *   LLM_BASE_URL=https://api.groq.com/openai/v1/chat/completions
+ */
+function openRouterUrl(): string {
+  return process.env.LLM_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions';
+}
+
+/**
+ * How long to wait for the model before giving up and answering from the
+ * catalogue instead.
+ *
+ * 25s suits a fast chat model, but reasoning models (GLM, DeepSeek-R1, QwQ)
+ * think before they answer and can legitimately take longer — with a fixed
+ * 25s cap they'd get cut off mid-thought and every reply would silently come
+ * from the offline composer. Clamped to 5–120s so a typo can't hang a request
+ * or disable the timeout entirely.
+ */
+function llmTimeoutMs(): number {
+  const raw = Number(process.env.LLM_TIMEOUT_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return 25_000;
+  return Math.min(Math.max(raw, 5_000), 120_000);
+}
 const APIFREELLM_URL = 'https://apifreellm.com/api/v1/chat';
 
 export { AGENTS };
@@ -72,7 +103,10 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
   const meta = {
     screen,
     agent: { id: agent.id, name: agent.name, tagline: agent.tagline },
-    products: ctx.products,
+    // When the strict search misses we still talk about the relaxed matches in
+    // the answer text, so ship those same products as cards — otherwise the
+    // reply names items the shopper has no way to tap through to.
+    products: ctx.products.length ? ctx.products : ctx.fallbackProducts,
     grounded: true,
   };
 
@@ -106,6 +140,53 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
   }
 }
 
+/**
+ * Pull the user-facing answer out of an OpenAI-style message.
+ *
+ * Reasoning models (GLM, DeepSeek-R1, QwQ, o1-style endpoints) don't behave
+ * like plain chat models: they either put their thinking in a separate
+ * `reasoning_content` field and the answer in `content`, or they inline the
+ * thinking in `content` wrapped in <think> tags. Two things go wrong if we
+ * just read `content`:
+ *
+ *   1. The private chain-of-thought gets shown to the shopper.
+ *   2. When a model puts everything in `reasoning_content` and leaves
+ *      `content` empty, we treat a perfectly good answer as a failure and
+ *      fall back offline.
+ *
+ * So: strip the thinking, and only use `reasoning_content` as a last resort
+ * when there's no real content — a partial answer beats no answer.
+ */
+export function extractReply(message: unknown): string {
+  const msg = (message ?? {}) as Record<string, unknown>;
+
+  // `content` is usually a string but the spec allows an array of parts.
+  const raw = Array.isArray(msg.content)
+    ? msg.content
+        .map((part) =>
+          typeof part === 'string' ? part : String((part as Record<string, unknown>)?.text ?? '')
+        )
+        .join('')
+    : String(msg.content ?? '');
+
+  const cleaned = stripThinking(raw);
+  if (cleaned) return cleaned;
+
+  // Nothing usable in `content` — salvage the reasoning field rather than
+  // throwing away a response the provider already charged us for.
+  return stripThinking(String(msg.reasoning_content ?? msg.reasoning ?? ''));
+}
+
+/** Remove <think>/<reasoning> blocks, including an unclosed trailing one. */
+function stripThinking(input: string): string {
+  return input
+    .replace(/<(think|thinking|reasoning)>[\s\S]*?<\/\1>/gi, '')
+    // A truncated response can open a think block and never close it; drop
+    // everything after it so we never surface half a thought.
+    .replace(/<(think|thinking|reasoning)>[\s\S]*$/i, '')
+    .trim();
+}
+
 async function askOpenRouter(
   system: string,
   userContent: string,
@@ -122,9 +203,9 @@ async function askOpenRouter(
   ];
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+  const timeout = setTimeout(() => controller.abort(), llmTimeoutMs());
   try {
-    const res = await fetch(OPENROUTER_URL, {
+    const res = await fetch(openRouterUrl(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
@@ -140,7 +221,7 @@ async function askOpenRouter(
       throw new ServiceUnavailableError(`OpenRouter error ${res.status}: ${text.slice(0, 200)}`);
     }
     const data = await res.json();
-    const text = String(data?.choices?.[0]?.message?.content ?? '').trim();
+    const text = extractReply(data?.choices?.[0]?.message);
     if (!text) throw new ServiceUnavailableError('OpenRouter returned an empty response');
     return { text, provider: 'openrouter', model };
   } finally {
@@ -178,9 +259,11 @@ async function askApiFreeLlm(
     throw new ServiceUnavailableError(`apifreellm error ${res.status}: ${msg.slice(0, 200)}`);
   }
 
-  const text = String(
-    data.message ?? data.data?.message ?? data.choices?.[0]?.message?.content ?? data.text ?? ''
-  ).trim();
+  const text = stripThinking(
+    String(
+      data.message ?? data.data?.message ?? data.choices?.[0]?.message?.content ?? data.text ?? ''
+    )
+  );
   if (!text) throw new ServiceUnavailableError('apifreellm returned an empty response');
   return { text, provider: 'apifreellm', model: String(data.model ?? 'apifreellm') };
 }
@@ -274,7 +357,7 @@ async function describeImage(imageUrl: string): Promise<string> {
   if (!key) return '';
   const model = process.env.AI_VISION_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct';
 
-  const res = await fetch(OPENROUTER_URL, {
+  const res = await fetch(openRouterUrl(), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,
@@ -301,7 +384,8 @@ async function describeImage(imageUrl: string): Promise<string> {
   });
   if (!res.ok) return '';
   const data = await res.json();
-  return String(data?.choices?.[0]?.message?.content ?? '').trim().slice(0, 80);
+  // Vision models reason too — strip the thinking or it becomes the caption.
+  return extractReply(data?.choices?.[0]?.message).slice(0, 80);
 }
 
 // ── Seller listing generation ───────────────────────────────────────────────

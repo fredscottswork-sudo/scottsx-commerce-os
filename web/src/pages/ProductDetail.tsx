@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Star, Heart, MessageCircle, ExternalLink } from 'lucide-react';
 import { productService, paymentService, chatService, buyerService } from '../api/services';
 import type { Product } from '../api/types';
@@ -7,12 +7,13 @@ import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { Btn, Card, ErrorBox, Loading, Modal } from '../components/ui';
-import { PRODUCT_IMAGE_FALLBACK } from '../components/ProductCard';
+import { useSeo } from '../hooks/useSeo';
+import { IMAGE_FALLBACK } from '../components/ProductCard';
+import { resolveMediaUrl } from '../api/client';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [product, setProduct] = useState<Product | null>(null);
@@ -23,21 +24,22 @@ export default function ProductDetail() {
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
-    let alive = true;
     setLoading(true);
     setError('');
-    setProduct(null);
-    if (!id) {
-      setError('Product not found');
-      setLoading(false);
-      return () => { alive = false; };
-    }
-    productService.byId(id)
-      .then((r) => { if (alive) setProduct(r.product); })
-      .catch((e: any) => { if (alive) setError(e?.message || 'Could not load product'); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    productService.byId(id!).then((r) => setProduct(r.product)).catch((e: any) => setError(e.message)).finally(() => setLoading(false));
   }, [id]);
+
+  // A shared listing should show what is for sale and what it costs. Falling
+  // back to the site defaults while loading avoids flashing an empty title.
+  useSeo({
+    title: product ? product.title : undefined,
+    description: product
+      ? `${formatUgx(product.priceMinor)} — ${product.description || product.title}. ` +
+        `Available from ${product.seller?.name || 'a verified seller'} on ScottsTechX.`
+      : undefined,
+    image: product?.imageUrl ? resolveMediaUrl(product.imageUrl) : undefined,
+    type: 'product',
+  });
 
   async function buy() {
     if (!user) { navigate('/login'); return; }
@@ -74,54 +76,56 @@ export default function ProductDetail() {
   }
 
   if (loading) return <Loading />;
-  if (error || !product) return <ErrorBox message={error || 'Product not found'} onRetry={() => window.location.reload()} />;
+  if (error || !product) return <ErrorBox message={error} onRetry={() => window.location.reload()} />;
   const p = product;
-  const requestedBack = (location.state as { from?: string } | null)?.from;
-  const backTo = requestedBack?.startsWith('/') && !requestedBack.startsWith('//') ? requestedBack : '/';
-  const maxQuantity = Math.min(Math.max(p.stockQuantity, 1), 5);
-  const soldOut = p.stockQuantity <= 0;
 
   return (
     <>
-      <Link to={backTo} className="muted">← Back to marketplace</Link>
-      <div className="grid grid-2 mt-16" style={{ gridTemplateColumns: 'minmax(0, 420px) 1fr' }}>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Link to="/" className="muted">← Back to marketplace</Link>
+      {/* The columns MUST come from the stylesheet, not an inline style. This
+          was `style={{gridTemplateColumns:'minmax(0,420px) 1fr'}}`, and an
+          inline declaration outranks a media query, so the phone rule that
+          stacks .grid-2 into one column could never apply. The image track
+          collapsed to 31px at 360px wide and the title wrapped one letter per
+          line — the "weird vertical page". .product-detail stacks below 900px
+          and only becomes two columns above it. */}
+      <div className="product-detail mt-16">
+        <div className="card product-gallery">
           <img
-            src={p.imageUrl || PRODUCT_IMAGE_FALLBACK}
+            className="product-hero-img"
+            src={p.imageUrl || IMAGE_FALLBACK}
             alt={p.title}
-            onError={(e) => { e.currentTarget.src = PRODUCT_IMAGE_FALLBACK; }}
-            style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', display: 'block' }}
+            /* A blocked or dead image host otherwise leaves a large empty
+               panel at the top of the page. */
+            onError={(e) => { (e.currentTarget as HTMLImageElement).src = IMAGE_FALLBACK; }}
           />
         </div>
-        <div>
+        <div className="product-info">
           <div className="row wrap">
             {p.isFlashDeal && <span className="badge badge-red">FLASH -{p.discountPercent}%</span>}
             <span className="badge badge-blue">{p.category}</span>
-            {soldOut
-              ? <span className="badge badge-red">Sold out</span>
-              : p.stockQuantity > 5
-                ? <span className="badge badge-green">In stock ({p.stockQuantity})</span>
-                : <span className="badge badge-amber">Only {p.stockQuantity} left</span>}
+            {p.stockQuantity > 5 ? <span className="badge badge-green">In stock ({p.stockQuantity})</span> : <span className="badge badge-amber">Only {p.stockQuantity} left</span>}
           </div>
-          <h1 style={{ margin: '10px 0 6px', fontSize: 26 }}>{p.title}</h1>
+          <h1 className="product-title" style={{ margin: '10px 0 6px', fontSize: 26 }}>{p.title}</h1>
           <div className="row muted mb-16">
             <Star size={15} style={{ color: 'var(--warning)' }} /> {p.rating} · {p.ratingCount} ratings · {p.brand}
           </div>
-          <div style={{ fontSize: 30, fontWeight: 800, color: 'var(--primary)' }}>
-            {formatUgx(p.priceMinor)}
+          {/* Each amount is its own inline-block so "UGX 4,800,000" can never
+              be split across two lines — the old price used to break after
+              "UGX", leaving a stray strikethrough hanging beside the new one. */}
+          <div className="product-price-row">
+            <span className="product-price" style={{ fontSize: 30, fontWeight: 800, color: 'var(--primary)' }}>
+              {formatUgx(p.priceMinor)}
+            </span>
             {p.oldPriceMinor && p.oldPriceMinor > p.priceMinor && (
-              <span style={{ fontSize: 16, color: 'var(--text-2)', textDecoration: 'line-through', fontWeight: 400, marginLeft: 10 }}>{formatUgx(p.oldPriceMinor)}</span>
+              <span className="product-price-old">{formatUgx(p.oldPriceMinor)}</span>
             )}
           </div>
           <p className="muted mt-16">{p.description}</p>
 
           <Card className="mt-16">
             <div className="row">
-              <span className="avatar">
-                {p.seller.logoUrl
-                  ? <img src={p.seller.logoUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                  : (p.seller.name || 'S')[0].toUpperCase()}
-              </span>
+              <span className="avatar">{p.seller.name[0]}</span>
               <div className="grow">
                 <div className="row">
                   <strong>{p.seller.name}</strong>
@@ -135,17 +139,14 @@ export default function ProductDetail() {
 
           <div className="row mt-16">
             <label className="muted" style={{ fontSize: 13 }}>Qty</label>
-            <select className="select" style={{ width: 70 }} value={quantity} disabled={soldOut}
-              onChange={(e) => setQuantity(Number(e.target.value))}>
-              {Array.from({ length: maxQuantity }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+            <select className="select" style={{ width: 70 }} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))}>
+              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
 
-          <div className="row mt-16 wrap">
-            <Btn variant="primary" size="lg" onClick={buy} disabled={buying || soldOut} style={{ flex: 1, minWidth: 180 }}>
-              {soldOut ? 'Sold out' : buying ? 'Creating payment…' : `Buy now · ${formatUgx(p.priceMinor * quantity)}`}
+          <div className="row mt-16 wrap product-actions">
+            <Btn variant="primary" size="lg" onClick={buy} disabled={buying} style={{ flex: 1, minWidth: 180 }}>
+              {buying ? 'Creating payment…' : `Buy now · ${formatUgx(p.priceMinor * quantity)}`}
             </Btn>
             <Btn size="lg" onClick={messageSeller}><MessageCircle size={18} /> Message seller</Btn>
             <Btn size="lg" onClick={toggleSaved} aria-label="Save"><Heart size={18} /></Btn>
