@@ -1,4 +1,4 @@
-import { type MouseEvent } from 'react';
+import { type MouseEvent, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, ShoppingCart, Heart, MapPin, Eye } from 'lucide-react';
 import type { Product } from '../api/types';
@@ -13,7 +13,7 @@ export const IMAGE_FALLBACK =
     `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#121a2f"/><text x="50%" y="50%" fill="#5a6a8c" font-family="sans-serif" font-size="20" text-anchor="middle">No image</text></svg>`
   );
 
-export function ProductCard({
+export const ProductCard = memo(function ProductCard({
   product, index = 0, onAddToCart, onToggleFavorite, isFavorite, showStatus, compact,
 }: {
   product: Product;
@@ -37,7 +37,7 @@ export function ProductCard({
     <Link
       to={`/product/${product.id}`}
       className="pcard stagger-item"
-      style={{ '--i': index } as React.CSSProperties}
+      style={{ '--i': index, contentVisibility: 'auto', containIntrinsicSize: '300px' } as React.CSSProperties}
       aria-label={product.title}
     >
       <div className="pcard-media">
@@ -47,6 +47,7 @@ export function ProductCard({
           alt={product.title}
           loading="lazy"
           decoding="async"
+          fetchPriority={index < 4 ? 'high' : 'low' as any}
           onError={(e) => { (e.currentTarget as HTMLImageElement).src = IMAGE_FALLBACK; }}
         />
 
@@ -112,9 +113,9 @@ export function ProductCard({
       </div>
     </Link>
   );
-}
+});
 
-export function ProductGrid({
+export const ProductGrid = memo(function ProductGrid({
   products, onAddToCart, onToggleFavorite, favoriteSellerIds, showStatus,
 }: {
   products: Product[];
@@ -138,4 +139,4 @@ export function ProductGrid({
       ))}
     </div>
   );
-}
+});

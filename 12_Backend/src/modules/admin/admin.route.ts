@@ -25,12 +25,16 @@ import { requireAuth, requireAdmin } from '../../auth.js';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../errors.js';
 import { notify, notifyFavoritesOfNewProduct } from '../notifications/notify.service.js';
 
+let statsCache: { at: number; value: any } | null = null;
+const STATS_TTL = 30_000;
+
 export default async function registerAdminRoute(app: FastifyInstance) {
   const pool = getPool();
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   app.get('/api/v1/admin/stats', { preHandler: requireAuth }, async (request) => {
     requireAdmin(request);
+    if (statsCache && Date.now() - statsCache.at < STATS_TTL) return statsCache.value;
     const [users, products, orders, conversations, recentUsers, queue, topSellers, salesSeries] =
       await Promise.all([
         pool.query(
@@ -95,7 +99,7 @@ export default async function registerAdminRoute(app: FastifyInstance) {
         ),
       ]);
 
-    return {
+    const result = {
       stats: {
         users: users.rows[0],
         products: products.rows[0],
@@ -107,6 +111,8 @@ export default async function registerAdminRoute(app: FastifyInstance) {
       topSellers: topSellers.rows.map((r) => ({ ...r, revenueUgx: Number(r.revenueUgx) })),
       salesSeries: salesSeries.rows.map((r) => ({ ...r, revenue: Number(r.revenue) })),
     };
+    statsCache = { at: Date.now(), value: result };
+    return result;
   });
 
   // ── Users ─────────────────────────────────────────────────────────────────
@@ -335,6 +341,7 @@ export default async function registerAdminRoute(app: FastifyInstance) {
       imageUrl: product.imageUrl,
       priceMinor: product.priceMinor,
     });
+    statsCache = null;
 
     return { ok: true, product, followersNotified: notified };
   });
@@ -363,6 +370,7 @@ export default async function registerAdminRoute(app: FastifyInstance) {
       type: 'product_rejected',
       data: { screen: 'seller_product', id: product.id },
     });
+    statsCache = null;
     return { ok: true, product };
   });
 
@@ -390,6 +398,7 @@ export default async function registerAdminRoute(app: FastifyInstance) {
       type: 'product_rejected',
       data: { screen: 'seller_product', id: product.id },
     });
+    statsCache = null;
     return { ok: true, product };
   });
 
@@ -450,6 +459,7 @@ export default async function registerAdminRoute(app: FastifyInstance) {
         }).catch(() => undefined);
       }
     }
+    statsCache = null;
     return { ok: true, affected, followersNotified };
   });
 
@@ -473,6 +483,7 @@ export default async function registerAdminRoute(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const res = await pool.query('DELETE FROM products WHERE id = $1 RETURNING id', [id]);
     if ((res.rowCount ?? 0) === 0) throw new NotFoundError('Product not found');
+    statsCache = null;
     return { ok: true };
   });
 

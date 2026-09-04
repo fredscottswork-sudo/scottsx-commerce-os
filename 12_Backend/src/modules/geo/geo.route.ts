@@ -37,13 +37,25 @@ function sanitizeLocality(input: string | null | undefined): string | null {
   return trimmed || null;
 }
 
+const geoCache = new Map<string, { at: number; value: ReverseResult | null }>();
+const GEO_CACHE_TTL = 60_000;
+function geoCacheKey(lat: number, lng: number): string {
+  return `${Math.round(lat * 10000) / 10000}:${Math.round(lng * 10000) / 10000}`;
+}
+
 /**
  * Resolve place with proper separation of GPS vs village naming
  * - GPS is used for distance, never for village alone
  * - Inspects complete address response
  * - Returns confidence and uncertainty flags
+ * - Cached 60s for speed
  */
 async function resolvePlace(lat: number, lng: number, accuracyM?: number): Promise<ReverseResult | null> {
+  const key = geoCacheKey(lat, lng);
+  const cached = geoCache.get(key);
+  if (cached && Date.now() - cached.at < GEO_CACHE_TTL && (accuracyM === undefined || accuracyM > 100)) {
+    return cached.value;
+  }
   // Validate coords
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
@@ -52,91 +64,83 @@ async function resolvePlace(lat: number, lng: number, accuracyM?: number): Promi
   const viaOffline = reverseGeocode(lat, lng, accuracyM);
 
   // If GPS accuracy is very poor (>1km), offline is already uncertain
-  // Don't waste time on Google if accuracy is terrible — return offline with low confidence
   if (accuracyM !== undefined && accuracyM > 1000) {
     if (viaOffline) {
-      return {
+      const res = {
         ...viaOffline,
         confidence: Math.min(viaOffline.confidence, 0.2),
         isUncertain: true,
         requiresConfirmation: true,
         displayLabel: viaOffline.city ? `Location near ${viaOffline.city}` : `Location detected — confirm your village`,
       };
+      geoCache.set(key, { at: Date.now(), value: res });
+      return res;
     }
   }
 
-  // Try Google if configured — it's more reliable for containing area vs nearest
+  // Try Google if configured
   if (googleGeocoderConfigured()) {
     try {
-      // Race with timeout: if Google is slow (>800ms), return offline quickly
-      // This keeps Nearby fast — GPS distance calc doesn't need village
       const googlePromise = googleReverseGeocode(lat, lng, accuracyM);
       const timeoutMs = accuracyM !== undefined && accuracyM <= 100 ? 800 : 500;
       const timeout = new Promise<null>((res) => setTimeout(() => res(null), timeoutMs));
       const viaGoogle = await Promise.race([googlePromise, timeout]);
 
       if (viaGoogle) {
-        // For Uganda: prioritize most appropriate mapped locality
-        // Google returns containing area, not nearest — that's correct
-        // If Google has village but offline also has village, check if they agree
-        // If they disagree and are both plausible (close), mark uncertain
-
-        // If offline has high confidence and Google differs, we may be between villages
+        let result: ReverseResult;
         if (viaOffline?.village && viaGoogle.village && viaOffline.village !== viaGoogle.village) {
-          // Check if offline alternatives include Google's village — means we're between villages
           const offlineAlts = viaOffline.alternatives?.map(a => a.name) ?? [];
           if (offlineAlts.includes(viaGoogle.village) || viaGoogle.alternatives?.some(a => a.name === viaOffline.village)) {
-            // Uncertain between two nearby villages
-            return {
+            result = {
               ...viaGoogle,
               confidence: Math.min(viaGoogle.confidence, viaOffline.confidence, 0.5),
               isUncertain: true,
               requiresConfirmation: true,
               displayLabel: `Location near ${viaGoogle.village}`,
-              alternatives: [
-                ...(viaGoogle.alternatives ?? []),
-                ...(viaOffline.alternatives ?? []),
-              ].slice(0, 5),
+              alternatives: [...(viaGoogle.alternatives ?? []), ...(viaOffline.alternatives ?? [])].slice(0, 5),
+            };
+          } else {
+            result = {
+              ...viaGoogle,
+              confidence: Math.min(viaGoogle.confidence, 0.7),
+              isUncertain: true,
+              requiresConfirmation: true,
+              displayLabel: `Location near ${viaGoogle.village}`,
             };
           }
-          // Different but not in alternatives — prefer Google (containing area) but with lower confidence
-          return {
+        } else if (viaGoogle.isUncertain) {
+          result = viaGoogle;
+        } else {
+          result = {
             ...viaGoogle,
-            confidence: Math.min(viaGoogle.confidence, 0.7),
-            isUncertain: true,
-            requiresConfirmation: true,
-            displayLabel: `Location near ${viaGoogle.village}`,
+            alternatives: [...(viaGoogle.alternatives ?? []), ...(viaOffline?.alternatives?.filter(a => a.name !== viaGoogle.village) ?? [])].slice(0, 5),
           };
         }
-
-        // If Google is uncertain itself, keep its uncertainty flags
-        if (viaGoogle.isUncertain) {
-          return viaGoogle;
-        }
-
-        // Google confident — use it, but keep offline as alternative context
-        return {
-          ...viaGoogle,
-          alternatives: [
-            ...(viaGoogle.alternatives ?? []),
-            ...(viaOffline?.alternatives?.filter(a => a.name !== viaGoogle.village) ?? []),
-          ].slice(0, 5),
-        };
+        geoCache.set(key, { at: Date.now(), value: result });
+        if (geoCache.size > 500) { const first = geoCache.keys().next().value; if (first) geoCache.delete(first); }
+        return result;
       }
-    } catch {
-      // Fall through to offline
-    }
+    } catch {}
   }
 
   // Fallback to offline
-  if (viaOffline) return viaOffline;
+  if (viaOffline) {
+    geoCache.set(key, { at: Date.now(), value: viaOffline });
+    if (geoCache.size > 500) { const first = geoCache.keys().next().value; if (first) geoCache.delete(first); }
+    return viaOffline;
+  }
 
   // Last resort: try Google without timeout
   try {
     const viaGoogle = await googleReverseGeocode(lat, lng, accuracyM);
-    if (viaGoogle) return viaGoogle;
+    if (viaGoogle) {
+      geoCache.set(key, { at: Date.now(), value: viaGoogle });
+      if (geoCache.size > 500) { const first = geoCache.keys().next().value; if (first) geoCache.delete(first); }
+      return viaGoogle;
+    }
   } catch {}
 
+  geoCache.set(key, { at: Date.now(), value: null });
   return null;
 }
 

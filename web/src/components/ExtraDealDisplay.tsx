@@ -1,51 +1,41 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, memo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Flame, Clock, Zap, TrendingUp, ShoppingCart, Eye, Sparkles } from 'lucide-react';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 
+// Throttled countdown — updates every 1s but only for visible timer, not whole page
 function useCountdown(targetMs: number) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    let alive = true;
+    const id = setInterval(() => { if (alive) setNow(Date.now()); }, 1000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
   const diff = Math.max(0, targetMs - now);
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  const s = Math.floor((diff % 60000) / 1000);
-  return { diff, h, m, s, done: diff <= 0 };
+  return { h: Math.floor(diff / 3600000), m: Math.floor((diff % 3600000) / 60000), s: Math.floor((diff % 60000) / 1000) };
 }
 
-export default function ExtraDealDisplay({ deals }: { deals: Product[] }) {
+export default memo(function ExtraDealDisplay({ deals }: { deals: Product[] }) {
   const [active, setActive] = useState(0);
   const timerRef = useRef<number | null>(null);
   const items = useMemo(() => deals.slice(0, 6), [deals]);
   const featured = items[active] || null;
 
-  // Auto-rotate every 5.5s
   useEffect(() => {
     if (items.length <= 1) return;
-    timerRef.current = window.setInterval(() => {
-      setActive((i) => (i + 1) % items.length);
-    }, 5500);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    timerRef.current = window.setInterval(() => setActive((i) => (i + 1) % items.length), 7000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [items.length]);
 
-  // Reset timer on manual select
-  const select = (i: number) => {
+  const select = useCallback((i: number) => {
     setActive(i);
     if (timerRef.current) {
       clearInterval(timerRef.current);
-      timerRef.current = window.setInterval(() => {
-        setActive((v) => (v + 1) % items.length);
-      }, 5500);
+      timerRef.current = window.setInterval(() => setActive((v) => (v + 1) % items.length), 7000);
     }
-  };
+  }, [items.length]);
 
-  // 4-hour countdown from mount, resets when featured changes
   const target = useMemo(() => Date.now() + 4 * 3600 * 1000 + 23 * 60 * 1000 + 42 * 1000, [featured?.id]);
   const cd = useCountdown(target);
 
@@ -56,14 +46,10 @@ export default function ExtraDealDisplay({ deals }: { deals: Product[] }) {
   const sold = Math.max(3, 100 - featured.stockQuantity);
 
   return (
-    <section className="edeal" aria-label="Extraordinary deals">
-      {/* bg */}
+    <section className="edeal" aria-label="Extraordinary deals" style={{ contentVisibility: 'auto', containIntrinsicSize: '320px' } as any}>
       <div className="edeal-bg" aria-hidden="true">
         <div className="edeal-orb edeal-orb-1" />
         <div className="edeal-orb edeal-orb-2" />
-        <div className="edeal-orb edeal-orb-3" />
-        <div className="edeal-grid" />
-        <div className="edeal-noise" />
       </div>
 
       <div className="edeal-head">
@@ -161,4 +147,4 @@ export default function ExtraDealDisplay({ deals }: { deals: Product[] }) {
       </div>
     </section>
   );
-}
+})

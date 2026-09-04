@@ -5558,3 +5558,96 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   .place-banner { padding: 5px 6px !important; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PERFORMANCE LAYER — speed optimizations (appended last so it wins)
+   Goals: reduce paint, composite, layout work on low-end phones,
+          defer offscreen rendering, cut expensive filters.
+
+   • content-visibility:auto defers rendering of offscreen sections
+   • contain:layout style paint isolates heavy cards
+   • backdrop-filter is expensive on Mali/Adreno — disable on mobile
+   • will-change removed except where needed (causes memory bloat)
+   • images: content-visibility + decoding hints
+   • animations: keep only transform/opacity, drop blur/box-shadow anims on mobile
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Offscreen deferral — browser skips rendering until near viewport */
+.pgrid, .vstores, .edeal, .feature-grid, .table-wrap, .search-layout, .ai-console, .checkout-layout, .support-layout {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+}
+
+/* Cards are isolated — style/layout changes don't propagate */
+.pcard, .vstore-card, .store-card, .stat-card, .card, .edeal-featured, .edeal-item, .track-card, .seller-chip, .cat-tile {
+  contain: layout style paint;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
+/* Images: tell browser to decode async, avoid blocking */
+.pcard-img, .vstore-logo img, .edeal-featured-media img, .edeal-item-media img, .product-hero-img, .review-img {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
+}
+
+/* Promote scrolling containers to own layer (GPU) */
+.vstores-track, .hscroll, .chip-row, .category-row, .mainnav-inner, .bottomnav {
+  will-change: scroll-position;
+  transform: translateZ(0);
+}
+
+/* Reduce expensive effects on mobile */
+@media (max-width: 960px) {
+  .topbar, .public-topbar, .mainnav, .bottomnav, .home-searchbar, .card-glass, .modal-backdrop, .auth-form--solo .auth-card, .auth-card--extra {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .feature-card-bg, .madvert-orb, .home-searchbar-orb, .edeal-orb, .auth-stx-mesh, .auth-logo-glow, .auth-stx-grid, .auth-logo-bg--main, .auth-logo-bg--mark, .vstores::before {
+    filter: none !important;
+    animation: none !important;
+  }
+  .edeal-grid, .madvert-grid, .home-searchbar-grid, .auth-stx-grid { display: none !important; }
+  .edeal-noise { display: none !important; }
+  /* Cut shadow complexity on mobile — box-shadow is expensive */
+  .pcard:hover, .vstore-card:hover, .feature-card:hover, .edeal-featured:hover { box-shadow: none !important; }
+}
+
+/* Throttle animations on low-end: only transform/opacity, longer durations */
+@media (max-width: 620px) {
+  .stagger > *, .stagger-fast > *, .stagger-item, .card, .feature-card, .vstore-card, .edeal-featured, .edeal-item {
+    animation-duration: 0.24s !important;
+    animation-delay: 0s !important;
+  }
+  .feature-card::after, .vstore-card::before, .vstore-card::after, .edeal-shine, .madvert-shine { display: none !important; }
+  .feature-card-icon, .madvert-logo, .edeal-icon, .edeal-badge, .vstore-logo, .vstore-check, .vstore-rating svg, .vstore-distance, .edeal-live-dot, .madvert-live, .madvert-sub-dot, .home-searchbar-orb, .madvert-orb, .edeal-orb {
+    animation: none !important;
+  }
+}
+
+/* Prefer reduced data: disable heavy backgrounds */
+@media (prefers-reduced-data: reduce) {
+  .feature-card-bg { background-image: none !important; }
+  .edeal-bg, .madvert-bg, .home-searchbar-bg, .auth-bg--stx { display: none !important; }
+}
+
+/* Image rendering: crisp-edges for thumbnails is faster than smooth */
+.pcard-img, .vstore-logo img, .edeal-item-media img { image-rendering: -webkit-optimize-contrast; }
+
+/* Contain layout thrashing from dynamic content */
+.pgrid { contain: layout; }
+.vstores-track { contain: layout style; }
+
+/* Critical: ensure first 4 product images are high priority via CSS hint */
+.pcard:nth-child(-n+4) .pcard-img { content-visibility: visible; }
+
+/* Reduce repaints: static will-change removal */
+* { will-change: auto; }
+.vstores-track, .hscroll, .chip-row { will-change: scroll-position; }
+
+/* Layer promotion only for visible animating elements */
+.pcard:hover, .vstore-card:hover { will-change: transform; }
+
+/* Font-display: optional for faster first paint (if @import fails) */
+@font-face { font-family: 'Sora'; font-display: swap; }
+@font-face { font-family: 'Inter'; font-display: swap; }
+

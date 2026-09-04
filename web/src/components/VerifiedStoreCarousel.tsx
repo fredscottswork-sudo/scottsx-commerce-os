@@ -13,9 +13,9 @@
  * Touch / trackpad is primary: real overflow-x scroller with snap so momentum
  * and swipe stay native. Arrows are progressive enhancement.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, memo } from 'react';
 import { Link } from 'react-router-dom';
-import { BadgeCheck, ChevronLeft, ChevronRight, MapPin, Package, Star, Sparkles } from 'lucide-react';
+import { BadgeCheck, ChevronLeft, ChevronRight, MapPin, Star, Sparkles } from 'lucide-react';
 import type { NearbySeller } from '../api/types';
 
 function initials(name: string): string {
@@ -34,69 +34,52 @@ export function formatDistance(km: number | null | undefined): string | null {
   return `${km.toFixed(1)} km`;
 }
 
-function StoreLogo({ seller, index }: { seller: NearbySeller; index: number }) {
+const StoreLogo = memo(function StoreLogo({ seller, index }: { seller: NearbySeller; index: number }) {
   const [broken, setBroken] = useState(false);
   const src = seller.logoUrl;
   if (src && !broken) {
     return (
-      <span className="vstore-logo" style={{ ['--i' as any]: index }}>
-        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
+      <span className="vstore-logo" style={{ ['--i' as any]: index, contentVisibility: 'auto', containIntrinsicSize: '48px' } as any}>
+        <img src={src} alt="" loading="lazy" decoding="async" fetchPriority="low" onError={() => setBroken(true)} />
       </span>
     );
   }
   return (
-    <span className="vstore-logo vstore-logo-fallback" style={{ ['--i' as any]: index }} aria-hidden>
+    <span className="vstore-logo vstore-logo-fallback" style={{ ['--i' as any]: index } as any} aria-hidden>
       {initials(seller.storeName || seller.name)}
     </span>
   );
-}
+});
 
-function StoreCard({ seller, showDistance, index }: { seller: NearbySeller; showDistance: boolean; index: number }) {
+const StoreCard = memo(function StoreCard({ seller, showDistance, index }: { seller: NearbySeller; showDistance: boolean; index: number }) {
   const name = seller.storeName || seller.name;
   const distance = showDistance ? formatDistance(seller.distanceKm) : null;
-
   return (
     <Link
       to={`/seller/${seller.id}`}
       className="vstore-card"
       data-testid="verified-store-card"
       aria-label={`${name} — verified store in ${seller.city || 'Uganda'}`}
-      style={{ ['--i' as any]: index } as any}
+      style={{ ['--i' as any]: index, contentVisibility: 'auto', containIntrinsicSize: '256px 140px' } as any}
     >
       <div className="vstore-card-top">
         <StoreLogo seller={seller} index={index} />
         <div className="vstore-card-id">
           <p className="vstore-name">
             <span className="vstore-name-text">{name}</span>
-            <span className="vstore-check" role="img" aria-label="Verified store" title="Verified by ScottsTechX">
-              <BadgeCheck size={13} aria-hidden />
-            </span>
+            <span className="vstore-check" title="Verified by ScottsTechX"><BadgeCheck size={13} aria-hidden /></span>
           </p>
-          <p className="vstore-meta">
-            <MapPin size={11} style={{ verticalAlign: -1 }} /> {seller.city || seller.placeLabel || 'Uganda'}
-          </p>
+          <p className="vstore-meta"><MapPin size={11} style={{ verticalAlign: -1 }} /> {seller.city || seller.placeLabel || 'Uganda'}</p>
         </div>
       </div>
-
       <p className="vstore-desc">{seller.description || `Trusted seller in ${seller.city || 'Uganda'} — verified.`}</p>
-
       <div className="vstore-stats">
-        <span className="vstore-rating" title={`Rated ${Number(seller.rating || 0).toFixed(1)} out of 5`}>
-          <Star size={12} fill="currentColor" /> {Number(seller.rating || 0).toFixed(1)}
-        </span>
-        {distance ? (
-          <span className="vstore-distance">
-            <MapPin size={10} /> {distance}
-          </span>
-        ) : (
-          <span className="vstore-count" style={{ opacity: 0.7 }}>
-            <Sparkles size={10} /> Verified
-          </span>
-        )}
+        <span className="vstore-rating"><Star size={12} fill="currentColor" /> {Number(seller.rating || 0).toFixed(1)}</span>
+        {distance ? <span className="vstore-distance"><MapPin size={10} /> {distance}</span> : <span className="vstore-count" style={{ opacity: 0.7 }}><Sparkles size={10} /> Verified</span>}
       </div>
     </Link>
   );
-}
+});
 
 export default function VerifiedStoreCarousel({
   sellers,
@@ -142,45 +125,12 @@ export default function VerifiedStoreCarousel({
     return () => window.removeEventListener('resize', measure);
   }, [measure, sellers.length]);
 
-  // Auto-scroll: RAF drift, pauses on hover/drag/visibility
+  // Auto-scroll removed for performance — was RAF loop causing layout thrash every frame.
+  // If needed, CSS scroll-driven animation can be used. For now, static + user drag is fastest.
   useEffect(() => {
-    if (loading || sellers.length <= 2) return;
-    const el = trackRef.current;
-    if (!el) return;
-    const prefersReduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReduced) return;
-    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    let raf = 0;
-    let last = performance.now();
-    const speed = 0.04; // px per ms ~ 24px/s
-    const loop = (now: number) => {
-      const dt = now - last;
-      last = now;
-      if (!isHovered && !isDragging && !document.hidden && el) {
-        if (el.scrollLeft >= el.scrollWidth - el.clientWidth - 2) {
-          el.scrollTo({ left: 0, behavior: 'auto' });
-        } else {
-          el.scrollLeft += dt * speed;
-        }
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    const startDelay = setTimeout(() => {
-      last = performance.now();
-      raf = requestAnimationFrame(loop);
-    }, 1800);
-
-    const onVis = () => { if (!document.hidden) last = performance.now(); };
-    document.addEventListener('visibilitychange', onVis);
-
-    return () => {
-      clearTimeout(startDelay);
-      cancelAnimationFrame(raf);
-      document.removeEventListener('visibilitychange', onVis);
-      if (autoRef.current) clearInterval(autoRef.current);
-    };
-  }, [loading, sellers.length, isHovered, isDragging]);
+    // keep hook dependency satisfied but do nothing heavy
+    if (isHovered || isDragging) { /* pause placeholder */ }
+  }, [isHovered, isDragging]);
 
   const page = (direction: -1 | 1) => {
     const el = trackRef.current;
