@@ -136,22 +136,52 @@ export function resolveMediaUrl(url: string): string {
   return url;
 }
 
-/** Recursively rewrite the media fields of a parsed API payload. */
+/** Fast media URL rewrite — only touches known keys, avoids deep recursion on large lists. */
 const MEDIA_KEYS = new Set(['imageUrl', 'profilePhotoUrl', 'logoUrl', 'bannerUrl', 'coverUrl']);
-function rewriteMedia(node: unknown, depth = 0): void {
-  if (depth > 6 || node === null || typeof node !== 'object') return;
-  if (Array.isArray(node)) {
-    for (const item of node) rewriteMedia(item, depth + 1);
+const mediaCache = new Map<string, string>();
+function cachedResolve(url: string): string {
+  if (!url) return url;
+  let cached = mediaCache.get(url);
+  if (cached) return cached;
+  cached = resolveMediaUrl(url);
+  if (mediaCache.size > 500) mediaCache.clear();
+  mediaCache.set(url, cached);
+  return cached;
+}
+function rewriteMedia(node: unknown): void {
+  if (!node || typeof node !== 'object') return;
+  // Fast path for paged lists: { products: [...] } etc.
+  const obj = node as Record<string, unknown>;
+  if (Array.isArray(obj.products)) {
+    for (const p of obj.products as any[]) {
+      if (!p) continue;
+      if (typeof p.imageUrl === 'string') p.imageUrl = cachedResolve(p.imageUrl);
+      if (Array.isArray(p.mediaUrls)) p.mediaUrls = p.mediaUrls.map((v: any) => typeof v === 'string' ? cachedResolve(v) : v);
+      if (p.seller?.logoUrl) p.seller.logoUrl = cachedResolve(p.seller.logoUrl);
+    }
+    // also handle sellers array if present
+    if (Array.isArray(obj.sellers)) {
+      for (const s of obj.sellers as any[]) {
+        if (s?.logoUrl) s.logoUrl = cachedResolve(s.logoUrl);
+        if (s?.placeLabel) continue;
+      }
+    }
     return;
   }
-  const obj = node as Record<string, unknown>;
-  for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === 'string') {
-      if (MEDIA_KEYS.has(key)) obj[key] = resolveMediaUrl(value);
-    } else if (key === 'mediaUrls' && Array.isArray(value)) {
-      obj[key] = value.map((v) => (typeof v === 'string' ? resolveMediaUrl(v) : v));
-    } else {
-      rewriteMedia(value, depth + 1);
+  // Generic shallow fallback for single objects
+  if (typeof obj.imageUrl === 'string') obj.imageUrl = cachedResolve(obj.imageUrl as string);
+  if (Array.isArray(obj.mediaUrls)) obj.mediaUrls = (obj.mediaUrls as string[]).map(cachedResolve);
+  // For other shapes, do limited depth 2 scan only for known keys
+  for (const [k, v] of Object.entries(obj)) {
+    if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
+      for (const item of v as any[]) {
+        if (!item) continue;
+        if (typeof item.imageUrl === 'string') item.imageUrl = cachedResolve(item.imageUrl);
+        if (Array.isArray(item.mediaUrls)) item.mediaUrls = item.mediaUrls.map((x: any) => typeof x === 'string' ? cachedResolve(x) : x);
+        if (MEDIA_KEYS.has(k) && typeof item === 'string') {
+          // no-op
+        }
+      }
     }
   }
 }

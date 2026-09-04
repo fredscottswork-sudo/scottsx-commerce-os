@@ -142,36 +142,45 @@ export default function VerifiedStoreCarousel({
     return () => window.removeEventListener('resize', measure);
   }, [measure, sellers.length]);
 
-  // Auto-scroll: gentle drift, pauses on hover/drag
+  // Auto-scroll: RAF drift, pauses on hover/drag/visibility
   useEffect(() => {
     if (loading || sellers.length <= 2) return;
     const el = trackRef.current;
     if (!el) return;
-
     const prefersReduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    const tick = () => {
-      if (isHovered || isDragging || !el) return;
-      // bounce at ends instead of looping abruptly
-      if (el.scrollLeft >= el.scrollWidth - el.clientWidth - 2) {
-        el.scrollTo({ left: 0, behavior: 'smooth' });
-      } else {
-        el.scrollBy({ left: 0.6, behavior: 'auto' });
+    let raf = 0;
+    let last = performance.now();
+    const speed = 0.04; // px per ms ~ 24px/s
+    const loop = (now: number) => {
+      const dt = now - last;
+      last = now;
+      if (!isHovered && !isDragging && !document.hidden && el) {
+        if (el.scrollLeft >= el.scrollWidth - el.clientWidth - 2) {
+          el.scrollTo({ left: 0, behavior: 'auto' });
+        } else {
+          el.scrollLeft += dt * speed;
+        }
       }
-      measure();
+      raf = requestAnimationFrame(loop);
     };
-
-    // start after entrance settles
     const startDelay = setTimeout(() => {
-      autoRef.current = window.setInterval(tick, 22);
+      last = performance.now();
+      raf = requestAnimationFrame(loop);
     }, 1800);
+
+    const onVis = () => { if (!document.hidden) last = performance.now(); };
+    document.addEventListener('visibilitychange', onVis);
 
     return () => {
       clearTimeout(startDelay);
+      cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', onVis);
       if (autoRef.current) clearInterval(autoRef.current);
     };
-  }, [loading, sellers.length, isHovered, isDragging, measure]);
+  }, [loading, sellers.length, isHovered, isDragging]);
 
   const page = (direction: -1 | 1) => {
     const el = trackRef.current;

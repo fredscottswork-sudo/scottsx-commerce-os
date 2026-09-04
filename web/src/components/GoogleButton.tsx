@@ -28,7 +28,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
 import { renderGoogleButton } from '../lib/google';
-import { loadFirebase, signInWithGoogle, friendlyAuthError } from '../lib/firebase';
 import { ApiError } from '../api/client';
 
 /** Firebase codes that mean "this project is not set up for Google yet". */
@@ -70,13 +69,13 @@ export default function GoogleButton({ redirectTo = '/' }: { redirectTo?: string
     let alive = true;
     (async () => {
       try {
+        const { loadFirebase } = await import('../lib/firebase');
         await loadFirebase();
         if (alive) {
           setMode('firebase');
           setStatus('ready');
         }
       } catch {
-        // SDK itself would not load — try the older path before giving up.
         if (alive) setMode('gis');
       }
     })();
@@ -89,6 +88,7 @@ export default function GoogleButton({ redirectTo = '/' }: { redirectTo?: string
     setError('');
     setBusy(true);
     try {
+      const { signInWithGoogle, friendlyAuthError } = await import('../lib/firebase');
       const { idToken } = await signInWithGoogle();
       const user = await loginWithFirebase(idToken);
       land(user);
@@ -96,16 +96,19 @@ export default function GoogleButton({ redirectTo = '/' }: { redirectTo?: string
       const code = (err as { code?: string })?.code || '';
       if (USER_CANCELLED.has(code)) {
         setBusy(false);
-        return; // silent: the user closed the popup on purpose
+        return;
       }
       if (NOT_CONFIGURED.has(code)) {
-        // Google is not enabled on the Firebase project. Fall back rather
-        // than blaming the user for a console setting.
         setMode('gis');
         setBusy(false);
         return;
       }
-      setError(err instanceof ApiError ? err.message : friendlyAuthError(err));
+      try {
+        const { friendlyAuthError } = await import('../lib/firebase');
+        setError(err instanceof ApiError ? err.message : friendlyAuthError(err));
+      } catch {
+        setError(err instanceof ApiError ? err.message : 'Google sign-in failed');
+      }
     } finally {
       setBusy(false);
     }

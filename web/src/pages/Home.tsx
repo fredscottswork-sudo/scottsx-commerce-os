@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { CreditCard, MapPin, Search, ShoppingBag, Sparkles } from 'lucide-react';
 import { productService, geoService } from '../api/services';
@@ -159,7 +159,7 @@ export default function Home() {
     setLoading(true);
     setError('');
     try {
-      const r = await productService.list();
+      const r = await productService.list({ pageSize: 24, sort: 'popular' });
       setProducts(r.products);
     } catch (e: any) {
       setError(e.message || 'Could not load products');
@@ -203,11 +203,15 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
 
-  const filtered = products.filter((p) =>
-    (category === 'All' || p.category === category) &&
-    (q.trim() === '' || (p.title + ' ' + p.brand + ' ' + p.description).toLowerCase().includes(q.toLowerCase()))
-  );
-  const flash = products.filter((p) => p.isFlashDeal).slice(0, 6);
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return products.filter((p) =>
+      (category === 'All' || p.category === category) &&
+      (needle === '' || (p.title + ' ' + p.brand + ' ' + p.description).toLowerCase().includes(needle))
+    );
+  }, [products, category, q]);
+
+  const flash = useMemo(() => products.filter((p) => p.isFlashDeal).slice(0, 6), [products]);
   const showStores = storesLoading || stores.length > 0;
 
   const benefits = [

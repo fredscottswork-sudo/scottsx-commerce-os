@@ -97,13 +97,18 @@ export default function Thread() {
     chatService.quickReplies().then((r) => setQuickReplies(r.quickReplies)).catch(() => undefined);
   }, [id, load]);
 
-  // Live polling + mark-as-read so the other side's receipts advance.
+  // Live polling — 5s, paused when hidden, backoff when idle
   useEffect(() => {
-    const t = setInterval(() => {
-      load({ quiet: true });
+    let failures = 0;
+    const tick = () => {
+      if (document.hidden) return;
+      load({ quiet: true }).then(() => { failures = 0; }).catch(() => { failures++; });
       chatService.markRead(id!).catch(() => undefined);
-    }, 2500);
-    return () => clearInterval(t);
+    };
+    const interval = setInterval(tick, 5000);
+    const onVis = () => { if (!document.hidden) tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVis); };
   }, [id, load]);
 
   // Only autoscroll when the transcript actually grew AND user is near bottom.

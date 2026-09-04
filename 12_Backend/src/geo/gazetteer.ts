@@ -1,32 +1,26 @@
 /**
- * ScottsTechX — offline reverse geocoder.
+ * ScottsTechX — offline reverse geocoder (fixed for village accuracy)
  *
- * Turns a raw GPS fix into a human place: village / city / region / country.
- * The marketplace is global and the Nearby screen resolves a coordinate on
- * every position update, so this must be instant, private, and must never
- * depend on a third-party service being reachable.
+ * Turns a raw GPS fix into a human place, but NEVER confidently claims a
+ * wrong village. Separation of concerns:
+ *   - GPS (lat/lng) is ALWAYS the source for distance/sorting
+ *   - Village name is a HUMAN label that may be uncertain
  *
- * Backed by src/geo/gazetteer.bin (built by scripts/build-gazetteer.mjs from
- * all-the-cities + country-state-city; 167k places, 99.2% region coverage).
- *
- * Design notes
- *   • Loaded lazily on first lookup, then cached for the process (~85 MB RSS).
- *   • Rows are latitude-sorted, so a lookup binary-searches a latitude band and
- *     only scans plausible candidates — ~5 µs per lookup, not a full scan.
- *   • "Village" vs "city": the nearest settlement is the locality you are in;
- *     a larger nearby settlement becomes the parent city, but only if it is
- *     close enough to plausibly own the spot (see CITY_TIERS) — Entebbe must
- *     not be reported as a village of Kampala.
- *   • Administrative rows ("Kampala District") never fill the village slot.
+ * Design:
+ *   - Backed by gazetteer.bin (167k places)
+ *   - Returns confidence score and alternatives
+ *   - If nearest settlement is far or second-nearest is similarly close,
+ *     marks as uncertain and does NOT confidently return a village
+ *   - Does NOT use hardcoded neighbourhood table as authoritative source
+ *     (that table is legacy and would violate "do not hardcode village")
  */
+
 import { readFileSync, existsSync } from 'node:fs';
-import { findNeighbourhood } from './neighbourhoods.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** dist/geo/ (compiled) has no .bin beside it — fall back to the source tree. */
 function gazetteerPath(): string {
   const candidates = [
     path.join(__dirname, 'gazetteer.bin'),
@@ -37,7 +31,6 @@ function gazetteerPath(): string {
 
 const NO_REGION = 0xffff;
 const ROW = 21;
-/** Row flag: the name is an administrative container, not a settlement. */
 const FLAG_ADMIN = 1;
 
 interface Gazetteer {
@@ -72,7 +65,6 @@ function load(): Gazetteer | null {
       throw new Error('bad magic — rebuild with scripts/build-gazetteer.mjs');
     }
     const count = buf.readUInt32LE(8);
-
     const lat = new Float32Array(count);
     const lon = new Float32Array(count);
     const pop = new Int32Array(count);
@@ -80,7 +72,6 @@ function load(): Gazetteer | null {
     const region = new Uint16Array(count);
     const country = new Uint16Array(count);
     const flags = new Uint8Array(count);
-
     let o = 12;
     for (let i = 0; i < count; i++) {
       lat[i] = buf.readFloatLE(o);
@@ -92,7 +83,6 @@ function load(): Gazetteer | null {
       flags[i] = buf.readUInt8(o + 20);
       o += ROW;
     }
-
     const regionCount = buf.readUInt32LE(o);
     o += 4;
     const regions: string[] = new Array(regionCount);
@@ -101,7 +91,6 @@ function load(): Gazetteer | null {
       regions[i] = buf.toString('utf8', o + 2, o + 2 + len);
       o += 2 + len;
     }
-
     const countryCount = buf.readUInt32LE(o);
     o += 4;
     const countryNames: string[] = new Array(countryCount);
@@ -112,50 +101,41 @@ function load(): Gazetteer | null {
       countryNames[i] = buf.toString('utf8', o + 4, o + 4 + len);
       o += 4 + len;
     }
-
     const blobLen = buf.readUInt32LE(o);
     o += 4;
     const blob = buf.subarray(o, o + blobLen);
-
-    cache = {
-      count, lat, lon, pop, nameOff, region, country, flags,
-      regions, countryNames, countryIso, blob,
-    };
+    cache = { count, lat, lon, pop, nameOff, region, country, flags, regions, countryNames, countryIso, blob };
     return cache;
   } catch (err) {
     loadFailed = true;
-    console.warn(`[geo] gazetteer unavailable (${(err as Error).message}) — reverse geocoding disabled`);
+    console.warn(`[geo] gazetteer unavailable (${(err as Error).message})`);
     return null;
   }
 }
 
-/** Is the offline gazetteer present and usable? */
 export function geocoderReady(): boolean {
   return load() !== null;
 }
 
 export interface ReverseResult {
-  /** Smallest named locality at the fix — the "village" / neighbourhood. */
   village: string | null;
-  /** The town or city the fix belongs to. */
+  neighbourhood?: string | null;
+  suburb?: string | null;
   city: string | null;
-  /** Admin-1 area: region / state / province / district. */
+  district?: string | null;
   region: string | null;
   country: string | null;
   countryCode: string | null;
-  /** Distance from the fix to the matched locality, km. */
   accuracyKm: number;
-  /** "Kabalagala, Kampala, Central Region, Uganda" */
   label: string;
-  /** Short two-part form for dense UI: "Kabalagala, Central Region". */
   shortLabel: string;
-  /**
-   * Which engine produced this answer. 'google' knows real administrative
-   * boundaries; 'offline-gazetteer' returns the nearest known settlement and
-   * is therefore an approximation inside a city. The UI shows the distinction
-   * so nobody mistakes a 10 km guess for a precise fix.
-   */
-  source: 'offline-gazetteer' | 'google';
+  displayLabel?: string;
+  source: 'offline-gazetteer' | 'google' | 'user_confirmed';
+  confidence: number; // 0..1
+  isUncertain: boolean;
+  requiresConfirmation?: boolean;
+  alternatives?: Array<{ name: string; distanceKm: number; type: string }>;
+  gpsAccuracyM?: number;
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -168,7 +148,6 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-/** First index whose latitude is >= target (rows are latitude-sorted). */
 function lowerBound(lat: Float32Array, target: number): number {
   let lo = 0;
   let hi = lat.length;
@@ -180,126 +159,107 @@ function lowerBound(lat: Float32Array, target: number): number {
   return lo;
 }
 
-/** A place is "a city" (rather than a hamlet) once it passes this population. */
 const CITY_POP = 40_000;
-/** Widest distance any parent city may be from the fix. */
 const CITY_RADIUS_KM = 35;
-
-/**
- * A distant metropolis must not swallow a town with its own identity: standing
- * in Entebbe (pop 63k, 32 km from Kampala) you are in *Entebbe*, not "a village
- * of Kampala". A candidate city must therefore be closer the smaller it is.
- * Each tier is [maxKm, minPopulation].
- */
 const CITY_TIERS: [number, number][] = [
-  [8, CITY_POP],    // anything sizeable within 8 km is plausibly "your city"
-  [18, 150_000],    // further out it must be a proper city
-  [35, 1_000_000],  // only a metropolis reaches 35 km
+  [8, CITY_POP],
+  [18, 150_000],
+  [35, 1_000_000],
 ];
-
-/** Population above which a place stands alone and needs no parent city. */
 const SELF_SUFFICIENT_POP = 25_000;
-
-/** Beyond this the nearest name is meaningless (open ocean): country only. */
 const MAX_SANE_KM = 150;
-
-/**
- * How close the nearest settlement must be before we are willing to say "you
- * are IN this village".
- *
- * The packed gazetteer only keeps places above population 1,000, so most rural
- * villages are simply absent. Without a cap the nearest surviving row wins the
- * village slot no matter how far away it is, and a user standing in an unnamed
- * village 34 km from Butalangu was told they were in Butalangu. That is not a
- * small rounding error — it is a different village, and it made the Nearby
- * screen untrustworthy.
- *
- * Past this radius we stop naming a village and fall back to the city/district,
- * which is still true, just less precise. Being vague is acceptable; being
- * confidently wrong is not.
- */
 const VILLAGE_MAX_KM = 6;
-
-/**
- * Same idea one level up: a town only "owns" the fix if it is near enough.
- * Beyond this we report the region only rather than pinning the user to a town
- * they may be 30 km away from.
- */
 const CITY_MAX_KM = 25;
 
 /**
- * Resolve a coordinate to village / city / region / country, entirely offline.
- * Returns null only when the gazetteer file is missing or the input is invalid.
+ * Find nearest N candidates for confidence estimation
  */
-export function reverseGeocode(lat: number, lng: number): ReverseResult | null {
+function findNearestCandidates(lat: number, lng: number, limit = 5): Array<{ idx: number; km: number; name: string; pop: number; isAdmin: boolean }> {
   const g = load();
-  if (!g) return null;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
+  if (!g) return [];
   const latPad = CITY_RADIUS_KM / 111.32 + 0.02;
   const start = lowerBound(g.lat, lat - latPad);
   const end = lowerBound(g.lat, lat + latPad);
   const cosLat = Math.cos((lat * Math.PI) / 180) || 1e-6;
-
-  let nearestIdx = -1;   // nearest real settlement → the village
-  let nearestKm = Infinity;
-  let anyIdx = -1;       // nearest row of any kind → fallback
-  let anyKm = Infinity;
-  let cityIdx = -1;
-  let cityScore = -1;
-
+  const cands: Array<{ idx: number; km: number; name: string; pop: number; isAdmin: boolean }> = [];
   for (let i = start; i < end; i++) {
-    // Cheap planar reject before the trig.
     const dx = g.lat[i] - lat;
     const dy = (g.lon[i] - lng) * cosLat;
     if (Math.sqrt(dx * dx + dy * dy) * 111.32 > CITY_RADIUS_KM) continue;
-
     const km = haversineKm(lat, lng, g.lat[i], g.lon[i]);
     const isAdmin = (g.flags[i] & FLAG_ADMIN) !== 0;
-
-    if (km < anyKm) { anyKm = km; anyIdx = i; }
-    if (!isAdmin && km < nearestKm) { nearestKm = km; nearestIdx = i; }
-
-    if (!isAdmin) {
-      const pop = g.pop[i];
-      let qualifies = false;
-      for (const [maxKm, minPop] of CITY_TIERS) {
-        if (km <= maxKm && pop >= minPop) { qualifies = true; break; }
-      }
-      if (qualifies) {
-        // Prefer big, but penalise distance so a nearby town beats a far metropolis.
-        const score = pop / (1 + km * km);
-        if (score > cityScore) { cityScore = score; cityIdx = i; }
-      }
-    }
+    cands.push({ idx: i, km, name: readName(g.blob, g.nameOff[i]), pop: g.pop[i], isAdmin });
   }
+  cands.sort((a, b) => a.km - b.km);
+  return cands.slice(0, limit);
+}
 
-  // Only an administrative name was in range — better than nothing.
-  if (nearestIdx === -1 && anyIdx !== -1) { nearestIdx = anyIdx; nearestKm = anyKm; }
+export function reverseGeocode(lat: number, lng: number, gpsAccuracyM?: number): ReverseResult | null {
+  const g = load();
+  if (!g) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
-  // Nothing within 35 km (ocean, desert): widen once so we can still name a country.
-  if (nearestIdx === -1) {
+  const candidates = findNearestCandidates(lat, lng, 10);
+  if (candidates.length === 0) {
+    // widen search for country only
     const wideStart = lowerBound(g.lat, lat - 3);
     const wideEnd = lowerBound(g.lat, lat + 3);
+    let bestIdx = -1;
+    let bestKm = Infinity;
     for (let i = wideStart; i < wideEnd; i++) {
       const km = haversineKm(lat, lng, g.lat[i], g.lon[i]);
-      if (km < nearestKm) { nearestKm = km; nearestIdx = i; }
+      if (km < bestKm) { bestKm = km; bestIdx = i; }
+    }
+    if (bestIdx === -1) return null;
+    const countryIdx = g.country[bestIdx];
+    return {
+      village: null,
+      city: null,
+      region: null,
+      country: g.countryNames[countryIdx] ?? null,
+      countryCode: g.countryIso[countryIdx] ?? null,
+      accuracyKm: Math.round(bestKm * 100) / 100,
+      label: g.countryNames[countryIdx] ?? 'Unknown',
+      shortLabel: g.countryNames[countryIdx] ?? 'Unknown',
+      source: 'offline-gazetteer',
+      confidence: 0.2,
+      isUncertain: true,
+      requiresConfirmation: true,
+      displayLabel: `Location detected — confirm your village`,
+      gpsAccuracyM,
+    };
+  }
+
+  // Filter out admin for village candidates
+  const settlementCands = candidates.filter(c => !c.isAdmin);
+  const nearest = settlementCands[0] ?? candidates[0];
+  const second = settlementCands[1];
+
+  let nearestKm = nearest.km;
+  let nearestIdx = nearest.idx;
+
+  // Find best city
+  let cityIdx = -1;
+  let cityScore = -1;
+  for (const c of candidates) {
+    if (c.isAdmin) continue;
+    let qualifies = false;
+    for (const [maxKm, minPop] of CITY_TIERS) {
+      if (c.km <= maxKm && c.pop >= minPop) { qualifies = true; break; }
+    }
+    if (qualifies) {
+      const score = c.pop / (1 + c.km * c.km);
+      if (score > cityScore) { cityScore = score; cityIdx = c.idx; }
     }
   }
-  if (nearestIdx === -1) return null;
 
   const localName = readName(g.blob, g.nameOff[nearestIdx]);
   let cityName = cityIdx >= 0 ? readName(g.blob, g.nameOff[cityIdx]) : null;
-
-  // If the place you are standing in is itself a town, it IS the city — do not
-  // file it under a larger neighbour.
   if (g.pop[nearestIdx] >= SELF_SUFFICIENT_POP) {
     cityName = localName;
     cityIdx = nearestIdx;
   }
 
-  // Prefer the region/country of the city — a hamlet on a border can otherwise
-  // carry a neighbouring admin area.
   const anchor = cityIdx >= 0 ? cityIdx : nearestIdx;
   const regionId = g.region[anchor];
   const region = regionId === NO_REGION ? null : g.regions[regionId] ?? null;
@@ -309,55 +269,85 @@ export function reverseGeocode(lat: number, lng: number): ReverseResult | null {
 
   const sameAsCity = cityName !== null && cityName === localName;
   let village: string | null = sameAsCity ? null : localName;
-  let city = cityName ?? localName;
+  let city: string | null = cityName ?? localName;
 
-  // The packed gazetteer drops every place under population 1,000, which
-  // removes essentially all urban neighbourhoods — inside Kampala it can only
-  // ever answer "Kampala", a 3-7 km error in the city where most users are.
-  // A hand-checked neighbourhood layer fills that gap and wins the village
-  // slot when the fix is inside one.
-  const hood = findNeighbourhood(lat, lng);
-  if (hood) {
-    village = hood.name === city ? null : hood.name;
-    // Trust the layer's parent city only when the gazetteer agreed we are in a
-    // built-up area; otherwise keep whatever the binary resolved.
-    if (hood.city) city = hood.city;
-    // An approximate hit is the nearest mapped suburb rather than a containing
-    // one, so keep its real distance instead of collapsing it to zero — the
-    // caller decides whether to say "Ntinda" or "near Ntinda".
-    nearestKm = Math.min(nearestKm, hood.distanceKm);
-  }
-
-  // Too far from anything to claim a locality: region/country only.
   const tooFar = nearestKm > MAX_SANE_KM;
   if (tooFar) village = null;
 
-  // Distance honesty. `nearestKm` is the distance to whatever row won the
-  // village slot; if that is far away we must not present it as the user's
-  // village. A neighbourhood hit from findNeighbourhood() is a hand-checked
-  // polygon and already carries its own (small) distance, so it is exempt.
-  const villageFromHood = Boolean(hood);
-  if (!villageFromHood && village !== null && nearestKm > VILLAGE_MAX_KM) {
+  // Confidence logic
+  let confidence = 1;
+  let isUncertain = false;
+  let requiresConfirmation = false;
+
+  // If village is far, low confidence
+  if (nearestKm > VILLAGE_MAX_KM) {
     village = null;
+    confidence = 0.3;
+    isUncertain = true;
+    requiresConfirmation = true;
+  } else if (nearestKm > 2) {
+    confidence = Math.max(0.4, 1 - nearestKm / 10);
+    if (nearestKm > 3) {
+      isUncertain = true;
+      requiresConfirmation = true;
+    }
   }
 
-  // If even the city is far, drop it too and let region/country answer.
-  let cityFar = false;
+  // If second nearest is close to first, uncertain between villages
+  if (second && village) {
+    const diff = second.km - nearestKm;
+    if (diff < 0.5 && second.km <= VILLAGE_MAX_KM) {
+      // Two villages almost equally close — uncertain
+      confidence = Math.min(confidence, 0.5);
+      isUncertain = true;
+      requiresConfirmation = true;
+    } else if (diff < 1.0) {
+      confidence = Math.min(confidence, 0.7);
+      isUncertain = true;
+    }
+  }
+
+  // GPS accuracy affects confidence
+  if (gpsAccuracyM !== undefined) {
+    if (gpsAccuracyM > 1000) {
+      confidence = Math.min(confidence, 0.2);
+      isUncertain = true;
+      requiresConfirmation = true;
+    } else if (gpsAccuracyM > 100) {
+      confidence = Math.min(confidence, 0.6);
+      isUncertain = true;
+    }
+  }
+
   if (!tooFar && nearestKm > CITY_MAX_KM) {
-    const cityKm = cityIdx >= 0
-      ? haversineKm(lat, lng, g.lat[cityIdx], g.lon[cityIdx])
-      : nearestKm;
-    if (cityKm > CITY_MAX_KM) cityFar = true;
+    const cityKm = cityIdx >= 0 ? haversineKm(lat, lng, g.lat[cityIdx], g.lon[cityIdx]) : nearestKm;
+    if (cityKm > CITY_MAX_KM) {
+      city = null;
+    }
   }
 
-  const effCity = tooFar || cityFar ? null : city;
-  const parts = (tooFar ? [region, country] : [village, effCity, region, country])
-    .filter(Boolean) as string[];
-  const shortParts = (tooFar
-    ? [country]
-    : [village ?? effCity ?? region, region ?? country])
-    .filter(Boolean) as string[];
+  const effCity = tooFar ? null : city;
+  const parts = (tooFar ? [region, country] : [village, effCity, region, country]).filter(Boolean) as string[];
+  const shortParts = (tooFar ? [country] : [village ?? effCity ?? region, region ?? country]).filter(Boolean) as string[];
   const dedupe = (a: string[]) => a.filter((p, i) => i === 0 || p !== a[i - 1]);
+
+  const label = dedupe(parts).join(', ');
+  const shortLabel = dedupe(shortParts).join(', ');
+
+  let displayLabel = label;
+  if (isUncertain && village) {
+    displayLabel = `Location near ${village}`;
+  } else if (isUncertain && !village && effCity) {
+    displayLabel = `Location near ${effCity}`;
+  } else if (requiresConfirmation && !village) {
+    displayLabel = `Location detected — confirm your village`;
+  }
+
+  const alternatives = settlementCands.slice(0, 3).map(c => ({
+    name: c.name,
+    distanceKm: Math.round(c.km * 100) / 100,
+    type: c.pop >= SELF_SUFFICIENT_POP ? 'city' : 'village',
+  }));
 
   return {
     village,
@@ -366,8 +356,51 @@ export function reverseGeocode(lat: number, lng: number): ReverseResult | null {
     country,
     countryCode,
     accuracyKm: Math.round(nearestKm * 100) / 100,
-    label: dedupe(parts).join(', '),
-    shortLabel: dedupe(shortParts).join(', '),
+    label,
+    shortLabel,
+    displayLabel,
     source: 'offline-gazetteer',
+    confidence: Math.round(confidence * 100) / 100,
+    isUncertain,
+    requiresConfirmation: isUncertain || requiresConfirmation,
+    alternatives,
+    gpsAccuracyM,
   };
+}
+
+/**
+ * Search villages/towns by name for user correction
+ */
+export function searchPlaces(query: string, limit = 10): Array<{ name: string; city: string | null; region: string | null; country: string | null; lat: number; lng: number; type: string }> {
+  const g = load();
+  if (!g || !query.trim()) return [];
+  const q = query.trim().toLowerCase();
+  const results: Array<{ name: string; city: string | null; region: string | null; country: string | null; lat: number; lng: number; type: string; score: number }> = [];
+  // Simple linear scan — gazetteer is 167k, okay for search with limit
+  for (let i = 0; i < g.count; i++) {
+    if (g.flags[i] & FLAG_ADMIN) continue;
+    const name = readName(g.blob, g.nameOff[i]);
+    if (!name.toLowerCase().includes(q)) continue;
+    const regionId = g.region[i];
+    const region = regionId === NO_REGION ? null : g.regions[regionId] ?? null;
+    const countryIdx = g.country[i];
+    const country = g.countryNames[countryIdx] ?? null;
+    // Score by population and exact match
+    let score = g.pop[i];
+    if (name.toLowerCase() === q) score += 1000000;
+    else if (name.toLowerCase().startsWith(q)) score += 100000;
+    results.push({
+      name,
+      city: null,
+      region,
+      country,
+      lat: g.lat[i],
+      lng: g.lon[i],
+      type: g.pop[i] >= SELF_SUFFICIENT_POP ? 'city' : 'village',
+      score,
+    });
+    if (results.length > 1000) break; // prevent too much scanning
+  }
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, limit).map(({ score, ...rest }) => rest);
 }

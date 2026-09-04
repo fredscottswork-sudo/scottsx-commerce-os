@@ -76,10 +76,13 @@ export default function Messages() {
   // Initial load + filter change
   useEffect(() => { load(); }, [filter, load]);
 
-  // Live poll every 10s
+  // Live poll — 20s, paused when hidden
   useEffect(() => {
-    const t = setInterval(() => load({ quiet: true }), 10000);
-    return () => clearInterval(t);
+    const tick = () => { if (!document.hidden) load({ quiet: true }); };
+    const t = setInterval(tick, 20000);
+    const onVis = () => { if (!document.hidden) tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
   }, [load]);
 
   // Debounce search — skip first render (filter effect already loaded)

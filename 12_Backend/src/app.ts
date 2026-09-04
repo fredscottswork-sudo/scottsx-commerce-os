@@ -57,10 +57,26 @@ export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: true, trustProxy: true });
 
   await app.register(cors, { origin: '*' });
-  // 8 MB matches the product-image route's cap: with the old 3 MB limit an
-  // oversized upload died as an opaque multipart protocol error before the
-  // handler could answer with a readable 400.
+  try {
+    const compress = (await import('@fastify/compress')).default;
+    await app.register(compress, { global: true, threshold: 1024 });
+  } catch {
+    // compress not installed — continue without it
+  }
   await app.register(multipart, { limits: { fileSize: 8 * 1024 * 1024 } });
+
+  // Cache-Control for public GETs — CDN + browser
+  app.addHook('onSend', async (request, reply, payload) => {
+    if (request.method === 'GET') {
+      const url = request.url;
+      if (url.startsWith('/api/v1/products') || url.startsWith('/api/v1/sellers/nearby') || url.startsWith('/api/v1/geo/')) {
+        reply.header('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
+      } else if (url.startsWith('/api/v1/products/facets') || url.startsWith('/api/v1/products/suggest')) {
+        reply.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      }
+    }
+    return payload;
+  });
 
   // Stash raw bodies so Nylon Pay webhook signatures can be verified over the
   // exact bytes sent (JSON parsing itself is unchanged for every other route).

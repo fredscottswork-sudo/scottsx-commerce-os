@@ -42,7 +42,14 @@ export default function Notifications() {
       setLoading(false);
     }
   }
-  useEffect(() => { void load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    void load();
+    const tick = () => { if (!document.hidden) load(); };
+    const t = setInterval(tick, 30000);
+    const onVis = () => { if (!document.hidden) tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
+  }, []);
 
   async function markAll() {
     try {

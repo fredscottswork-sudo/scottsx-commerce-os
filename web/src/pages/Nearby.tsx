@@ -1,20 +1,19 @@
 /**
- * Nearby stores — global, self-locating.
+ * Nearby stores — fixed for village accuracy
  *
- * The marketplace is worldwide, so this screen has no radius control and no
- * hard-coded city list. It detects where you are, names the spot
- * (village / city / region / country) and lists every store sorted by distance,
- * re-sorting continuously as you move.
- *
- * Position semantics the buyer can trust:
- *   • a seller sharing location   → the pin follows their live GPS fix,
- *   • a seller not sharing        → the pin stays at their last known position.
+ * Key fix: GPS positioning is SEPARATE from village naming.
+ * - GPS (lat/lng/accuracy) is used for distance, sorting, map
+ * - Village name is human label that may be uncertain and requires confirmation
+ * - If uncertain between villages, shows "Location near X" not confidently wrong village
+ * - User can confirm/search actual village, saved as user_confirmed and never overwritten
  */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MapPin, BadgeCheck, Navigation, Radio, Clock, Truck, Star,
-  LocateFixed, LocateOff, Package, Globe2, AlertCircle,
+  LocateFixed, LocateOff, Package, Globe2, AlertCircle, CheckCircle2,
+  Search, Edit3, Crosshair, ShieldCheck, Info,
 } from 'lucide-react';
 import { productService, geoService } from '../api/services';
 import type { NearbySeller, Place } from '../api/types';
@@ -22,37 +21,14 @@ import { formatUgx } from '../api/types';
 import { useToast } from '../store/ToastContext';
 import { useAuth } from '../store/AuthContext';
 import {
-  Btn, Empty, ErrorBox, PageHeader, Select, SkeletonRows, Switch, Badge, SearchInput,
+  Btn, Empty, ErrorBox, PageHeader, Select, SkeletonRows, Switch, Badge, SearchInput, Modal, Field, Input,
 } from '../components/ui';
 import { useSeo } from '../hooks/useSeo';
 
 type Sort = 'distance' | 'rating' | 'products' | 'newest';
-
-/** Metres the buyer must move before we re-query the server. */
 const REFETCH_METRES = 250;
-
-/**
- * A fix at or under this radius is treated as a real GPS lock. Anything much
- * larger is a network estimate (Wi-Fi/cell) that can land in the wrong suburb,
- * so we keep listening for something better and tell the buyer it is rough.
- */
 const GOOD_ACCURACY_M = 100;
-
-/**
- * Stop refining early only at this radius. A true GNSS lock outdoors reaches
- * 5-20 m; 100 m is merely "good enough to show something" and can still sit in
- * the wrong suburb, which is exactly the complaint. So we keep listening past
- * GOOD_ACCURACY_M and only cut the watch short once the fix is genuinely
- * precise — the watch is cheap and stops on its own at REFINE_MS.
- */
 const EXCELLENT_ACCURACY_M = 25;
-
-/**
- * How long to keep waiting for a sharper fix after a coarse first reading.
- * A cold GPS chip indoors or under cloud routinely needs 20-30 s to go from a
- * Wi-Fi estimate to a satellite lock; cutting off at 12 s often left the buyer
- * pinned to the network fix, in the wrong village.
- */
 const REFINE_MS = 30000;
 
 function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -68,9 +44,7 @@ function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: n
 export default function Nearby() {
   useSeo({
     title: 'Stores near you',
-    description:
-      'Find shops near you on ScottsTechX. Stores are sorted by distance and ' +
-      're-sort as you move, so the closest seller is always first.',
+    description: 'Find shops near you on ScottsTechX. Stores sorted by distance, GPS for distance, village confirmed separately.',
   });
 
   const { toast } = useToast();
@@ -81,7 +55,6 @@ export default function Nearby() {
   const [usingGps, setUsingGps] = useState(false);
   const [locating, setLocating] = useState(true);
   const [geoDenied, setGeoDenied] = useState(false);
-  /** Radius of uncertainty, in metres, reported by the device for the fix in use. */
   const [accuracyM, setAccuracyM] = useState<number | null>(null);
 
   const [sort, setSort] = useState<Sort>('distance');
@@ -97,13 +70,18 @@ export default function Nearby() {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [moved, setMoved] = useState(false);
 
+  // New: location confirmation flow
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [villageSearch, setVillageSearch] = useState('');
+  const [villageResults, setVillageResults] = useState<Array<{ name: string; label: string; lat: number; lng: number; type: string }>>([]);
+  const [searchingVillage, setSearchingVillage] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
   const watchId = useRef<number | null>(null);
   const lastFetchCenter = useRef<{ lat: number; lng: number } | null>(null);
   const savedOnce = useRef(false);
-  /** Accuracy of the fix currently displayed, so a worse one cannot replace it. */
   const bestAccuracy = useRef<number>(Number.POSITIVE_INFINITY);
 
-  // ── Fetch: no radius — the API returns every store, nearest first ────────
   const fetchSellers = useCallback(async (at: { lat: number; lng: number }) => {
     setError('');
     try {
@@ -118,7 +96,17 @@ export default function Nearby() {
       setSellers(r.sellers);
       setTotal(r.total ?? r.count);
       setLiveCount(r.liveCount);
-      if (r.place) setPlace(r.place);
+      // Only update place from sellers endpoint if we don't have a more precise one
+      // and if user hasn't confirmed village
+      if (r.place && !place?.villageConfirmed) {
+        // Don't overwrite if we already have a confident place
+        if (!place || place.confidence === undefined || (r.place.confidence ?? 0) > (place.confidence ?? 0)) {
+          // Only if not user-confirmed
+          if (!place?.isUserConfirmed) {
+            setPlace(r.place as any);
+          }
+        }
+      }
       setUpdatedAt(new Date());
       lastFetchCenter.current = at;
       setMoved(false);
@@ -127,32 +115,45 @@ export default function Nearby() {
     } finally {
       setLoading(false);
     }
-  }, [q, verifiedOnly, openOnly, sort]);
+  }, [q, verifiedOnly, openOnly, sort, place]);
 
-  /** Apply a new position: name it, remember it, and refresh the list. */
-  const applyPosition = useCallback((next: { lat: number; lng: number }, accuracy?: number) => {
+  const applyPosition = useCallback(async (next: { lat: number; lng: number }, accuracy?: number) => {
     setCenter(next);
     setAccuracyM(typeof accuracy === 'number' ? Math.round(accuracy) : null);
     setLocating(false);
-    // Persist for signed-in users so the account knows where they are.
+
+    // Always use GPS for seller distance — this is separate from village naming
+    // Now resolve village name with confidence handling
+    try {
+      const rev = await geoService.reverse(next.lat, next.lng, accuracy);
+      if (rev.place) {
+        // If we have a user-confirmed village saved, don't overwrite it
+        if (place?.isUserConfirmed || place?.villageConfirmed) {
+          // Keep confirmed village, but update GPS position for distance
+          // The place label will still show confirmed village
+        } else {
+          setPlace(rev.place);
+        }
+      }
+    } catch {
+      // reverse failed — still keep GPS for distance
+    }
+
+    // Persist GPS, but backend will NOT overwrite confirmed village
     if (user && !savedOnce.current) {
       savedOnce.current = true;
-      geoService.saveMyLocation(next.lat, next.lng, accuracy)
-        .then((r) => { if (r.place) setPlace(r.place); })
-        .catch(() => undefined);
-    } else {
-      geoService.reverse(next.lat, next.lng)
-        .then((r) => setPlace(r.place))
-        .catch(() => undefined);
+      try {
+        const saved = await geoService.saveMyLocation(next.lat, next.lng, accuracy);
+        if (saved.place && !place?.isUserConfirmed) {
+          // Only update if not confirmed
+          if (!saved.place.isUserConfirmed) {
+            setPlace(saved.place);
+          }
+        }
+      } catch {}
     }
-  }, [user]);
+  }, [user, place]);
 
-  /**
-   * Briefly watch for a sharper reading after a coarse first fix. The GPS chip
-   * needs a few seconds to acquire satellites; until then the browser answers
-   * from Wi-Fi. Without this the buyer is shown the wrong neighbourhood and it
-   * never corrects itself while they stand still.
-   */
   const refineFix = useCallback(() => {
     if (!navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
@@ -160,12 +161,9 @@ export default function Nearby() {
         const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
         if (acc < bestAccuracy.current) {
           bestAccuracy.current = acc;
-          savedOnce.current = false; // a better fix is worth persisting
+          savedOnce.current = false;
           applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, acc);
         }
-        // Only stop early on a genuinely precise lock. Stopping at 100 m used
-        // to freeze the buyer on a coarse network fix that named the wrong
-        // suburb, even though a satellite fix was seconds away.
         if (acc <= EXCELLENT_ACCURACY_M) navigator.geolocation.clearWatch(id);
       },
       () => undefined,
@@ -174,24 +172,21 @@ export default function Nearby() {
     window.setTimeout(() => navigator.geolocation.clearWatch(id), REFINE_MS);
   }, [applyPosition]);
 
-  // ── Detect the buyer's position automatically on arrival ─────────────────
   useEffect(() => {
     let cancelled = false;
-
     async function fallbackToSavedLocation(reason: string) {
       if (cancelled) return;
-      // A signed-in user has a stored last-known position — use it so the page
-      // is never empty just because the browser refused a fresh fix.
       if (user) {
         try {
           const r = await geoService.myLocation();
           if (!cancelled && r.position) {
             setCenter(r.position);
+            setAccuracyM(r.position.accuracyM ?? null);
             if (r.place) setPlace(r.place);
             setLocating(false);
             return;
           }
-        } catch { /* fall through */ }
+        } catch {}
       }
       if (cancelled) return;
       setLocating(false);
@@ -205,17 +200,11 @@ export default function Nearby() {
       return () => { cancelled = true; };
     }
 
-    // The first callback is often a cached, network-derived fix accurate to
-    // several kilometres — enough to name the wrong suburb. Take it so the page
-    // is not empty, then let watchPosition refine it as the GPS chip warms up.
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (cancelled) return;
         bestAccuracy.current = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
         applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy);
-        // Refine unless the very first reading is already precise. The old
-        // threshold (100 m) accepted a coarse Wi-Fi fix as final, which is how
-        // a buyer ended up being shown a village they were not in.
         if (bestAccuracy.current > EXCELLENT_ACCURACY_M) refineFix();
       },
       (err) => {
@@ -227,11 +216,9 @@ export default function Nearby() {
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
-
     return () => { cancelled = true; };
   }, [user, applyPosition, refineFix]);
 
-  // Refresh whenever the position or a filter changes.
   useEffect(() => {
     if (!center) return;
     setLoading(true);
@@ -239,7 +226,6 @@ export default function Nearby() {
     return () => clearTimeout(t);
   }, [center, fetchSellers]);
 
-  // ── Continuous tracking: stores re-sort as the buyer moves ───────────────
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       toast('This browser cannot share your location', 'error');
@@ -253,16 +239,9 @@ export default function Nearby() {
         const acc = pos.coords.accuracy ?? Number.POSITIVE_INFINITY;
         const from = lastFetchCenter.current;
         const movedM = from ? metresBetween(from, next) : Infinity;
-
-        // Ignore a fix that is much vaguer than the one on screen unless the
-        // buyer has genuinely travelled: GPS periodically drops back to a
-        // cell-tower estimate, which would otherwise yank the pin kilometres
-        // away and reshuffle the whole list.
         if (acc > bestAccuracy.current * 2 && acc > GOOD_ACCURACY_M && movedM < REFETCH_METRES) return;
         bestAccuracy.current = acc;
         setAccuracyM(Math.round(acc));
-
-        // Re-sort locally on every fix (instant); re-query only after real movement.
         setSellers((prev) =>
           prev
             .map((s) => ({ ...s, distanceKm: Number((metresBetween(next, s) / 1000).toFixed(2)) }))
@@ -270,18 +249,13 @@ export default function Nearby() {
         );
         if (!from || movedM > REFETCH_METRES) {
           setMoved(true);
-          savedOnce.current = false; // a real move is worth persisting again
+          savedOnce.current = false;
           applyPosition(next, pos.coords.accuracy);
         }
       },
       (err) => {
         setUsingGps(false);
-        toast(
-          err.code === err.PERMISSION_DENIED
-            ? 'Location permission denied'
-            : 'Could not get your location',
-          'warning'
-        );
+        toast(err.code === err.PERMISSION_DENIED ? 'Location permission denied' : 'Could not get your location', 'warning');
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
     );
@@ -297,7 +271,6 @@ export default function Nearby() {
     if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
   }, []);
 
-  /** Ask the browser again after a denial (or first visit without a fix). */
   const retryLocate = useCallback(() => {
     setLocating(true);
     setGeoDenied(false);
@@ -317,17 +290,99 @@ export default function Nearby() {
     );
   }, [applyPosition]);
 
+  // Village search for correction
+  const searchVillage = useCallback(async (query: string) => {
+    if (!query.trim()) { setVillageResults([]); return; }
+    setSearchingVillage(true);
+    try {
+      const res = await geoService.search(query.trim(), 10);
+      setVillageResults(res.results as any);
+    } catch {
+      setVillageResults([]);
+    } finally {
+      setSearchingVillage(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => { if (villageSearch) searchVillage(villageSearch); else setVillageResults([]); }, 300);
+    return () => clearTimeout(t);
+  }, [villageSearch, searchVillage]);
+
+  const confirmDetectedVillage = useCallback(async () => {
+    if (!place?.village || !center) return;
+    setConfirming(true);
+    try {
+      await geoService.confirmVillage({
+        village: place.village,
+        city: place.city ?? undefined,
+        district: place.district ?? undefined,
+        region: place.region ?? undefined,
+        country: place.country ?? undefined,
+        lat: center.lat,
+        lng: center.lng,
+      });
+      setPlace((p) => p ? { ...p, isUserConfirmed: true, villageConfirmed: true, villageSource: 'user_confirmed', displayLabel: p.village ?? undefined } as any : p);
+      toast(`Village confirmed as ${place.village}`, 'success');
+      setShowUpdateModal(false);
+    } catch (e: any) {
+      toast(e.message || 'Could not confirm village', 'error');
+    } finally {
+      setConfirming(false);
+    }
+  }, [place, center, toast]);
+
+  const confirmSearchedVillage = useCallback(async (villageName: string, result?: any) => {
+    if (!villageName.trim()) return;
+    setConfirming(true);
+    try {
+      await geoService.confirmVillage({
+        village: villageName.trim(),
+        city: result?.city ?? place?.city ?? undefined,
+        region: result?.region ?? place?.region ?? undefined,
+        country: result?.country ?? place?.country ?? undefined,
+        lat: result?.lat ?? center?.lat,
+        lng: result?.lng ?? center?.lng,
+      });
+      setPlace((p) => ({
+        ...(p ?? {} as any),
+        village: villageName.trim(),
+        city: result?.city ?? p?.city ?? null,
+        region: result?.region ?? p?.region ?? null,
+        country: result?.country ?? p?.country ?? null,
+        label: villageName.trim(),
+        shortLabel: villageName.trim(),
+        displayLabel: villageName.trim(),
+        isUserConfirmed: true,
+        villageConfirmed: true,
+        villageSource: 'user_confirmed',
+      } as any));
+      toast(`Village set to ${villageName.trim()}`, 'success');
+      setShowUpdateModal(false);
+      setVillageSearch('');
+      setVillageResults([]);
+    } catch (e: any) {
+      toast(e.message || 'Could not set village', 'error');
+    } finally {
+      setConfirming(false);
+    }
+  }, [place, center, toast]);
+
   const stats = useMemo(() => ({
     shown: sellers.length,
     open: sellers.filter((s) => s.isOpen).length,
     delivering: sellers.filter((s) => s.withinServiceRadius).length,
   }), [sellers]);
 
+  const isLowAccuracy = accuracyM !== null && accuracyM > GOOD_ACCURACY_M;
+  const isVeryLowAccuracy = accuracyM !== null && accuracyM > 1000;
+  const showUncertainWarning = place?.isUncertain || place?.requiresConfirmation;
+
   return (
     <>
       <PageHeader
         title="Stores near you"
-        sub="Sellers sharing live location update in real time. Everyone else stays pinned at their last known position."
+        sub="GPS for distance — village confirmed separately. Sellers sharing live location update in real time."
         actions={
           usingGps ? (
             <Btn variant="danger" icon={<LocateOff size={15} />} onClick={stopTracking}>Stop tracking</Btn>
@@ -337,39 +392,90 @@ export default function Nearby() {
         }
       />
 
-      {/* ── Where you are ───────────────────────────────────────────── */}
-      <div className="card card-pad mb-16 place-banner">
+      {/* Where you are — fixed logic */}
+      <div className="card card-pad mb-16 place-banner" style={{ borderColor: showUncertainWarning ? 'var(--warning)' : undefined }}>
         <span className="place-ico"><MapPin size={18} /></span>
         <div className="grow" style={{ minWidth: 0 }}>
-          <div className="tiny muted-2 semi">Your location</div>
+          <div className="tiny muted-2 semi row" style={{ gap: 6 }}>
+            Your location
+            {place?.isUserConfirmed && <Badge tone="green"><CheckCircle2 size={10} /> Confirmed</Badge>}
+            {place?.source && <Badge tone={place.source === 'google' ? 'violet' : 'default'}>{place.source}</Badge>}
+          </div>
+
           {locating ? (
             <strong className="place-name">Detecting your location…</strong>
           ) : place ? (
             <>
-              <strong className="place-name" data-testid="place-label">{place.label}</strong>
-              <div className="tiny muted mt-4 place-parts">
-                {accuracyM !== null && (
-                  <span data-testid="gps-accuracy">
-                    <span className="muted-2">Precision:</span>{' '}
-                    {accuracyM <= GOOD_ACCURACY_M
-                      ? `±${accuracyM} m`
-                      : `±${accuracyM >= 1000 ? `${(accuracyM / 1000).toFixed(1)} km` : `${accuracyM} m`} — approximate`}
-                  </span>
+              <strong className="place-name" data-testid="place-label">
+                {place.displayLabel || place.label}
+                {place.isUncertain && !place.isUserConfirmed && <span className="muted-2" style={{ fontWeight: 400 }}> — confirm your village</span>}
+              </strong>
+
+              {/* Confidence and accuracy warnings */}
+              <div className="col mt-8" style={{ gap: 6 }}>
+                {isLowAccuracy && (
+                  <div className="row" style={{ gap: 6, color: isVeryLowAccuracy ? 'var(--danger)' : 'var(--warning)', fontSize: 12 }}>
+                    <AlertCircle size={14} />
+                    <span>
+                      {isVeryLowAccuracy
+                        ? `Low GPS accuracy (±${accuracyM >= 1000 ? `${(accuracyM/1000).toFixed(1)} km` : `${accuracyM} m`}) — move outdoors for better precision`
+                        : `GPS accuracy is low (±${accuracyM} m) — village may be approximate`}
+                    </span>
+                  </div>
                 )}
-                {place.village && <span><span className="muted-2">Village:</span> {place.village}</span>}
-                {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
-                {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
-                {place.country && <span><span className="muted-2">Country:</span> {place.country}</span>}
+
+                {showUncertainWarning && !place.isUserConfirmed && (
+                  <div className="row" style={{ gap: 6, color: 'var(--warning)', fontSize: 12 }}>
+                    <Info size={14} />
+                    <span>
+                      {place.village
+                        ? `Uncertain between nearby villages — showing ${place.village}. Please confirm your actual village.`
+                        : `Location detected — confirm your village to avoid wrong locality`}
+                    </span>
+                  </div>
+                )}
+
+                <div className="tiny muted mt-4 place-parts row wrap" style={{ gap: 8 }}>
+                  {accuracyM !== null && (
+                    <span data-testid="gps-accuracy">
+                      <span className="muted-2">GPS:</span> ±{accuracyM} m
+                      {accuracyM <= GOOD_ACCURACY_M ? ' • precise' : ' • approximate'}
+                    </span>
+                  )}
+                  {place.village && <span><span className="muted-2">Village:</span> {place.village}{place.isUserConfirmed && ' ✓'}</span>}
+                  {place.suburb && place.suburb !== place.village && <span><span className="muted-2">Suburb:</span> {place.suburb}</span>}
+                  {place.neighbourhood && place.neighbourhood !== place.village && <span><span className="muted-2">Neighbourhood:</span> {place.neighbourhood}</span>}
+                  {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
+                  {place.district && <span><span className="muted-2">District:</span> {place.district}</span>}
+                  {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
+                  {place.country && <span><span className="muted-2">Country:</span> {place.country}</span>}
+                  {place.confidence !== undefined && <span><span className="muted-2">Confidence:</span> {Math.round((place.confidence ?? 0)*100)}%</span>}
+                </div>
+
+                {place.alternatives && place.alternatives.length > 0 && !place.isUserConfirmed && (
+                  <div className="tiny mt-8">
+                    <span className="muted-2">Nearby localities:</span>{' '}
+                    {place.alternatives.map((a, idx) => (
+                      <span key={idx} style={{ marginRight: 8 }}>
+                        {a.name} {a.distanceKm ? `(${a.distanceKm} km)` : ''}
+                        {idx < (place.alternatives?.length ?? 0)-1 ? ',' : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           ) : (
             <strong className="place-name">Location unavailable</strong>
           )}
         </div>
+
         <div className="row" style={{ gap: 8 }}>
           {usingGps && <Badge tone="green" live>Live GPS</Badge>}
-          {!usingGps && !locating && (
-            <Btn variant="ghost" icon={<LocateFixed size={14} />} onClick={retryLocate}>Update</Btn>
+          {!locating && (
+            <Btn variant={showUncertainWarning ? 'primary' : 'ghost'} icon={<Edit3 size={14} />} onClick={() => setShowUpdateModal(true)}>
+              Update
+            </Btn>
           )}
         </div>
       </div>
@@ -379,122 +485,147 @@ export default function Nearby() {
           <AlertCircle size={18} className="t-warning" />
           <div className="grow">
             <strong>We could not detect your location</strong>
-            <div className="tiny muted">Allow location access, then try again — no city list needed, it works anywhere in the world.</div>
+            <div className="tiny muted">Allow location access, then try again — GPS is used for distance, village is confirmed separately.</div>
           </div>
           <Btn variant="primary" onClick={retryLocate}>Try again</Btn>
         </div>
       )}
 
-      {/* ── Filters (no radius: the whole world is in range) ─────────── */}
+      {/* Filters */}
       <div className="card mb-16">
         <div className="row wrap" style={{ gap: 14 }}>
           <div style={{ flex: '1 1 220px', minWidth: 200 }}>
             <SearchInput value={q} onChange={setQ} placeholder="Filter stores or products…" />
           </div>
-
           <Select aria-label="Sort stores" value={sort} onChange={(e) => setSort(e.target.value as Sort)} style={{ width: 'auto' }}>
             <option value="distance">Nearest first</option>
             <option value="rating">Top rated</option>
             <option value="products">Most products</option>
             <option value="newest">Newest stores</option>
           </Select>
-
           <Switch checked={verifiedOnly} onChange={setVerifiedOnly} label="Verified" />
           <Switch checked={openOnly} onChange={setOpenOnly} label="Open now" />
         </div>
       </div>
 
-      {/* ── Live status strip ───────────────────────────────────────── */}
+      {/* Live status strip */}
       <div className="row wrap mb-16" style={{ gap: 9 }}>
-        <Badge tone="primary">
-          <Globe2 size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-          {stats.shown} of {total} store{total === 1 ? '' : 's'}
-        </Badge>
-        {liveCount > 0 && <Badge tone="green" live>{liveCount} sharing live location</Badge>}
+        <Badge tone="primary"><Globe2 size={11} style={{ verticalAlign: -1, marginRight: 4 }} />{stats.shown} of {total} store{total === 1 ? '' : 's'}</Badge>
+        {liveCount > 0 && <Badge tone="green" live>{liveCount} sharing live</Badge>}
         <Badge tone="cyan">{stats.open} open now</Badge>
         <Badge tone="violet">{stats.delivering} deliver to you</Badge>
-        {updatedAt && (
-          <span className="tiny muted-2">
-            <Clock size={11} style={{ verticalAlign: -1 }} /> Updated {updatedAt.toLocaleTimeString()}
-          </span>
-        )}
+        {updatedAt && <span className="tiny muted-2"><Clock size={11} style={{ verticalAlign: -1 }} /> Updated {updatedAt.toLocaleTimeString()}</span>}
         {moved && <span className="tiny t-primary semi">You moved — refreshing…</span>}
+        {center && <span className="tiny muted-2"><Crosshair size={11} style={{ verticalAlign: -1 }} /> GPS: {center.lat.toFixed(5)}, {center.lng.toFixed(5)}</span>}
       </div>
 
-      {/* ── Results ─────────────────────────────────────────────────── */}
+      {/* Results — distances from GPS, NOT village */}
       {loading ? (
         <SkeletonRows rows={5} height={116} />
       ) : error ? (
         <ErrorBox message={error} onRetry={center ? () => void fetchSellers(center) : retryLocate} />
       ) : sellers.length === 0 ? (
-        <Empty
-          icon={<MapPin size={28} />}
-          title="No stores match"
-          subtitle="Clear the filters to see every store, sorted by distance from you."
-          action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }}>
-            Clear filters
-          </Btn>}
-        />
+        <Empty icon={<MapPin size={28} />} title="No stores match" subtitle="Clear filters to see every store, sorted by GPS distance." action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }}>Clear filters</Btn>} />
       ) : (
         <div className="grid grid-2 stagger">
           {sellers.map((s, i) => (
-            <Link key={s.id} to={`/seller/${s.id}`} className="card card-hover store-card stagger-item"
-              style={{ '--i': i } as React.CSSProperties}>
+            <Link key={s.id} to={`/seller/${s.id}`} className="card card-hover store-card stagger-item" style={{ '--i': i } as React.CSSProperties}>
               <div className="row" style={{ alignItems: 'flex-start', gap: 12 }}>
-                <span className="avatar avatar-lg">
-                  {s.logoUrl ? <img src={s.logoUrl} alt="" /> : (s.storeName || s.name || 'S')[0].toUpperCase()}
-                </span>
-
+                <span className="avatar avatar-lg">{s.logoUrl ? <img src={s.logoUrl} alt="" /> : (s.storeName || s.name || 'S')[0].toUpperCase()}</span>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="row" style={{ gap: 6 }}>
                     <strong className="ellipsis">{s.storeName || s.name}</strong>
-                    {s.verified && <BadgeCheck size={15} className="t-success" aria-label="Verified" />}
+                    {s.verified && <BadgeCheck size={15} className="t-success" />}
                     {s.isOpen ? <Badge tone="green">Open</Badge> : <Badge>Closed</Badge>}
                   </div>
-
-                  <div className="tiny muted mt-4">
-                    <Star size={11} style={{ verticalAlign: -1, color: 'var(--warning)' }} fill="currentColor" />
-                    {' '}{Number(s.rating || 0).toFixed(1)}
-                    {s.newThisWeek > 0 && <span className="t-success"> · {s.newThisWeek} new</span>}
-                  </div>
-
-                  <div className="tiny muted mt-4 ellipsis">
-                    <MapPin size={11} style={{ verticalAlign: -1 }} /> {s.placeLabel || s.address || s.city || '—'}
-                  </div>
-
-                  {/* The live / last-known distinction the buyer must be able to trust. */}
+                  <div className="tiny muted mt-4"><Star size={11} style={{ verticalAlign: -1, color: 'var(--warning)' }} fill="currentColor" /> {Number(s.rating || 0).toFixed(1)}{s.newThisWeek > 0 && <span className="t-success"> · {s.newThisWeek} new</span>}</div>
+                  <div className="tiny muted mt-4 ellipsis"><MapPin size={11} style={{ verticalAlign: -1 }} /> {s.placeLabel || s.address || s.city || '—'}</div>
                   <div className="row wrap mt-8" style={{ gap: 6 }}>
-                    {s.live ? (
-                      <Badge tone="green" live>
-                        Live · {s.locationAgeMinutes !== null ? `${s.locationAgeMinutes}m ago` : 'now'}
-                      </Badge>
-                    ) : (
-                      <Badge tone="amber">
-                        <Radio size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
-                        {s.locationSharing ? 'Last seen' : 'Fixed address'}
-                      </Badge>
-                    )}
-                    {s.withinServiceRadius ? (
-                      <Badge tone="cyan"><Truck size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
-                        {s.deliveryFeeUgx > 0 ? formatUgx(s.deliveryFeeUgx) : 'Free delivery'}
-                      </Badge>
-                    ) : (
-                      <Badge>Outside delivery zone</Badge>
-                    )}
+                    {s.live ? <Badge tone="green" live>Live · {s.locationAgeMinutes !== null ? `${s.locationAgeMinutes}m ago` : 'now'}</Badge> : <Badge tone="amber"><Radio size={10} style={{ verticalAlign: -1, marginRight: 3 }} />{s.locationSharing ? 'Last seen' : 'Fixed address'}</Badge>}
+                    {s.withinServiceRadius ? <Badge tone="cyan"><Truck size={10} style={{ verticalAlign: -1, marginRight: 3 }} />{s.deliveryFeeUgx > 0 ? formatUgx(s.deliveryFeeUgx) : 'Free delivery'}</Badge> : <Badge>Outside delivery zone</Badge>}
                     {s.codEnabled && <Badge tone="violet">Pay on delivery</Badge>}
                   </div>
                 </div>
-
-                <div className="store-distance">
-                  <Navigation size={14} />
-                  <strong>{s.distanceKm} km</strong>
-                  <span className="tiny muted-2">~{s.etaMinutes} min</span>
-                </div>
+                <div className="store-distance"><Navigation size={14} /><strong>{s.distanceKm} km</strong><span className="tiny muted-2">~{s.etaMinutes} min</span></div>
               </div>
             </Link>
           ))}
         </div>
       )}
+
+      {/* Update modal — 3 options */}
+      <Modal open={showUpdateModal} title="Update your location" onClose={() => setShowUpdateModal(false)}>
+        <div className="col" style={{ gap: 16 }}>
+          <p className="tiny muted">
+            GPS is used for distance. Village name is separate and can be confirmed.
+            Your confirmed village will never be overwritten by automatic detection.
+          </p>
+
+          <div className="card card-pad" style={{ background: 'var(--surface-2)' }}>
+            <strong className="row" style={{ gap: 6 }}><Crosshair size={14} /> Use my current GPS location</strong>
+            <p className="tiny muted mt-4">Re-acquire high-accuracy GPS. Distance to stores will update, village will be re-detected but confirmed village is preserved.</p>
+            <Btn variant="primary" size="sm" icon={<LocateFixed size={14} />} onClick={() => { setShowUpdateModal(false); retryLocate(); }} className="mt-8">
+              Use GPS now
+            </Btn>
+            {center && <div className="tiny muted-2 mt-4">Current GPS: {center.lat.toFixed(6)}, {center.lng.toFixed(6)} ±{accuracyM ?? '?'} m</div>}
+          </div>
+
+          {place?.village && !place.isUserConfirmed && (
+            <div className="card card-pad" style={{ background: 'var(--surface-2)', borderColor: 'var(--success)' }}>
+              <strong className="row" style={{ gap: 6 }}><CheckCircle2 size={14} /> Confirm detected village</strong>
+              <p className="tiny muted mt-4">Detected as <strong>{place.village}</strong>{place.city ? `, ${place.city}` : ''}. Confirm this is your actual village — it will be saved as user-confirmed and never overwritten.</p>
+              {place.alternatives && place.alternatives.length > 0 && (
+                <p className="tiny muted-2 mt-4">Alternatives: {place.alternatives.map(a => a.name).join(', ')}</p>
+              )}
+              <Btn variant="primary" size="sm" loading={confirming} icon={<ShieldCheck size={14} />} onClick={confirmDetectedVillage} className="mt-8">
+                Confirm {place.village}
+              </Btn>
+            </div>
+          )}
+
+          <div className="card card-pad" style={{ background: 'var(--surface-2)' }}>
+            <strong className="row" style={{ gap: 6 }}><Search size={14} /> Search/select your actual village</strong>
+            <p className="tiny muted mt-4">If detected village is wrong (e.g., showing Kisaasi but you are in Kigoowa), search and select correct one.</p>
+            <Field label="Village name">
+              <div className="row" style={{ gap: 8 }}>
+                <Input value={villageSearch} onChange={(e) => setVillageSearch(e.target.value)} placeholder="e.g., Kigoowa, Kabalagala…" />
+                <Btn variant="ghost" size="sm" icon={<Search size={14} />} onClick={() => searchVillage(villageSearch)}>Search</Btn>
+              </div>
+            </Field>
+
+            {searchingVillage && <div className="tiny muted">Searching…</div>}
+
+            {villageResults.length > 0 && (
+              <div className="col mt-8" style={{ gap: 6, maxHeight: 200, overflowY: 'auto' }}>
+                {villageResults.map((r, idx) => (
+                  <button key={idx} className="card card-pad row-between" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => confirmSearchedVillage(r.name, r)}>
+                    <span><strong>{r.name}</strong><span className="tiny muted"> — {r.label}</span></span>
+                    <Badge tone="default">{r.type}</Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <Field label="Or enter manually" hint="If not found in search, type exact village">
+              <div className="row" style={{ gap: 8 }}>
+                <Input value={villageSearch} onChange={(e) => setVillageSearch(e.target.value)} placeholder="Your village" />
+                <Btn variant="primary" size="sm" loading={confirming} disabled={!villageSearch.trim()} onClick={() => confirmSearchedVillage(villageSearch)}>
+                  Confirm
+                </Btn>
+              </div>
+            </Field>
+          </div>
+
+          <div className="tiny muted-2" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <strong>How it works:</strong><br/>
+            • GPS (lat/lng) always used for distance to stores<br/>
+            • Village name is human label — can be uncertain near borders<br/>
+            • If uncertain, we show "Location near X" not confidently wrong<br/>
+            • Once you confirm, village_source=user_confirmed, never overwritten<br/>
+            • Refresh keeps confirmed village, moving updates GPS but preserves confirmation until you change it
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

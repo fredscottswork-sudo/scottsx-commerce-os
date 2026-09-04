@@ -30,25 +30,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
 
-  // Poll the two badge counters. Cheap endpoints, 20s cadence, paused when the
-  // tab is hidden so a backgrounded dashboard costs nothing.
+  // Poll badge counters — 30s cadence, paused when hidden, debounced.
   const poll = useCallback(async () => {
     if (!user || document.hidden) return;
-    const [c, n] = await Promise.allSettled([
-      chatService.conversations(),
-      buyerService.unreadCount(),
-    ]);
-    if (!mounted.current) return;
-    if (c.status === 'fulfilled') {
-      setUnreadMsgs(c.value.conversations.reduce((s, x) => s + (x.unread || 0), 0));
+    try {
+      const [c, n] = await Promise.allSettled([
+        chatService.conversations(),
+        buyerService.unreadCount(),
+      ]);
+      if (!mounted.current) return;
+      if (c.status === 'fulfilled') {
+        setUnreadMsgs(c.value.conversations.reduce((s, x) => s + (x.unread || 0), 0));
+      }
+      if (n.status === 'fulfilled') setUnreadNotifs(n.value.unread);
+    } catch {
+      // silent — badge is enhancement
     }
-    if (n.status === 'fulfilled') setUnreadNotifs(n.value.unread);
   }, [user]);
 
   useEffect(() => {
     if (!user) { setUnreadMsgs(0); setUnreadNotifs(0); return; }
     void poll();
-    const t = setInterval(() => { void poll(); }, 20000);
+    const t = setInterval(() => { void poll(); }, 30000);
     const onVis = () => { if (!document.hidden) void poll(); };
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('stx:refresh-badges', poll as EventListener);

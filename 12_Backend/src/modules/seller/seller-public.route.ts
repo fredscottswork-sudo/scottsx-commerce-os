@@ -16,13 +16,7 @@ import { reverseGeocode } from '../../geo/gazetteer.js';
 const nearbySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
-  /**
-   * Optional. The marketplace is global: with no radius the API returns every
-   * store on earth sorted by distance, so a buyer anywhere sees their nearest
-   * sellers instead of an empty list outside some arbitrary circle.
-   */
   radiusKm: z.coerce.number().min(0).max(20000).optional(),
-  /** Cap the result set (distance-sorted) rather than capping the distance. */
   limit: z.coerce.number().min(1).max(500).optional().default(60),
   category: z.string().optional(),
   q: z.string().optional(),
@@ -39,6 +33,29 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Tiny LRU for nearby — 20s TTL, keyed by rounded position + filters
+type NearbyCacheEntry = { at: number; data: any };
+const nearbyCache = new Map<string, NearbyCacheEntry>();
+const NEARBY_TTL_MS = 20_000;
+function nearbyCacheKey(lat: number, lng: number, params: Record<string, any>): string {
+  const rLat = Math.round(lat * 100) / 100;
+  const rLng = Math.round(lng * 100) / 100;
+  return `${rLat}:${rLng}:${params.radiusKm ?? ''}:${params.limit}:${params.category ?? ''}:${params.q ?? ''}:${params.verifiedOnly}:${params.openOnly}:${params.sort}`;
+}
+function getNearbyCache(key: string) {
+  const e = nearbyCache.get(key);
+  if (!e) return null;
+  if (Date.now() - e.at > NEARBY_TTL_MS) { nearbyCache.delete(key); return null; }
+  return e.data;
+}
+function setNearbyCache(key: string, data: any) {
+  if (nearbyCache.size > 200) {
+    const first = nearbyCache.keys().next().value;
+    if (first) nearbyCache.delete(first);
+  }
+  nearbyCache.set(key, { at: Date.now(), data });
 }
 
 export default async function registerSellerPublicRoute(app: FastifyInstance) {
@@ -58,8 +75,12 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
    * ordering recompute continuously as the buyer moves.
    */
   app.get('/api/v1/sellers/nearby', async (request) => {
-    const { lat, lng, radiusKm, limit, category, q, verifiedOnly, openOnly, sort } =
-      nearbySchema.parse(request.query);
+    const parsed = nearbySchema.parse(request.query);
+    const { lat, lng, radiusKm, limit, category, q, verifiedOnly, openOnly, sort } = parsed;
+
+    const cacheKey = nearbyCacheKey(lat, lng, parsed as any);
+    const cached = getNearbyCache(cacheKey);
+    if (cached) return cached;
 
     const values: any[] = [];
     const filters: string[] = [`u.role = 'seller'`];
@@ -79,6 +100,19 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
       );
     }
 
+    if (radiusKm !== undefined && radiusKm < 20000) {
+      const latDelta = radiusKm / 111;
+      const cosLat = Math.cos((lat * Math.PI) / 180) || 0.0001;
+      const lngDelta = radiusKm / (111 * cosLat);
+      values.push(lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta);
+      const idx = values.length;
+      filters.push(
+        `COALESCE(s.last_lat, s.lat) BETWEEN $${idx - 3} AND $${idx - 2} AND COALESCE(s.last_lng, s.lng) BETWEEN $${idx - 1} AND $${idx}`
+      );
+    }
+
+    const fetchLimit = Math.min(500, Math.max(limit * 4, 80));
+
     const { rows } = await pool.query(
       `SELECT
          u.id, u.display_name AS name, u.profile_photo_url AS logo_url, u.created_at,
@@ -93,21 +127,20 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
        JOIN store_settings s ON s.user_id = u.id
        WHERE ${filters.join(' AND ')}
          AND COALESCE(s.last_lat, s.lat) IS NOT NULL
-         AND COALESCE(s.last_lng, s.lng) IS NOT NULL`,
+         AND COALESCE(s.last_lng, s.lng) IS NOT NULL
+       LIMIT ${fetchLimit}`,
       values
     );
 
     const now = Date.now();
     const sellers = rows
       .map((r) => {
-        // Live fix when sharing, otherwise the sticky last-known position.
         const sLat = Number(r.last_lat ?? r.lat);
         const sLng = Number(r.last_lng ?? r.lng);
         const distanceKm = haversineKm(lat, lng, sLat, sLng);
         const updatedAt = r.location_updated_at ? new Date(r.location_updated_at) : null;
         const ageMinutes = updatedAt ? Math.round((now - updatedAt.getTime()) / 60000) : null;
         const live = Boolean(r.location_sharing) && ageMinutes !== null && ageMinutes <= 30;
-
         return {
           id: r.id,
           name: r.store_name || r.name,
@@ -120,7 +153,6 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
           logoUrl: r.store_logo_url || r.logo_url || null,
           lat: sLat,
           lng: sLng,
-          /** true = following a live GPS fix; false = last known / fixed address. */
           live,
           locationSharing: !!r.location_sharing,
           locationUpdatedAt: r.location_updated_at ?? null,
@@ -133,14 +165,11 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
           productCount: r.product_count ?? 0,
           newThisWeek: r.new_this_week ?? 0,
           distanceKm: Math.round(distanceKm * 100) / 100,
-          /** Rough walking/boda ETA, useful on the card. */
           etaMinutes: Math.max(1, Math.round((distanceKm / 25) * 60)),
           withinServiceRadius: distanceKm <= (r.service_radius_km ?? 20),
-          /** Human place for the store's pin: "Kireka, Kampala, Central Region". */
-          placeLabel: reverseGeocode(sLat, sLng)?.shortLabel ?? (r.city ?? ''),
+          placeLabel: r.city ?? '',
         };
       })
-      // Global by default: only filter when the caller asked for a radius.
       .filter((s) => radiusKm === undefined || s.distanceKm <= radiusKm);
 
     switch (sort) {
@@ -160,16 +189,17 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
     const total = sellers.length;
     const page = sellers.slice(0, limit);
 
-    return {
+    const result = {
       sellers: page,
       count: page.length,
       total,
       liveCount: page.filter((s) => s.live).length,
-      /** Where the buyer is, named — "Kabalagala, Kampala, Central Region, Uganda". */
       place: reverseGeocode(lat, lng),
       center: { lat, lng, radiusKm: radiusKm ?? null },
       generatedAt: new Date().toISOString(),
     };
+    setNearbyCache(cacheKey, result);
+    return result;
   });
 
   app.get('/api/v1/sellers/:id', async (request) => {
