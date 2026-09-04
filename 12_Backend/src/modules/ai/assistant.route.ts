@@ -16,7 +16,7 @@ import { getPool } from '../../db.js';
 import { verifyJwt } from '../../auth.js';
 import {
   ask, generateProduct, aiSearch, imageSearch, aiConfigured,
-  nvidiaVisionConfigured, AGENTS,
+  nvidiaVisionConfigured, llmStatusSummary, AGENTS,
 } from './assistant.service.js';
 import { roboflowConfigured } from '../vision/roboflow.service.js';
 
@@ -50,19 +50,18 @@ async function softUser(request: any): Promise<{ id?: string; role: 'buyer' | 's
 export default async function registerAiRoute(app: FastifyInstance) {
   const pool = getPool();
 
-  app.get('/api/v1/ai/status', async () => ({
-    // NOTE ON SEMANTICS — `configured` is the LLM *chat* engine (OpenRouter /
-    // apifreellm). It is NOT the vision stack: robots and dashboards keep
-    // misreading `configured: false` as "Roboflow not set up". Check
-    // `visionConfigured` (Roboflow key present) and `visionProvider` instead.
+  app.get('/api/v1/ai/status', async () => {
+    const llm = llmStatusSummary();
+    return {
+    // NOTE ON SEMANTICS — `configured` is the LLM *chat* engine. With the
+    // NVIDIA key set it is true and chat is served by a real model; it is NOT
+    // the vision stack (see visionConfigured / visionProvider).
     configured: aiConfigured(),
     chatConfigured: aiConfigured(),
     visionConfigured: roboflowConfigured() || nvidiaVisionConfigured() || aiConfigured(),
     nvidiaVisionConfigured: nvidiaVisionConfigured(),
-    provider: aiConfigured() ? process.env.AI_PROVIDER || 'openrouter' : 'scottstechx-local',
-    model: aiConfigured()
-      ? process.env.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct'
-      : 'catalog-grounded',
+    provider: llm.provider,
+    model: llm.model,
     grounded: true,
     visionProvider: roboflowConfigured()
       ? 'roboflow'
@@ -80,7 +79,8 @@ export default async function registerAiRoute(app: FastifyInstance) {
       listingGeneration: true,
       vision: roboflowConfigured() || nvidiaVisionConfigured() || aiConfigured(),
     },
-  }));
+    };
+  });
 
   app.get('/api/v1/ai/agents', async () => ({ agents: AGENTS }));
 

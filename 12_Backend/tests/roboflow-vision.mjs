@@ -33,9 +33,10 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures++;
 };
 
-/** NVIDIA NIM stand-in: returns an OpenAI-style chat completion with a
- *  request-aware caption so each test can assert its own signal reached the
- *  search query. */
+/** NVIDIA NIM stand-in: returns an OpenAI-style chat completion. For vision
+ *  requests the caption is request-aware; for chat requests (no image part)
+ *  it answers as a real assistant so the chat path can be tested with NVIDIA
+ *  as the only provider. */
 let nvidiaHits = 0;
 const nvidiaStub = http.createServer((req, res) => {
   let body = '';
@@ -43,15 +44,22 @@ const nvidiaStub = http.createServer((req, res) => {
   req.on('end', () => {
     nvidiaHits++;
     let imgUrl = '';
+    let prompt = '';
     try {
       const p = JSON.parse(body || '{}');
-      imgUrl = String(p?.messages?.[0]?.content?.find?.((c) => c?.type === 'image_url')?.image_url?.url ?? '');
+      prompt = String(p?.messages?.[p.messages?.length - 1]?.content ?? '');
+      const last = p?.messages?.[p.messages?.length - 1]?.content;
+      const parts = Array.isArray(last) ? last : [];
+      imgUrl = String(parts.find?.((c) => c?.type === 'image_url')?.image_url?.url ?? '');
     } catch { /* ignore */ }
-    let caption = 'vision caption test';
-    if (imgUrl.startsWith('data:')) caption = 'base64-test photo';
-    else if (/approved-headphones|wrapped-approved/.test(imgUrl)) caption = 'AirSound Pro Headphones';
+    let reply = `NVIDIA says: the catalogue has items matching "${prompt.slice(0, 60)}".`;
+    if (imgUrl) {
+      if (imgUrl.startsWith('data:')) reply = 'base64-test photo';
+      else if (/approved-headphones|wrapped-approved/.test(imgUrl)) reply = 'AirSound Pro Headphones';
+      else reply = 'vision caption test';
+    }
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ choices: [{ message: { content: caption } }] }));
+    res.end(JSON.stringify({ choices: [{ message: { content: reply } }] }));
   });
 });
 
@@ -347,15 +355,30 @@ const main = async () => {
     wrappedData.products?.[0]?.title === 'Vision Approved Test',
     JSON.stringify((wrappedData.products || []).slice(0, 2).map((p) => p.title)));
 
-  // 5b2. NVIDIA caption path: when the live server has NVIDIA_API_KEY set the
-  //      caption must be merged into the search query (and the NIM stand-in
-  //      must have been called).
+  // 5b2. NVIDIA paths: captions must merge into the search query, and with
+  //      NVIDIA as the only key the CHAT must be served by the model too
+  //      (configured:true + a real provider), not the offline composer.
   if (status.data?.nvidiaVisionConfigured) {
     check('NVIDIA NIM receives image_url requests from the search endpoint',
       nvidiaHits > 0, `hits=${nvidiaHits}`);
     check('NVIDIA caption is merged into the search query',
       /AirSound/.test(jsonData.query || ''),
       JSON.stringify(jsonData.query));
+    check('NVIDIA key powers chat (configured + provider nvidia)',
+      status.data.chatConfigured === true && status.data.provider === 'nvidia',
+      JSON.stringify({ chatConfigured: status.data.chatConfigured, provider: status.data.provider }));
+    const askRes = await fetch(`${API}/ai/v2/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'what is the cheapest phone?' }),
+    });
+    const askData = await askRes.json().catch(() => ({}));
+    check('chat answers through the NVIDIA model',
+      askRes.status === 200 && typeof askData.text === 'string' && /NVIDIA says/.test(askData.text || ''),
+      JSON.stringify({ status: askRes.status, text: askData.text, provider: askData.provider }));
+    check('generate-product uses the captured caption/NVIDIA path',
+      typeof status.data.model === 'string' && status.data.model.includes('kimi-k3'),
+      JSON.stringify(status.data.model));
   } else {
     console.log('  (NVIDIA_API_KEY not set on the live server — caption checks skipped)');
   }
@@ -385,8 +408,8 @@ const main = async () => {
   const slowData = await slowRes.json().catch(() => ({}));
   stub.removeAllListeners('request');
   stub.on('request', mainListener);
-  check('hung workflow does not block image search (>answer within 8s)',
-    slowRes.status === 200 && slowMs < 8_000,
+  check('hung workflow does not block image search (answers within 10s)',
+    slowRes.status === 200 && slowMs < 10_000,
     `status=${slowRes.status} took ${slowMs}ms`);
   check('hung workflow falls back to the hint (query still built)',
     /bicycle/i.test(slowData.query || ''),

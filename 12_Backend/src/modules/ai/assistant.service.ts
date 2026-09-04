@@ -26,10 +26,12 @@ import {
 import { parseIntent, retrieveProducts, fmtUgx } from './catalog-context.js';
 import { analyzeImage, rankByEmbedding, roboflowConfigured } from '../vision/roboflow.service.js';
 
-/** How long interactive image search waits on the Roboflow workflow (ms). */
-const VISION_SEARCH_DEADLINE_MS = 4000;
+/** How long interactive image search waits on the Roboflow workflow (ms).
+ *  Generous enough for a serverless cold start, short enough that the photo
+ *  search still feels instant-ish; the answer always falls back gracefully. */
+const VISION_SEARCH_DEADLINE_MS = 6000;
 /** How long interactive image search waits on the NVIDIA/LLM describe call (ms). */
-const VISION_DESCRIBE_DEADLINE_MS = 5500;
+const VISION_DESCRIBE_DEADLINE_MS = 8000;
 
 /** NVIDIA NIM (OpenAI-compatible) vision endpoint used to describe photos. */
 const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
@@ -77,14 +79,74 @@ const APIFREELLM_URL = 'https://apifreellm.com/api/v1/chat';
 
 export { AGENTS };
 
-/** True when ANY AI provider has a key configured. */
+/** True when ANY AI provider has a key configured (chat + vision). */
 export function aiConfigured(): boolean {
-  return Boolean(process.env.LLM_API_KEY || process.env.APIFREELLM_API_KEY);
+  return Boolean(
+    process.env.LLM_API_KEY || process.env.APIFREELLM_API_KEY || process.env.NVIDIA_API_KEY
+  );
+}
+
+/** Which OpenAI-compatible endpoint backs the LLM chat path. */
+function resolveLlmEndpoint(): {
+  url: string;
+  key: string;
+  model: string;
+  provider: string;
+  headers: Record<string, string>;
+} {
+  const nvidiaKey = process.env.NVIDIA_API_KEY?.trim();
+  const llmKey = process.env.LLM_API_KEY?.trim();
+  const freeKey = process.env.APIFREELLM_API_KEY?.trim();
+  const explicit = (process.env.AI_PROVIDER || '').toLowerCase();
+
+  // NVIDIA NIM: used when explicitly selected, or as the fallback provider
+  // when it is the only key configured (the common "one key does everything"
+  // deployment — vision captions and chat share it).
+  if (nvidiaKey && (explicit === 'nvidia' || (!llmKey && !freeKey))) {
+    return {
+      url: process.env.NVIDIA_BASE_URL?.trim() || NVIDIA_BASE_URL,
+      key: nvidiaKey,
+      model: process.env.NVIDIA_VISION_MODEL?.trim() || NVIDIA_VISION_MODEL,
+      provider: 'nvidia',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${nvidiaKey}`,
+      },
+    };
+  }
+
+  if (llmKey) {
+    return {
+      url: process.env.LLM_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions',
+      key: llmKey,
+      model: process.env.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct',
+      provider: explicit === 'apifreellm' ? 'apifreellm' : 'openrouter',
+      headers: {
+        Authorization: `Bearer ${llmKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://scottstechx.app',
+        'X-Title': 'ScottsTechX',
+      },
+    };
+  }
+
+  throw new ServiceUnavailableError('No LLM key configured (NVIDIA_API_KEY or LLM_API_KEY)');
 }
 
 /** Vision describer readiness: NVIDIA NIM, OpenRouter vision, or Roboflow. */
 export function visionCaptionConfigured(): boolean {
   return nvidiaVisionConfigured() || Boolean(process.env.LLM_API_KEY);
+}
+
+/** Provider/model the UI should display for the configured chat engine. */
+export function llmStatusSummary(): { provider: string; model: string } {
+  if (!aiConfigured()) return { provider: 'scottstechx-local', model: 'catalog-grounded' };
+  try {
+    const ep = resolveLlmEndpoint();
+    return { provider: ep.provider, model: ep.model };
+  } catch {
+    return { provider: 'scottstechx-local', model: 'catalog-grounded' };
+  }
 }
 
 function activeProvider(): string {
@@ -213,9 +275,10 @@ async function askOpenRouter(
   userContent: string,
   history: Array<{ role: 'user' | 'assistant'; content: string }>
 ) {
-  const key = process.env.LLM_API_KEY;
-  if (!key) throw new ServiceUnavailableError('LLM_API_KEY (OpenRouter) is not set');
-  const model = process.env.AI_MODEL || 'meta-llama/llama-3.3-70b-instruct';
+  // Provider-agnostic now: NVIDIA NIM (kimi-k3) or any OpenAI-compatible
+  // endpoint (OpenRouter, OpenAI, Groq…). Named askOpenRouter historically;
+  // the returned provider name tells the UI which one answered.
+  const ep = resolveLlmEndpoint();
 
   const messages = [
     { role: 'system', content: system },
@@ -226,25 +289,20 @@ async function askOpenRouter(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), llmTimeoutMs());
   try {
-    const res = await fetch(openRouterUrl(), {
+    const res = await fetch(ep.url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://scottstechx.app',
-        'X-Title': 'ScottsTechX',
-      },
-      body: JSON.stringify({ model, messages, max_tokens: 800, temperature: 0.4 }),
+      headers: ep.headers,
+      body: JSON.stringify({ model: ep.model, messages, max_tokens: 2048, temperature: 0.4 }),
       signal: controller.signal,
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new ServiceUnavailableError(`OpenRouter error ${res.status}: ${text.slice(0, 200)}`);
+      throw new ServiceUnavailableError(`${ep.provider} error ${res.status}: ${text.slice(0, 200)}`);
     }
     const data = await res.json();
     const text = extractReply(data?.choices?.[0]?.message);
-    if (!text) throw new ServiceUnavailableError('OpenRouter returned an empty response');
-    return { text, provider: 'openrouter', model };
+    if (!text) throw new ServiceUnavailableError(`${ep.provider} returned an empty response`);
+    return { text, provider: ep.provider, model: ep.model };
   } finally {
     clearTimeout(timeout);
   }
@@ -387,6 +445,7 @@ export async function imageSearch(
   const labelTerms = vision
     ? [vision.productTitle, vision.category, vision.subcategory, ...vision.tags].filter(Boolean).join(' ')
     : '';
+  const baseTerms = terms;
   const merged = `${described} ${terms} ${labelTerms}`
     .split(/\s+/)
     .filter((w, i, all) => w && all.indexOf(w) === i)
@@ -403,7 +462,17 @@ export async function imageSearch(
       .replace(/\.(jpg|jpeg|png|webp|gif)$/i, '');
   }
 
-  const result = await aiSearch(db, terms || 'popular', limit);
+  // Recall ladder so image search is never a dead end: a caption can name the
+  // photo so precisely the catalogue has no exact match ("AirSound Pro
+  // Headphones") even though the hint/filename would have found plenty.
+  let result = await aiSearch(db, terms || 'popular', limit);
+  if (!result.products.length && baseTerms && baseTerms !== terms) {
+    const retry = await aiSearch(db, baseTerms, limit);
+    if (retry.products.length) result = retry;
+  }
+  if (!result.products.length && terms !== 'popular' && baseTerms !== 'popular') {
+    result = await aiSearch(db, 'popular', limit);
+  }
 
   // Visual boost: when the workflow gave an embedding, rank the catalogue by
   // cosine similarity and bubble the closest matches to the top (text-search
