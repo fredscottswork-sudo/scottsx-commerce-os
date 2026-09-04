@@ -1,20 +1,8 @@
 /**
- * ScottsTechX — offline reverse geocoder (fixed for village accuracy)
- *
- * Turns a raw GPS fix into a human place, but NEVER confidently claims a
- * wrong village. Separation of concerns:
- *   - GPS (lat/lng) is ALWAYS the source for distance/sorting
- *   - Village name is a HUMAN label that may be uncertain
- *
- * Design:
- *   - Backed by gazetteer.bin (167k places)
- *   - Returns confidence score and alternatives
- *   - If nearest settlement is far or second-nearest is similarly close,
- *     marks as uncertain and does NOT confidently return a village
- *   - Does NOT use hardcoded neighbourhood table as authoritative source
- *     (that table is legacy and would violate "do not hardcode village")
+ * ScottsTechX — offline reverse geocoder (fast fallback)
+ * Turns lat/lng into village/city/region/country instantly, no API.
+ * Used when Google key missing or Google times out (>800ms).
  */
-
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,9 +49,7 @@ function load(): Gazetteer | null {
   if (loadFailed) return null;
   try {
     const buf = readFileSync(gazetteerPath());
-    if (buf.toString('ascii', 0, 7) !== 'STXGAZ3') {
-      throw new Error('bad magic — rebuild with scripts/build-gazetteer.mjs');
-    }
+    if (buf.toString('ascii', 0, 7) !== 'STXGAZ3') throw new Error('bad magic');
     const count = buf.readUInt32LE(8);
     const lat = new Float32Array(count);
     const lon = new Float32Array(count);
@@ -119,23 +105,14 @@ export function geocoderReady(): boolean {
 
 export interface ReverseResult {
   village: string | null;
-  neighbourhood?: string | null;
-  suburb?: string | null;
   city: string | null;
-  district?: string | null;
   region: string | null;
   country: string | null;
   countryCode: string | null;
   accuracyKm: number;
   label: string;
   shortLabel: string;
-  displayLabel?: string;
-  source: 'offline-gazetteer' | 'google' | 'user_confirmed';
-  confidence: number; // 0..1
-  isUncertain: boolean;
-  requiresConfirmation?: boolean;
-  alternatives?: Array<{ name: string; distanceKm: number; type: string }>;
-  gpsAccuracyM?: number;
+  source: 'offline-gazetteer' | 'google';
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -168,93 +145,60 @@ const CITY_TIERS: [number, number][] = [
 ];
 const SELF_SUFFICIENT_POP = 25_000;
 const MAX_SANE_KM = 150;
-const VILLAGE_MAX_KM = 6;
-const CITY_MAX_KM = 25;
 
-/**
- * Find nearest N candidates for confidence estimation
- */
-function findNearestCandidates(lat: number, lng: number, limit = 5): Array<{ idx: number; km: number; name: string; pop: number; isAdmin: boolean }> {
+export function reverseGeocode(lat: number, lng: number): ReverseResult | null {
   const g = load();
-  if (!g) return [];
+  if (!g) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
   const latPad = CITY_RADIUS_KM / 111.32 + 0.02;
   const start = lowerBound(g.lat, lat - latPad);
   const end = lowerBound(g.lat, lat + latPad);
   const cosLat = Math.cos((lat * Math.PI) / 180) || 1e-6;
-  const cands: Array<{ idx: number; km: number; name: string; pop: number; isAdmin: boolean }> = [];
+
+  let nearestIdx = -1;
+  let nearestKm = Infinity;
+  let anyIdx = -1;
+  let anyKm = Infinity;
+  let cityIdx = -1;
+  let cityScore = -1;
+
   for (let i = start; i < end; i++) {
     const dx = g.lat[i] - lat;
     const dy = (g.lon[i] - lng) * cosLat;
     if (Math.sqrt(dx * dx + dy * dy) * 111.32 > CITY_RADIUS_KM) continue;
     const km = haversineKm(lat, lng, g.lat[i], g.lon[i]);
     const isAdmin = (g.flags[i] & FLAG_ADMIN) !== 0;
-    cands.push({ idx: i, km, name: readName(g.blob, g.nameOff[i]), pop: g.pop[i], isAdmin });
+    if (km < anyKm) { anyKm = km; anyIdx = i; }
+    if (!isAdmin && km < nearestKm) { nearestKm = km; nearestIdx = i; }
+    if (!isAdmin) {
+      const pop = g.pop[i];
+      let qualifies = false;
+      for (const [maxKm, minPop] of CITY_TIERS) {
+        if (km <= maxKm && pop >= minPop) { qualifies = true; break; }
+      }
+      if (qualifies) {
+        const score = pop / (1 + km * km);
+        if (score > cityScore) { cityScore = score; cityIdx = i; }
+      }
+    }
   }
-  cands.sort((a, b) => a.km - b.km);
-  return cands.slice(0, limit);
-}
 
-export function reverseGeocode(lat: number, lng: number, gpsAccuracyM?: number): ReverseResult | null {
-  const g = load();
-  if (!g) return null;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (nearestIdx === -1 && anyIdx !== -1) { nearestIdx = anyIdx; nearestKm = anyKm; }
 
-  const candidates = findNearestCandidates(lat, lng, 10);
-  if (candidates.length === 0) {
-    // widen search for country only
+  if (nearestIdx === -1) {
     const wideStart = lowerBound(g.lat, lat - 3);
     const wideEnd = lowerBound(g.lat, lat + 3);
-    let bestIdx = -1;
-    let bestKm = Infinity;
     for (let i = wideStart; i < wideEnd; i++) {
       const km = haversineKm(lat, lng, g.lat[i], g.lon[i]);
-      if (km < bestKm) { bestKm = km; bestIdx = i; }
-    }
-    if (bestIdx === -1) return null;
-    const countryIdx = g.country[bestIdx];
-    return {
-      village: null,
-      city: null,
-      region: null,
-      country: g.countryNames[countryIdx] ?? null,
-      countryCode: g.countryIso[countryIdx] ?? null,
-      accuracyKm: Math.round(bestKm * 100) / 100,
-      label: g.countryNames[countryIdx] ?? 'Unknown',
-      shortLabel: g.countryNames[countryIdx] ?? 'Unknown',
-      source: 'offline-gazetteer',
-      confidence: 0.2,
-      isUncertain: true,
-      requiresConfirmation: true,
-      displayLabel: `Location detected — confirm your village`,
-      gpsAccuracyM,
-    };
-  }
-
-  // Filter out admin for village candidates
-  const settlementCands = candidates.filter(c => !c.isAdmin);
-  const nearest = settlementCands[0] ?? candidates[0];
-  const second = settlementCands[1];
-
-  let nearestKm = nearest.km;
-  let nearestIdx = nearest.idx;
-
-  // Find best city
-  let cityIdx = -1;
-  let cityScore = -1;
-  for (const c of candidates) {
-    if (c.isAdmin) continue;
-    let qualifies = false;
-    for (const [maxKm, minPop] of CITY_TIERS) {
-      if (c.km <= maxKm && c.pop >= minPop) { qualifies = true; break; }
-    }
-    if (qualifies) {
-      const score = c.pop / (1 + c.km * c.km);
-      if (score > cityScore) { cityScore = score; cityIdx = c.idx; }
+      if (km < nearestKm) { nearestKm = km; nearestIdx = i; }
     }
   }
+  if (nearestIdx === -1) return null;
 
   const localName = readName(g.blob, g.nameOff[nearestIdx]);
   let cityName = cityIdx >= 0 ? readName(g.blob, g.nameOff[cityIdx]) : null;
+
   if (g.pop[nearestIdx] >= SELF_SUFFICIENT_POP) {
     cityName = localName;
     cityIdx = nearestIdx;
@@ -269,138 +213,24 @@ export function reverseGeocode(lat: number, lng: number, gpsAccuracyM?: number):
 
   const sameAsCity = cityName !== null && cityName === localName;
   let village: string | null = sameAsCity ? null : localName;
-  let city: string | null = cityName ?? localName;
+  const city = cityName ?? localName;
 
   const tooFar = nearestKm > MAX_SANE_KM;
   if (tooFar) village = null;
 
-  // Confidence logic
-  let confidence = 1;
-  let isUncertain = false;
-  let requiresConfirmation = false;
-
-  // If village is far, low confidence
-  if (nearestKm > VILLAGE_MAX_KM) {
-    village = null;
-    confidence = 0.3;
-    isUncertain = true;
-    requiresConfirmation = true;
-  } else if (nearestKm > 2) {
-    confidence = Math.max(0.4, 1 - nearestKm / 10);
-    if (nearestKm > 3) {
-      isUncertain = true;
-      requiresConfirmation = true;
-    }
-  }
-
-  // If second nearest is close to first, uncertain between villages
-  if (second && village) {
-    const diff = second.km - nearestKm;
-    if (diff < 0.5 && second.km <= VILLAGE_MAX_KM) {
-      // Two villages almost equally close — uncertain
-      confidence = Math.min(confidence, 0.5);
-      isUncertain = true;
-      requiresConfirmation = true;
-    } else if (diff < 1.0) {
-      confidence = Math.min(confidence, 0.7);
-      isUncertain = true;
-    }
-  }
-
-  // GPS accuracy affects confidence
-  if (gpsAccuracyM !== undefined) {
-    if (gpsAccuracyM > 1000) {
-      confidence = Math.min(confidence, 0.2);
-      isUncertain = true;
-      requiresConfirmation = true;
-    } else if (gpsAccuracyM > 100) {
-      confidence = Math.min(confidence, 0.6);
-      isUncertain = true;
-    }
-  }
-
-  if (!tooFar && nearestKm > CITY_MAX_KM) {
-    const cityKm = cityIdx >= 0 ? haversineKm(lat, lng, g.lat[cityIdx], g.lon[cityIdx]) : nearestKm;
-    if (cityKm > CITY_MAX_KM) {
-      city = null;
-    }
-  }
-
-  const effCity = tooFar ? null : city;
-  const parts = (tooFar ? [region, country] : [village, effCity, region, country]).filter(Boolean) as string[];
-  const shortParts = (tooFar ? [country] : [village ?? effCity ?? region, region ?? country]).filter(Boolean) as string[];
+  const parts = (tooFar ? [region, country] : [village, city, region, country]).filter(Boolean) as string[];
+  const shortParts = (tooFar ? [country] : [village ?? city, region ?? country]).filter(Boolean) as string[];
   const dedupe = (a: string[]) => a.filter((p, i) => i === 0 || p !== a[i - 1]);
-
-  const label = dedupe(parts).join(', ');
-  const shortLabel = dedupe(shortParts).join(', ');
-
-  let displayLabel = label;
-  if (isUncertain && village) {
-    displayLabel = `Location near ${village}`;
-  } else if (isUncertain && !village && effCity) {
-    displayLabel = `Location near ${effCity}`;
-  } else if (requiresConfirmation && !village) {
-    displayLabel = `Location detected — confirm your village`;
-  }
-
-  const alternatives = settlementCands.slice(0, 3).map(c => ({
-    name: c.name,
-    distanceKm: Math.round(c.km * 100) / 100,
-    type: c.pop >= SELF_SUFFICIENT_POP ? 'city' : 'village',
-  }));
 
   return {
     village,
-    city: effCity,
+    city: tooFar ? null : city,
     region,
     country,
     countryCode,
     accuracyKm: Math.round(nearestKm * 100) / 100,
-    label,
-    shortLabel,
-    displayLabel,
+    label: dedupe(parts).join(', '),
+    shortLabel: dedupe(shortParts).join(', '),
     source: 'offline-gazetteer',
-    confidence: Math.round(confidence * 100) / 100,
-    isUncertain,
-    requiresConfirmation: isUncertain || requiresConfirmation,
-    alternatives,
-    gpsAccuracyM,
   };
-}
-
-/**
- * Search villages/towns by name for user correction
- */
-export function searchPlaces(query: string, limit = 10): Array<{ name: string; city: string | null; region: string | null; country: string | null; lat: number; lng: number; type: string }> {
-  const g = load();
-  if (!g || !query.trim()) return [];
-  const q = query.trim().toLowerCase();
-  const results: Array<{ name: string; city: string | null; region: string | null; country: string | null; lat: number; lng: number; type: string; score: number }> = [];
-  // Simple linear scan — gazetteer is 167k, okay for search with limit
-  for (let i = 0; i < g.count; i++) {
-    if (g.flags[i] & FLAG_ADMIN) continue;
-    const name = readName(g.blob, g.nameOff[i]);
-    if (!name.toLowerCase().includes(q)) continue;
-    const regionId = g.region[i];
-    const region = regionId === NO_REGION ? null : g.regions[regionId] ?? null;
-    const countryIdx = g.country[i];
-    const country = g.countryNames[countryIdx] ?? null;
-    // Score by population and exact match
-    let score = g.pop[i];
-    if (name.toLowerCase() === q) score += 1000000;
-    else if (name.toLowerCase().startsWith(q)) score += 100000;
-    results.push({
-      name,
-      city: null,
-      region,
-      country,
-      lat: g.lat[i],
-      lng: g.lon[i],
-      type: g.pop[i] >= SELF_SUFFICIENT_POP ? 'city' : 'village',
-      score,
-    });
-    if (results.length > 1000) break; // prevent too much scanning
-  }
-  results.sort((a, b) => b.score - a.score);
-  return results.slice(0, limit).map(({ score, ...rest }) => rest);
 }
