@@ -50,6 +50,12 @@ let overloadOnceUsed = false;
 // "detected" fall back to the user's question). Tests flip it to prove the
 // fallback is honest and never reports the question as the item.
 let stubCaptionMode = 'ok';
+// 'llama' makes the DEFAULT vision model hang on image input (the live kimi-k3
+// behaviour) — the chain must fall through to a working model after the short
+// per-attempt cap instead of burning the whole deadline.
+let stubVisionHangModel = '';
+// Simulate Roboflow's live 401 ("key not authorized for serverless inference").
+let stubRoboflow401 = false;
 const OVERLOAD_BODY = JSON.stringify({
   error: { message: 'Service temporarily overloaded', type: 'Service Unavailable', code: 503 },
 });
@@ -120,6 +126,12 @@ const nvidiaStub = http.createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ choices: [{ message: { content: '' } }] }));
       return;
+    }
+
+    // Simulate a model that hangs on image input: never answer (the live
+    // kimi-k3). The attempt cap must move the chain to the next model.
+    if (imgUrl && stubVisionHangModel && modelName === stubVisionHangModel) {
+      return; // leave the socket open — the server's attempt timer aborts
     }
 
     let reply = `NVIDIA says: the catalogue has items matching "${prompt.slice(0, 60)}".`;
@@ -223,6 +235,17 @@ const stub = http.createServer((req, res) => {
     let parsed = null;
     try { parsed = JSON.parse(body || '{}'); } catch { /* ignore */ }
     lastBody = parsed;
+    // Simulate the LIVE Roboflow failure: key not authorized for serverless.
+    if (stubRoboflow401) {
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          status: 401,
+          message: 'Unauthorized api_key. This key is not authorized for serverless inference.',
+        })
+      );
+      return;
+    }
     const imageUrl = String(parsed?.inputs?.image?.value ?? '');
     const out = /wrapped/i.test(imageUrl) ? wrappedOut(imageUrl) : bareOut(imageUrl);
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -544,6 +567,41 @@ const main = async () => {
         typeof askNoCaptionData.photoAnalysis?.error === 'string' &&
         askNoCaptionData.photoAnalysis.error.length > 0,
       JSON.stringify(askNoCaptionData.photoAnalysis));
+
+    // The LIVE failure: the default vision model HANGS on image input (25s
+    // abort, no HTTP error). The short per-attempt cap must move the caption
+    // to the next image-capable model instead of burning the whole deadline.
+    stubVisionHangModel = 'meta/llama-3.2-11b-vision-instruct';
+    const askHang = await fetch(`${API}/ai/v2/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'what is shown here?', imageData: TINY_PNG }),
+    });
+    stubVisionHangModel = '';
+    const askHangData = await askHang.json().catch(() => ({}));
+    check('hanging vision model: caption falls back to the next image model',
+      askHang.status === 200 && /base64-test photo/.test(askHangData.photoAnalysis?.detected || '') && !askHangData.llmError,
+      JSON.stringify({ status: askHang.status, detected: askHangData.photoAnalysis?.detected, llmError: askHangData.llmError }));
+
+    // Roboflow's REAL problem (401 key not authorized for serverless
+    // inference) must surface in the analysis, not as "did not answer".
+    stubRoboflow401 = true;
+    stubCaptionMode = 'empty';
+    const ask401 = await fetch(`${API}/ai/v2/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'what is this?', imageData: TINY_PNG }),
+    });
+    const ask401Data = await ask401.json().catch(() => ({}));
+    check('Roboflow 401: the real reason reaches photoAnalysis.error',
+      /HTTP 401/.test(ask401Data.photoAnalysis?.error || ''),
+      JSON.stringify(ask401Data.photoAnalysis));
+    const diag401 = await api('/ai/diagnostics');
+    check('diagnostics under Roboflow 401: status + message reported',
+      diag401.data?.roboflow?.ok === false && diag401.data?.roboflow?.status === 401,
+      JSON.stringify(diag401.data?.roboflow));
+    stubRoboflow401 = false;
+    stubCaptionMode = 'ok';
   } else {
     console.log('  (NVIDIA_API_KEY not set on the live server — caption checks skipped)');
   }

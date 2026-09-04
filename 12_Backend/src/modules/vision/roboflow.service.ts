@@ -33,6 +33,10 @@ interface RoboflowInput {
    *  the env default (10s); the chat passes 25s because it already waits on
    *  the LLM and a serverless cold start routinely exceeds 10s. */
   timeoutMs?: number;
+  /** Called with a short human-readable reason when the workflow call does
+   *  not succeed (HTTP status + body, network error). Lets callers surface
+   *  e.g. Roboflow's 401 "key not authorized" instead of a generic timeout. */
+  onError?: (detail: string) => void;
 }
 
 export interface VisionAnalysis {
@@ -245,6 +249,7 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
       // is never logged. Callers still fall back gracefully.
       const detail = await res.text().catch(() => '');
       console.warn(`[vision] Roboflow workflow HTTP ${res.status} in ${Date.now() - startedAt}ms: ${detail.slice(0, 300)}`);
+      input.onError?.(`Roboflow HTTP ${res.status}: ${detail.slice(0, 160)}`);
       return null;
     }
     const payload = await res.json();
@@ -281,10 +286,12 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
       checkedAt: new Date().toISOString(),
     };
   } catch (err) {
+    const reason = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     console.warn(
-      `[vision] Roboflow workflow call failed (${err instanceof Error ? err.name : 'error'}) — ` +
+      `[vision] Roboflow workflow call failed (${reason.slice(0, 160)}) — ` +
         'falling back to catalogue search.'
     );
+    input.onError?.(`Roboflow request failed: ${reason.slice(0, 160)}`);
     return null;
   } finally {
     clearTimeout(timer);

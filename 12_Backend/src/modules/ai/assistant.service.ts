@@ -45,8 +45,16 @@ const VISION_CHAT_DESCRIBE_DEADLINE_MS = 40_000;
 const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
 /** Chat/agent model — strong general LLM (text only). */
 const NVIDIA_CHAT_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b';
-/** Vision caption model — must accept image_url (nemotron-3-ultra is text-only). */
-const NVIDIA_VISION_MODEL = 'moonshotai/kimi-k3';
+/**
+ * Vision caption model — MUST accept image_url (nemotron-3-ultra is
+ * text-only). Default is meta/llama-3.2-11b-vision-instruct: the live
+ * diagnostics showed moonshotai/kimi-k3 HANGS on image input for this key
+ * (25s abort, no HTTP error), so kimi-k3 is only a fallback candidate now.
+ */
+const NVIDIA_VISION_MODEL = 'meta/llama-3.2-11b-vision-instruct';
+/** How long ONE vision-model attempt may take before the next candidate gets
+ *  the image (a hanging model must not burn the whole chat deadline). */
+const VISION_ATTEMPT_TIMEOUT_MS = 12_000;
 
 /** True when an NVIDIA NIM key is configured (server-side only). */
 export function nvidiaVisionConfigured(): boolean {
@@ -458,6 +466,7 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
       if (detectedOk) {
         blocks.push(`Detected: ${rawDetected}`);
         if (found.query) blocks.push(`Search terms used: ${found.query}`);
+        if (found.visionError) blocks.push(`Vision notes (other provider): ${found.visionError}`);
         blocks.push(
           `LIVE catalogue matches (ranked, with price/stock/seller):\n${productsToContext(photoMatches)}`
         );
@@ -626,8 +635,6 @@ function stripThinking(input: string): string {
  * (e.g. this key lists "moonshotai/kimi-k2.6", not "kimi-k2-instruct"), and a
  * fallback that 404s is no fallback. nvidiaFallbackModels() also appends any
  * other instruct/chat-style listed model as a last resort.
- * NOTE: kimi-k3 and llama-3.2-11b-vision accept image_url, so the chain also
- * serves caption requests when the primary vision model is overloaded.
  */
 const NVIDIA_FALLBACK_PREFERENCE = [
   'moonshotai/kimi-k2.6',
@@ -640,10 +647,25 @@ const NVIDIA_FALLBACK_PREFERENCE = [
   'google/gemma-3-4b-it',
 ];
 
+/**
+ * Vision fallbacks: only models that accept image_url. kimi-k3 is LAST — on
+ * the production key it hangs on image input (live diagnostics abort at 25s
+ * with no HTTP error), so it must not be reached by default.
+ */
+const NVIDIA_VISION_FALLBACK_PREFERENCE = [
+  'meta/llama-3.2-90b-vision-instruct',
+  'microsoft/phi-3-vision-128k-instruct',
+  'moonshotai/kimi-k3',
+];
+
 /** Build the fallback chain from the models the key can actually use. */
-function nvidiaFallbackModels(ids: string[] | null, primary: string): string[] {
+function nvidiaFallbackModels(
+  ids: string[] | null,
+  primary: string,
+  preference: string[] = NVIDIA_FALLBACK_PREFERENCE
+): string[] {
   const listed = new Set(ids ?? []);
-  const preferred = NVIDIA_FALLBACK_PREFERENCE.filter((m) => m !== primary && listed.has(m));
+  const preferred = preference.filter((m) => m !== primary && listed.has(m));
   if (preferred.length) return preferred;
   // Nothing from the preference list exists on this key — use any listed
   // instruct/chat-style model rather than failing offline.
@@ -771,7 +793,7 @@ async function listNvidiaModels(): Promise<{
 async function nvidiaChatCompletion(
   messages: Array<Record<string, unknown>>,
   maxTokens: number,
-  opts: { model?: string; think?: boolean } = {}
+  opts: { model?: string; think?: boolean; attemptTimeoutMs?: number; fallback?: string[] } = {}
 ): Promise<{ text: string; model: string }> {
   const key = process.env.NVIDIA_API_KEY?.trim();
   if (!key) throw new ServiceUnavailableError('NVIDIA_API_KEY is not set');
@@ -795,7 +817,7 @@ async function nvidiaChatCompletion(
   // Chain = configured primary + models the key can actually use (in
   // preference order, then any listed instruct/chat-style model as a last
   // resort). A hard-coded partner name that 404s would defeat the fallback.
-  const candidates = [primary, ...nvidiaFallbackModels(models.ids, primary)];
+  const candidates = [primary, ...nvidiaFallbackModels(models.ids, primary, opts.fallback)];
 
   // Transient failures (NVIDIA's 'Service temporarily overloaded' 503, rate
   // limits, 5xx) recover in seconds. Retry the same model once, then move
@@ -820,7 +842,11 @@ async function nvidiaChatCompletion(
         break;
       }
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), remaining);
+      // A vision attempt gets a SHORT cap so a model that hangs on image_url
+      // yields to the next candidate instead of burning the whole deadline;
+      // chat keeps the full remaining budget (reasoning is legitimately slow).
+      const attemptMs = opts.attemptTimeoutMs ? Math.min(remaining, opts.attemptTimeoutMs) : remaining;
+      const timer = setTimeout(() => controller.abort(), attemptMs);
       try {
         const res = await fetch(url, {
           method: 'POST',
@@ -855,6 +881,8 @@ async function nvidiaChatCompletion(
         lastError = err;
         const status = (err as { nvidiaStatus?: number }).nvidiaStatus ?? 0;
         const body = String((err as { nvidiaBody?: string }).nvidiaBody ?? '');
+        const aborted =
+          err instanceof Error && (err.name === 'AbortError' || /abort/i.test(err.message));
         const modelIssue = (status === 400 || status === 404 || status === 422) && /model/i.test(body);
         const hard = status === 401 || status === 402 || status === 403;
         const transient = TRANSIENT_HTTP.has(status) || status === 0; // 0 = network/timeout
@@ -865,6 +893,14 @@ async function nvidiaChatCompletion(
         if (hard) {
           hardStop = true;
           break; // auth / credits / no permission — no model will fix it
+        }
+        if (aborted) {
+          // Our attempt timer fired: the model is hanging or too slow (the
+          // kimi-k3 vision hang). Retrying it wastes the same time again —
+          // move straight to the next candidate. The overall budget still
+          // bounds the total.
+          console.warn(`[ai] nvidia "${model}" attempt timed out after ${attemptMs}ms — trying next.`);
+          break;
         }
         if (transient && attemptsLeft > 0) {
           const backoff = Math.min(300 + 400 * (2 - attemptsLeft) + Math.round(Math.random() * 200), Math.max(remaining - 1000, 100));
@@ -1057,8 +1093,17 @@ export async function imageSearch(
   if (raw) {
     // The internal abort must match the outer deadline or the inner 10s cap
     // wins and a serverless cold start is killed before the chat's wait ends.
+    // onError captures the REAL reason (e.g. Roboflow's 401 "key not authorized
+    // for serverless inference") so "did not answer" is never the whole story.
     const robof = Promise.race([
-      analyzeImage({ imageUrl: opts.imageUrl, imageData: opts.imageData, timeoutMs: searchDeadline }),
+      analyzeImage({
+        imageUrl: opts.imageUrl,
+        imageData: opts.imageData,
+        timeoutMs: searchDeadline,
+        onError: (d) => {
+          visionError = visionError ? `${visionError}; ${d}` : d;
+        },
+      }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), searchDeadline)),
     ]);
     const captionCall = Promise.race([
@@ -1069,8 +1114,12 @@ export async function imageSearch(
     ]);
     [vision, caption] = await Promise.all([robof, captionCall]);
     if (!vision && roboflowConfigured()) {
-      console.warn(`[vision] image search skipped Roboflow after its ${searchDeadline}ms deadline — answering from caption/heuristic.`);
-      visionError = `Roboflow analysis did not answer within ${searchDeadline}ms`;
+      if (!visionError) {
+        console.warn(`[vision] image search skipped Roboflow after its ${searchDeadline}ms deadline — answering from caption/heuristic.`);
+        visionError = `Roboflow analysis did not answer within ${searchDeadline}ms`;
+      } else {
+        console.warn(`[vision] image search skipped Roboflow: ${visionError.slice(0, 160)}`);
+      }
     }
     if (!caption.text) {
       console.warn(`[vision] image search without a caption (${caption.error ?? 'no vision provider configured'})`);
@@ -1202,8 +1251,16 @@ async function describeImage(input: {
         ],
         64,
         // Captions must use an IMAGE-capable model (nemotron-3-ultra is
-        // text-only) and skip thinking so the caption is fast.
-        { model: nvidiaVisionModel(), think: false }
+        // text-only) and skip thinking so the caption is fast. Chain only
+        // confirmed image models, with a short per-attempt cap so a model
+        // that hangs on image_url (kimi-k3 on this key) yields to the next
+        // instead of eating the whole chat deadline.
+        {
+          model: nvidiaVisionModel(),
+          think: false,
+          attemptTimeoutMs: VISION_ATTEMPT_TIMEOUT_MS,
+          fallback: NVIDIA_VISION_FALLBACK_PREFERENCE,
+        }
       );
       return { text: r.text.slice(0, 120) };
     } catch (err) {
