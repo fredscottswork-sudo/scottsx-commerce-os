@@ -6,7 +6,7 @@ import {
   Copy, Share2, BookOpen, Store,
 } from 'lucide-react';
 import { aiService } from '../api/services';
-import type { AiAgent, AiAnswer, AiSearchResult, Product } from '../api/types';
+import { formatUgx, type AiAgent, type AiAnswer, type AiSearchResult, type Product } from '../api/types';
 import { compressImage } from '../lib/imageSearch';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
@@ -141,6 +141,8 @@ export function AiConsole({
   const [imgOpen, setImgOpen] = useState(false);
   /** Aborts the in-flight SSE request (Stop button). */
   const abortRef = useRef<AbortController | null>(null);
+  /** Drag-over highlight on the composer (a photo is being dragged onto it). */
+  const [dragOver, setDragOver] = useState(false);
   /** Photo attached to the NEXT message (compressed on-device, ~200-400KB). */
   const [photo, setPhoto] = useState<{ dataUrl: string; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -377,15 +379,31 @@ export function AiConsole({
     setListening(true);
   }, [listening, send, toast]);
 
-  /** Photo — find products by image, then show them as a grounded answer. */
+  /** Photo — find products by image, then show them as a grounded answer.
+   *  The turn's TEXT also carries the matched listings (title/price/stock/
+   *  seller) so follow-up questions ("is the second one cheaper?") are
+   *  answerable: history only serializes `content`, never product cards. */
   const onPhotoResults = useCallback((r: AiSearchResult) => {
     setImgOpen(false);
+    const lines = [r.explanation || 'Here is what matches the photo.'];
+    if (r.products?.length) {
+      lines.push('', 'Matching listings (live catalogue):');
+      for (const p of r.products.slice(0, 6)) {
+        const seller = p.seller?.name || 'unknown seller';
+        const where = p.seller?.location ? `, ${p.seller.location}` : '';
+        lines.push(
+          `• ${p.title} — ${formatUgx(p.priceMinor)} | ${
+            p.stockQuantity > 0 ? `${p.stockQuantity} in stock` : 'out of stock'
+          } | ${seller}${where}`
+        );
+      }
+    }
     setTurns((t) => [
       ...t,
       { role: 'user', content: 'Find this in the marketplace 📷' },
       {
         role: 'assistant',
-        content: r.explanation || 'Here is what matches the photo.',
+        content: lines.join('\n'),
         products: r.products,
         grounded: true,
         agent: 'Photo search',
@@ -396,11 +414,9 @@ export function AiConsole({
   }, [status]);
 
   /** Attach a photo to the next CHAT message (compressed on-device first). */
-  const onAttachFile = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      e.target.value = '';
-      if (!file) return;
+  const attachFile = useCallback(
+    async (file: File) => {
+      if (!file.type.startsWith('image/')) return;
       try {
         const c = await compressImage(file);
         if (c.dataUrl.length > 7 * 1024 * 1024) {
@@ -414,6 +430,38 @@ export function AiConsole({
       }
     },
     [toast]
+  );
+
+  const onAttachFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (file) await attachFile(file);
+    },
+    [attachFile]
+  );
+
+  /** Paste an image straight into the composer (Ctrl/Cmd+V). */
+  const onPastePhoto = useCallback(
+    async (e: React.ClipboardEvent) => {
+      const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
+      if (file) {
+        e.preventDefault();
+        await attachFile(file);
+      }
+    },
+    [attachFile]
+  );
+
+  /** Drag & drop a photo onto the composer. */
+  const onDropPhoto = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = Array.from(e.dataTransfer?.files ?? []).find((f) => f.type.startsWith('image/'));
+      if (file) await attachFile(file);
+    },
+    [attachFile]
   );
 
   /** Copy one assistant answer to the clipboard. */
@@ -706,7 +754,7 @@ export function AiConsole({
         </div>
 
         <form
-          className="ai-chat-input"
+          className={`ai-chat-input ${dragOver ? 'ai-chat-input--drop' : ''}`}
           onSubmit={(e) => {
             e.preventDefault();
             const text = input.trim() || (photo ? 'What can you tell me from this photo?' : '');
@@ -715,6 +763,16 @@ export function AiConsole({
             setPhoto(null);
             void send(text, img);
           }}
+          onPaste={(e) => void onPastePhoto(e)}
+          onDrop={(e) => void onDropPhoto(e)}
+          onDragOver={(e) => {
+            if (Array.from(e.dataTransfer?.items ?? []).some((i) => i.kind === 'file')) {
+              e.preventDefault();
+              setDragOver(true);
+            }
+          }}
+          onDragLeave={() => setDragOver(false)}
+          title={dragOver ? 'Drop the photo to attach it' : undefined}
         >
           {photo && (
             <div className="ai-chat-photo" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>

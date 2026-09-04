@@ -37,6 +37,8 @@ export function VisualSearch({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AiSearchResult | null>(null);
 
+  const [dragOver, setDragOver] = useState(false);
+
   const pick = (f: File | null) => {
     if (!f) return;
     if (!/^image\//.test(f.type)) {
@@ -79,7 +81,16 @@ export function VisualSearch({
   };
 
   return (
-    <div className={`visual-search ${compact ? 'compact' : ''}`}>
+    <div
+      className={`visual-search ${compact ? 'compact' : ''}`}
+      onPaste={(e) => {
+        const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/'));
+        if (f) {
+          e.preventDefault();
+          pick(f);
+        }
+      }}
+    >
       <div className="row-between mb-12">
         <h3 className="card-title"><Camera size={16} /> Search by photo</h3>
         {result && (
@@ -87,7 +98,20 @@ export function VisualSearch({
         )}
       </div>
 
-      <div className="vs-drop" onClick={() => fileRef.current?.click()}>
+      <div
+        className={`vs-drop ${dragOver ? 'vs-drop--over' : ''}`}
+        onClick={() => fileRef.current?.click()}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          pick(Array.from(e.dataTransfer?.files ?? []).find((x) => x.type.startsWith('image/')) ?? null);
+        }}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
+      >
         {preview ? (
           <img src={preview} alt="Selected" className="vs-preview" />
         ) : (
