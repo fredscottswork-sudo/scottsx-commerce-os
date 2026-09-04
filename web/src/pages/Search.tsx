@@ -9,7 +9,6 @@ import { formatUgx } from '../api/types';
 import { useCart } from '../store/CartContext';
 import { useToast } from '../store/ToastContext';
 import { ProductGrid } from '../components/ProductCard';
-import { VisualSearch } from '../components/VisualSearch';
 import {
   Btn, Empty, ErrorBox, SkeletonGrid, Field, Input, Select, Switch, Pagination, Modal, RichText,
 } from '../components/ui';
@@ -75,21 +74,12 @@ export default function Search() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState('');
   const [imageOpen, setImageOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageHint, setImageHint] = useState('');
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
 
   useEffect(() => { setInput(q); }, [q]);
-
-  // The topbar camera modal stashes its result and navigates here; pick it
-  // up so the shopper lands straight on their visual matches.
-  useEffect(() => {
-    const stashed = consumeStashedImageSearch();
-    if (!stashed) return;
-    setProducts(stashed.products);
-    setTotal(stashed.products.length);
-    setAiNote(stashed.explanation);
-  }, []);
 
   const patch = useCallback((next: Record<string, string | null>, resetPage = true) => {
     const p = new URLSearchParams(params);
@@ -173,11 +163,24 @@ export default function Search() {
     }
   };
 
-  const onVisualResults = (r: { products: Product[]; explanation: string }) => {
-    setProducts(r.products);
-    setTotal(r.products.length);
-    setAiNote(r.explanation);
-    setImageOpen(false);
+  const runImageSearch = async () => {
+    if (!imageUrl.trim() && !imageHint.trim()) {
+      toast('Paste an image URL or describe the item', 'warning');
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const r = await aiService.imageSearch({ imageUrl: imageUrl.trim(), hint: imageHint.trim() });
+      setProducts(r.products);
+      setTotal(r.products.length);
+      setAiNote(r.explanation);
+      setImageOpen(false);
+      if (r.products.length === 0) toast('No visual matches — try adding a hint', 'info');
+    } catch (e: any) {
+      toast(e?.message || 'Image search failed', 'error');
+    } finally {
+      setAiBusy(false);
+    }
   };
 
   const toggleVoice = () => {
@@ -391,14 +394,30 @@ export default function Search() {
         {filterPanel}
       </Modal>
 
-      {/* ── Image search (upload a photo or paste a URL) ─────────────────── */}
+      {/* ── Image search ────────────────────────────────────────────────── */}
       <Modal
         open={imageOpen}
         onClose={() => setImageOpen(false)}
         title="Search by image"
-        footer={<Btn onClick={() => setImageOpen(false)}>Close</Btn>}
+        footer={
+          <>
+            <Btn onClick={() => setImageOpen(false)}>Cancel</Btn>
+            <Btn variant="primary" onClick={runImageSearch} loading={aiBusy} icon={<ImageIcon size={15} />}>
+              Find matches
+            </Btn>
+          </>
+        }
       >
-        <VisualSearch compact showResults={false} onResults={onVisualResults} />
+        <Field label="Image URL" hint="Paste a link to a photo of the product you want.">
+          <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/photo.jpg" />
+        </Field>
+        {imageUrl && (
+          <img src={imageUrl} alt="Preview" className="img-preview"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+        )}
+        <Field label="Describe it (optional)" hint="A hint like “blue running shoes” sharpens the match a lot.">
+          <Input value={imageHint} onChange={(e) => setImageHint(e.target.value)} placeholder="e.g. white wireless headphones" />
+        </Field>
       </Modal>
     </div>
   );

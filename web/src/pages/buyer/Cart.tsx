@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  ShoppingCart, Trash2, Minus, Plus, ShieldCheck, MessageCircle, Store, Send, LogIn,
+  ShoppingCart, Trash2, Minus, Plus, ShieldCheck, Truck, MapPin, CheckCircle2, Store,
 } from 'lucide-react';
-import { socialService, chatService } from '../../api/services';
-import type { Order } from '../../api/types';
+import { socialService, buyerService } from '../../api/services';
+import type { Address, Order } from '../../api/types';
 import { formatUgx } from '../../api/types';
 import { useCart } from '../../store/CartContext';
 import { useToast } from '../../store/ToastContext';
@@ -13,26 +13,29 @@ import {
   Btn, Empty, ErrorBox, Field, Input, Select, TextArea, Modal, PageHeader, ConfirmModal, SkeletonRows,
 } from '../../components/ui';
 
-/**
- * Inquiry cart — no online payment anywhere.
- *
- * Items are grouped by seller; the primary action is talking. Buyers can send
- * an inquiry (an order the seller answers in chat) or open a chat per seller.
- * Guests can browse, add and edit for free; sign-in is only needed to send an
- * inquiry or open a conversation.
- */
 export default function Cart() {
   const { cart, loading, loadError, setQty, remove, clear, refresh } = useCart();
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const isBuyer = !!user && user.role === 'buyer';
-
-  const [sending, setSending] = useState(false);
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [addressId, setAddressId] = useState('');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [note, setNote] = useState('');
+  const [placing, setPlacing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [placed, setPlaced] = useState<{ orders: Order[]; message: string } | null>(null);
+  const [placed, setPlaced] = useState<{ orders: Order[]; message: string; totalMinor: number } | null>(null);
   const [busyId, setBusyId] = useState('');
+
+  useEffect(() => {
+    buyerService.addresses()
+      .then((r) => {
+        setAddresses(r.addresses);
+        setAddressId(r.addresses.find((a) => a.isDefault)?.id ?? r.addresses[0]?.id ?? '');
+      })
+      .catch(() => undefined);
+  }, []);
 
   // Group lines by seller — buyers think in stores, not rows.
   const bySeller = useMemo(() => {
@@ -71,24 +74,24 @@ export default function Cart() {
       toast('Remove the unavailable items first', 'warning');
       return;
     }
-    setSending(true);
+    setPlacing(true);
     try {
-      const r = await socialService.checkout({});
-      setPlaced({ orders: r.orders, message: r.message });
+      const r = await socialService.checkout({ addressId: addressId || undefined, phone, note });
+      setPlaced({ orders: r.orders, message: r.message, totalMinor: r.totalMinor });
       await refresh();
       window.dispatchEvent(new CustomEvent('stx:refresh-badges'));
     } catch (e: any) {
-      toast(e?.message || 'Could not send the inquiry', 'error');
+      toast(e?.message || 'Could not place the order', 'error');
       await refresh();
     } finally {
-      setSending(false);
+      setPlacing(false);
     }
   };
 
   if (loading && cart.items.length === 0) {
     return (
       <>
-        <PageHeader title="Your inquiry cart" />
+        <PageHeader title="Your cart" />
         <SkeletonRows rows={4} height={82} />
       </>
     );
@@ -109,11 +112,11 @@ export default function Cart() {
   if (cart.items.length === 0 && !placed) {
     return (
       <>
-        <PageHeader title="Your inquiry cart" />
+        <PageHeader title="Your cart" />
         <Empty
           icon={<ShoppingCart size={28} />}
           title="Your cart is empty"
-          subtitle="Add products from the marketplace and they'll show up here, grouped by seller — then message sellers directly."
+          subtitle="Add products from the marketplace and they'll show up here, grouped by seller."
           action={<Btn variant="primary" onClick={() => navigate('/search')}>Start shopping</Btn>}
         />
       </>
@@ -123,32 +126,14 @@ export default function Cart() {
   return (
     <>
       <PageHeader
-        title="Your inquiry cart"
-        sub={`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'} from ${bySeller.length} seller${bySeller.length === 1 ? '' : 's'} — chat to agree, no online payment`}
+        title="Your cart"
+        sub={`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'} from ${bySeller.length} seller${bySeller.length === 1 ? '' : 's'}`}
         actions={
           cart.items.length > 0 ? (
             <Btn variant="ghost" icon={<Trash2 size={15} />} onClick={() => setConfirmClear(true)}>Empty cart</Btn>
           ) : undefined
         }
       />
-
-      {!isBuyer && (
-        <div className="card banner-info row wrap" style={{ gap: 12, alignItems: 'center' }}>
-          <div className="grow" style={{ minWidth: 220 }}>
-            <strong>Browsing as a guest — everything you add stays here.</strong>
-            <p className="tiny muted mt-4">
-              Sign in when you're ready to send an inquiry or chat with sellers. No account is
-              needed to explore, search or build your list.
-            </p>
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            <Btn size="sm" icon={<LogIn size={14} />} onClick={() => navigate('/login', { state: { from: '/cart' } })}>
-              Sign in
-            </Btn>
-            <Btn size="sm" variant="primary" onClick={() => navigate('/register')}>Create account</Btn>
-          </div>
-        </div>
-      )}
 
       <div className="checkout-layout">
         {/* ── Lines grouped by seller ─────────────────────────────────── */}
@@ -168,13 +153,7 @@ export default function Cart() {
                 <Link to={`/seller/${sellerId}`} className="card-title" style={{ textDecoration: 'none' }}>
                   <Store size={16} /> {group.sellerName}
                 </Link>
-                <div className="row" style={{ gap: 8 }}>
-                  <span className="tiny muted">{group.items.length} item{group.items.length > 1 ? 's' : ''}</span>
-                  <Btn size="sm" variant="ghost" icon={<MessageCircle size={14} />}
-                    onClick={() => void openChat(sellerId, group.sellerName)}>
-                    Message
-                  </Btn>
-                </div>
+                <span className="tiny muted">{group.items.length} item{group.items.length > 1 ? 's' : ''}</span>
               </div>
 
               <div className="col">
@@ -234,12 +213,15 @@ export default function Cart() {
 
         {/* ── Summary / checkout — guest sees login prompt, buyer sees full form */}
         <aside className="card checkout-summary">
-          <h3 className="card-title mb-12">Next steps</h3>
+          <h3 className="card-title mb-12">Order summary</h3>
 
-          <div className="sum-row"><span className="muted">Items</span><span className="semi">{cart.itemCount}</span></div>
-          <div className="sum-row"><span className="muted">Estimated total</span><span className="semi">{formatUgx(cart.subtotalMinor)}</span></div>
-          <div className="sum-row"><span className="muted">Delivery</span><span className="tiny muted">Agree it in chat</span></div>
+          <div className="sum-row"><span className="muted">Subtotal</span><span className="semi">{formatUgx(cart.subtotalMinor)}</span></div>
+          <div className="sum-row"><span className="muted">Delivery</span><span className="tiny muted">Quoted by each seller</span></div>
           <div className="sum-divider" />
+          <div className="sum-row">
+            <span className="semi">Total due</span>
+            <span className="sum-total">{formatUgx(cart.subtotalMinor)}</span>
+          </div>
 
           {isGuest ? (
             <div className="col mt-16">
@@ -314,20 +296,20 @@ export default function Cart() {
       <Modal
         open={!!placed}
         onClose={() => { setPlaced(null); navigate('/buyer/orders'); }}
-        title="Inquiry sent 🎉"
+        title="Order placed 🎉"
         footer={
           <>
             <Btn onClick={() => { setPlaced(null); navigate('/search'); }}>Keep shopping</Btn>
-            <Btn variant="primary" onClick={() => { setPlaced(null); navigate('/messages'); }}>Chat with sellers</Btn>
+            <Btn variant="primary" onClick={() => { setPlaced(null); navigate('/buyer/orders'); }}>Track my orders</Btn>
           </>
         }
       >
         <div className="center mb-16">
-          <div className="success-ring"><Send size={32} /></div>
+          <div className="success-ring"><CheckCircle2 size={34} /></div>
         </div>
         <p className="center semi">{placed?.message}</p>
         <p className="center muted tiny mt-4">
-          The sellers have been notified — open the chat to confirm the price and delivery.
+          Total {formatUgx(placed?.totalMinor ?? 0)} · pay on delivery
         </p>
         <div className="col mt-16">
           {placed?.orders.map((o) => (

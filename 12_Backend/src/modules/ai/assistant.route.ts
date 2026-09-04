@@ -6,8 +6,7 @@
  *   POST /api/v1/ai/v2/ask                { prompt, screen?, agent?, history? }
  *   POST /api/v1/ai/v2/generate-product   { imageUrl?, hint }
  *   POST /api/v1/ai/search                { q }              natural-language search
- *   POST /api/v1/ai/image-search          { imageUrl?, imageData?, hint?, labels? }
- *   POST /api/v1/ai/image-upload-search   multipart: image + hint?  (public — no login)
+ *   POST /api/v1/ai/image-search          { imageUrl?, hint?, labels? }
  *   POST /api/v1/ai/voice-search          { transcript }
  */
 import type { FastifyInstance } from 'fastify';
@@ -109,7 +108,6 @@ export default async function registerAiRoute(app: FastifyInstance) {
     const body = z
       .object({
         imageUrl: z.string().optional(),
-        imageData: z.string().optional(),
         hint: z.string().optional(),
         labels: z.array(z.string()).optional(),
         limit: z.coerce.number().int().min(1).max(60).optional().default(24),
@@ -122,59 +120,6 @@ export default async function registerAiRoute(app: FastifyInstance) {
         .query('INSERT INTO search_history (user_id, query, mode, results) VALUES ($1,$2,$3,$4)', [
           who.id,
           result.detected || 'image',
-          'image',
-          result.products.length,
-        ])
-        .catch(() => undefined);
-    }
-    return result;
-  });
-
-  /**
-   * Public image search with a real upload — no login required, so a guest
-   * can photograph something in a shop and find it on the marketplace.
-   *
-   *   multipart/form-data:
-   *     image  (file, jpeg/png/webp, ≤ 8 MB — the client compresses first)
-   *     hint   (optional — "red Nike trainers" sharpens the match a lot)
-   *
-   * The buffer is passed to the vision model as a data URL when a key is
-   * configured; without one we rely on the hint + filename-derived labels.
-   * Nothing is persisted, so this is safe for anonymous visitors.
-   */
-  app.post('/api/v1/ai/image-upload-search', async (request, reply) => {
-    const file = await request.file();
-    if (!file) {
-      return reply.code(400).send({ error: 'No image uploaded (field "image")' });
-    }
-    const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
-    if (!ALLOWED.has(file.mimetype)) {
-      return reply
-        .code(400)
-        .send({ error: `Unsupported type ${file.mimetype} — use JPEG, PNG or WEBP` });
-    }
-    const buffer = await file.toBuffer();
-    if (buffer.length === 0) return reply.code(400).send({ error: 'The file is empty' });
-
-    const fields = (file.fields ?? {}) as Record<string, { value?: unknown } | undefined>;
-    const hint = String(fields.hint?.value ?? '').trim().slice(0, 200);
-    // A filename like "nike-air-max.jpg" is free search signal, even without a
-    // model: turn it into terms instead of throwing the photo away.
-    const filenameTerms = (file.filename || '')
-      .replace(/\.[a-z0-9]+$/i, '')
-      .replace(/[-_+]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const labels = filenameTerms ? [filenameTerms] : [];
-
-    const imageData = `data:${file.mimetype};base64,${buffer.toString('base64')}`;
-    const result = await imageSearch(pool, { imageData, hint, labels }, 24);
-    const who = await softUser(request);
-    if (who.id) {
-      pool
-        .query('INSERT INTO search_history (user_id, query, mode, results) VALUES ($1,$2,$3,$4)', [
-          who.id,
-          result.detected || filenameTerms || 'image',
           'image',
           result.products.length,
         ])

@@ -298,10 +298,6 @@ section('1. Public marketplace (logged out)');
   check('shows a real seeded product title', t.includes(sampleProduct.title),
     `expected "${sampleProduct.title}"`);
   check('prices are formatted as UGX', /UGX\s[\d,]+/.test(t));
-  check('home shows the even category showcase', app.$$('.cat-grid-even .cat-tile').length === 16,
-    `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
-  check('category tiles link into filtered search',
-    !!app.$('.cat-grid-even a[href^="/search?category="]'));
   check('dark theme is the default', app.window.document.documentElement.getAttribute('data-theme') === 'dark',
     `got ${app.window.document.documentElement.getAttribute('data-theme')}`);
   check('no runtime errors on the home page', app.consoleErrors.length === 0, app.consoleErrors[0]);
@@ -334,14 +330,8 @@ section('1b. Main navigation bar');
     check('clicking opens the category mega-menu', !!app.$('#mainnav-mega'));
     check('trigger reports expanded state', catsBtn.getAttribute('aria-expanded') === 'true');
     const items = app.$$('.mega-item');
-    // The curated 16-category set is merged with live facets, so the grid is
-    // always full and even (16 = 4×4) even when the DB has no listings in a
-    // category — but every LIVE category must still be present and linked.
-    check('mega-menu renders the 16-category grid', items.length === 16,
-      `${items.length} rendered (expected 16)`);
-    check('mega-menu still lists every live category',
-      liveCats.every((c) => items.some((e) => (e.textContent || '').includes(c.name))),
-      JSON.stringify(liveCats.map((c) => c.name)));
+    check('mega-menu lists every live category', items.length === liveCats.length,
+      `${items.length} rendered vs ${liveCats.length} from /products/facets`);
     if (liveCats.length) {
       const first = liveCats[0];
       const row = items.find((e) => (e.textContent || '').includes(first.name));
@@ -622,8 +612,8 @@ section('6. Cart and checkout');
   check('subtotal matches the server total',
     t.replace(/[^\d]/g, '').includes(String(expectedSubtotal)),
     `expected ${expectedSubtotal}`);
-  check('send-inquiry button present', /Send inquiry/i.test(t));
-  check('cart is messaging-first (no online payment)', /no online payment/i.test(t));
+  check('place-order button present', /Place order/i.test(t));
+  check('shows the pay-on-delivery promise', /pay on delivery/i.test(t));
 
   // Increment quantity through the UI and confirm the server agrees.
   const plusButtons = app.$$('.qty-stepper button').filter((b) => b.getAttribute('aria-label') === 'Increase quantity');
@@ -783,20 +773,6 @@ section('9. AI console');
   } else {
     check('assistant produced a reply bubble', false, 'composer not found');
   }
-  app.close();
-}
-
-// ── 9b. Public STX AI page (guest, no login) ────────────────────────────────
-section('9b. Public STX AI page');
-{
-  const app = await mount('/ai');
-  const t = app.text();
-  check('STX AI hero renders for guests', /STX AI/.test(t));
-  check('capability chips are shown', app.$$('.ai-cap').length >= 3,
-    `${app.$$('.ai-cap').length} chips`);
-  check('photo search card is present', !!app.$('.vs-drop'));
-  check('voice + chat composer are present', !!app.$('.ai-chat-input textarea') && app.$$('.ai-chat-input button').length >= 2);
-  check('no runtime errors on the AI page', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
 
@@ -1072,14 +1048,8 @@ section('14. Route guards');
 }
 {
   const app = await mount('/cart');
-  check('anonymous visitor can browse the cart (no forced login)',
-    app.window.location.pathname === '/cart',
-    `got ${app.window.location.pathname}`);
-  check('guest sees the cart page instead of a login wall',
-    /Your inquiry cart|Start shopping/i.test(app.text()),
-    app.text().slice(0, 140));
-  const guestBadge = app.$('.public-topbar a[aria-label="Your cart"]');
-  check('guest chrome exposes the cart entry point', !!guestBadge);
+  check('anonymous visitor is sent to login for the cart',
+    app.text().includes('Sign in') || app.window.location.pathname === '/login');
   app.close();
 }
 

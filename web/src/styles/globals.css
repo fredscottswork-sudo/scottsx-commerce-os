@@ -3662,7 +3662,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .mainnav-mega {
   position: absolute; top: calc(100% + 7px); left: 0; z-index: 45;
   display: flex; gap: 18px;
-  min-width: 600px; max-width: min(92vw, 780px);
+  min-width: 540px; max-width: min(92vw, 720px);
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -3671,8 +3671,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   animation: fadeInUp var(--dur) var(--ease-out) both;
 }
 .mainnav-mega-grid {
-  /* 4 × 4 even grid for the curated 16-category set (Alibaba-style). */
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px;
+  display: grid; grid-template-columns: repeat(2, minmax(170px, 1fr)); gap: 2px;
   flex: 1 1 auto; align-content: start;
 }
 .mainnav-mega-side {

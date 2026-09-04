@@ -132,9 +132,6 @@ export default function Messages() {
       />
 
       <div className="inbox-toolbar">
-        <span className="live-dot" title="Live — updates automatically" aria-label="Live">
-          <i /> Live
-        </span>
         <div className="chip-row">
           {FILTERS.map((f) => {
             const n = counts[f.key];

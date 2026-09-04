@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingBag, Heart, MapPin, MessageCircle, Bell,
-  Settings, Store, BarChart3, Users, LogOut, Sun, Moon, PlusCircle,
-  Receipt, LifeBuoy, Sparkles, ShieldCheck, ShoppingCart, X, Search,
-  Upload, ClipboardCheck, Headphones, Camera, PanelLeftClose, PanelLeftOpen,
+  Settings, Store, BarChart3, Users, Menu, LogOut, Sun, Moon, PlusCircle,
+  Receipt, Wallet, LifeBuoy, Sparkles, ShieldCheck, ShoppingCart, X, Search,
+  Upload, ClipboardCheck, Headphones,
 } from 'lucide-react';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../store/ThemeContext';
@@ -22,12 +22,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sidebarHidden, setSidebarHidden] = useState(readSidebarHidden);
-  const [imgSearchOpen, setImgSearchOpen] = useState(false);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [query, setQuery] = useState('');
-  const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
   const mounted = useRef(true);
 
   useEffect(() => () => { mounted.current = false; }, []);
@@ -212,6 +209,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             { to: '/buyer/saved', label: 'Saved & following', icon: <Heart size={17} /> },
             { to: '/messages', label: 'Messages', icon: <MessageCircle size={17} />, badge: unreadMsgs },
             { to: '/notifications', label: 'Notifications', icon: <Bell size={17} />, badge: unreadNotifs },
+            { to: '/buyer/payments', label: 'Payments', icon: <Wallet size={17} /> },
             { to: '/buyer/addresses', label: 'Addresses', icon: <MapPin size={17} /> },
             { to: '/buyer/refunds', label: 'Refunds', icon: <Receipt size={17} /> },
             { to: '/buyer/support', label: 'Support', icon: <LifeBuoy size={17} /> },
@@ -280,16 +278,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className={`app-shell ${sidebarHidden ? 'sidebar-hidden' : ''}`}>
+    <div className="app-shell">
       <aside className={`sidebar ${drawerOpen ? 'open' : ''}`} aria-label="Main navigation">{sidebar}</aside>
       {drawerOpen && <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} aria-hidden />}
 
       <div className={`main ${isAiRoute ? 'main--ai' : ''}`}>
         <header className="topbar">
-          <button className="btn btn-icon menu-btn" aria-label={sidebarHidden ? 'Show navigation' : 'Hide navigation'}
-            title={sidebarHidden ? 'Show navigation' : 'Hide navigation'}
-            onClick={toggleSidebar}>
-            {sidebarHidden ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+          <button className="btn btn-icon menu-btn" aria-label="Open menu" onClick={() => setDrawerOpen(true)}>
+            <Menu size={19} />
           </button>
 
           {!isAiRoute && !isHomeRoute && !isSearchRoute && !isNearbyRoute && (
@@ -338,15 +334,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className={`content page ${isAiRoute ? 'content--ai' : ''}`} key={location.pathname}>{children}</main>
         <BottomNav role={user.role} counts={navCounts} />
       </div>
-
-      <Modal open={imgSearchOpen} onClose={() => setImgSearchOpen(false)} title="Search by image"
-        footer={<Btn onClick={() => setImgSearchOpen(false)}>Close</Btn>}>
-        <VisualSearch
-          compact
-          showResults={false}
-          onResults={(r) => { onImageResults(r); }}
-        />
-      </Modal>
     </div>
   );
 }

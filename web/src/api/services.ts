@@ -297,12 +297,9 @@ export const sellerService = {
 };
 
 // ── Checkout / payments ─────────────────────────────────────────────────────
-// Online payments are intentionally not offered: the marketplace is
-// messaging-first (buyers and sellers agree price + delivery in chat).
-// Orders are recorded as inquiries for tracking; no gateway is involved.
 export const paymentService = {
-  checkout: (productId: string, quantity = 1, _buyerPhone = '') =>
-    api<CheckoutResult>('/orders/checkout', { method: 'POST', body: { productId, quantity, buyerPhone: '' } }),
+  checkout: (productId: string, quantity = 1, buyerPhone = '') =>
+    api<CheckoutResult>('/orders/checkout', { method: 'POST', body: { productId, quantity, buyerPhone } }),
   paymentStatus: (orderId: string) =>
     api<{ order: { status: string; paymentReference?: string; paymentLink?: string }; nylonStatus?: string }>(
       `/orders/${orderId}/payment-status`

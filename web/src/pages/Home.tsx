@@ -106,6 +106,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [category, setCategory] = useState('All');
   const [q, setQ] = useState('');
   const [qDebounced, setQDebounced] = useState('');
   const [stores, setStores] = useState<NearbySeller[]>([]);
@@ -175,7 +176,6 @@ export default function Home() {
   }, [flash, products]);
 
   const showStores = storesLoading || stores.length > 0;
-  const categoryTiles = facets ? mergedCategories(facets.categories) : [];
 
   return (
     <>

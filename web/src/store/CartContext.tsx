@@ -2,7 +2,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode,
 } from 'react';
 import { socialService, buyerService } from '../api/services';
-import type { Cart, CartItem, Product } from '../api/types';
+import type { Cart, Product } from '../api/types';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 
@@ -116,14 +116,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [isBuyer]);
 
-  // First render / role change: on becoming a buyer, carry the guest cart over.
-  useEffect(() => {
-    if (isBuyer) {
-      void mergeGuestCart(() => { void refresh(); });
-    } else {
-      void refresh();
-    }
-  }, [isBuyer, refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const add = useCallback(async (product: Product, quantity = 1) => {
     if (!isBuyer) {

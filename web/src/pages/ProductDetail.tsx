@@ -5,7 +5,6 @@ import { productService, paymentService, chatService } from '../api/services';
 import type { Product } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useAuth } from '../store/AuthContext';
-import { useCart } from '../store/CartContext';
 import { useToast } from '../store/ToastContext';
 import { useCart } from '../store/CartContext';
 import { Btn, Card, ErrorBox, Loading, Modal, Badge } from '../components/ui';
@@ -17,13 +16,14 @@ export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { add } = useCart();
   const { toast } = useToast();
   const { add, savedIds, toggleSaved } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [buying, setBuying] = useState(false);
+  const [payModal, setPayModal] = useState<{ mode: string; link: string | null; ref: string; status: string } | null>(null);
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
@@ -154,11 +154,6 @@ export default function ProductDetail() {
               {isSaved ? 'Saved' : 'Save'}
             </Btn>
           </div>
-
-          <p className="tiny muted mt-12" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <ShieldCheck size={14} style={{ color: 'var(--success)' }} />
-            No online payment — message the seller to agree on price and delivery.
-          </p>
         </div>
       </div>
 
