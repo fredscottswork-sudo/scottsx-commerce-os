@@ -5,9 +5,7 @@
  *
  * Environment comes from Firebase Secret Manager / config params:
  *   - Secrets (functions:secrets:set): DATABASE_URL, JWT_SECRET, LLM_API_KEY,
- *     APIFREELLM_API_KEY, NYLON_PAY_API_KEY, NYLON_PAY_API_SECRET,
- *     NYLON_PAY_WEBHOOK_SECRET, GOOGLE_CLIENT_ID, GOOGLE_API_KEY,
- *     STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+ *     APIFREELLM_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_API_KEY
  *   - Config strings (functions:config:set ai.provider=...): AI_PROVIDER,
  *     AI_MODEL, APP_DEEP_LINK
  *
@@ -27,13 +25,8 @@ const secrets = {
   JWT_SECRET: defineSecret('JWT_SECRET'),
   LLM_API_KEY: defineSecret('LLM_API_KEY'),
   APIFREELLM_API_KEY: defineSecret('APIFREELLM_API_KEY'),
-  NYLON_PAY_API_KEY: defineSecret('NYLON_PAY_API_KEY'),
-  NYLON_PAY_API_SECRET: defineSecret('NYLON_PAY_API_SECRET'),
-  NYLON_PAY_WEBHOOK_SECRET: defineSecret('NYLON_PAY_WEBHOOK_SECRET'),
   GOOGLE_CLIENT_ID: defineSecret('GOOGLE_CLIENT_ID'),
   GOOGLE_API_KEY: defineSecret('GOOGLE_API_KEY'),
-  STRIPE_SECRET_KEY: defineSecret('STRIPE_SECRET_KEY'),
-  STRIPE_WEBHOOK_SECRET: defineSecret('STRIPE_WEBHOOK_SECRET'),
 };
 
 const config = {
@@ -104,26 +97,3 @@ export const api = onRequest(
   }
 );
 
-/** A second function for the Nylon Pay webhook — same app, no extra deps. */
-export const apiWebhook = onRequest(
-  {
-    region: 'europe-west1',
-    timeoutSeconds: 60,
-    memory: '256MiB',
-    secrets: Object.values(secrets).map((s) => s.name),
-  },
-  async (req, res) => {
-    if (req.method !== 'POST') {
-      res.status(405).json({ error: 'Method not allowed' });
-      return;
-    }
-    try {
-      const app = await getApp();
-      await app.ready();
-      app.server.emit('request', req as never, res as never);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(503).json({ error: message });
-    }
-  }
-);

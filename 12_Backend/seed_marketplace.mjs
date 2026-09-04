@@ -45,7 +45,6 @@ const SELLERS = [
     verified: true,
     rating: 4.7,
     phone: '+256 700 111 222',
-    momo: '0700111222',
   },
   {
     email: 'fashionhouse@scottstechx.ug',
@@ -55,7 +54,6 @@ const SELLERS = [
     verified: true,
     rating: 4.5,
     phone: '+256 702 222 333',
-    momo: '0702222333',
   },
   {
     email: 'sneakerking@scottstechx.ug',
@@ -65,7 +63,6 @@ const SELLERS = [
     verified: false,
     rating: 4.4,
     phone: '+256 774 333 444',
-    momo: '0774333444',
   },
   {
     email: 'homebeyond@scottstechx.ug',
@@ -75,7 +72,6 @@ const SELLERS = [
     verified: false,
     rating: 4.3,
     phone: '+256 705 444 555',
-    momo: '0705444555',
   },
   {
     email: 'glamour@scottstechx.ug',
@@ -85,7 +81,6 @@ const SELLERS = [
     verified: true,
     rating: 4.6,
     phone: '+256 787 555 666',
-    momo: '0787555666',
   },
   {
     email: 'ugandacrafts@scottstechx.ug',
@@ -95,7 +90,6 @@ const SELLERS = [
     verified: true,
     rating: 4.8,
     phone: '+256 772 666 777',
-    momo: '0772666777',
   },
 ];
 
@@ -163,13 +157,13 @@ async function main() {
     await client.query(
       `INSERT INTO store_settings (
          user_id, store_name, store_description, city, lat, lng, address, verified, rating,
-         delivery_fee_ugx, free_above_ugx, cod_enabled, momo_number, contact_email, contact_phone,
+         delivery_fee_ugx, free_above_ugx, cod_enabled, contact_email, contact_phone,
          service_radius_km, returns_window_days
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         rows[0].id, s.storeName, s.description, s.city, c.lat, c.lng,
         `Shop at ${s.city} central market`, s.verified, s.rating,
-        8000, 50000, true, s.momo, s.email, s.phone, 30, 7,
+        8000, 50000, true, s.email, s.phone, 30, 7,
       ]
     );
   }

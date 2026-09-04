@@ -56,7 +56,7 @@ see `12_Backend/scripts/deploy-firebase.ps1`).
 ## Feature notes
 
 - **Messaging**: shared conversations + read receipts via the same chat API; polls every 3–10 s (the backend has no websocket yet — same refresh strategy as the mobile app's MessageStream).
-- **Payments**: "Buy now" calls `POST /orders/checkout` → Nylon Pay (hosted link on live keys, MoMo push on sandbox keys).
+- **Payments**: none — the marketplace has no gateway. Cart checkout is COD only (`POST /me/cart/checkout`); buyers and sellers agree payment in chat.
 - **Bulk import**: seller CSV import with parse → preview → validation → import through the existing product endpoint.
 - **Photos**: profile photo uploads to Firebase Storage (`POST /me/photo`) with a URL-input fallback.
 - **Theme**: light/dark/system persisted to `PATCH /me/preferences` — shared with mobile.

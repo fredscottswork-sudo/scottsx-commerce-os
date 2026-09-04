@@ -46,7 +46,7 @@ class ScottsMessagingService : FirebaseMessagingService() {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
             val channels = listOf(
-                Triple(CHANNEL_ORDERS, "Order updates", "Payments, dispatch and delivery"),
+                Triple(CHANNEL_ORDERS, "Order updates", "Dispatch and delivery"),
                 Triple(CHANNEL_MESSAGES, "Messages", "Chats and price offers"),
                 Triple(CHANNEL_PRODUCTS, "New products", "Stores you follow post something new"),
                 Triple(CHANNEL_GENERAL, "General", "Account and platform notices"),

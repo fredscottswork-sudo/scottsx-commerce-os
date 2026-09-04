@@ -220,24 +220,24 @@ export default function Nearby() {
         sub="Sellers sharing live location update in real time. Everyone else stays pinned at their last known position."
         actions={
           usingGps ? (
-            <Btn variant="danger" icon={<LocateOff size={13} />} onClick={stopTracking} style={{ padding: '6px 10px', fontSize: 12, minHeight: 32 }}>Stop</Btn>
+            <Btn variant="danger" icon={<LocateOff size={15} />} onClick={stopTracking} style={{ padding: '8px 12px', fontSize: 13, minHeight: 38 }}>Stop</Btn>
           ) : (
-            <Btn variant="primary" icon={<LocateFixed size={13} />} onClick={startTracking} style={{ padding: '6px 10px', fontSize: 12, minHeight: 32 }}>Follow my location</Btn>
+            <Btn variant="primary" icon={<LocateFixed size={15} />} onClick={startTracking} style={{ padding: '8px 12px', fontSize: 13, minHeight: 38 }}>Follow my location</Btn>
           )
         }
       />
 
       {/* Where you are — compact */}
-      <div className="card card-pad place-banner" style={{ padding: '8px 10px', marginBottom: 10 }}>
-        <span className="place-ico" style={{ width: 26, height: 26 }}><MapPin size={13} /></span>
+      <div className="card card-pad place-banner" style={{ padding: '10px 14px', marginBottom: 12 }}>
+        <span className="place-ico" style={{ width: 34, height: 34 }}><MapPin size={16} /></span>
         <div className="grow" style={{ minWidth: 0 }}>
-          <div className="tiny muted-2 semi" style={{ fontSize: 9 }}>Your location</div>
+          <div className="tiny muted-2 semi" style={{ fontSize: 11 }}>Your location</div>
           {locating ? (
-            <strong className="place-name" style={{ fontSize: 11 }}>Detecting…</strong>
+            <strong className="place-name" style={{ fontSize: 14 }}>Detecting…</strong>
           ) : place ? (
             <>
-              <strong className="place-name" data-testid="place-label" style={{ fontSize: 11 }}>{place.label}</strong>
-              <div className="tiny muted mt-4 place-parts" style={{ gap: 4, fontSize: 9 }}>
+              <strong className="place-name" data-testid="place-label" style={{ fontSize: 14 }}>{place.label}</strong>
+              <div className="tiny muted mt-4 place-parts" style={{ gap: 6, fontSize: 11 }}>
                 {place.village && <span>{place.village}</span>}
                 {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
                 {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
@@ -245,34 +245,34 @@ export default function Nearby() {
               </div>
             </>
           ) : (
-            <strong className="place-name" style={{ fontSize: 11 }}>Unavailable</strong>
+            <strong className="place-name" style={{ fontSize: 14 }}>Unavailable</strong>
           )}
         </div>
-        <div className="row" style={{ gap: 6 }}>
+        <div className="row" style={{ gap: 8 }}>
           {usingGps && <Badge tone="green" live>Live</Badge>}
           {!usingGps && !locating && (
-            <Btn variant="ghost" icon={<LocateFixed size={12} />} onClick={retryLocate} style={{ padding: '4px 8px', fontSize: 10, minHeight: 26 }}>Update</Btn>
+            <Btn variant="ghost" icon={<LocateFixed size={14} />} onClick={retryLocate} style={{ padding: '6px 10px', fontSize: 12, minHeight: 30 }}>Update</Btn>
           )}
         </div>
       </div>
 
       {geoDenied && (
-        <div className="card card-pad mb-12 row" style={{ gap: 8, padding: '8px 10px', borderColor: 'var(--warning)' }}>
-          <AlertCircle size={14} className="t-warning" />
+        <div className="card card-pad mb-12 row" style={{ gap: 10, padding: '10px 14px', borderColor: 'var(--warning)' }}>
+          <AlertCircle size={16} className="t-warning" />
           <div className="grow">
-            <strong style={{ fontSize: 11 }}>Location blocked</strong>
-            <div className="tiny muted" style={{ fontSize: 9 }}>Allow access to see nearby stores.</div>
+            <strong style={{ fontSize: 13 }}>Location blocked</strong>
+            <div className="tiny muted" style={{ fontSize: 11 }}>Allow access to see nearby stores.</div>
           </div>
-          <Btn variant="primary" onClick={retryLocate} style={{ padding: '4px 8px', fontSize: 10, minHeight: 26 }}>Try again</Btn>
+          <Btn variant="primary" onClick={retryLocate} style={{ padding: '6px 10px', fontSize: 12, minHeight: 30 }}>Try again</Btn>
         </div>
       )}
 
-      <div className="card mb-12" style={{ padding: '8px 10px' }}>
-        <div className="row wrap" style={{ gap: 8 }}>
-          <div style={{ flex: '1 1 160px', minWidth: 140 }}>
+      <div className="card mb-12" style={{ padding: '10px 12px' }}>
+        <div className="row wrap" style={{ gap: 10 }}>
+          <div style={{ flex: '1 1 180px', minWidth: 160 }}>
             <SearchInput value={q} onChange={setQ} placeholder="Filter stores…" />
           </div>
-          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort stores" style={{ width: 'auto', padding: '6px 8px', fontSize: 11, minHeight: 30 }}>
+          <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort stores" style={{ width: 'auto', padding: '8px 10px', fontSize: 13, minHeight: 36 }}>
             <option value="distance">Nearest</option>
             <option value="rating">Top rated</option>
             <option value="products">Most products</option>
@@ -283,65 +283,65 @@ export default function Nearby() {
         </div>
       </div>
 
-      <div className="row wrap mb-12" style={{ gap: 6 }}>
-        <Badge tone="primary"><Globe2 size={10} style={{ marginRight: 3 }} />{stats.shown}/{total}</Badge>
+      <div className="row wrap mb-12" style={{ gap: 8 }}>
+        <Badge tone="primary"><Globe2 size={12} style={{ marginRight: 3 }} />{stats.shown}/{total}</Badge>
         {liveCount > 0 && <Badge tone="green" live>{liveCount} live</Badge>}
         <Badge tone="cyan">{stats.open} open</Badge>
         <Badge tone="violet">{stats.delivering} deliver</Badge>
-        {updatedAt && <span className="tiny muted-2" style={{ fontSize: 9 }}><Clock size={10} /> {updatedAt.toLocaleTimeString()}</span>}
-        {moved && <span className="tiny t-primary semi" style={{ fontSize: 9 }}>Refreshing…</span>}
+        {updatedAt && <span className="tiny muted-2" style={{ fontSize: 11 }}><Clock size={12} /> {updatedAt.toLocaleTimeString()}</span>}
+        {moved && <span className="tiny t-primary semi" style={{ fontSize: 11 }}>Refreshing…</span>}
       </div>
 
       {loading ? (
-        <SkeletonRows rows={4} height={68} />
+        <SkeletonRows rows={4} height={92} />
       ) : error ? (
         <ErrorBox message={error} onRetry={center ? () => void fetchSellers(center) : retryLocate} />
       ) : sellers.length === 0 ? (
         <Empty
-          icon={<MapPin size={22} />}
+          icon={<MapPin size={28} />}
           title="No stores match"
           subtitle="Clear filters to see every store."
-          action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }} style={{ padding: '6px 10px', fontSize: 11 }}>Clear</Btn>}
+          action={<Btn variant="primary" onClick={() => { setVerifiedOnly(false); setOpenOnly(false); setQ(''); }} style={{ padding: '8px 14px', fontSize: 13 }}>Clear</Btn>}
         />
       ) : (
-        <div className="grid grid-2 stagger" style={{ gap: 6 }}>
+        <div className="grid grid-2 stagger" style={{ gap: 10 }}>
           {sellers.map((s, i) => (
             <Link key={s.id} to={`/seller/${s.id}`} className="card card-hover store-card stagger-item"
-              style={{ '--i': i, padding: '6px 8px', gap: 6 } as React.CSSProperties}>
-              <div className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
-                <span className="avatar avatar-lg" style={{ width: 28, height: 28, fontSize: 11 }}>
+              style={{ '--i': i, padding: '12px 14px', gap: 8 } as React.CSSProperties}>
+              <div className="row" style={{ alignItems: 'flex-start', gap: 10 }}>
+                <span className="avatar avatar-lg" style={{ width: 40, height: 40, fontSize: 15 }}>
                   {s.logoUrl ? <img src={s.logoUrl} alt="" /> : (s.storeName || s.name || 'S')[0].toUpperCase()}
                 </span>
                 <div className="grow" style={{ minWidth: 0 }}>
-                  <div className="row" style={{ gap: 4 }}>
-                    <strong className="ellipsis" style={{ fontSize: 11 }}>{s.storeName || s.name}</strong>
-                    {s.verified && <BadgeCheck size={12} className="t-success" />}
+                  <div className="row" style={{ gap: 6 }}>
+                    <strong className="ellipsis" style={{ fontSize: 14 }}>{s.storeName || s.name}</strong>
+                    {s.verified && <BadgeCheck size={15} className="t-success" />}
                     {s.isOpen ? <Badge tone="green">Open</Badge> : <Badge>Closed</Badge>}
                   </div>
-                  <div className="tiny muted mt-4" style={{ fontSize: 9, display: 'flex', gap: 4, alignItems: 'center' }}>
-                    <Star size={9} style={{ color: 'var(--warning)' }} fill="currentColor" /> {Number(s.rating || 0).toFixed(1)} · <Package size={9} /> {s.productCount}
+                  <div className="tiny muted mt-4" style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <Star size={11} style={{ color: 'var(--warning)' }} fill="currentColor" /> {Number(s.rating || 0).toFixed(1)} · <Package size={11} /> {s.productCount}
                   </div>
-                  <div className="tiny muted mt-4 ellipsis" style={{ fontSize: 9 }}>
-                    <MapPin size={9} /> {s.placeLabel || s.address || s.city || '—'}
+                  <div className="tiny muted mt-4 ellipsis" style={{ fontSize: 11 }}>
+                    <MapPin size={11} /> {s.placeLabel || s.address || s.city || '—'}
                   </div>
-                  <div className="row wrap mt-8" style={{ gap: 3 }}>
+                  <div className="row wrap mt-8" style={{ gap: 5 }}>
                     {s.live ? (
                       <Badge tone="green" live>Live {s.locationAgeMinutes !== null ? `${s.locationAgeMinutes}m` : ''}</Badge>
                     ) : (
-                      <Badge tone="amber"><Radio size={8} style={{ marginRight: 2 }} />{s.locationSharing ? 'Seen' : 'Fixed'}</Badge>
+                      <Badge tone="amber"><Radio size={10} style={{ marginRight: 2 }} />{s.locationSharing ? 'Seen' : 'Fixed'}</Badge>
                     )}
                     {s.withinServiceRadius ? (
-                      <Badge tone="cyan"><Truck size={8} style={{ marginRight: 2 }} />{s.deliveryFeeUgx > 0 ? formatUgx(s.deliveryFeeUgx) : 'Free'}</Badge>
+                      <Badge tone="cyan"><Truck size={10} style={{ marginRight: 2 }} />{s.deliveryFeeUgx > 0 ? formatUgx(s.deliveryFeeUgx) : 'Free'}</Badge>
                     ) : (
                       <Badge>Outside</Badge>
                     )}
                     {s.codEnabled && <Badge tone="violet">COD</Badge>}
                   </div>
                 </div>
-                <div className="store-distance" style={{ minWidth: 42, padding: '3px 5px', gap: 1 }}>
-                  <Navigation size={10} />
-                  <strong style={{ fontSize: 10 }}>{s.distanceKm}km</strong>
-                  <span className="tiny muted-2" style={{ fontSize: 7 }}>~{s.etaMinutes}m</span>
+                <div className="store-distance" style={{ minWidth: 56, padding: '6px 8px', gap: 2 }}>
+                  <Navigation size={12} />
+                  <strong style={{ fontSize: 12 }}>{s.distanceKm}km</strong>
+                  <span className="tiny muted-2" style={{ fontSize: 9 }}>~{s.etaMinutes}m</span>
                 </div>
               </div>
             </Link>

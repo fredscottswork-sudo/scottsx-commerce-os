@@ -58,7 +58,6 @@ import com.scottsx.app.ui.screens.SplashScreen
 import com.scottsx.app.ui.screens.MessagesScreen
 import com.scottsx.app.ui.screens.AccountSettingsScreen
 import com.scottsx.app.ui.screens.AddressesScreen
-import com.scottsx.app.ui.screens.PaymentMethodsScreen
 import com.scottsx.app.ui.screens.CmsScreen
 import com.scottsx.app.ui.screens.ContactScreen
 import com.scottsx.app.ui.screens.ReportProblemScreen
@@ -526,7 +525,6 @@ fun AppNavigation() {
                         "account" -> navController.navigate(Routes.ACCOUNT)
                         "addresses" -> navController.navigate(Routes.ADDRESSES)
                         "saved-locations" -> navController.navigate(Routes.ADDRESSES)
-                        "payments" -> navController.navigate(Routes.PAYMENT_METHODS)
                         "orders" -> navController.navigate(Routes.MY_ORDERS)
                         "track-orders" -> navController.navigate(Routes.MY_ORDERS)
                         "refunds" -> navController.navigate(Routes.REFUNDS)
@@ -660,7 +658,6 @@ fun AppNavigation() {
                         "account" -> navController.navigate(Routes.ACCOUNT)
                         "security" -> navController.navigate(Routes.SECURITY)
                         "addresses" -> navController.navigate(Routes.ADDRESSES)
-                        "payments" -> navController.navigate(Routes.PAYMENT_METHODS)
                         "notifications" -> navController.navigate(Routes.NOTIFICATION_PREFS)
                         "privacy" -> navController.navigate(Routes.PRIVACY)
                         "language" -> navController.navigate(Routes.LANGUAGE)
@@ -691,7 +688,6 @@ fun AppNavigation() {
                         "account" -> navController.navigate(Routes.ACCOUNT)
                         "security" -> navController.navigate(Routes.SECURITY)
                         "addresses" -> navController.navigate(Routes.ADDRESSES)
-                        "payments" -> navController.navigate(Routes.PAYMENT_METHODS)
                         "notifications" -> navController.navigate(Routes.NOTIFICATION_PREFS)
                         "privacy" -> navController.navigate(Routes.PRIVACY)
                         "language" -> navController.navigate(Routes.LANGUAGE)
@@ -836,7 +832,6 @@ fun AppNavigation() {
         composable(Routes.ACCOUNT) { AccountSettingsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.SECURITY) { SecurityScreen(onBack = { navController.popBackStack() }, onSignOut = { navController.navigate(Routes.LOGIN.format(Role.BUYER)) { popUpTo(0) } }) }
         composable(Routes.ADDRESSES) { AddressesScreen(onBack = { navController.popBackStack() }) }
-        composable(Routes.PAYMENT_METHODS) { PaymentMethodsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.NOTIFICATION_PREFS) { NotificationSettingsScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.LANGUAGE) { LanguageScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.THEME) { ThemeScreen(onBack = { navController.popBackStack() }) }
@@ -1036,7 +1031,6 @@ object Routes {
     const val ACCOUNT = "settings/account"
     const val SECURITY = "settings/security"
     const val ADDRESSES = "settings/addresses"
-    const val PAYMENT_METHODS = "settings/payment-methods"
     const val NOTIFICATION_PREFS = "settings/notifications"
     const val PRIVACY = "settings/privacy"
     const val LANGUAGE = "settings/language"

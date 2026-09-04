@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS faqs (
 
 INSERT INTO faqs (question, answer, category, sort_order) VALUES
   ('How do I become a seller on ScottsTechX?', 'Open your profile, tap "Become a seller", verify your email, and set up your store profile. You can then list products and chat with buyers directly.', 'Selling', 1),
-  ('What payment methods are accepted?', 'We support Mobile Money (MTN MoMo, Airtel Money) and card payments. Cash on delivery is available from select sellers.', 'Payments', 2),
+  ('How do I pay for an order?', 'ScottsTechX does not process payments itself. Agree the method with the seller in chat — most orders are cash on delivery, a bank transfer to the seller, or collection at pickup.', 'Payments', 2),
   ('How is delivery handled?', 'Delivery is arranged between buyer and seller. Each store lists its delivery fee and free-delivery threshold on its store page.', 'Delivery', 3),
   ('Can I return a product?', 'Yes — most stores offer returns within 7 days. Check the store policies or contact support to open a refund claim.', 'Returns', 4),
   ('Is ScottsTechX available outside Kampala?', 'Yes. Sellers operate across Kampala, Entebbe, Jinja, Mbarara, Gulu and Mbale. Use the Nearby tab to find stores around you.', 'General', 5)

@@ -66,7 +66,7 @@ export const AGENTS: AgentDef[] = [
     tagline: 'Orders, refunds, delivery and account help',
     audience: 'both',
     icon: 'life-buoy',
-    starters: ['Where is my order?', 'How do refunds work?', 'How do I pay with MoMo?'],
+    starters: ['Where is my order?', 'How do refunds work?', 'How do I pay for an order?'],
   },
   {
     id: 'listing',
@@ -141,7 +141,8 @@ export function agentSystemPrompt(agent: AgentDef, role: string): string {
       'similar catalog entries, and give the buyer a short, polite bargaining script when useful.',
     support:
       'You are a customer-support agent. Give clear step-by-step help on orders, refunds, ' +
-      'delivery, payments (MTN MoMo / Airtel Money / card / cash on delivery) and account settings. ' +
+      'delivery, how payment is arranged with the seller (ScottsTechX does not process payments — ' +
+      'buyers and sellers agree in chat, usually cash on delivery or a bank transfer) and account settings. ' +
       'If something needs a human, tell the user to switch the support screen to Admin mode.',
     listing:
       'You are a seller copilot. Produce marketplace-ready titles (max 70 chars), persuasive ' +
@@ -275,7 +276,7 @@ function capabilityBlurb(id: AgentId): string {
         'I handle everything after the "buy" button:',
         '• Order status, delivery and tracking',
         '• Refunds, returns and cancellations',
-        '• Payments — MoMo, card and cash on delivery',
+        '• Payment — cash on delivery or any method agreed with the seller',
         '• Account, login and verification problems',
       ].join('\n');
     case 'listing':
@@ -297,7 +298,7 @@ function capabilityBlurb(id: AgentId): string {
       return [
         'I know the marketplace as a whole:',
         '• What is on sale, from whom, and where they are',
-        '• How buying, delivery and payment work here',
+        '• How buying and delivery work here (payment is agreed with the seller in chat)',
         '• Which sellers are verified, and what they specialise in',
       ].join('\n');
   }
@@ -486,13 +487,11 @@ function supportAnswer(prompt: string): string {
   }
   if (/pay|momo|money|card|cash/.test(p)) {
     return [
-      '**Payment options**',
+      '**Paying for an order**',
       '',
-      '• **MTN Mobile Money** and **Airtel Money** — you get an approval prompt on your phone.',
-      '• **Card** payments are supported at checkout.',
-      '• **Cash on delivery** is available from sellers who enable it (shown on the store page).',
-      '',
-      'Save a default method under **Payment methods** to check out faster next time.',
+      '• ScottsTechX does not process payments itself.',
+      '• You and the seller agree the method in chat — most orders are cash on delivery, a bank transfer to the seller, or collection at pickup.',
+      '• Your order shows the seller’s contact and store details so you can arrange it.',
     ].join('\n');
   }
   if (/seller|sell|become/.test(p)) {
@@ -511,7 +510,7 @@ function supportAnswer(prompt: string): string {
     '',
     '• Orders and delivery tracking',
     '• Refunds and returns',
-    '• Payments (MoMo, card, cash on delivery)',
+    '• Arranging payment with the seller (cash on delivery or as agreed in chat)',
     '• Account and store settings',
     '',
     'Tell me what you need, or switch to **Admin mode** to reach a human on the support team.',

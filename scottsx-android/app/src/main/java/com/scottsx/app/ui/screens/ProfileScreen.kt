@@ -152,7 +152,6 @@ fun ProfileScreen(
                     Setting(Icons.Filled.Settings, "Personal Information", "Name, email, phone") { onOpenSection("account") }
                     Setting(Icons.Filled.LocationOn, "Addresses", "Manage delivery addresses") { onOpenSection("addresses") }
                     Setting(Icons.Filled.Home, "Saved Locations", "Home, work, other") { onOpenSection("saved-locations") }
-                    Setting(Icons.Filled.CreditCard, "Payment Methods", "Mobile money, cards") { onOpenSection("payments") }
                 }
             }
 

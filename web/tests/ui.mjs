@@ -559,6 +559,17 @@ section('4. Nearby stores');
   const t = app.text();
   check('nearby page renders store cards', app.$$('.store-card').length > 0,
     `${app.$$('.store-card').length} stores`);
+  // The store cards must be big and readable — no more ultra-compact boxes.
+  const cardName = app.$$('.store-card strong.ellipsis')[0];
+  check('store names render at a readable 14px', cardName?.style?.fontSize === '14px',
+    `got ${cardName?.style?.fontSize}`);
+  const cardAvatar = app.$('.store-card .avatar-lg');
+  check('store logos render at 40px', cardAvatar?.style?.width === '40px',
+    `got ${cardAvatar?.style?.width}`);
+  check('nearby cards ship with the larger padding in CSS',
+    /.store-card\s*\{[^}]*padding:\s*12px\s+14px/.test(bundleCss));
+  check('phone-size nearby cards keep the bigger 13px store names',
+    /\.store-card\s+strong\.ellipsis\s*\{[^}]*font-size:\s*13px/.test(bundleCss));
   check('distances are shown in km', /\d+(\.\d+)?\s*km/.test(t));
   check('explains the last-known-position rule',
     /last known position/i.test(t) || /Fixed address/i.test(t) || /Last seen/i.test(t));
@@ -654,7 +665,7 @@ section('6. Cart and checkout');
     t.replace(/[^\d]/g, '').includes(String(expectedSubtotal)),
     `expected ${expectedSubtotal}`);
   check('send-inquiry button present', /Send inquiry/i.test(t));
-  check('cart is messaging-first (no online payment)', /no online payment/i.test(t));
+  check('cart is messaging-first (payment agreed in chat)', /agree payment/i.test(t));
 
   // Increment quantity through the UI and confirm the server agrees.
   const plusButtons = app.$$('.qty-stepper button').filter((b) => b.getAttribute('aria-label') === 'Increase quantity');

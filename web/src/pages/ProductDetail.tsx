@@ -150,7 +150,7 @@ export default function ProductDetail() {
 
           <p className="tiny muted-2 mt-12 row" style={{ gap: 7 }}>
             <ShieldCheck size={14} className="t-success" />
-            No online payment — message the seller to agree on price, delivery and payment (Mobile Money, bank or collect).
+            Payment is agreed with the seller — message them to arrange delivery (cash on delivery, bank or collect).
           </p>
         </div>
       </div>

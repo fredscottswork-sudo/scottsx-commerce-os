@@ -208,10 +208,10 @@ export default async function registerSocialRoute(app: FastifyInstance) {
   /**
    * Cart checkout. Creates one order per cart line (orders are per-product in
    * this schema), decrements stock atomically, notifies each seller, and
-   * empties the cart. Payment stays 'pending' — the buyer settles on delivery
-   * or via the payment link from POST /orders/:id/pay when a gateway is
-   * configured. Everything runs in a single transaction so a mid-flight stock
-   * conflict leaves the cart untouched.
+   * empties the cart. Orders are COD only — the parties agree payment in
+   * chat (the marketplace is not a payment processor). Everything runs in a
+   * single transaction so a mid-flight stock conflict leaves the cart
+   * untouched.
    */
   app.post('/api/v1/me/cart/checkout', { preHandler: requireAuth }, async (request, reply) => {
     const me = authedUser(request);
@@ -255,8 +255,8 @@ export default async function registerSocialRoute(app: FastifyInstance) {
       const created: any[] = [];
       for (const l of lines) {
         const { rows } = await client.query(
-          `INSERT INTO orders (buyer_id, seller_id, product_id, product_title, price_minor, quantity, status, payment_provider)
-           VALUES ($1,$2,$3,$4,$5,$6,'pending','cod')
+          `INSERT INTO orders (buyer_id, seller_id, product_id, product_title, price_minor, quantity, status)
+           VALUES ($1,$2,$3,$4,$5,$6,'pending')
            RETURNING id, seller_id AS "sellerId", product_id AS "productId", product_title AS title,
                      price_minor::int AS amount, quantity, status, created_at AS "createdAt"`,
           [me.id, l.sellerId, l.productId, l.title, l.priceMinor, l.quantity]

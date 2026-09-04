@@ -13,19 +13,6 @@ CREATE TABLE IF NOT EXISTS addresses (
 
 CREATE INDEX IF NOT EXISTS idx_addresses_user ON addresses (user_id);
 
-CREATE TABLE IF NOT EXISTS payment_methods (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-  type       text NOT NULL DEFAULT 'momo' CHECK (type IN ('card', 'momo')),
-  label      text NOT NULL DEFAULT '',
-  last4      text NOT NULL DEFAULT '',
-  phone      text NOT NULL DEFAULT '',
-  is_default boolean NOT NULL DEFAULT false,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_payment_methods_user ON payment_methods (user_id);
-
 CREATE TABLE IF NOT EXISTS bookmarks (
   user_id    uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   product_id uuid NOT NULL REFERENCES products (id) ON DELETE CASCADE,

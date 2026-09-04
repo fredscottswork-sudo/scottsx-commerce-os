@@ -1,7 +1,7 @@
 /**
  * ScottsTechX — the BIG user-full route module (30+ endpoints, all requireAuth).
  *
- *   addresses, payment-methods, bookmarks, orders, refunds, support/tickets,
+ *   addresses, bookmarks, orders, refunds, support/tickets,
  *   faqs, notifications, preferences, locations, change-password.
  */
 import type { FastifyInstance } from 'fastify';
@@ -64,60 +64,6 @@ export default async function registerUserFullRoute(app: FastifyInstance) {
     const me = authedUser(request);
     const { id } = request.params as { id: string };
     await pool.query('DELETE FROM addresses WHERE id = $1 AND user_id = $2', [id, me.id]);
-    return { ok: true };
-  });
-
-  // ── Payment methods ──────────────────────────────────────────────────────
-  const pmSchema = z.object({
-    type: z.enum(['card', 'momo']),
-    label: z.string().optional().default(''),
-    last4: z.string().optional().default(''),
-    phone: z.string().optional().default(''),
-    isDefault: z.boolean().optional().default(false),
-  });
-
-  app.get('/api/v1/me/payment-methods', { preHandler: requireAuth }, async (request) => {
-    const me = authedUser(request);
-    const { rows } = await pool.query(
-      `SELECT id, type, label, last4, phone, is_default AS "isDefault", created_at AS "createdAt"
-       FROM payment_methods WHERE user_id = $1 ORDER BY created_at DESC`,
-      [me.id]
-    );
-    return { paymentMethods: rows };
-  });
-
-  app.post('/api/v1/me/payment-methods', { preHandler: requireAuth }, async (request) => {
-    const me = authedUser(request);
-    const body = pmSchema.parse(request.body);
-    if (body.isDefault) await pool.query('UPDATE payment_methods SET is_default = false WHERE user_id = $1', [me.id]);
-    const { rows } = await pool.query(
-      `INSERT INTO payment_methods (user_id, type, label, last4, phone, is_default)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, type, label, last4, phone, is_default AS "isDefault"`,
-      [me.id, body.type, body.label, body.last4, body.phone, body.isDefault]
-    );
-    return { paymentMethod: rows[0] };
-  });
-
-  app.patch('/api/v1/me/payment-methods/:id', { preHandler: requireAuth }, async (request) => {
-    const me = authedUser(request);
-    const { id } = request.params as { id: string };
-    const body = pmSchema.partial().parse(request.body);
-    if (body.isDefault) await pool.query('UPDATE payment_methods SET is_default = false WHERE user_id = $1', [me.id]);
-    const { rows } = await pool.query(
-      `UPDATE payment_methods SET type = COALESCE($3, type), label = COALESCE($4, label),
-              last4 = COALESCE($5, last4), phone = COALESCE($6, phone), is_default = COALESCE($7, is_default)
-       WHERE id = $1 AND user_id = $2
-       RETURNING id, type, label, last4, phone, is_default AS "isDefault"`,
-      [id, me.id, body.type ?? null, body.label ?? null, body.last4 ?? null, body.phone ?? null, body.isDefault ?? null]
-    );
-    if (!rows[0]) throw new NotFoundError('Payment method not found');
-    return { paymentMethod: rows[0] };
-  });
-
-  app.delete('/api/v1/me/payment-methods/:id', { preHandler: requireAuth }, async (request) => {
-    const me = authedUser(request);
-    const { id } = request.params as { id: string };
-    await pool.query('DELETE FROM payment_methods WHERE id = $1 AND user_id = $2', [id, me.id]);
     return { ok: true };
   });
 

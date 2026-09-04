@@ -113,7 +113,6 @@ console.log('\n[other endpoints V2Client calls]');
 for (const [label, path, tok] of [
   ['GET /me/orders','/me/orders',bt],
   ['GET /me/addresses','/me/addresses',bt],
-  ['GET /me/payment-methods','/me/payment-methods',bt],
   ['GET /me/bookmarks','/me/bookmarks',bt],
   ['GET /me/notifications','/me/notifications',bt],
   ['GET /me/refunds','/me/refunds',bt],
@@ -251,12 +250,6 @@ ck('checking out an empty cart is refused with 409', emptyCheckout.status === 40
 ck('the empty-cart refusal explains itself', /empty/i.test(emptyCheckout.data.error||''),
    JSON.stringify(emptyCheckout.data));
 
-// Cash on delivery must work with no payment provider configured, because
-// POST /orders/checkout (Nylon Pay) is a hard 503 in this deployment.
-const nylon = await call('/orders/checkout', { method:'POST', token: bt, body:{ productId: pa.id, quantity: 1 } });
-ck('the Nylon Pay route is still unavailable, so COD is the only buy path',
-   nylon.status === 503, `status ${nylon.status} — if this changed, revisit ProductDetailScreen`);
-
 // Stock can fall between adding to the cart and checking out. The cart must
 // refuse rather than sell a unit that no longer exists.
 {
@@ -286,7 +279,7 @@ ck('the Nylon Pay route is still unavailable, so COD is the only buy path',
 
 await call('/me/cart', { method:'POST', token: bt, body:{ productId: pa.id, quantity: 1 } });
 const done = await call('/me/cart/checkout', { method:'POST', token: bt, body:{ phone:'0770000000' } });
-ck('POST /me/cart/checkout succeeds with no payment provider (201)',
+ck('POST /me/cart/checkout succeeds (201)',
    done.status === 201, `status ${done.status}`);
 ck('checkout returns every field CartCheckoutResult parses',
    ['orders','orderCount','totalMinor','currency','paymentMode','message'].every(k => k in done.data),

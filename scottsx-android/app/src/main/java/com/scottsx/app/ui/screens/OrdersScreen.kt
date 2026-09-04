@@ -156,7 +156,7 @@ fun DeleteAccountScreen(onBack: () -> Unit, onConfirm: () -> Unit) {
                 Text(
                     "All of the following will be removed:\n" +
                             "  - Profile (display name, avatar, bio)\n" +
-                            "  - Saved addresses and payment methods\n" +
+                            "  - Saved addresses\n" +
                             "  - Saved products and favorite sellers\n" +
                             "  - Refund and return history\n" +
                             "  - Notifications and account activity\n" +

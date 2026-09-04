@@ -85,10 +85,6 @@ fun StoreSettingsDetailScreen(
     var feeText by remember { mutableStateOf("5000") }
     var freeAbove by remember { mutableStateOf("100000") }
     var codEnabled by remember { mutableStateOf(true) }
-    var momoProvider by remember { mutableStateOf("MTN MoMo") }
-    var momoNumber by remember { mutableStateOf("") }
-    var bankName by remember { mutableStateOf("") }
-    var bankAcct by remember { mutableStateOf("") }
     var orderUpdates by remember { mutableStateOf(true) }
     var buyerMessages by remember { mutableStateOf(true) }
     var marketing by remember { mutableStateOf(false) }
@@ -111,7 +107,6 @@ fun StoreSettingsDetailScreen(
                 address = s.optString("addressLine1")
                 phone = s.optString("phone")
                 email = s.optString("email")
-                momoNumber = s.optString("whatsapp") // simple placeholder
             }
             val p = V2Client.fetchSellerProfile()
             if (p != null) {
@@ -137,8 +132,6 @@ fun StoreSettingsDetailScreen(
                 "store-location" -> V2Client.updateStoreSettings(JSONObject()
                     .put("addressLine1", address)
                     .put("phone", phone))
-                "payments" -> V2Client.updateStoreSettings(JSONObject()
-                    .put("whatsapp", momoNumber))
                 "help", "delivery", "notifications", "security", "policies" -> true
                 else -> true
             }
@@ -221,15 +214,6 @@ fun StoreSettingsDetailScreen(
                     Field("Free delivery above (UGX)", freeAbove) { freeAbove = it }
                     Spacer(Modifier.height(14.dp))
                     ToggleRow("Cash on delivery", codEnabled) { codEnabled = it }
-                }
-                "payments" -> {
-                    Field("Mobile money provider", momoProvider) { momoProvider = it }
-                    Spacer(Modifier.height(10.dp))
-                    Field("Mobile money number", momoNumber) { momoNumber = it }
-                    Spacer(Modifier.height(10.dp))
-                    Field("Bank name (optional)", bankName) { bankName = it }
-                    Spacer(Modifier.height(10.dp))
-                    Field("Bank account (optional)", bankAcct) { bankAcct = it }
                 }
                 "notifications" -> {
                     ToggleRow("Order updates", orderUpdates) { orderUpdates = it }
@@ -316,7 +300,6 @@ private fun sectionMeta(section: String): Pair<String, String> = when (section) 
     "business-info" -> "Business Information" to "Verify your business"
     "store-location" -> "Store Location" to "Address and pickup points"
     "delivery" -> "Delivery Settings" to "Radius, fee, options"
-    "payments" -> "Payment Settings" to "Mobile money, bank accounts"
     "notifications" -> "Notification Settings" to "Buyers, orders, marketing"
     "security" -> "Security" to "Password, 2FA"
     "policies" -> "Store Policies" to "Returns, refunds, terms"

@@ -27,11 +27,6 @@ CREATE TABLE IF NOT EXISTS store_settings (
   free_above_ugx      integer NOT NULL DEFAULT 0,
   cod_enabled         boolean NOT NULL DEFAULT true,
 
-  -- payments
-  momo_number         text NOT NULL DEFAULT '',
-  bank_name           text NOT NULL DEFAULT '',
-  bank_account        text NOT NULL DEFAULT '',
-
   -- notifications
   notif_order_updates boolean NOT NULL DEFAULT true,
   notif_buyer_messages boolean NOT NULL DEFAULT true,

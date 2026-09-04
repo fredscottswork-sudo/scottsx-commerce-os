@@ -288,14 +288,6 @@ export interface Address {
   isDefault: boolean;
 }
 
-export interface PaymentMethod {
-  id: string;
-  type: string;
-  label: string;
-  last4: string;
-  phone: string;
-  isDefault: boolean;
-}
 
 export interface Refund {
   id: string;
@@ -355,9 +347,6 @@ export interface StoreSettings {
   deliveryFeeUgx: number;
   freeAboveUgx: number;
   codEnabled: boolean;
-  momoNumber: string;
-  bankName: string;
-  bankAccount: string;
   notifOrderUpdates: boolean;
   notifBuyerMessages: boolean;
   notifMarketing: boolean;
@@ -388,14 +377,6 @@ export interface CmsPage {
   updatedAt: string;
 }
 
-export interface CheckoutResult {
-  order: Order & { paymentLink?: string | null; invoiceNumber?: string | null; paymentMode?: string };
-  paymentMode: string;
-  paymentLink: string | null;
-  invoiceNumber: string | null;
-  paymentReference: string;
-  status: string;
-}
 
 export interface AdminStats {
   stats: {

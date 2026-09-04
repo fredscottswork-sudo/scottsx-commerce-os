@@ -34,8 +34,6 @@ fun HelpCenterScreen(onBack: () -> Unit, onContact: () -> Unit, onTerms: () -> U
         Spacer(Modifier.height(6.dp))
         SettingsRow(Icons.Filled.ShoppingBag, "My Orders", "Track, return, or refund") { Unit }
         Spacer(Modifier.height(6.dp))
-        SettingsRow(Icons.Filled.AccountBalanceWallet, "Payments", "Mobile money, cards, refunds") { Unit }
-        Spacer(Modifier.height(6.dp))
         SettingsRow(Icons.Filled.VerifiedUser, "Buyer Protection", "Coverage & disputes") { onTerms() }
         Spacer(Modifier.height(6.dp))
         SettingsRow(Icons.Filled.Lock, "Account & Security", "Password, sign-in") { Unit }

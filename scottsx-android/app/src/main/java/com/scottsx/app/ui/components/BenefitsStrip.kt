@@ -38,7 +38,7 @@ import com.scottsx.app.data.domain.BenefitIcon
 import com.scottsx.app.ui.theme.ScottsTechXColors
 
 /**
- * Four-card benefit strip — Free Delivery, Secure Payments,
+ * Four-card benefit strip — Free Delivery, Secure Agreements,
  * Easy Returns, Buyer Protection. Each card is a compact rounded
  * tile with a colored icon and a 2-line stacked label.
  */

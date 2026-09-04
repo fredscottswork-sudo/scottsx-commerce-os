@@ -1194,13 +1194,6 @@ async function main() {
     const addrs = await call('/me/addresses', { token: state.buyerToken });
     check('addresses listed', (addrs.data?.addresses ?? []).length > 0);
 
-    const pay = await call('/me/payment-methods', {
-      method: 'POST',
-      token: state.buyerToken,
-      body: { type: 'momo', label: 'MTN MoMo', phone: '+256700111222', isDefault: true },
-    });
-    check('add payment method', pay.status === 200);
-
     const bm = await call('/me/bookmarks/toggle', {
       method: 'POST',
       token: state.buyerToken,

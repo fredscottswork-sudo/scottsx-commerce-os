@@ -29,7 +29,6 @@ import com.scottsx.app.ui.theme.ScottsTechXColors
  *  - Account       (avatar, name, email, phone, bio, gender, DoB)
  *  - Security      (password, 2FA) -- routes to SecurityScreen
  *  - Addresses     (saved delivery addresses)
- *  - Payments      (saved payment methods)
  *  - Notifications (notification settings)
  *  - Privacy       (privacy settings)
  *  - Language      (language picker)
@@ -82,8 +81,6 @@ fun ProfileSettingsScreen(
             Item(Icons.Filled.Lock, "Security", "Password, 2FA") { onOpenSection("security") }
             Spacer(Modifier.height(6.dp))
             Item(Icons.Filled.LocationOn, "Saved Addresses", "Manage delivery addresses") { onOpenSection("addresses") }
-            Spacer(Modifier.height(6.dp))
-            Item(Icons.Filled.CreditCard, "Payment Methods", "Mobile money, cards") { onOpenSection("payments") }
 
             Spacer(Modifier.height(16.dp))
             SectionHeader("Preferences")

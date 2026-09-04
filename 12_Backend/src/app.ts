@@ -32,8 +32,6 @@ import registerUserFullRoute from './modules/user/user-full.route.js';
 import registerAiRoute from './modules/ai/assistant.route.js';
 import registerChatRoute from './modules/chat/chat.route.js';
 import registerCmsRoute from './modules/cms/cms.route.js';
-import registerStripeRoute from './modules/stripe/payments.route.js';
-import registerNylonPayRoute from './modules/payments/nylonpay.route.js';
 import registerAdminRoute from './modules/admin/admin.route.js';
 import registerUploadsRoute from './modules/uploads/photo.route.js';
 import registerImagesRoute from './modules/uploads/images.route.js';
@@ -41,7 +39,7 @@ import registerSocialRoute from './modules/social/social.route.js';
 import registerSupportRoute from './modules/support/support.route.js';
 import registerGeoRoute from './modules/geo/geo.route.js';
 import registerSitemapRoute from './modules/seo/sitemap.route.js';
-import { installRawBodyParser } from './modules/payments/raw-body.js';
+import { installJsonParser } from './modules/http/json-body.js';
 
 /** True when running inside Firebase Cloud Functions / Cloud Run (v2). */
 export function isServerless(): boolean {
@@ -78,9 +76,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     return payload;
   });
 
-  // Stash raw bodies so Nylon Pay webhook signatures can be verified over the
-  // exact bytes sent (JSON parsing itself is unchanged for every other route).
-  installRawBodyParser(app);
+  // Body-less requests that declare application/json (a normal client
+  // pattern) must not 500 — parse empty bodies as undefined.
+  installJsonParser(app);
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof ZodError) {
@@ -145,8 +143,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerAiRoute(app);
   registerChatRoute(app);
   registerCmsRoute(app);
-  registerStripeRoute(app);
-  registerNylonPayRoute(app);
   registerAdminRoute(app);
   registerUploadsRoute(app);
   registerImagesRoute(app);

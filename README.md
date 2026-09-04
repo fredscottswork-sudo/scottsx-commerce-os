@@ -56,8 +56,6 @@ npm run smoke                                      # 6/6 checks
 | `AI_PROVIDER` | `openrouter` (default) or `apifreellm` |
 | `APIFREELLM_API_KEY` | apifreellm key — free tier blocks datacenter/cloud IPs |
 | `GOOGLE_CLIENT_ID` | Validates Google idTokens |
-| `NYLON_PAY_API_KEY` / `NYLON_PAY_API_SECRET` / `NYLON_PAY_WEBHOOK_SECRET` | Nylon Pay payments (sandbox vs live by key) |
-| `STRIPE_SECRET_KEY` | Stripe webhook skeleton only (pay route owned by Nylon Pay) |
 
 ### Firebase ✅ configured
 
@@ -164,9 +162,6 @@ AI          POST /ai/v2/ask · POST /ai/v2/generate-product · GET /ai/status
 CHAT        GET/POST /conversations · GET/POST /conversations/:id/messages
             POST /conversations/:id/read
 CMS         GET /cms/:slug (terms · privacy · buyer-protection · about)
-PAYMENTS    POST /orders/checkout · POST /orders/:orderId/pay
-            POST /payments/nylonpay/webhook · GET /orders/:orderId/payment-status
-            POST /stripe/webhook   (skeleton)
 HEALTH      GET /healthz
 ```
 
@@ -182,14 +177,11 @@ Backend — all verified live in this build:
 - [x] `/sellers/nearby` Haversine distance + city chips (6 Ugandan cities)
 - [x] `/cms/about` contains `Kato Fred, Ugandan cybersecurity analyst, web dev and software dev.`
 - [x] Buyer↔Seller messaging: create thread, send, reply, read receipts, unread counts
-- [x] User-full: addresses, payment methods, bookmarks, orders, refunds, tickets, FAQs,
+- [x] User-full: addresses, bookmarks, orders, refunds, tickets, FAQs,
       notifications (+read), preferences, locations, change-password
 - [x] AI: offline fallback without a key; OpenRouter or apifreellm when configured
 - [x] Firebase: real idToken → JWT exchange, verification-email link generation,
       upgrade-to-seller guard (403 until verified) — verified live with the real project
-- [x] Payments (Nylon Pay, live sandbox test): checkout creates the order and returns
-      a payment — `paymentMode: "collect"` (MoMo push, sandbox auto-approves → getStatus
-      returns `successful`); switches to hosted `invoice` links automatically on live keys
 
 Android — source tree complete; build/install on device with the JDK 17 toolchain:
 - [ ] App launches → buyer home (API data, falls back to `MarketplaceDataSource`)
@@ -219,8 +211,8 @@ Android — source tree complete; build/install on device with the JDK 17 toolch
 
 ## 7. Deployment (production checklist)
 
-Backend: set `DATABASE_URL` to managed Postgres · set `STRIPE_SECRET_KEY` · configure
-SendGrid if scaling past Firebase SMTP · lock CORS origin · add HTTPS (Caddy/Nginx/Cloudflare).
+Backend: set `DATABASE_URL` to managed Postgres · configure SendGrid if scaling past
+Firebase SMTP · lock CORS origin · add HTTPS (Caddy/Nginx/Cloudflare).
 Android: release signing key · prod `google-services.json` · replace demo Unsplash URLs ·
 update `APP_DEEP_LINK`.
 

@@ -65,7 +65,6 @@ Ordered by how hard they block you.
 |---|---|
 | `12_Backend/secrets/firebase-admin-key.json` | Phone push never sends. In-app + web notifications still work and are stored. |
 | `LLM_API_KEY` | AI falls back to the local catalogue-grounded engine. Search/agents still work. |
-| `NYLON_PAY_API_KEY` / `_SECRET` | `POST /orders/checkout` stays **503**. Cash-on-delivery checkout is unaffected — it is the only buy path today, on both web and Android. |
 | `GOOGLE_CLIENT_ID` | Email/password login still works; Google Sign-In returns 401. |
 | Authorised JS origin in Google Cloud Console | Google button renders but rejects your deployed domain. Add your web origin there. |
 

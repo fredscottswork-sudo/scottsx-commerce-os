@@ -254,7 +254,7 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
     const { rows } = await pool.query(
       `SELECT u.id, u.display_name AS name, u.profile_photo_url AS logo_url, u.phone, u.city AS user_city,
               s.store_name, s.store_description, s.city, s.address, s.verified, s.rating,
-              s.contact_email, s.contact_phone, s.momo_number, s.bank_name
+              s.contact_email, s.contact_phone
        FROM users u
        LEFT JOIN store_settings s ON s.user_id = u.id
        WHERE u.id = $1`,
@@ -276,8 +276,6 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
         phone: r.phone ?? '',
         contactEmail: r.contact_email ?? '',
         contactPhone: r.contact_phone ?? '',
-        momoNumber: r.momo_number ?? '',
-        bankName: r.bank_name ?? '',
       },
     };
   });

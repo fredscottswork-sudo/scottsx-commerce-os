@@ -7,7 +7,7 @@ import { Btn, Card, ErrorBox, Field, Input, Loading, PageHeader, Select, TextAre
 const BLANK: StoreSettings = {
   storeName: '', storeDescription: '', storeLogoUrl: '', legalName: '', tin: '', businessEmail: '', businessPhone: '',
   address: '', pickupInstructions: '', serviceRadiusKm: 20, deliveryFeeUgx: 0, freeAboveUgx: 0, codEnabled: true,
-  momoNumber: '', bankName: '', bankAccount: '', notifOrderUpdates: true, notifBuyerMessages: true, notifMarketing: false,
+  notifOrderUpdates: true, notifBuyerMessages: true, notifMarketing: false,
   notifWeeklyDigest: true, twoFactorEnabled: false, returnsWindowDays: 7, refundPolicy: '', terms: '',
   contactEmail: '', contactPhone: '', city: '', verified: false, rating: 0,
 };
@@ -17,7 +17,6 @@ const SECTIONS: Array<{ key: string; label: string; fields: Array<keyof StoreSet
   { key: 'business-info', label: 'Business info', fields: ['legalName', 'tin', 'businessEmail', 'businessPhone'] },
   { key: 'store-location', label: 'Store location', fields: ['address', 'pickupInstructions', 'serviceRadiusKm'] },
   { key: 'delivery', label: 'Delivery', fields: ['deliveryFeeUgx', 'freeAboveUgx'] },
-  { key: 'payments', label: 'Payments', fields: ['momoNumber', 'bankName', 'bankAccount'] },
   { key: 'policies', label: 'Policies', fields: ['returnsWindowDays', 'refundPolicy', 'terms'] },
   { key: 'help', label: 'Help & contact', fields: ['contactEmail', 'contactPhone'] },
 ];
@@ -57,7 +56,7 @@ export default function StoreSettingsPage() {
 
   return (
     <>
-      <PageHeader title="Store settings" sub="The 9 settings sections — one PATCH endpoint, same as the mobile app." />
+      <PageHeader title="Store settings" sub="The 8 settings sections — one PATCH endpoint, same as the mobile app." />
       <div className="grid settings-split">
         <div className="card" style={{ padding: 8, alignSelf: 'start' }}>
           {SECTIONS.map((s) => (

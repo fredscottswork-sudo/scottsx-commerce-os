@@ -176,7 +176,7 @@ object V2Client {
     }
 
     // ============================================================
-    // USER PROFILE / ADDRESSES / PAYMENT METHODS / ETC.
+    // USER PROFILE / ADDRESSES / ETC.
     // ============================================================
 
     suspend fun fetchUserProfile(): JSONObject? = apiCall(
@@ -279,38 +279,6 @@ object V2Client {
 
     suspend fun deleteAddress(id: String): Boolean = apiCall(
         method = "DELETE", path = "/api/v1/user/addresses/$id", body = null,
-        parse = { o -> o.optBoolean("ok", false) },
-    ) ?: false
-
-    // Payment methods
-    data class PaymentMethod(
-        val id: String, val kind: String, val provider: String?, val label: String,
-        val account: String, val isDefault: Boolean, val expiresAt: String?,
-    )
-
-    suspend fun fetchPaymentMethods(): List<PaymentMethod> {
-        val arr = apiCallArray(method = "GET", path = "/api/v1/user/payment-methods", body = null, parse = { it }) ?: return emptyList()
-        return (0 until arr.length()).mapNotNull { i ->
-            val p = arr.optJSONObject(i) ?: return@mapNotNull null
-            PaymentMethod(
-                id = p.optString("id"),
-                kind = p.optString("kind"),
-                provider = p.optString("provider").takeIf { it.isNotBlank() },
-                label = p.optString("label"),
-                account = p.optString("account"),
-                isDefault = p.optBoolean("isDefault", false),
-                expiresAt = p.optString("expiresAt").takeIf { it.isNotBlank() },
-            )
-        }
-    }
-
-    suspend fun createPaymentMethod(body: JSONObject): String? = apiCall(
-        method = "POST", path = "/api/v1/user/payment-methods", body = body,
-        parse = { o -> o.optString("id") },
-    )
-
-    suspend fun deletePaymentMethod(id: String): Boolean = apiCall(
-        method = "DELETE", path = "/api/v1/user/payment-methods/$id", body = null,
         parse = { o -> o.optBoolean("ok", false) },
     ) ?: false
 

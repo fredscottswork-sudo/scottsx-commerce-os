@@ -10,14 +10,12 @@ import type {
   AdminUserRow,
   AppNotification,
   ChatMessage,
-  CheckoutResult,
   CmsPage,
   Conversation,
   Faq,
   NearbySeller,
   Order,
   Paged,
-  PaymentMethod,
   Place,
   Product,
   Refund,
@@ -230,10 +228,6 @@ export const buyerService = {
   addresses: () => api<{ addresses: Address[] }>('/me/addresses'),
   createAddress: (a: Omit<Address, 'id'>) => api<{ address: Address }>('/me/addresses', { method: 'POST', body: a }),
   deleteAddress: (id: string) => api<{ ok: boolean }>(`/me/addresses/${id}`, { method: 'DELETE' }),
-  paymentMethods: () => api<{ paymentMethods: PaymentMethod[] }>('/me/payment-methods'),
-  createPaymentMethod: (p: Omit<PaymentMethod, 'id'>) =>
-    api<{ paymentMethod: PaymentMethod }>('/me/payment-methods', { method: 'POST', body: p }),
-  deletePaymentMethod: (id: string) => api<{ ok: boolean }>(`/me/payment-methods/${id}`, { method: 'DELETE' }),
   refunds: () => api<{ refunds: Refund[] }>('/me/refunds'),
   createRefund: (orderId: string, reason: string) =>
     api<{ refund: Refund }>('/me/refunds', { method: 'POST', body: { orderId, reason } }),
@@ -294,19 +288,6 @@ export const sellerService = {
       title: string; description: string; category: string; brand: string;
       suggestedPriceMinor: number; comparables: Product[]; provider: string;
     }>('/ai/v2/generate-product', { method: 'POST', body: { imageUrl, hint } }),
-};
-
-// ── Checkout / payments ─────────────────────────────────────────────────────
-// Online payments are intentionally not offered: the marketplace is
-// messaging-first (buyers and sellers agree price + delivery in chat).
-// Orders are recorded as inquiries for tracking; no gateway is involved.
-export const paymentService = {
-  checkout: (productId: string, quantity = 1, _buyerPhone = '') =>
-    api<CheckoutResult>('/orders/checkout', { method: 'POST', body: { productId, quantity, buyerPhone: '' } }),
-  paymentStatus: (orderId: string) =>
-    api<{ order: { status: string; paymentReference?: string; paymentLink?: string }; nylonStatus?: string }>(
-      `/orders/${orderId}/payment-status`
-    ),
 };
 
 // ── Chat ────────────────────────────────────────────────────────────────────

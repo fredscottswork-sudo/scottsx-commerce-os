@@ -45,12 +45,11 @@ without reaching Google. Nothing about it is mocked except the key source.
 ## What works
 
 **Commerce** — catalogue, search with facets, cart, COD checkout (one order per
-product line), orders, ratings, refunds, addresses, payment methods.
+product line), orders, ratings, refunds, addresses.
 
 Both platforms now buy the same way. Android previously had **no cart**: its
-only purchase path was "Buy now" → `POST /orders/checkout`, which is a hard
-**503** until Nylon Pay credentials exist, so buying on the phone always failed.
-Product detail now says **Add to cart**, and a new cart screen does quantity
+only purchase path was "Buy now" → `POST /orders/checkout` (a removed gateway route),
+so buying on the phone always failed. Product detail now says **Add to cart**, and a new cart screen does quantity
 edits, per-line stock caps, removal and cash-on-delivery checkout against the
 same endpoints the web cart uses. The cart refuses to oversell — both when
 adding and again at checkout, where stock may have dropped in between — and a
@@ -143,5 +142,5 @@ for several clients).
 sandbox, so the LLM path is unverified; the grounded local engine is what has
 been tested.
 
-**Payments** are cash-on-delivery only. Nylon Pay is wired but unconfigured, so
-`/orders/checkout` returns 503; the web cart deliberately uses the COD route.
+**Payments** are cash-on-delivery only — the marketplace has no payment
+gateway; buyers and sellers agree the method in chat.

@@ -15,7 +15,7 @@ import {
 } from '../../components/ui';
 
 /**
- * Inquiry cart — no online payment anywhere.
+ * Inquiry cart — payment is arranged with the seller in chat.
  *
  * Items are grouped by seller; the primary action is talking. Buyers can send
  * an inquiry (an order the seller answers in chat) or open a chat per seller.
@@ -151,7 +151,7 @@ export default function Cart() {
     <>
       <PageHeader
         title="Your inquiry cart"
-        sub={`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'} from ${bySeller.length} seller${bySeller.length === 1 ? '' : 's'} — chat to agree, no online payment`}
+        sub={`${cart.itemCount} item${cart.itemCount === 1 ? '' : 's'} from ${bySeller.length} seller${bySeller.length === 1 ? '' : 's'} — chat to agree payment and delivery`}
         actions={
           cart.items.length > 0 ? (
             <Btn variant="ghost" icon={<Trash2 size={15} />} onClick={() => setConfirmClear(true)}>Empty cart</Btn>

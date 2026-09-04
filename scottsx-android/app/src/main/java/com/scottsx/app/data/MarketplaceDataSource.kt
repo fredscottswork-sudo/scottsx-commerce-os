@@ -405,7 +405,7 @@ object MarketplaceDataSource {
     // ---------------------------------------------------------------
     val benefits: List<Benefit> = listOf(
         Benefit("FREE DELIVERY", "On orders over\nUGX 50,000", BenefitIcon.Delivery),
-        Benefit("SECURE PAYMENTS", "100% safe &\nreliable", BenefitIcon.Security),
+        Benefit("SECURE AGREEMENTS", "Receipts record\nevery deal", BenefitIcon.Security),
         Benefit("EASY RETURNS", "7-day return\npolicy", BenefitIcon.Returns),
         Benefit("BUYER PROTECTION", "Shop with\nconfidence", BenefitIcon.Protection),
     )

@@ -90,11 +90,6 @@ fun StoreSettingsScreen(
             Item(Icons.Filled.LocalShipping, "Delivery Settings", "Delivery radius, fee, options") { onOpenSection("delivery") }
 
             Spacer(Modifier.height(20.dp))
-            SectionHeader("Payments")
-            Spacer(Modifier.height(6.dp))
-            Item(Icons.Filled.CreditCard, "Payment Settings", "Mobile money, bank accounts") { onOpenSection("payments") }
-
-            Spacer(Modifier.height(20.dp))
             SectionHeader("Preferences")
             Spacer(Modifier.height(6.dp))
             Item(Icons.Filled.Notifications, "Notification Settings", "Buyers, orders, marketing") { onOpenSection("notifications") }

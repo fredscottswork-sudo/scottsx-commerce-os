@@ -336,7 +336,7 @@ export default function Settings() {
                 <div className="settings-toggle-row">
                   <div>
                     <strong>Order updates</strong>
-                    <span className="muted">Payment confirmations, dispatch and delivery.</span>
+                    <span className="muted">Order confirmations, dispatch and delivery.</span>
                   </div>
                   <Switch
                     checked={prefs.notifyOrderUpdates}
