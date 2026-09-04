@@ -393,16 +393,6 @@ export function AiConsole({
               <Mic size={15} />
               {listening ? 'Listening…' : 'Voice'}
             </button>
-            <button
-              type="button"
-              className="ai-cap"
-              onClick={() => setImgOpen(true)}
-              title="Search by photo"
-              aria-label="Search by photo"
-            >
-              <Camera size={15} />
-              Photo
-            </button>
             {turns.length > 0 && (
               <Btn size="sm" variant="ghost" icon={<RotateCcw size={14} />} onClick={() => setTurns([])}>
                 New chat
@@ -555,6 +545,15 @@ export function AiConsole({
           className="ai-chat-input"
           onSubmit={(e) => { e.preventDefault(); void send(input); }}
         >
+          <button
+            type="button"
+            className="ai-chat-img"
+            onClick={() => setImgOpen(true)}
+            title="Search by photo"
+            aria-label="Search by photo"
+          >
+            <Camera size={16} />
+          </button>
           <textarea
             ref={inputRef}
             rows={1}

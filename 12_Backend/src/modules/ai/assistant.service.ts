@@ -405,20 +405,20 @@ export async function imageSearch(
     }
   }
 
+  // What we *tell* the user we detected. Roboflow labels win when present;
+  // otherwise the merged hint/filename terms are the only signal and must be
+  // surfaced (a decision-only workflow response must never blank the answer).
+  const detectedLabel = vision
+    ? [vision.productTitle, vision.category, ...vision.tags].filter(Boolean).join(' ') || terms
+    : terms;
   return {
     ...result,
-    detected: vision
-      ? [vision.productTitle, vision.category, ...vision.tags].filter(Boolean).join(' ')
-      : terms,
-    explanation: vision
-      ? `Vision found **${[vision.productTitle, vision.category, ...vision.tags].filter(Boolean).join(' ')}** — ${
-          result.products.length
-        } similar item${result.products.length === 1 ? '' : 's'} found.`
-      : terms
-        ? `Image looks like **${terms}** — ${result.products.length} similar item${
-            result.products.length === 1 ? '' : 's'
-          } found.`
-        : 'Could not read the image — showing popular products instead.',
+    detected: detectedLabel,
+    explanation: detectedLabel
+      ? `Image looks like **${detectedLabel}** — ${result.products.length} similar item${
+          result.products.length === 1 ? '' : 's'
+        } found.`
+      : 'Could not read the image — showing popular products instead.',
   };
 }
 

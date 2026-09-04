@@ -880,7 +880,8 @@ section('9b. Public STX AI page');
     aiBrand ? aiBrand.textContent : 'no brand bar');
   check('AI page shows its marketplace identity mark', !!app.$('.ai-brand-orb'));
   check('AI page offers extra capabilities (voice + photo)',
-    app.$$('.ai-cap').length >= 2, `${app.$$('.ai-cap').length} capability buttons`);
+    app.$$('.ai-cap').length >= 1 && !!app.$('.ai-chat-input button[aria-label="Search by photo"]'),
+    `${app.$$('.ai-cap').length} header caps + composer photo button`);
   check('no runtime errors on the AI page', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
@@ -889,11 +890,17 @@ section('9b. Public STX AI page');
 section('9c. Image search');
 {
   const app = await mount('/ai');
-  // Open the photo modal from the AI console's capability row.
-  const photoBtn = [...app.$$('.ai-cap')].find((b) => /photo/i.test(b.textContent || ''));
-  check('AI console exposes the photo search capability', !!photoBtn,
-    photoBtn ? photoBtn.textContent : 'no photo capability button');
+  // The photo attach button lives in the composer, right beside Send.
+  const composer = app.$('.ai-chat-input');
+  const photoBtn = composer && app.$('.ai-chat-input button[aria-label="Search by photo"]');
+  check('photo search sits in the chat composer', !!photoBtn,
+    photoBtn ? 'composer button found' : 'no composer photo button');
   if (photoBtn) {
+    const sendBtn = [...(composer?.querySelectorAll('button') || [])].find((b) =>
+      /send/i.test(b.textContent || '')
+    );
+    check('photo button is adjacent to the Send button', !!sendBtn,
+      sendBtn ? 'send found' : 'no send button in composer');
     await app.click(photoBtn, 300);
     check('photo search modal opens', !!app.$('.visual-search'),
       app.$('.visual-search') ? 'open' : 'no modal');

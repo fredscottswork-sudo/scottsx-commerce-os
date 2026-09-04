@@ -2001,6 +2001,14 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .ai-chat-input textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3.5px var(--primary-soft); }
+.ai-chat-img {
+  flex: none; width: 42px; height: 42px; border-radius: var(--radius-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  cursor: pointer; transition: border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.ai-chat-img:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 .ai-disclaimer {
   flex: 0 0 auto; margin: 0; padding: 0 14px 10px;
   font-size: 10px; line-height: 1.45; color: var(--text-3);

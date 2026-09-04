@@ -145,7 +145,19 @@ export default async function registerAiRoute(app: FastifyInstance) {
    * Nothing is persisted, so this is safe for anonymous visitors.
    */
   app.post('/api/v1/ai/image-upload-search', async (request, reply) => {
-    const file = await request.file();
+    // Read parts in ORDER of arrival: `request.file()` only sees fields that
+    // arrived BEFORE the file, and browsers may append the hint after the
+    // image — a silently dropped hint is exactly the kind of thing that makes
+    // image search feel broken.
+    let file: Awaited<ReturnType<typeof request.file>> | null = null;
+    let hint = '';
+    for await (const part of request.parts()) {
+      if (part.type === 'file' && part.fieldname === 'image' && !file) {
+        file = part;
+      } else if (part.type === 'field' && part.fieldname === 'hint') {
+        hint = String(part.value ?? '').trim().slice(0, 200);
+      }
+    }
     if (!file) {
       return reply.code(400).send({ error: 'No image uploaded (field "image")' });
     }
@@ -165,9 +177,6 @@ export default async function registerAiRoute(app: FastifyInstance) {
       .replace(/[-_+]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    const hint = String((file.fields as any)?.hint?.value ?? '')
-      .trim()
-      .slice(0, 200);
 
     const imageData = `data:${file.mimetype};base64,${buffer.toString('base64')}`;
     const result = await imageSearch(pool, { imageData, hint, labels: filenameTerms ? [filenameTerms] : [] }, 24);

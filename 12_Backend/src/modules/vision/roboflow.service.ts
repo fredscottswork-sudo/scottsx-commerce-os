@@ -60,11 +60,17 @@ function timeoutMs(): number {
   return Math.min(Math.max(raw, 2_000), 30_000);
 }
 
+/** Normalise a key for comparison: "visualSearchEmbedding" == "visual_search_embedding". */
+function normKey(k: string): string {
+  return k.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 /** Recursively find the first value for any of the given keys. */
 function dig(node: unknown, names: string[], depth = 0): unknown {
-  if (!node || typeof node !== 'object' || depth > 5) return undefined;
+  if (!node || typeof node !== 'object' || depth > 6) return undefined;
+  const wanted = names.map(normKey);
   for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-    if (names.includes(k.toLowerCase()) && v !== undefined && v !== null) return v;
+    if (wanted.includes(normKey(k)) && v !== undefined && v !== null) return v;
   }
   for (const v of Object.values(node as Record<string, unknown>)) {
     const found = dig(v, names, depth + 1);
@@ -79,6 +85,12 @@ function asString(v: unknown): string | undefined {
     return s ? s : undefined;
   }
   if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  // Workflow runners often wrap scalars: { value: "Electronics" }, { label: … }.
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const inner = dig(v, ['value', 'name', 'label', 'text', 'string', 'class_name', 'prediction', 'result'], 0);
+    if (inner !== undefined && inner !== v) return asString(inner);
+  }
+  if (Array.isArray(v)) return asString(v[0]);
   return undefined;
 }
 
@@ -91,19 +103,38 @@ function asStringArray(v: unknown): string[] {
       .map((s) => s.trim().replace(/^["']|["']$/g, ''))
       .filter(Boolean);
   }
+  if (v && typeof v === 'object') {
+    // Wrapped lists: { value: [...] }, { labels: [...] }, { items: [...] }.
+    const inner = dig(v, ['value', 'labels', 'tags', 'items', 'list', 'classes', 'names'], 0);
+    if (inner !== undefined && inner !== v) return asStringArray(inner);
+  }
   return [];
 }
 
 function asEmbedding(v: unknown): number[] | null {
   let arr: unknown = v;
-  // Some outputs wrap it: { embedding: [...] } or {vector: [...]}
+  // Some outputs wrap it: { embedding: [...] }, { vector: [...] },
+  // { value: [...] }, { data: [...] } — or a full-image object.
   if (arr && typeof arr === 'object' && !Array.isArray(arr)) {
-    const inner = dig(arr, ['embedding', 'vector', 'visual_search_embedding', 'values'], 0);
-    if (Array.isArray(inner)) arr = inner;
+    const inner = dig(
+      arr,
+      ['embedding', 'vector', 'visual_search_embedding', 'values', 'value', 'data', 'list', 'array', 'items'],
+      0
+    );
+    if (inner !== undefined) arr = inner;
   }
   if (!Array.isArray(arr)) return null;
+  // Arrays of { name, value } pairs are a common model output too.
   const out = arr
-    .map((n) => (typeof n === 'number' ? n : Number(n)))
+    .map((n) => {
+      if (typeof n === 'number') return n;
+      if (typeof n === 'string') return Number(n);
+      if (n && typeof n === 'object') {
+        const val = dig(n as Record<string, unknown>, ['value', 'data', 'v', 'embedding'], 0);
+        return typeof val === 'number' ? val : Number(val);
+      }
+      return NaN;
+    })
     .filter((n) => Number.isFinite(n));
   return out.length >= 4 ? out : null;
 }
@@ -152,15 +183,25 @@ export async function analyzeImage(input: RoboflowInput): Promise<VisionAnalysis
     if (!res.ok) return null;
     const payload = await res.json();
 
-    const decision = normalizeDecision(dig(payload, ['decision', 'verdict', 'status', 'result']));
-    const embedding = asEmbedding(dig(payload, ['visual_search_embedding', 'embedding', 'vector']));
+    const decision = normalizeDecision(
+      dig(payload, ['decision', 'verdict', 'status', 'result', 'moderation', 'moderation_decision'])
+    );
+    const embedding = asEmbedding(
+      dig(payload, ['visual_search_embedding', 'embedding', 'vector', 'image_embedding', 'search_embedding'])
+    );
     return {
       decision,
-      category: asString(dig(payload, ['category', 'category_name'])),
-      subcategory: asString(dig(payload, ['subcategory', 'sub_category', 'subcategory_name'])),
-      productTitle: asString(dig(payload, ['product_title', 'title', 'product_name', 'prediction'])),
-      tags: asStringArray(dig(payload, ['tags', 'labels', 'classes', 'predictions'])),
-      rejectionReasons: asStringArray(dig(payload, ['rejection_reasons', 'rejectionReasons', 'reasons'])),
+      category: asString(dig(payload, ['category', 'category_name', 'class', 'type'])),
+      subcategory: asString(dig(payload, ['subcategory', 'sub_category', 'subcategory_name', 'sub_class'])),
+      productTitle: asString(
+        dig(payload, ['product_title', 'title', 'product_name', 'prediction', 'name'])
+      ),
+      tags: asStringArray(
+        dig(payload, ['tags', 'labels', 'classes', 'predictions', 'class_names', 'object_classes', 'detections'])
+      ),
+      rejectionReasons: asStringArray(
+        dig(payload, ['rejection_reasons', 'rejectionReasons', 'rejection_reason', 'reasons'])
+      ),
       embedding,
       checkedAt: new Date().toISOString(),
     };
