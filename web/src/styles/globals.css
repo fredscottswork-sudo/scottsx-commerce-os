@@ -2275,8 +2275,8 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .ai-composer {
   position: relative;
   display: flex; flex-direction: column; gap: 0;
-  min-height: 132px;                     /* desktop: ~120–160px resting */
-  padding: 10px 6px 4px; border: 0; border-radius: 0; background: transparent;
+  min-height: 96px;                      /* desktop resting height */
+  padding: 6px 6px 2px; border: 0; border-radius: 0; background: transparent;
   cursor: text;
 }
 .ai-composer-field { position: relative; flex: 1 1 auto; display: flex; min-height: 0; }
@@ -2315,7 +2315,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 }
 .ai-composer textarea {
   flex: 1 1 auto; width: 100%; min-width: 0; resize: none;
-  min-height: 72px; max-height: 320px;
+  min-height: 48px; max-height: 280px;
   padding: 2px 2px 4px; border: 0; background: transparent; color: var(--text);
   font-family: inherit; font-size: 16px; /* ≥16px: iOS will not zoom the page */
   line-height: 1.5; outline: none; box-shadow: none; overflow-y: auto;
@@ -2384,9 +2384,10 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 
 /* ── Market quick actions (step-in tools above the composer) ─────────────── */
 .ai-quickbar {
-  display: flex; gap: 7px; padding: 8px 14px 0;
-  background: var(--surface);
-  overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
+  display: flex; gap: 7px; justify-content: center; flex-wrap: wrap;
+  padding: 0 clamp(12px, 3vw, 40px) 12px;
+  background: transparent;
+  flex-shrink: 0;
 }
 .ai-quickbar::-webkit-scrollbar { display: none; }
 .ai-quick {
@@ -2404,7 +2405,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .ai-quick:disabled { opacity: 0.5; cursor: default; }
 
 .ai-disclaimer {
-  flex: 0 0 auto; margin: -6px 0 0; padding: 0 14px 10px;
+  flex: 0 0 auto; margin: -4px 0 0; padding: 0 14px 12px;
   font-size: 10px; line-height: 1.45; color: var(--text-3);
   text-align: center; background: var(--surface-2);
 }
@@ -5655,10 +5656,10 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   bottom: 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  padding: 10px 14px 12px;
+  padding: 8px 14px 8px;
   border-radius: 24px;
   width: calc(100% - 2 * clamp(12px, 3vw, 40px));
-  margin: 8px auto 14px;
+  margin: 8px auto 6px;
   box-shadow:
     0 1px 0 rgba(255,255,255,.04) inset,
     0 10px 30px -14px rgba(0,0,0,.45),
@@ -5682,13 +5683,14 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
     gap: 6px;
     border-radius: 22px;
     width: calc(100% - 20px);
-    margin: 6px auto calc(10px + env(safe-area-inset-bottom));
+    margin: 6px auto calc(16px + env(safe-area-inset-bottom));
   }
-  .ai-composer { min-height: 108px; padding: 8px 4px 2px; }   /* mobile: ~100–140px */
-  .ai-composer textarea { min-height: 56px; max-height: 220px; }
+  .ai-composer { min-height: 78px; padding: 4px 4px 0; }   /* mobile resting height */
+  .ai-composer textarea { min-height: 40px; max-height: 200px; }
+  .ai-composer-bar { padding-top: 2px; }
   .ai-composer-bar { padding-top: 4px; }
   .ai-chat-img, .ai-send { width: 38px; height: 38px; }
-  .ai-quickbar { padding: 6px 10px 0; }
+  .ai-quickbar { display: none; }
   .ai-disclaimer { display: none; } /* one line of legal text is not worth 24px of a phone */
 }
 
@@ -5699,8 +5701,8 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   body.ai-immersive .ai-console--kbd .ai-chat-head .ai-brand-sub { display: none; }
   body.ai-immersive .ai-console--kbd .ai-quickbar { display: none; }
   body.ai-immersive .ai-console--kbd .ai-chat-input { padding-bottom: 8px; }
-  body.ai-immersive .ai-console--kbd .ai-composer { min-height: 96px; }
-  body.ai-immersive .ai-console--kbd .ai-composer textarea { min-height: 48px; }
+  body.ai-immersive .ai-console--kbd .ai-composer { min-height: 70px; }
+  body.ai-immersive .ai-console--kbd .ai-composer textarea { min-height: 36px; }
 }
 
 

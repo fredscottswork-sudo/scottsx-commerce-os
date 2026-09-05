@@ -983,45 +983,6 @@ export function AiConsole({
           )}
         </div>
 
-        {/* Market quick actions — step-in tools that make the assistant feel
-            like the marketplace's own, not a generic chat bot. */}
-        {turns.length > 0 && (
-          <div className="ai-quickbar" role="toolbar" aria-label="Quick actions">
-            <button
-              type="button"
-              className="ai-quick"
-              disabled={busy}
-              onClick={() => void send("Show me today's flash deals and the hottest prices.")}
-            >
-              <Flame size={13} /> Flash deals
-            </button>
-            <button
-              type="button"
-              className="ai-quick"
-              disabled={busy}
-              onClick={() => void send('Help me compare prices for what I describe.')}
-            >
-              <Wallet size={13} /> Price check
-            </button>
-            <button
-              type="button"
-              className="ai-quick"
-              disabled={busy}
-              onClick={() => void send('What can I buy near me right now? Tell me the closest sellers with stock.')}
-            >
-              <MapPin size={13} /> Near me
-            </button>
-            <button
-              type="button"
-              className="ai-quick"
-              disabled={busy}
-              onClick={() => void send('How do I track my order or get help with delivery?')}
-            >
-              <Truck size={13} /> Track order
-            </button>
-          </div>
-        )}
-
         <form
           className={`ai-chat-input${dragOver ? ' ai-chat-input--drop' : ''}${photo ? ' ai-chat-input--photo' : ''}${busy ? ' ai-chat-input--busy' : ''}`}
           onSubmit={(e) => {
@@ -1134,6 +1095,45 @@ export function AiConsole({
             </div>
           </div>
         </form>
+        {/* Market quick actions — step-in tools that make the assistant feel
+            like the marketplace's own, not a generic chat bot. */}
+        {turns.length > 0 && (
+          <div className="ai-quickbar" role="toolbar" aria-label="Quick actions">
+            <button
+              type="button"
+              className="ai-quick"
+              disabled={busy}
+              onClick={() => void send("Show me today's flash deals and the hottest prices.")}
+            >
+              <Flame size={13} /> Flash deals
+            </button>
+            <button
+              type="button"
+              className="ai-quick"
+              disabled={busy}
+              onClick={() => void send('Help me compare prices for what I describe.')}
+            >
+              <Wallet size={13} /> Price check
+            </button>
+            <button
+              type="button"
+              className="ai-quick"
+              disabled={busy}
+              onClick={() => void send('What can I buy near me right now? Tell me the closest sellers with stock.')}
+            >
+              <MapPin size={13} /> Near me
+            </button>
+            <button
+              type="button"
+              className="ai-quick"
+              disabled={busy}
+              onClick={() => void send('How do I track my order or get help with delivery?')}
+            >
+              <Truck size={13} /> Track order
+            </button>
+          </div>
+        )}
+
         <p className="ai-disclaimer">
           AI answers are generated — double-check prices and availability with the seller before paying.
         </p>
