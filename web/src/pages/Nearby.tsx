@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MapPin, BadgeCheck, Navigation, Radio, Clock, Truck, Star,
-  LocateFixed, LocateOff, Package, Globe2, AlertCircle,
+  LocateFixed, LocateOff, Package, Globe2, AlertCircle, Crosshair, ChevronRight,
 } from 'lucide-react';
 import { productService, geoService } from '../api/services';
 import type { NearbySeller, Place } from '../api/types';
@@ -39,6 +39,8 @@ export default function Nearby() {
   const [usingGps, setUsingGps] = useState(false);
   const [locating, setLocating] = useState(true);
   const [geoDenied, setGeoDenied] = useState(false);
+  /** Reported GPS accuracy radius in metres for the current fix. */
+  const [accuracyM, setAccuracyM] = useState<number | null>(null);
 
   const [sort, setSort] = useState<Sort>('distance');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
@@ -85,6 +87,7 @@ export default function Nearby() {
   const applyPosition = useCallback((next: { lat: number; lng: number }, accuracyM?: number) => {
     setCenter(next);
     setLocating(false);
+    setAccuracyM(typeof accuracyM === 'number' && Number.isFinite(accuracyM) ? accuracyM : null);
     if (user && !savedOnce.current) {
       savedOnce.current = true;
       geoService.saveMyLocation(next.lat, next.lng, accuracyM)
@@ -227,25 +230,38 @@ export default function Nearby() {
         }
       />
 
-      {/* Where you are — compact */}
-      <div className="card card-pad place-banner" style={{ padding: '10px 14px', marginBottom: 12 }}>
-        <span className="place-ico" style={{ width: 34, height: 34 }}><MapPin size={16} /></span>
+      {/* Where you are — exact village from GPS */}
+      <div className="card place-banner place-banner--exact">
+        <span className="place-ico"><MapPin size={17} /></span>
         <div className="grow" style={{ minWidth: 0 }}>
-          <div className="tiny muted-2 semi" style={{ fontSize: 11 }}>Your location</div>
+          <div className="place-kicker">
+            Your location
+            {accuracyM !== null && !locating && (
+              <span className="place-acc" title="GPS accuracy">
+                <Crosshair size={10} /> ±{accuracyM < 1000 ? `${Math.round(accuracyM)} m` : `${(accuracyM / 1000).toFixed(1)} km`}
+              </span>
+            )}
+          </div>
           {locating ? (
-            <strong className="place-name" style={{ fontSize: 14 }}>Detecting…</strong>
+            <strong className="place-name">Detecting your village…</strong>
           ) : place ? (
             <>
-              <strong className="place-name" data-testid="place-label" style={{ fontSize: 14 }}>{place.label}</strong>
-              <div className="tiny muted mt-4 place-parts" style={{ gap: 6, fontSize: 11 }}>
-                {place.village && <span>{place.village}</span>}
-                {place.city && <span><span className="muted-2">City:</span> {place.city}</span>}
-                {place.region && <span><span className="muted-2">Region:</span> {place.region}</span>}
-                {place.country && <span><span className="muted-2">Country:</span> {place.country}</span>}
+              <strong className="place-name" data-testid="place-label">
+                {place.village || place.city || place.region || place.label}
+              </strong>
+              <div className="place-trail" aria-label="Location hierarchy">
+                {[place.suburb, place.city, place.region, place.country]
+                  .filter((x, i, arr): x is string => Boolean(x) && arr.indexOf(x) === i && x !== (place.village || ''))
+                  .map((part, i) => (
+                    <span key={part} className="place-trail-part">
+                      {i > 0 && <ChevronRight size={11} className="place-trail-sep" aria-hidden />}
+                      {part}
+                    </span>
+                  ))}
               </div>
             </>
           ) : (
-            <strong className="place-name" style={{ fontSize: 14 }}>Unavailable</strong>
+            <strong className="place-name">Location unavailable</strong>
           )}
         </div>
         <div className="row" style={{ gap: 8 }}>

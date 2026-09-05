@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, memo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { CreditCard, MessageCircle, MapPin, Search, ShoppingBag, Sparkles, Camera, ChevronDown } from 'lucide-react';
 import { productService, geoService } from '../api/services';
@@ -20,11 +20,20 @@ const BENEFITS = [
   { anim: 'trust', icon: <ShoppingBag size={22} />, title: 'Local & genuine' },
 ] as const;
 
-const AD_ITEMS = [
-  { icon: <MessageCircle size={14} />, label: 'Chat first', color: '#0ea5e9' },
-  { icon: <MapPin size={14} />, label: 'Nearby', color: '#10b981' },
-  { icon: <Sparkles size={14} />, label: 'AI Shopper', color: '#8b5cf6' },
-  { icon: <ShoppingBag size={14} />, label: 'Genuine', color: '#f59e0b' },
+/**
+ * Mobile marketplace adverts. On a phone the four feature cards collapse into
+ * one rotating banner that advertises the marketplace itself — each slide is
+ * a real photo with a short claim and a call to action.
+ */
+const AD_SLIDES = [
+  { id: 'chat', to: '/messages', img: '/ads/chat.jpg', accent: '#38bdf8',
+    kicker: 'Message first', title: 'Talk to the seller before you buy', cta: 'Start a chat', icon: <MessageCircle size={14} /> },
+  { id: 'nearby', to: '/nearby', img: '/ads/nearby.jpg', accent: '#34d399',
+    kicker: 'Nearby', title: 'Real stores in your village, right now', cta: 'See who\u2019s near me', icon: <MapPin size={14} /> },
+  { id: 'ai', to: '/ai', img: '/ads/ai.jpg', accent: '#a78bfa',
+    kicker: 'AI shopper', title: 'Snap a photo. We find it and the best price.', cta: 'Try the assistant', icon: <Sparkles size={14} /> },
+  { id: 'genuine', to: '/search', img: '/ads/genuine.jpg', accent: '#fbbf24',
+    kicker: 'Verified sellers', title: 'Local, genuine and delivered to your door', cta: 'Shop verified', icon: <ShoppingBag size={14} /> },
 ] as const;
 
 const FALLBACK_CENTER = { lat: 0.3476, lng: 32.5825 };
@@ -32,34 +41,60 @@ const GEO_TIMEOUT_MS = 4000;
 
 const MobileAdvert = memo(function MobileAdvert() {
   const [idx, setIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
   useEffect(() => {
-    const t = setInterval(() => setIdx((i) => (i + 1) % AD_ITEMS.length), 3500);
+    if (paused) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const t = setInterval(() => setIdx((i) => (i + 1) % AD_SLIDES.length), reduce ? 9000 : 5500);
     return () => clearInterval(t);
-  }, []);
-  const active = AD_ITEMS[idx];
+  }, [paused]);
+  const touchX = useRef({ x: 0 });
+  const active = AD_SLIDES[idx];
   return (
-    <div className="madvert" data-testid="mobile-advert" style={{ contentVisibility: 'auto', containIntrinsicSize: '80px' } as any}>
-      <div className="madvert-bg" aria-hidden="true">
-        <div className="madvert-orb madvert-orb-1" />
-        <div className="madvert-orb madvert-orb-2" />
-        <div className="madvert-grid" />
-      </div>
-      <div className="madvert-content">
-        <div className="madvert-logo-wrap">
-          <BrandMark size={32} className="madvert-logo" />
-          <span className="madvert-live">LIVE</span>
+    <section
+      className="madvert"
+      data-testid="mobile-advert"
+      aria-roledescription="carousel"
+      aria-label="ScottsTechX marketplace"
+      onTouchStart={(e) => { touchX.current.x = e.touches[0].clientX; setPaused(true); }}
+      onTouchEnd={(e) => {
+        const dx = e.changedTouches[0].clientX - touchX.current.x;
+        if (Math.abs(dx) > 40) setIdx((i) => (i + (dx < 0 ? 1 : AD_SLIDES.length - 1)) % AD_SLIDES.length);
+        setPaused(false);
+      }}
+    >
+      {AD_SLIDES.map((sl, i) => (
+        <div
+          key={sl.id}
+          className={`madvert-slide${i === idx ? ' is-active' : ''}`}
+          style={{ backgroundImage: `url(${sl.img})`, '--accent': sl.accent } as CSSProperties}
+          aria-hidden={i !== idx}
+        />
+      ))}
+      <div className="madvert-scrim" aria-hidden="true" />
+      <Link to={active.to} className="madvert-content" key={active.id}>
+        <div className="madvert-brand">
+          <BrandMark size={22} className="madvert-logo" />
+          <span>ScottsTechX</span>
         </div>
-        <div className="madvert-text">
-          <strong className="madvert-title">ScottsTechX <span className="madvert-title-accent">Marketplace</span></strong>
-          <div className="madvert-sub"><span className="madvert-sub-dot" /><span>Everything • Verified • Nearby • AI • Chat</span></div>
-          <div className="madvert-cycle">
-            <span className="madvert-cycle-icon" style={{ color: active.color, background: `${active.color}14`, borderColor: `${active.color}22` }}>{active.icon}</span>
-            <span className="madvert-cycle-label" style={{ color: active.color }}>{active.label}</span>
-            <span className="madvert-cycle-dots">{AD_ITEMS.map((_, i) => (<span key={i} className={`madvert-dot ${i === idx ? 'active' : ''}`} />))}</span>
-          </div>
-        </div>
+        <span className="madvert-kicker" style={{ color: active.accent }}>{active.icon}{active.kicker}</span>
+        <strong className="madvert-title">{active.title}</strong>
+        <span className="madvert-cta">{active.cta} <span aria-hidden>→</span></span>
+      </Link>
+      <div className="madvert-dots" role="tablist" aria-label="Slides">
+        {AD_SLIDES.map((sl, i) => (
+          <button
+            key={sl.id}
+            type="button"
+            role="tab"
+            aria-selected={i === idx}
+            aria-label={sl.kicker}
+            className={`madvert-dot${i === idx ? ' active' : ''}`}
+            onClick={() => setIdx(i)}
+          />
+        ))}
       </div>
-    </div>
+    </section>
   );
 });
 

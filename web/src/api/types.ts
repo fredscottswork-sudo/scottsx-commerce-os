@@ -192,6 +192,10 @@ export interface NearbySeller {
 /** Reverse-geocoding result: where a coordinate is (Google Maps in background) */
 export interface Place {
   village: string | null;
+  /** Larger neighbourhood containing the village (e.g. "Bukoto"). */
+  suburb?: string | null;
+  /** Nearest named road when known. */
+  road?: string | null;
   city: string | null;
   region: string | null;
   country: string | null;
@@ -201,7 +205,7 @@ export interface Place {
   label: string;
   /** "Kabalagala, Central Region" */
   shortLabel: string;
-  source: 'offline-gazetteer' | 'google';
+  source: 'offline-gazetteer' | 'google' | 'osm';
 }
 
 export interface ChatParty {

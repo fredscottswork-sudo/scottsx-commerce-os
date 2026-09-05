@@ -844,8 +844,8 @@ section('9. AI console');
   await app.type(box, 'cheapest phones');
   check('market mark sits in the AI brand orbs', !!app.$('.ai-brand-orb .ai-brand-mark'),
     app.$('.ai-brand-orb .ai-brand-mark') ? 'logo found' : 'no logo mark');
-  check('send button glows when the message is ready', !!app.$('.ai-chat-input .ai-send--ready'));
-  const sendBtn = [...app.$$('.ai-chat-input button')].find((b) => /send/i.test(b.textContent || ''));
+  check('send button becomes active when the message is ready', !!app.$('.ai-chat-input .ai-send--ready'));
+  const sendBtn = app.$('.ai-chat-input button[aria-label="Send message"]');
   if (box && sendBtn) {
     await app.click(sendBtn, 3200);
     const after = app.text();

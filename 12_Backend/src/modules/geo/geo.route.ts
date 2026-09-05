@@ -1,9 +1,9 @@
 /**
- * ScottsTechX — location endpoints (original + fast Google Maps in background)
+ * ScottsTechX — location endpoints.
  *
- * Original behavior restored: simple village/city/region/country, no selection UI.
- * Enhancement: uses lat/lng to query Google Maps in background with <1s timeout
- * to identify village, then names it on frontend quickly.
+ * A GPS fix becomes an exact place: village / neighbourhood, suburb, city,
+ * region, country. OpenStreetMap is the primary source (it carries LC1-level
+ * names across Uganda), Google and the offline gazetteer complete the label.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -13,6 +13,7 @@ import { requireAuth, authedUser } from '../../auth.js';
 import { reverseGeocode, geocoderReady } from '../../geo/gazetteer.js';
 import type { ReverseResult } from '../../geo/gazetteer.js';
 import { googleReverseGeocode, googleGeocoderConfigured } from '../../geo/google-geocoder.js';
+import { osmReverseGeocode, osmGeocoderConfigured } from '../../geo/osm-geocoder.js';
 import { ServiceUnavailableError } from '../../errors.js';
 
 const geoCache = new Map<string, { at: number; value: ReverseResult | null }>();
@@ -21,6 +22,15 @@ function geoCacheKey(lat: number, lng: number): string {
   return `${Math.round(lat * 10000) / 10000}:${Math.round(lng * 10000) / 10000}`;
 }
 
+/**
+ * Resolve a GPS fix to the most exact place we can name.
+ *
+ * Order: OpenStreetMap (LC1-level village / neighbourhood detail in Uganda),
+ * then Google (if a key is set), then the offline gazetteer (always works).
+ * Results are MERGED, not just raced: OSM gives the village, but if it has no
+ * region for a rural fix the gazetteer's region/country fills the gap, so the
+ * label is always as complete as the best of the three.
+ */
 async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | null> {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
@@ -29,31 +39,60 @@ async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | n
   const cached = geoCache.get(key);
   if (cached && Date.now() - cached.at < GEO_CACHE_TTL) return cached.value;
 
-  // Background Google Maps — must be <1s
-  if (googleGeocoderConfigured()) {
-    try {
-      const googlePromise = googleReverseGeocode(lat, lng);
-      const timeout = new Promise<null>((res) => setTimeout(() => res(null), 800));
-      const viaGoogle = await Promise.race([googlePromise, timeout]);
-      if (viaGoogle) {
-        geoCache.set(key, { at: Date.now(), value: viaGoogle });
-        if (geoCache.size > 500) {
-          const first = geoCache.keys().next().value;
-          if (first) geoCache.delete(first);
-        }
-        return viaGoogle;
-      }
-    } catch {}
-  }
+  const offline = reverseGeocode(lat, lng);
 
-  // Fallback offline — instant
-  const viaOffline = reverseGeocode(lat, lng);
-  geoCache.set(key, { at: Date.now(), value: viaOffline });
+  const withTimeout = <T>(p: Promise<T | null>, ms: number): Promise<T | null> =>
+    Promise.race([p.catch(() => null), new Promise<null>((res) => setTimeout(() => res(null), ms))]);
+
+  const [viaOsm, viaGoogle] = await Promise.all([
+    osmGeocoderConfigured() ? withTimeout(osmReverseGeocode(lat, lng), 3000) : Promise.resolve(null),
+    googleGeocoderConfigured() ? withTimeout(googleReverseGeocode(lat, lng), 1200) : Promise.resolve(null),
+  ]);
+
+  const best = mergePlaces(viaOsm, viaGoogle, offline);
+
+  geoCache.set(key, { at: Date.now(), value: best });
   if (geoCache.size > 500) {
     const first = geoCache.keys().next().value;
     if (first) geoCache.delete(first);
   }
-  return viaOffline;
+  return best;
+}
+
+/** Field-wise merge: first provider (in priority order) that knows a field wins. */
+function mergePlaces(...sources: (ReverseResult | null)[]): ReverseResult | null {
+  const known = sources.filter((s): s is ReverseResult => Boolean(s));
+  if (!known.length) return null;
+  const first = <K extends keyof ReverseResult>(k: K): ReverseResult[K] | null => {
+    for (const s of known) {
+      const v = s[k];
+      if (v !== null && v !== undefined && v !== '') return v;
+    }
+    return null;
+  };
+  const village = first('village');
+  const suburb = first('suburb');
+  const city = first('city');
+  const region = first('region');
+  const country = first('country');
+  const dedupe = (parts: (string | null)[]) => {
+    const out: string[] = [];
+    for (const p of parts) if (p && !out.some((x) => x.toLowerCase() === p.toLowerCase())) out.push(p);
+    return out;
+  };
+  return {
+    village,
+    suburb: village && suburb && suburb !== village ? suburb : null,
+    road: first('road') ?? null,
+    city,
+    region,
+    country,
+    countryCode: first('countryCode'),
+    accuracyKm: known[0].accuracyKm,
+    label: dedupe([village, village && suburb !== village ? (suburb ?? null) : null, city, region, country]).join(', '),
+    shortLabel: dedupe([village || city, village && city ? city : region || country]).join(', '),
+    source: known[0].source,
+  };
 }
 
 const coordSchema = z.object({
@@ -79,7 +118,12 @@ export default async function registerGeoRoute(app: FastifyInstance) {
 
   app.get('/api/v1/geo/status', async () => ({
     ready: geocoderReady(),
-    source: googleGeocoderConfigured() ? 'google' : 'offline-gazetteer',
+    source: osmGeocoderConfigured() ? 'osm' : googleGeocoderConfigured() ? 'google' : 'offline-gazetteer',
+    providers: {
+      osm: osmGeocoderConfigured(),
+      google: googleGeocoderConfigured(),
+      offline: geocoderReady(),
+    },
     coverage: 'global',
   }));
 
@@ -134,7 +178,7 @@ export default async function registerGeoRoute(app: FastifyInstance) {
         label: r.place_label ?? '',
         shortLabel: [r.village || r.city, r.region || r.country].filter(Boolean).join(', '),
         accuracyKm: 0,
-        source: googleGeocoderConfigured() ? 'google' : 'offline-gazetteer',
+        source: osmGeocoderConfigured() ? 'osm' : googleGeocoderConfigured() ? 'google' : 'offline-gazetteer',
       },
       updatedAt: r.location_updated_at,
     };

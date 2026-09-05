@@ -136,6 +136,10 @@ export function geocoderReady(): boolean {
 export interface ReverseResult {
   /** Smallest named locality at the fix — the "village" / neighbourhood. */
   village: string | null;
+  /** Larger neighbourhood that contains the village (e.g. Bukoto), if any. */
+  suburb?: string | null;
+  /** Nearest named road, when the provider knows it. */
+  road?: string | null;
   /** The town or city the fix belongs to. */
   city: string | null;
   /** Admin-1 area: region / state / province / district. */
@@ -148,7 +152,7 @@ export interface ReverseResult {
   label: string;
   /** Short two-part form for dense UI: "Kabalagala, Central Region". */
   shortLabel: string;
-  source: 'offline-gazetteer' | 'google';
+  source: 'offline-gazetteer' | 'google' | 'osm';
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {

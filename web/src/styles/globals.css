@@ -509,101 +509,63 @@ img { max-width: 100%; }
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
-  background:
-    radial-gradient(420px 180px at 12% 0%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 62%),
-    radial-gradient(320px 160px at 88% 100%, color-mix(in srgb, var(--accent-violet) 16%, transparent), transparent 60%),
-    radial-gradient(220px 120px at 50% 50%, color-mix(in srgb, #f59e0b 12%, transparent), transparent 62%),
-    color-mix(in srgb, var(--surface) 92%, var(--bg));
-  box-shadow: 0 8px 24px rgba(0,0,0,.08), 0 2px 8px rgba(0,0,0,.04), inset 0 1px 0 rgba(255,255,255,.06);
-  padding: 10px 12px;
-  min-height: 78px;
+  border-radius: 18px;
+  min-height: 168px;
   margin-bottom: 14px;
-  animation: madvertIn 0.56s var(--ease-spring) both;
+  background: #0b1220;
+  color: #fff;
+  box-shadow: 0 10px 30px -14px rgba(0,0,0,.45);
 }
-@keyframes madvertIn { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: none; } }
-
-.madvert-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; border-radius: 16px; }
-.madvert-orb { position: absolute; border-radius: 50%; filter: blur(18px); opacity: 0.55; }
-.madvert-orb-1 { width: 180px; height: 180px; left: -24%; top: -52%; background: radial-gradient(closest-side, color-mix(in srgb, var(--primary) 36%, transparent), transparent); animation: madvertOrb1 12s ease-in-out infinite; }
-.madvert-orb-2 { width: 140px; height: 140px; right: -18%; bottom: -42%; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent-violet) 32%, transparent), transparent); animation: madvertOrb2 14s ease-in-out infinite; }
-.madvert-orb-3 { width: 100px; height: 100px; left: 48%; top: 18%; background: radial-gradient(closest-side, color-mix(in srgb, #f59e0b 22%, transparent), transparent); animation: madvertOrb3 10s ease-in-out infinite; opacity: 0.42; }
-@keyframes madvertOrb1 { 0%,100%{transform:translate3d(0,0,0) scale(1)} 50%{transform:translate3d(2vw,1vh,0) scale(1.12)} }
-@keyframes madvertOrb2 { 0%,100%{transform:translate3d(0,0,0) scale(1)} 50%{transform:translate3d(-2vw,-1vh,0) scale(1.14)} }
-@keyframes madvertOrb3 { 0%,100%{transform:translate3d(0,0,0) scale(1)} 50%{transform:translate3d(1vw,-1.5vh,0) scale(1.18)} }
-
-.madvert-grid {
-  position: absolute; inset: 0;
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--border) 12%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--border) 12%, transparent) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: radial-gradient(70% 60% at 50% 30%, black 20%, transparent 76%);
-  opacity: 0.12;
+.madvert-slide {
+  position: absolute; inset: 0; z-index: 0;
+  background-size: cover; background-position: 62% center;
+  opacity: 0; transform: scale(1.04);
+  transition: opacity 700ms ease, transform 6s linear;
 }
-.madvert-stx {
-  position: absolute;
-  width: 84px; height: 84px;
-  right: -10px; bottom: -12px;
-  background: url('/brand/scottstechx-mark.png') no-repeat center / contain;
-  filter: brightness(0) invert(1);
-  opacity: 0.06;
-  animation: madvertStxFloat 8s ease-in-out infinite;
+.madvert-slide.is-active { opacity: 1; transform: scale(1); }
+.madvert-scrim {
+  position: absolute; inset: 0; z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(8,12,24,.92) 0%, rgba(8,12,24,.70) 48%, rgba(8,12,24,.18) 100%),
+    linear-gradient(180deg, rgba(8,12,24,.10), rgba(8,12,24,.55));
 }
-[data-theme='light'] .madvert-stx { filter: brightness(0) invert(0); opacity: 0.04; }
-@keyframes madvertStxFloat { 0%,100%{transform:scale(1) rotate(0deg)} 50%{transform:scale(1.08) rotate(3deg)} }
-
-.madvert-shine {
-  position: absolute; inset: 0; z-index: 2; pointer-events: none;
-  background: linear-gradient(105deg, transparent 0%, rgba(255,255,255,.14) 18%, transparent 36%);
-  transform: translateX(-120%);
-  animation: madvertShine 3.8s ease-in-out infinite;
+.madvert-content {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: 5px;
+  padding: 14px 16px 30px; min-height: 168px; width: 78%;
+  color: #fff; text-decoration: none;
+  animation: madvertCopyIn 420ms ease-out both;
 }
-@keyframes madvertShine { 0%{transform:translateX(-120%)} 55%,100%{transform:translateX(120%)} }
-
-.madvert-content { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; width: 100%; }
-.madvert-logo-wrap { position: relative; flex: none; display: grid; place-items: center; width: 42px; height: 42px; }
-.madvert-logo {
-  width: 36px !important; height: 36px !important;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  box-shadow: 0 4px 12px rgba(0,0,0,.10), 0 0 0 1px color-mix(in srgb, var(--primary) 10%, transparent) inset;
-  animation: madvertLogoFloat 4s ease-in-out infinite;
+@keyframes madvertCopyIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.madvert-brand {
+  position: absolute; top: 12px; left: 14px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 750; letter-spacing: 0.02em; color: rgba(255,255,255,.85);
 }
-@keyframes madvertLogoFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2px)} }
-.madvert-live {
-  position: absolute; right: -4px; top: -4px;
-  font-size: 7px; font-weight: 800; letter-spacing: 0.06em;
-  padding: 2px 4px; border-radius: 999px;
-  background: #10b981; color: white;
-  border: 1px solid white;
-  box-shadow: 0 2px 6px rgba(16,185,129,.32);
-  animation: madvertLivePing 2s ease-out infinite;
+.madvert-logo { width: 22px !important; height: 22px !important; border-radius: 6px; }
+.madvert-kicker {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
 }
-@keyframes madvertLivePing { 0%{box-shadow:0 0 0 0 rgba(16,185,129,.42)} 70%{box-shadow:0 0 0 6px rgba(16,185,129,0)} 100%{box-shadow:0 0 0 0 rgba(16,185,129,0)} }
-
-.madvert-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.madvert-title { font-family: var(--font-display); font-size: 13px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.madvert-title-accent { background: linear-gradient(90deg, var(--primary), var(--accent-violet)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.madvert-sub { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-3); font-weight: 600; letter-spacing: 0.01em; }
-.madvert-sub-dot { width: 5px; height: 5px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 3px color-mix(in srgb, #10b981 18%, transparent); animation: madvertDotPulse 1.8s ease-in-out infinite; flex: none; }
-@keyframes madvertDotPulse { 0%,100%{transform:scale(1); opacity:1} 50%{transform:scale(1.18); opacity:0.9} }
-
-.madvert-cycle { display: flex; align-items: center; gap: 6px; margin-top: 1px; }
-.madvert-cycle-icon {
-  width: 20px; height: 20px; border-radius: 6px;
-  display: grid; place-items: center;
-  border: 1px solid;
-  flex: none;
-  animation: madvertCycleIn 0.42s var(--ease-spring) both;
+.madvert-title {
+  font-family: var(--font-display); font-size: 17px; font-weight: 750; line-height: 1.2; letter-spacing: -0.02em;
+  text-shadow: 0 1px 2px rgba(0,0,0,.4);
 }
-@keyframes madvertCycleIn { from { opacity: 0; transform: scale(0.82) translateY(4px); } to { opacity: 1; transform: none; } }
-.madvert-cycle-label { font-size: 11px; font-weight: 700; letter-spacing: -0.01em; animation: madvertCycleIn 0.42s var(--ease-spring) both; animation-delay: 60ms; }
-.madvert-cycle-dots { display: flex; align-items: center; gap: 3px; margin-left: 6px; }
-.madvert-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--border); transition: background 200ms, transform 200ms, width 200ms; }
-.madvert-dot.active { background: var(--primary); width: 12px; transform: scale(1.1); box-shadow: 0 0 0 3px var(--primary-soft); }
+.madvert-cta {
+  display: inline-flex; align-items: center; gap: 4px; width: fit-content; margin-top: 4px;
+  padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); backdrop-filter: blur(6px);
+}
+.madvert-dots { position: absolute; z-index: 3; left: 16px; bottom: 12px; display: flex; gap: 5px; }
+.madvert-dot {
+  width: 6px; height: 6px; border-radius: 999px; padding: 0; border: 0; cursor: pointer;
+  background: rgba(255,255,255,.38); transition: width 220ms, background 220ms;
+}
+.madvert-dot.active { width: 18px; background: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .madvert-slide { transition: opacity 300ms ease; transform: none; }
+  .madvert-content { animation: none; }
+}
 
 @media (max-width: 620px) {
   .madvert { display: flex !important; }
@@ -1748,9 +1710,12 @@ body.ai-immersive { overflow: hidden; }
    mid-conversation and is what the extra height was going to. */
 body.ai-immersive .public-shell,
 body.ai-immersive .app-shell {
-  height: 100dvh;
+  /* --kbd-h is the soft-keyboard height measured from visualViewport (0 when
+     closed). Subtracting it keeps the composer above the keyboard instead of
+     letting the browser scroll the page behind it. */
+  height: calc(100dvh - var(--kbd-h, 0px));
   min-height: 0;
-  max-height: 100dvh;
+  max-height: calc(100dvh - var(--kbd-h, 0px));
   overflow: hidden;
 }
 body.ai-immersive .public-footer { display: none; }
@@ -1823,6 +1788,10 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   body.ai-immersive .public-content {
     margin-bottom: calc(var(--bottom-chrome, 0px) + env(safe-area-inset-bottom, 0px));
   }
+  /* Keyboard up: the bottom nav is hidden under it, so reclaim its space. */
+  body.ai-immersive:has(.ai-console--kbd) .content,
+  body.ai-immersive:has(.ai-console--kbd) .public-content { margin-bottom: 0; }
+  body.ai-immersive:has(.ai-console--kbd) .bottomnav { display: none; }
 }
 .ai-agents { position: sticky; top: calc(var(--topbar-h) + 18px); }
 
@@ -1842,172 +1811,39 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 
-/* ═══ Premium AI surface ─ 3D aurora, parallax depth, glass, motion ──────── */
-/* .ai-console is the 3D stage: pointer position lands in --par-x/--par-y
-   (aurora parallax) and --tilt-x/--tilt-y (card lean, non-immersive only). */
-.ai-console { position: relative; transform-style: preserve-3d; }
+/* ═══ AI surface — quiet, premium. No floating orbs, no parallax, no shimmer.
+   Motion is limited to: a 160ms fade for new turns, the typing dots, the
+   streaming caret and the stage pulse — everything else is static. ─────── */
+.ai-console { position: relative; }
 .ai-console-inner { display: contents; }
 
-.ai-aura {
-  position: absolute; inset: -60px -80px; pointer-events: none;
-  z-index: 0; overflow: hidden; border-radius: var(--radius);
-}
-.ai-aura-orb {
-  position: absolute; display: block;
-  transform: translate3d(var(--par-x, 0px), var(--par-y, 0px), 0);
-  transition: transform 0.45s var(--ease-out);
-  will-change: transform;
-}
-.ai-aura-orb i {
-  position: absolute; inset: 0; display: block; border-radius: 50%;
-  filter: blur(64px); opacity: 0.5;
-}
-.ai-aura-orb--a { width: 460px; height: 460px; left: -130px; top: -170px; }
-.ai-aura-orb--a i {
-  background: radial-gradient(circle at 32% 30%, #1e6fff 0%, rgba(30,111,255,0.25) 45%, transparent 68%);
-  animation: aiAuraFloatA 17s ease-in-out infinite;
-}
-.ai-aura-orb--b { width: 430px; height: 430px; right: -140px; top: 22%; }
-.ai-aura-orb--b i {
-  background: radial-gradient(circle at 60% 40%, #8b5cf6 0%, rgba(139,92,246,0.22) 45%, transparent 68%);
-  animation: aiAuraFloatB 21s ease-in-out infinite;
-}
-.ai-aura-orb--c { width: 380px; height: 380px; left: 30%; bottom: -200px; }
-.ai-aura-orb--c i {
-  background: radial-gradient(circle at 50% 50%, #22d3ee 0%, rgba(34,211,238,0.2) 45%, transparent 68%);
-  animation: aiAuraFloatC 19s ease-in-out infinite;
-}
-@keyframes aiAuraFloatA {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  33% { transform: translate3d(26px, 34px, 0) scale(1.08); }
-  66% { transform: translate3d(-18px, 12px, 0) scale(0.96); }
-}
-@keyframes aiAuraFloatB {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  40% { transform: translate3d(-30px, -24px, 0) scale(1.1); }
-  75% { transform: translate3d(16px, 20px, 0) scale(0.94); }
-}
-@keyframes aiAuraFloatC {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(22px, -26px, 0) scale(1.06); }
-}
-/* Perspective "floor" grid — a 3D plane receding behind the chat. */
-.ai-aura-grid {
-  position: absolute; inset: -40% -20% -20%;
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--primary) 10%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--primary) 10%, transparent) 1px, transparent 1px);
-  background-size: 46px 46px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 25%, transparent 78%);
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 25%, transparent 78%);
-  transform: perspective(900px) rotateX(56deg) translateY(10%);
-  transform-origin: 50% 0%;
-  opacity: 0.55; pointer-events: none;
-}
-/* Depth layers: orbs move at different rates with the pointer. */
-.ai-aura-orb--a { translate: 0 calc(var(--par-y, 0px) * 1.6) 0; }
-.ai-aura-orb--b { translate: 0 calc(var(--par-y, 0px) * -1.1) 0; }
+.ai-chat-head--brand { background: var(--surface); }
+.ai-cap { background: var(--surface-2); }
 
-/* The brand orb becomes a 3D sphere: highlight + shading + orbiting ring. */
-.ai-brand-orb {
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 30% 24%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 34%),
-    radial-gradient(circle at 62% 74%, #0b2f7a 0%, rgba(11,47,122,0) 55%),
-    radial-gradient(circle at 38% 42%, #4dc7ff 0%, #1e6fff 52%, #1b2a6b 100%);
-  box-shadow:
-    inset -8px -10px 18px rgba(0, 0, 0, 0.4),
-    inset 4px 6px 12px rgba(255, 255, 255, 0.25),
-    0 14px 30px -10px color-mix(in srgb, #1e6fff 70%, transparent);
-  animation: aiOrbFloat 5.5s var(--ease-out) infinite;
-}
-.ai-brand-orb svg { transform: translateZ(0); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35)); }
-@keyframes aiOrbFloat {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-3px) scale(1.05); }
-}
+.ai-turn { animation: aiTurnIn 0.16s ease-out both; }
+@keyframes aiTurnIn { from { opacity: 0; } to { opacity: 1; } }
+.bubble-ai { box-shadow: none; }
+.bubble-user { box-shadow: none; }
 
-/* Welcome hero orb (full-screen AI pages). */
+/* Welcome hero (full-screen AI pages): static mark + a clear question. */
 .ai-welcome-orb {
-  position: relative; width: 58px; height: 58px; border-radius: 50%;
+  position: relative; width: 60px; height: 60px; border-radius: 18px;
   display: grid; place-items: center; color: #fff;
-  background:
-    radial-gradient(circle at 30% 24%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 36%),
-    radial-gradient(circle at 65% 78%, #0b2f7a 0%, rgba(11,47,122,0) 58%),
-    radial-gradient(circle at 40% 45%, #4dc7ff 0%, #1e6fff 54%, #1b2a6b 100%);
-  box-shadow: inset -8px -10px 18px rgba(0,0,0,0.4), inset 4px 6px 12px rgba(255,255,255,0.25),
-    0 16px 36px -12px color-mix(in srgb, #1e6fff 75%, transparent);
-  animation: aiOrbFloat 5.5s var(--ease-out) infinite;
+  background: linear-gradient(160deg, #1e6fff, #0b3fb8);
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, #1e6fff 60%, transparent), inset 0 1px 0 rgba(255,255,255,.18);
 }
-.ai-welcome-orb::before {
-  content: ''; position: absolute; inset: -7px; border-radius: 50%; z-index: -1;
-  background: conic-gradient(from 0deg, #1e6fff, #22d3ee, #8b5cf6, #1e6fff);
-  filter: blur(10px); opacity: 0.45;
-  animation: aiOrbSpin 7s linear infinite;
+.ai-welcome-title {
+  margin: 14px 0 0; font-family: var(--font-display);
+  font-size: 22px; font-weight: 750; letter-spacing: -0.025em; color: var(--text); line-height: 1.15;
 }
-.ai-welcome-tip {
-  font-size: 11px; letter-spacing: 0.02em; color: var(--text-3);
-  display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 0;
-}
-.ai-welcome-tip::before { content: ''; width: 14px; height: 1px; background: currentColor; opacity: 0.5; }
-.ai-welcome-tip::after { content: ''; width: 14px; height: 1px; background: currentColor; opacity: 0.5; }
+.ai-welcome-sub { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--text-2); max-width: 380px; }
+.ai-welcome-bare { opacity: 1; gap: 0; }
 
-/* Header + composer get a glass wash so the aurora shows through. */
-.ai-chat-head--brand {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 7%, transparent), transparent);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-}
-.ai-cap { background: color-mix(in srgb, var(--surface-2) 78%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-
-/* Turns rise in as they land; AI bubbles get a soft glow. */
-.ai-turn { animation: aiTurnIn 0.3s var(--ease-out) both; }
-@keyframes aiTurnIn {
-  from { opacity: 0; transform: translateY(9px) scale(0.985); }
-  to { opacity: 1; transform: none; }
-}
-.bubble-ai {
-  box-shadow: 0 10px 26px -16px color-mix(in srgb, var(--primary) 60%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
-}
-.bubble-user { box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--primary) 55%, transparent); }
-
-/* Composer: glass input, gradient send button with lift/press. */
-.ai-chat-input {
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-}
-.ai-chat-input textarea { background: color-mix(in srgb, var(--surface) 88%, transparent); }
-.ai-chat-input .btn-primary:not(.btn-stop) {
-  background-image: linear-gradient(135deg, var(--primary), #22d3ee 130%);
-  background-size: 160% 160%;
-  box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--primary) 75%, transparent);
-  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out),
-    background-position var(--dur) var(--ease-out), filter var(--dur-fast) var(--ease-out);
-}
-.ai-chat-input .btn-primary:not(.btn-stop):hover {
-  transform: translateY(-1px);
-  background-position: 90% 60%;
-  box-shadow: 0 14px 28px -10px color-mix(in srgb, var(--primary) 85%, transparent);
-}
-.ai-chat-input .btn-primary:not(.btn-stop):active { transform: translateY(1px) scale(0.98); }
 .ai-stage { color: var(--text-2); }
-
-/* The docked non-full-height card also gets the lean (subtle, mouse only).
-   The .card mount animation would keep its fill-mode transform locked, so it
-   is disabled here — turns animate themselves and the lean must win. */
 .ai-chat.card { animation: none; }
-@media (hover: hover) and (pointer: fine) {
-  .ai-console:not(.ai-console-full) .card.ai-chat {
-    transform: perspective(1100px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
-    transition: transform 0.35s var(--ease-out);
-  }
-}
+
 @media (prefers-reduced-motion: reduce) {
-  .ai-aura-orb i, .ai-aura-grid, .ai-brand-orb, .ai-brand-orb::after,
-  .ai-brand-name, .ai-live-dot, .ai-turn, .ai-welcome-orb, .ai-welcome-orb::before,
-  .stream-caret, .ai-stage::before, .typing i,
-  .ai-chat-input::before, .ai-chat-input textarea:focus, .ai-send--ready { animation: none !important; }
-  .ai-console, .ai-aura-orb, .ai-chat, .ai-chat-input .btn-primary, .ai-quick { transition: none !important; }
+  .ai-turn, .stream-caret, .ai-stage::before, .typing i { animation: none !important; }
 }
 
 .ai-chat { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h) - 60px); min-height: 520px; }
@@ -2017,42 +1853,21 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 }
 .ai-chat-head .card-title { margin: 0; font-size: var(--fs-md); }
 
-/* ── ScottsTechX AI brand hero (marketplace identity + capabilities) ─────── */
+/* ── ScottsTechX AI brand header ─────────────────────────────────────────── */
 .ai-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ai-brand-orb {
   position: relative; flex: none;
-  width: 38px; height: 38px; border-radius: 12px;
+  width: 36px; height: 36px; border-radius: 11px;
   display: grid; place-items: center; color: #fff;
-  background: linear-gradient(135deg, #1e6fff, #22d3ee 70%);
-  box-shadow: 0 4px 16px color-mix(in srgb, #1e6fff 38%, transparent);
-  animation: aiOrbPulse 3.2s var(--ease-out) infinite;
+  background: linear-gradient(160deg, #1e6fff, #0b3fb8);
+  box-shadow: 0 1px 2px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.18);
 }
-.ai-brand-orb::after {
-  content: ''; position: absolute; inset: -4px; border-radius: 16px;
-  background: conic-gradient(from 0deg, #1e6fff, #22d3ee, #8b5cf6, #1e6fff);
-  filter: blur(9px); opacity: 0.35; z-index: -1;
-  animation: aiOrbSpin 6s linear infinite;
-}
-@keyframes aiOrbPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.06); }
-}
-@keyframes aiOrbSpin { to { transform: rotate(360deg); } }
 .ai-brand-copy { min-width: 0; line-height: 1.15; }
 .ai-brand-name {
   display: block; font-family: var(--font-display);
-  font-size: 15px; font-weight: 800; letter-spacing: -0.02em;
-  background: linear-gradient(90deg, var(--text), #22d3ee 60%, #8b5cf6);
-  -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent; color: transparent;
-  background-size: 200% 100%;
-  animation: aiNameShimmer 6s ease-in-out infinite;
+  font-size: 15px; font-weight: 750; letter-spacing: -0.02em; color: var(--text);
 }
-.ai-brand-name em { font-style: normal; }
-@keyframes aiNameShimmer {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
+.ai-brand-name em { font-style: normal; color: var(--primary); }
 .ai-brand-sub {
   display: block; font-size: 10.5px; color: var(--text-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 340px;
@@ -2066,11 +1881,9 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .ai-live-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: #f59e0b; box-shadow: 0 0 0 3px color-mix(in srgb, #f59e0b 20%, transparent);
-  animation: aiDot 1.8s ease-in-out infinite;
 }
 .ai-live--on { color: var(--accent-emerald, #10b981); border-color: color-mix(in srgb, #10b981 30%, var(--border)); }
 .ai-live--on .ai-live-dot { background: #10b981; box-shadow: 0 0 0 3px color-mix(in srgb, #10b981 20%, transparent); }
-@keyframes aiDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .ai-chat-head--brand { flex-wrap: wrap; row-gap: 6px; }
 .ai-cap-row { display: flex; align-items: center; gap: 7px; flex: none; flex-wrap: wrap; }
 .ai-cap {
@@ -2186,39 +1999,71 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 }
 
 .ai-chat-input {
-  display: flex; gap: 9px; align-items: flex-end; padding: 12px 14px;
-  border-top: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 12px;
+  border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
   position: relative;
-  transition: box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
-.ai-chat-input--drop {
-  background: color-mix(in srgb, var(--primary) 10%, var(--surface-2));
-  box-shadow: inset 0 0 0 2px var(--primary);
-}
+.ai-chat-input--drop { box-shadow: inset 0 0 0 2px var(--primary); }
 .ai-chat-input--drop::after {
   content: 'Drop the photo to attach it';
   position: absolute; inset: 4px; border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; color: var(--primary);
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
   pointer-events: none; z-index: 2;
 }
-.ai-chat-input textarea {
-  flex: 1; resize: none; max-height: 130px; min-height: 42px;
-  padding: 11px 13px; border-radius: var(--radius-sm);
-  border: 1px solid var(--border); background: var(--surface); color: var(--text);
-  font-family: inherit; font-size: var(--fs-base); line-height: 1.45; outline: none;
+/* One pill: [ + ] [ textarea .............. ] [ ↑ ] */
+.ai-composer {
+  display: flex; align-items: flex-end; gap: 6px;
+  padding: 5px 5px 5px 6px; border-radius: 24px;
+  border: 1px solid var(--border); background: var(--surface-2);
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
-.ai-chat-input textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3.5px var(--primary-soft); }
-.ai-chat-img {
-  flex: none; width: 42px; height: 42px; border-radius: var(--radius-sm);
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
-  cursor: pointer; transition: border-color var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+.ai-composer:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  box-shadow: 0 0 0 3px var(--primary-soft);
+  background: var(--surface);
 }
-.ai-chat-img:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.ai-composer textarea {
+  flex: 1 1 auto; min-width: 0; resize: none; min-height: 40px; max-height: 180px;
+  padding: 10px 6px; border: 0; background: transparent; color: var(--text);
+  font-family: inherit; font-size: 16px; /* ≥16px: iOS will not zoom the page */
+  line-height: 1.4; outline: none; box-shadow: none;
+}
+.ai-composer textarea::placeholder { color: var(--text-3); }
+.ai-chat-img, .ai-send {
+  flex: none; width: 38px; height: 38px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; cursor: pointer; padding: 0;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.ai-chat-img { background: transparent; color: var(--text-2); }
+.ai-chat-img:hover { background: var(--primary-soft); color: var(--primary); }
+.ai-send { background: var(--border); color: var(--text-3); }
+.ai-send:disabled { cursor: default; opacity: 0.6; }
+.ai-send--ready { background: var(--primary); color: #fff; }
+.ai-send--ready:hover { filter: brightness(1.06); }
+.ai-send--ready:active { transform: scale(0.94); }
+.ai-send--stop { background: var(--text); color: var(--bg); }
+/* Attached-photo chip above the text row. */
+.ai-attach {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px 6px 6px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  width: fit-content; max-width: 100%;
+}
+.ai-attach-thumb { position: relative; flex: none; width: 52px; height: 52px; }
+.ai-attach-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; display: block; }
+.ai-attach-x {
+  position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; border: 2px solid var(--surface);
+  background: var(--text); color: var(--bg); cursor: pointer; padding: 0;
+}
+.ai-attach-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 12px; color: var(--text-3); }
+.ai-attach-meta strong { font-size: 12.5px; color: var(--text); font-weight: 650; }
+.ai-attach-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The marketplace mark inside the AI orbs — circular crop of the STX logo. */
 .ai-brand-mark { border-radius: 50%; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35)); }
@@ -2229,61 +2074,23 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 /* ── Market quick actions (step-in tools above the composer) ─────────────── */
 .ai-quickbar {
   display: flex; gap: 7px; padding: 8px 14px 0;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  background: var(--surface);
   overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
 }
 .ai-quickbar::-webkit-scrollbar { display: none; }
 .ai-quick {
   flex: none; display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 650;
-  color: var(--text-2); background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  color: var(--text-2); background: var(--surface-2);
   border: 1px solid var(--border); cursor: pointer; white-space: nowrap;
   transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out),
-    background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+    background var(--dur-fast) var(--ease-out);
 }
 .ai-quick:hover:not(:disabled) {
   color: var(--primary); border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
-  background: var(--primary-soft); transform: translateY(-1px);
+  background: var(--primary-soft);
 }
 .ai-quick:disabled { opacity: 0.5; cursor: default; }
-
-/* ── Animated composer: flowing gradient ring on focus + send glow ───────── */
-.ai-chat-input::before {
-  content: ''; position: absolute; inset: -1px; border-radius: 14px;
-  background: linear-gradient(115deg,
-    color-mix(in srgb, var(--primary) 0%, transparent) 0%,
-    color-mix(in srgb, var(--primary) 65%, transparent) 22%,
-    #22d3ee 38%,
-    #8b5cf6 55%,
-    color-mix(in srgb, var(--primary) 65%, transparent) 72%,
-    color-mix(in srgb, var(--primary) 0%, transparent) 100%);
-  background-size: 260% 100%;
-  opacity: 0; pointer-events: none; z-index: 1;
-  transition: opacity var(--dur) var(--ease-out);
-  animation: ai-border-flow 4.5s linear infinite;
-}
-.ai-chat-input:focus-within::before { opacity: 0.9; }
-@keyframes ai-border-flow {
-  from { background-position: 0% 50%; }
-  to { background-position: 260% 50%; }
-}
-.ai-chat-input > * { position: relative; z-index: 2; }
-.ai-chat-input textarea:focus {
-  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
-  animation: ai-focus-breathe 2.6s ease-in-out infinite;
-}
-@keyframes ai-focus-breathe {
-  0%, 100% { box-shadow: 0 0 0 3.5px var(--primary-soft), 0 0 14px -6px color-mix(in srgb, var(--primary) 55%, transparent); }
-  50% { box-shadow: 0 0 0 4px var(--primary-soft), 0 0 26px -6px color-mix(in srgb, var(--primary) 80%, transparent); }
-}
-.ai-chat-input .ai-send--ready {
-  animation: ai-send-pulse 2.2s ease-in-out infinite;
-}
-@keyframes ai-send-pulse {
-  0%, 100% { box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--primary) 75%, transparent); }
-  50% { box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--primary) 100%, transparent), 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent); }
-}
 
 .ai-disclaimer {
   flex: 0 0 auto; margin: 0; padding: 0 14px 10px;
@@ -4075,6 +3882,26 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   .place-banner { flex-wrap: wrap; }
   .place-parts { gap: 2px 10px; }
 }
+/* Exact-village banner: village is the headline, the hierarchy is a trail. */
+.place-banner--exact { padding: 12px 14px; margin-bottom: 12px; }
+.place-banner--exact .place-ico { width: 36px; height: 36px; border-radius: 12px; }
+.place-kicker {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3);
+}
+.place-acc {
+  display: inline-flex; align-items: center; gap: 3px; text-transform: none; letter-spacing: 0;
+  font-size: 10px; font-weight: 600; color: var(--text-3);
+  padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2);
+}
+.place-banner--exact .place-name { font-size: 17px; font-weight: 750; margin-top: 2px; }
+.place-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; margin-top: 3px; font-size: 12px; color: var(--text-2); }
+.place-trail-part { display: inline-flex; align-items: center; gap: 2px; }
+.place-trail-sep { color: var(--text-3); margin: 0 3px; }
+@media (max-width: 620px) {
+  .place-banner--exact .place-name { font-size: 15px; }
+  .place-trail { font-size: 11px; }
+}
 
 /* ═══ MAIN NAVIGATION BAR ═════════════════════════════════════════════════
    A site-wide horizontal bar under the topbar (public + authenticated), plus
@@ -5487,46 +5314,35 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .ai-console-full.ai-console--noagents .ai-chat-input {
   position: sticky;
   bottom: 0;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(18px);
+  background: var(--surface);
   border-top: 1px solid var(--border);
-  padding: 14px;
+  padding: 10px 14px 12px;
   border-radius: 0;
 }
-.ai-console-full.ai-console--noagents .ai-chat-input textarea {
-  min-height: 48px;
-  max-height: 42vh;
-  flex: 1;
-  font-size: 14px;
-  padding: 12px 16px;
-  border-radius: 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: 0 4px 18px rgba(0,0,0,.06);
-  transition: box-shadow 180ms, border-color 180ms;
-}
-.ai-console-full.ai-console--noagents .ai-chat-input textarea:focus {
-  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
-  box-shadow: 0 6px 22px color-mix(in srgb, var(--primary) 14%, transparent);
-  outline: none;
-}
-
 @media (max-width: 620px) {
   .ai-console--noagents { gap: 0; }
   .ai-chat--full { border-radius: 0; }
-  .ai-console-full.ai-console--noagents .ai-chat-body {
-    padding: 12px 8px 16px;
-  }
-  .ai-welcome--bare { min-height: 48vh; padding: 18px 12px; }
+  .ai-console-full.ai-console--noagents .ai-chat-body { padding: 12px 10px 16px; }
+  .ai-welcome--bare { min-height: 44vh; padding: 18px 12px; }
+  .ai-welcome-title { font-size: 20px; }
+  .ai-welcome-sub { font-size: 13px; }
   .ai-console-full.ai-console--noagents .ai-chat-input {
-    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
-    gap: 8px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    gap: 6px;
   }
-  .ai-console-full.ai-console--noagents .ai-chat-input textarea {
-    min-height: 44px;
-    font-size: 14px;
-    padding: 10px 14px;
-  }
+  .ai-composer { border-radius: 22px; }
+  .ai-composer textarea { min-height: 38px; padding: 9px 4px; }
+  .ai-quickbar { padding: 6px 10px 0; }
+  .ai-disclaimer { display: none; } /* one line of legal text is not worth 24px of a phone */
+}
+
+/* Soft keyboard open (set by AiConsole from visualViewport). The whole
+   surface shrinks to the visible viewport so the composer sits directly
+   above the keyboard; the bottom nav is behind the keyboard anyway. */
+@media (max-width: 960px) {
+  body.ai-immersive .ai-console--kbd .ai-chat-head .ai-brand-sub { display: none; }
+  body.ai-immersive .ai-console--kbd .ai-quickbar { display: none; }
+  body.ai-immersive .ai-console--kbd .ai-chat-input { padding-bottom: 8px; }
 }
 
 
@@ -6115,6 +5931,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 @media (prefers-reduced-data: reduce) {
   .feature-card-bg { background-image: none !important; }
   .edeal-bg, .madvert-bg, .home-searchbar-bg, .auth-bg--stx { display: none !important; }
+  .madvert-slide { background-image: none !important; }
 }
 
 /* Image rendering: crisp-edges for thumbnails is faster than smooth */

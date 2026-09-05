@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Sparkles, Send, RotateCcw, Zap, AlertCircle, Square,
+  Sparkles, ArrowUp, RotateCcw, Zap, AlertCircle, Square,
   ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, ImagePlus, X,
   Copy, Share2, BookOpen, Store, Flame, Wallet, MapPin, Truck,
 } from 'lucide-react';
@@ -146,32 +146,6 @@ export function AiConsole({
    */
   fullHeight?: boolean;
 }) {
-  /** Desktop 3D tilt: the chat card leans with the pointer (mouse only,
-   *  disabled for reduced motion). Values are CSS vars consumed by .ai-chat. */
-  const tiltRef = useRef<HTMLDivElement>(null);
-  const onTiltMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const el = tiltRef.current;
-    if (!el || e.pointerType !== 'mouse') return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const r = el.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    const px = (e.clientX - r.left) / r.width - 0.5;
-    const py = (e.clientY - r.top) / r.height - 0.5;
-    el.style.setProperty('--tilt-x', `${(-py * 2.4).toFixed(2)}deg`);
-    el.style.setProperty('--tilt-y', `${(px * 3).toFixed(2)}deg`);
-    // Background parallax (px): the aurora orbs drift opposite the pointer,
-    // giving the chat real depth without moving the surface itself.
-    el.style.setProperty('--par-x', `${(-py * 24).toFixed(1)}px`);
-    el.style.setProperty('--par-y', `${(px * 34).toFixed(1)}px`);
-  }, []);
-  const onTiltLeave = useCallback(() => {
-    const el = tiltRef.current;
-    if (!el) return;
-    el.style.setProperty('--tilt-x', '0deg');
-    el.style.setProperty('--tilt-y', '0deg');
-    el.style.setProperty('--par-x', '0px');
-    el.style.setProperty('--par-y', '0px');
-  }, []);
   const { toast } = useToast();
   const { add, favoriteSellerIds, toggleFavoriteSeller } = useCart();
 
@@ -196,7 +170,56 @@ export function AiConsole({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const narrow = useNarrowScreen();
+  /** True while the on-screen keyboard is up (phones). */
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  /**
+   * Mobile keyboard. When the soft keyboard opens, the layout viewport does
+   * not shrink on iOS (and only sometimes on Android): the page is scrolled
+   * behind the keyboard, the composer disappears under it and pressing Send
+   * jumps the screen around. Track the *visual* viewport instead and size the
+   * surface to it, so the composer always sits just above the keyboard and
+   * the transcript keeps scrolling inside.
+   */
+  useEffect(() => {
+    if (!fullHeight) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      const open = kb > 120;
+      root.style.setProperty('--kbd-h', `${open ? kb : 0}px`);
+      setKeyboardOpen(open);
+      // Keep the document pinned: the browser likes to scroll the page so the
+      // focused field is visible, which drags the header off-screen.
+      if (open && window.scrollY !== 0) window.scrollTo(0, 0);
+      if (open) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    };
+    const onChange = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    vv.addEventListener('resize', onChange);
+    vv.addEventListener('scroll', onChange);
+    apply();
+    return () => {
+      vv.removeEventListener('resize', onChange);
+      vv.removeEventListener('scroll', onChange);
+      if (raf) cancelAnimationFrame(raf);
+      root.style.removeProperty('--kbd-h');
+    };
+  }, [fullHeight]);
+
+  /** Auto-grow the textarea to its content (up to the CSS max-height). */
+  const autosize = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }, []);
+  useEffect(() => { autosize(); }, [input, autosize]);
 
   useEffect(() => {
     aiService.agents()
@@ -393,7 +416,9 @@ export function AiConsole({
       setBusy(false);
       setStage('');
       abortRef.current = null;
-      inputRef.current?.focus();
+      // Only pull focus back on desktop — on a phone that would pop the
+      // keyboard open again over the answer the user is trying to read.
+      if (!window.matchMedia('(pointer: coarse)').matches) inputRef.current?.focus();
     }
   }, [agentId, agents, busy, photo, screen, toast, turns]);
 
@@ -519,20 +544,9 @@ export function AiConsole({
 
   return (
     <div
-      ref={tiltRef}
-      className={`ai-console${fullHeight ? ' ai-console-full ai-console--noagents' : ''}`}
-      onPointerMove={onTiltMove}
-      onPointerLeave={onTiltLeave}
+      ref={rootRef}
+      className={`ai-console${fullHeight ? ' ai-console-full ai-console--noagents' : ''}${keyboardOpen ? ' ai-console--kbd' : ''}`}
     >
-      {/* 3D aurora backdrop: floating gradient orbs + perspective grid that
-          sit behind the chat card (pure CSS, pointer-events none). The orbs
-          parallax with the pointer via --par-x/--par-y for real depth. */}
-      <div className="ai-aura" aria-hidden="true">
-        <span className="ai-aura-orb ai-aura-orb--a"><i /></span>
-        <span className="ai-aura-orb ai-aura-orb--b"><i /></span>
-        <span className="ai-aura-orb ai-aura-orb--c"><i /></span>
-        <span className="ai-aura-grid" />
-      </div>
       <div className="ai-console-inner">
       {/* Agent picker removed for extraordinary full-screen chat — user asked to remove agent words above */}
       {!fullHeight && (
@@ -585,10 +599,10 @@ export function AiConsole({
       <div className="card ai-chat card-flush ai-chat--full">
         <div className="ai-chat-head ai-chat-head--brand">
           <div className="ai-brand" aria-label="ScottsTechX AI">
-            <span className="ai-brand-orb" aria-hidden="true"><BrandMark size={24} className="ai-brand-mark" /></span>
+            <span className="ai-brand-orb" aria-hidden="true"><BrandMark size={22} className="ai-brand-mark" /></span>
             <div className="ai-brand-copy">
               <strong className="ai-brand-name">ScottsTechX <em>AI</em></strong>
-              <span className="ai-brand-sub">{title} · grounded in the live marketplace</span>
+              <span className="ai-brand-sub">{narrow ? 'Marketplace assistant' : `${title} · grounded in the live marketplace`}</span>
             </div>
             <span className={`ai-live ${status?.configured ? 'ai-live--on' : ''}`}>
               <span className="ai-live-dot" aria-hidden="true" />
@@ -628,10 +642,10 @@ export function AiConsole({
               ) : (
                 <div className="ai-welcome-bare">
                   <span className="ai-welcome-orb" aria-hidden="true">
-                    <BrandMark size={26} className="ai-brand-mark" />
+                    <BrandMark size={30} className="ai-brand-mark" />
                   </span>
-                  <p className="muted" style={{ fontSize: 13, margin: 0 }}>Ask anything — products, prices, sellers</p>
-                  <p className="ai-welcome-tip" aria-hidden="true">Attach a photo · paste one · or just describe it</p>
+                  <h2 className="ai-welcome-title">What are you looking for?</h2>
+                  <p className="ai-welcome-sub">Products, prices and sellers across the marketplace — or attach a photo and I’ll find it.</p>
                 </div>
               )}
 
@@ -843,7 +857,7 @@ export function AiConsole({
         )}
 
         <form
-          className={`ai-chat-input ${dragOver ? 'ai-chat-input--drop' : ''}`}
+          className={`ai-chat-input${dragOver ? ' ai-chat-input--drop' : ''}${photo ? ' ai-chat-input--photo' : ''}`}
           onSubmit={(e) => {
             e.preventDefault();
             const text = input.trim() || (photo ? 'What can you tell me from this photo?' : '');
@@ -863,83 +877,94 @@ export function AiConsole({
           onDragLeave={() => setDragOver(false)}
           title={dragOver ? 'Drop the photo to attach it' : undefined}
         >
+          {/* Attached photo lives ABOVE the text row as a small chip, so the
+              text field keeps its full width — before, the preview sat in the
+              same row and left almost no room to type on a phone. */}
           {photo && (
-            <div className="ai-chat-photo" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-              <img
-                src={photo.dataUrl}
-                alt={photo.name}
-                style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border, #ddd)' }}
-              />
-              <span className="tiny muted-2" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {photo.name} — attached to your message
+            <div className="ai-attach">
+              <span className="ai-attach-thumb">
+                <img src={photo.dataUrl} alt={photo.name} />
+                <button
+                  type="button"
+                  className="ai-attach-x"
+                  title="Remove photo"
+                  aria-label="Remove photo"
+                  onClick={() => { setPhoto(null); inputRef.current?.focus(); }}
+                >
+                  <X size={11} />
+                </button>
               </span>
-              <button
-                type="button"
-                className="ai-answer-act"
-                title="Remove photo"
-                aria-label="Remove photo"
-                onClick={() => setPhoto(null)}
-              >
-                <X size={13} />
-              </button>
+              <span className="ai-attach-meta">
+                <strong>Photo attached</strong>
+                <span>{narrow ? 'Describe what you want to know' : 'Add a question, or just send to identify it'}</span>
+              </span>
             </div>
           )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={(e) => void onAttachFile(e)}
-            aria-hidden
-            tabIndex={-1}
-          />
-          <button
-            type="button"
-            className="ai-chat-img"
-            onClick={() => fileRef.current?.click()}
-            title="Attach a photo for the assistant to analyze"
-            aria-label="Attach a photo"
-          >
-            <ImagePlus size={16} />
-          </button>
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                const text = input.trim() || (photo ? 'What can you tell me from this photo?' : '');
-                if (!text) return;
-                const img = photo?.dataUrl;
-                setPhoto(null);
-                void send(text, img);
+          <div className="ai-composer">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => void onAttachFile(e)}
+              aria-hidden
+              tabIndex={-1}
+            />
+            <button
+              type="button"
+              className="ai-chat-img"
+              onClick={() => fileRef.current?.click()}
+              title="Attach a photo for the assistant to analyze"
+              aria-label="Attach a photo"
+            >
+              <ImagePlus size={18} />
+            </button>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends on desktop only. On a phone Enter should make a
+                // new line — the Send button is right there and this keeps
+                // the keyboard from being dismissed mid-thought.
+                if (e.key === 'Enter' && !e.shiftKey && !window.matchMedia('(pointer: coarse)').matches) {
+                  e.preventDefault();
+                  const text = input.trim() || (photo ? 'What can you tell me from this photo?' : '');
+                  if (!text) return;
+                  const img = photo?.dataUrl;
+                  setPhoto(null);
+                  void send(text, img);
+                }
+              }}
+              enterKeyHint="send"
+              placeholder={
+                photo
+                  ? 'Ask about this photo…'
+                  : narrow
+                    ? (audience === 'buyer' ? 'Ask anything…' : 'Ask about your store…')
+                    : audience === 'buyer'
+                      ? 'Ask anything — “cheapest phones under 2M”, “compare these two”…'
+                      : 'Ask about pricing, listings, buyers — “what should I stock next?”'
               }
-            }}
-            placeholder={
-              /* The long examples wrap to five lines in a 320px composer and
-                 get clipped, so the hint is unreadable exactly where space is
-                 tightest. Show the short form on narrow screens. */
-              narrow
-                ? (audience === 'buyer' ? 'Ask anything…' : 'Ask about your store…')
-                : audience === 'buyer'
-                  ? 'Ask anything — “cheapest phones under 2M”, “compare these two”…'
-                  : 'Ask about pricing, listings, buyers — “what should I stock next?”'
-            }
-            aria-label="Message the assistant"
-          />
-          <Btn
-            variant="primary"
-            type={busy ? 'button' : 'submit'}
-            disabled={!busy && !input.trim() && !photo}
-            icon={busy ? <Square size={14} /> : <Send size={15} />}
-            className={busy ? 'btn-stop' : input.trim() || photo ? 'ai-send--ready' : ''}
-            aria-label={busy ? 'Stop generating' : 'Send message'}
-            onClick={busy ? () => abortRef.current?.abort() : undefined}
-          >
-            {busy ? 'Stop' : 'Send'}
-          </Btn>
+              aria-label="Message the assistant"
+            />
+            <button
+              type={busy ? 'button' : 'submit'}
+              className={`ai-send${busy ? ' ai-send--stop' : ''}${!busy && (input.trim() || photo) ? ' ai-send--ready' : ''}`}
+              disabled={!busy && !input.trim() && !photo}
+              aria-label={busy ? 'Stop generating' : 'Send message'}
+              title={busy ? 'Stop' : 'Send'}
+              // Keep focus (and the keyboard) where it is: a mousedown on the
+              // button would blur the textarea and the keyboard would collapse
+              // and re-open, which is the "jumping" people see on phones.
+              onMouseDown={(e) => e.preventDefault()}
+              onTouchStart={() => { /* noop — enables :active on iOS */ }}
+              onClick={busy ? () => abortRef.current?.abort() : undefined}
+            >
+              {busy ? <Square size={15} /> : <ArrowUp size={18} strokeWidth={2.5} />}
+            </button>
+          </div>
         </form>
         <p className="ai-disclaimer">
           AI answers are generated — double-check prices and availability with the seller before paying.
