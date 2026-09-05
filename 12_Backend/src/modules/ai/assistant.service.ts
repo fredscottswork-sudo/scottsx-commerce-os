@@ -21,6 +21,7 @@ import {
   agentSystemPrompt,
   buildContext,
   composeOfflineAnswer,
+  composeGuideAnswer,
   type AgentId,
 } from './agents.js';
 import { parseIntent, retrieveProducts, productsToContext, fmtUgx, type RetrievedProduct } from './catalog-context.js';
@@ -432,6 +433,21 @@ export async function ask(opts: AskOptions): Promise<AskResult> {
 
   const emit = opts.onStream ?? (() => {});
   const agent = getAgent(opts.agent ?? routeAgent(prompt, role));
+
+  // Dashboard guide: role-scoped how-to, never a catalogue search and never
+  // product cards. The LLM (when configured) gets only the tour for THIS role.
+  if (agent.id === 'guide') {
+    const meta = { screen, agent: { id: agent.id, name: agent.name, tagline: agent.tagline }, products: [], grounded: true };
+    const offline = composeGuideAnswer(role, prompt);
+    if (!aiConfigured()) return { text: offline, provider: 'scottstechx-local', model: 'dashboard-guide', ...meta };
+    try {
+      emit({ type: 'stage', text: 'Reading your dashboard…' });
+      const llm = await askOpenRouter(agentSystemPrompt(agent, role), prompt, history.slice(-8), emit);
+      return { text: llm.text || offline, provider: llm.provider, model: llm.model, ...meta };
+    } catch {
+      return { text: offline, provider: 'scottstechx-local', model: 'dashboard-guide', ...meta };
+    }
+  }
   emit({ type: 'stage', text: 'Searching the catalogue…' });
   const ctx = await buildContext(db, agent, prompt);
 
@@ -1468,24 +1484,58 @@ async function describeImage(input: {
  * Generate a listing from a photo/hint, priced against real comparable rows.
  * Uses the LLM when available and always returns a usable result.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function loadLocalUploadAsDataUrl(db: pg.Pool, url: string): Promise<string | null> {
+  const m = url.match(/\/api\/v1\/uploads\/images\/([^/?#]+)/);
+  if (!m) return null;
+  const key = decodeURIComponent(m[1]);
+  try {
+    if (UUID_RE.test(key)) {
+      const r = await db.query<{ data: Buffer; mime_type: string }>('SELECT data, mime_type FROM uploaded_images WHERE id = $1', [key]);
+      if (r.rows[0]) return `data:${r.rows[0].mime_type};base64,${r.rows[0].data.toString('base64')}`;
+    }
+    const r = await db.query<{ data: Buffer; content_type: string }>('SELECT data, content_type FROM stored_images WHERE key = $1', [key]);
+    if (r.rows[0]) return `data:${r.rows[0].content_type};base64,${r.rows[0].data.toString('base64')}`;
+  } catch { /* table may not exist on old databases */ }
+  return null;
+}
+
 export async function generateProduct(
   db: pg.Pool,
-  opts: { imageUrl?: string; hint?: string }
+  opts: { imageUrl?: string; imageUrls?: string[]; hint?: string }
 ) {
   const hint = (opts.hint ?? '').trim();
+  // Up to 4 photos: the front shot usually names the item, the others add
+  // colour / condition / accessories. Each is analysed in parallel and the
+  // findings are merged (labels first, captions second, deduplicated).
+  const urls = Array.from(new Set([opts.imageUrl, ...(opts.imageUrls ?? [])].filter((u): u is string => Boolean(u && u.trim())))).slice(0, 4);
   let detected = hint;
-  if (!detected && opts.imageUrl) {
-    // Roboflow labels are catalogue-trained, so they win when present; the
-    // NVIDIA/LLM caption is the fallback (and the general "what is it").
-    const vision = await analyzeImage({ imageUrl: opts.imageUrl });
-    const labels = [vision?.productTitle, vision?.category, ...(vision?.tags ?? [])]
-      .filter(Boolean)
-      .join(' ');
-    const caption = await describeImage({ imageUrl: opts.imageUrl }).catch(() => ({ text: '' }));
-    detected = labels || caption.text;
+  const perPhoto: string[] = [];
+  if (urls.length) {
+    const findings = await Promise.all(urls.map(async (url) => {
+      // Photos stored in our own database are only reachable through this
+      // API, so hand the vision providers the bytes instead of the URL.
+      const local = await loadLocalUploadAsDataUrl(db, url);
+      const input = local ? { imageData: local } : { imageUrl: url };
+      const [vision, caption] = await Promise.all([
+        analyzeImage(input).catch(() => null),
+        describeImage(input).catch(() => ({ text: '' })),
+      ]);
+      const labels = [vision?.productTitle, vision?.category, ...(vision?.tags ?? [])].filter(Boolean).join(' ');
+      return [labels, caption.text].filter(Boolean).join(' · ');
+    }));
+    findings.forEach((f, i) => { if (f) perPhoto.push(`Photo ${i + 1}: ${f}`); });
+    const seen = new Set<string>();
+    const merged = findings.join(' ').split(/[\s·,]+/).filter((w) => {
+      const k = w.toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).join(' ');
+    detected = [hint, merged].filter(Boolean).join(' ');
   }
 
-  const heuristic = heuristicGenerateProduct(opts.imageUrl ?? '', detected || hint);
+  const heuristic = heuristicGenerateProduct(urls[0] ?? '', detected || hint);
 
   // Price against real comparable listings.
   const cats = await db.query(`SELECT DISTINCT category FROM products WHERE status = 'approved'`);
@@ -1501,8 +1551,8 @@ export async function generateProduct(
         : 'No comparable listings.';
       const llm = await askOpenRouter(
         'You write e-commerce listings for a Ugandan marketplace. Reply ONLY with compact JSON: ' +
-          '{"title": string (max 70 chars), "description": string (2-3 sentences), "category": string, "brand": string, "suggestedPriceMinor": number (UGX)}. No markdown, no commentary.',
-        `Product hint: ${detected || hint || 'unknown product'}\n\nComparable live listings:\n${context}\n\nAvailable categories: ${cats.rows
+          '{"title": string (max 70 chars, specific: brand + model + key spec), "description": string (3-5 sentences: what it is, condition, standout features, what is in the box, who it suits — written to sell, no fluff), "category": string, "brand": string, "suggestedPriceMinor": number (UGX), "highlights": string[] (3-5 short bullet points)}. No markdown, no commentary.',
+        `Seller hint: ${hint || '(none)'}\n${perPhoto.length ? `What the ${perPhoto.length} photo${perPhoto.length > 1 ? 's' : ''} show:\n${perPhoto.join('\n')}` : 'No photos.'}\n\nComparable live listings:\n${context}\n\nAvailable categories: ${cats.rows
           .map((r) => r.category)
           .join(', ')}`,
         []
@@ -1514,6 +1564,9 @@ export async function generateProduct(
         category: String(json.category || heuristic.category),
         brand: String(json.brand ?? ''),
         suggestedPriceMinor: Number(json.suggestedPriceMinor) || suggestedPriceMinor,
+        highlights: Array.isArray(json.highlights) ? json.highlights.map(String).slice(0, 5) : [],
+        detected: perPhoto,
+        photosAnalyzed: urls.length,
         comparables: comparables.slice(0, 5),
         provider: llm.provider,
       };
@@ -1526,6 +1579,9 @@ export async function generateProduct(
     ...heuristic,
     brand: '',
     suggestedPriceMinor,
+    highlights: [] as string[],
+    detected: perPhoto,
+    photosAnalyzed: urls.length,
     comparables: comparables.slice(0, 5),
     provider: 'scottstechx-local',
   };

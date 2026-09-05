@@ -6,6 +6,7 @@ import { api, multipart, API_ROOT, tokenStore } from './client';
 import type {
   Address,
   AdminProductRow,
+  AdminLocatedUser,
   AdminStats,
   AdminUserRow,
   AppNotification,
@@ -553,7 +554,7 @@ export const aiService = {
     api<AiSearchResult>('/ai/image-search', { method: 'POST', body: payload }),
   voiceSearch: (transcript: string) =>
     api<AiSearchResult>('/ai/voice-search', { method: 'POST', body: { transcript } }),
-  generateProduct: (payload: { imageUrl?: string; hint?: string }) =>
+  generateProduct: (payload: { imageUrl?: string; imageUrls?: string[]; hint?: string }) =>
     api<{
       title: string; description: string; category: string; brand: string;
       suggestedPriceMinor: number; comparables: Product[]; provider: string;
@@ -588,6 +589,14 @@ export const cmsService = {
 // ── Admin ───────────────────────────────────────────────────────────────────
 export const adminService = {
   stats: () => api<AdminStats>('/admin/stats'),
+  locations: (params: { role?: string; since?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.role) q.set('role', params.role);
+    if (params.since) q.set('since', params.since);
+    return api<{ users: AdminLocatedUser[]; summary: { located: number; total: number; buyers: number; sellers: number; activeToday: number } }>(`/admin/locations?${q}`);
+  },
+  locationHistory: (userId: string) =>
+    api<{ history: { lat: number; lng: number; at: string; accuracyM: number | null; village: string | null; city: string | null; region: string | null; source: string }[] }>(`/admin/locations/${userId}/history`),
   users: (params: { search?: string; role?: string; page?: number; pageSize?: number }) => {
     const q = new URLSearchParams();
     if (params.search) q.set('search', params.search);
@@ -652,9 +661,9 @@ export const geoService = {
       { auth: false }
     ),
   status: () => api<{ ready: boolean; source: string; coverage: string }>('/geo/status', { auth: false }),
-  saveMyLocation: (lat: number, lng: number, accuracyM?: number) =>
+  saveMyLocation: (lat: number, lng: number, accuracyM?: number, source = 'nearby') =>
     api<{ ok: boolean; place: Place | null; position: { lat: number; lng: number; accuracyM: number | null } }>(
-      '/me/location', { method: 'POST', body: { lat, lng, accuracyM } }
+      '/me/location', { method: 'POST', body: { lat, lng, accuracyM, source } }
     ),
   myLocation: () =>
     api<{ position: { lat: number; lng: number } | null; place: Place | null; updatedAt?: string }>(

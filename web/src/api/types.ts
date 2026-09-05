@@ -503,3 +503,27 @@ export interface Paged<T> {
 }
 
 export const formatUgx = (amount: number): string => `UGX ${new Intl.NumberFormat('en-UG').format(amount)}`;
+
+/** Admin locations map row. */
+export interface AdminLocatedUser {
+  id: string;
+  name: string | null;
+  email: string;
+  role: 'buyer' | 'seller' | 'admin';
+  photoUrl?: string | null;
+  joinedAt: string;
+  verified: boolean;
+  lat: number;
+  lng: number;
+  village?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  placeLabel?: string | null;
+  locationAt?: string | null;
+  storeName?: string | null;
+  storeVerified?: boolean | null;
+  liveTracking?: boolean | null;
+  pingCount: number;
+  accuracyM?: number | null;
+}

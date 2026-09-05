@@ -105,7 +105,7 @@ export default function Nearby() {
    * Google when a key is configured. Whatever knows the village wins; a
    * later, coarser answer can never replace a finer one already shown.
    */
-  const applyPosition = useCallback((next: { lat: number; lng: number }, rawAcc?: number) => {
+  const applyPosition = useCallback((next: { lat: number; lng: number }, rawAcc?: number, persist = true) => {
     // Some browsers report NaN/Infinity/undefined accuracy; never forward those.
     const acc = typeof rawAcc === 'number' && Number.isFinite(rawAcc) && rawAcc >= 0 ? Math.round(rawAcc) : undefined;
     setCenter(next);
@@ -114,8 +114,10 @@ export default function Nearby() {
 
     const seq = ++placeSeq.current;
     setResolving(true);
-    const server: Promise<Place | null> = user && !savedOnce.current
-      ? (savedOnce.current = true, geoService.saveMyLocation(next.lat, next.lng, acc).then((r) => r.place))
+    // Signed-in: every applied fix is stored (the API keeps the latest on the
+    // user and a per-minute history for the admin map). Guests: reverse only.
+    const server: Promise<Place | null> = user && persist
+      ? (savedOnce.current = true, geoService.saveMyLocation(next.lat, next.lng, acc, 'nearby').then((r) => r.place))
       : geoService.reverse(next.lat, next.lng, acc).then((r) => r.place);
 
     const approximate = typeof acc === 'number' && acc > 250;
@@ -141,8 +143,7 @@ export default function Nearby() {
           const r = await geoService.myLocation();
           if (!cancelled && r.position) {
             if (r.place) setPlace(r.place);
-            savedOnce.current = true; // already stored — do not re-save a stale fix
-            applyPosition(r.position, undefined);
+            applyPosition(r.position, undefined, false); // stored already — never re-save a stale fix
             return;
           }
         } catch {}

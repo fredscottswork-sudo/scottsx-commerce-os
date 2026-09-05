@@ -12,6 +12,7 @@ import {
   Empty, Badge, Avatar, Table,
 } from '../../components/ui';
 import { AreaChart } from '../../components/charts';
+import { AdminLocationsMap } from '../../components/AdminLocationsMap';
 
 export default function AdminDashboard() {
   const [data, setData] = useState<AdminStats | null>(null);
@@ -186,6 +187,9 @@ export default function AdminDashboard() {
           )}
         </section>
       </div>
+
+      {/* ── Where everyone is ───────────────────────────────────────── */}
+      <div className="mt-16"><AdminLocationsMap /></div>
 
       {/* ── Newest users ────────────────────────────────────────────── */}
       <section className="card mt-16">

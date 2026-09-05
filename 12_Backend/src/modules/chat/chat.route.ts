@@ -119,7 +119,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
            'verified', COALESCE(s.verified, false)
          ) AS "otherParty",
          p.title AS "productTitle",
-         p.image_url AS "productImageUrl",
+         COALESCE(NULLIF(p.image_url, ''), (SELECT pm.url FROM product_media pm WHERE pm.product_id = p.id ORDER BY pm.sort_order ASC LIMIT 1)) AS "productImageUrl",
          p.price_minor::int AS "productPriceMinor",
          COALESCE(st.pinned, false) AS pinned,
          COALESCE(st.archived, false) AS archived,
@@ -252,7 +252,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
            'location', COALESCE(NULLIF(s.city, ''), other.city)
          ) AS "otherParty",
          p.title AS "productTitle",
-         p.image_url AS "productImageUrl",
+         COALESCE(NULLIF(p.image_url, ''), (SELECT pm.url FROM product_media pm WHERE pm.product_id = p.id ORDER BY pm.sort_order ASC LIMIT 1)) AS "productImageUrl",
          p.price_minor::int AS "productPriceMinor",
          COALESCE(st.pinned, false) AS pinned,
          COALESCE(st.archived, false) AS archived,
@@ -291,7 +291,7 @@ export default async function registerChatRoute(app: FastifyInstance) {
     const { rows } = await pool.query(
       `SELECT ${MESSAGE_COLUMNS},
               p.title AS "productTitle",
-              p.image_url AS "productImageUrl",
+              COALESCE(NULLIF(p.image_url, ''), (SELECT pm.url FROM product_media pm WHERE pm.product_id = p.id ORDER BY pm.sort_order ASC LIMIT 1)) AS "productImageUrl",
               p.price_minor::int AS "productPriceMinor"
        FROM messages m
        LEFT JOIN products p ON p.id = m.product_id

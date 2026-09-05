@@ -158,7 +158,6 @@ export function MainNav({ role, counts }: Props) {
   } else if (role === 'seller') {
     links.push(
       { to: '/seller', label: 'Dashboard', icon: <LayoutDashboard size={15} />, end: true },
-      { to: '/seller/inventory', label: 'Inventory', icon: <Package size={15} /> },
       { to: '/seller/orders', label: 'Orders', icon: <ShoppingBag size={15} /> },
     );
   } else if (role === 'admin') {

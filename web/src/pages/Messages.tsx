@@ -208,7 +208,12 @@ export default function Messages() {
                   </span>
                 </div>
 
-                {c.productTitle && <span className="chat-context">🛍 {c.productTitle}</span>}
+                {c.productTitle && (
+                  <span className="chat-context">
+                    {c.productImageUrl ? <img src={c.productImageUrl} alt="" className="chat-context-img" loading="lazy" /> : '🛍 '}
+                    {c.productTitle}
+                  </span>
+                )}
               </div>
 
               <div className="chat-row-actions" onClick={(e) => e.stopPropagation()}>

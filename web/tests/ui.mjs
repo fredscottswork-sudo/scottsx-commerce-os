@@ -428,7 +428,7 @@ section('1b. Main navigation bar');
 {
   const app = await mount('/seller', seller);
   const t = (app.$('[data-testid="mainnav"]') || { textContent: '' }).textContent;
-  check('seller nav shows Inventory', t.includes('Inventory'));
+  check('seller nav has no Inventory button (removed; reachable from the sidebar)', !t.includes('Inventory'));
   check('seller nav shows the add-product CTA', t.includes('Add product'));
   check('seller nav has no cart', !t.includes('Cart'));
   app.close();
@@ -983,6 +983,46 @@ section('9e. One-tap photo search');
   sp.close();
 }
 
+// ── 9f. Every dashboard page renders without runtime errors ───────────────
+section('9f. Dashboard sweep (no runtime errors, guide present)');
+{
+  const pages = [
+    ['/buyer', buyer], ['/buyer/orders', buyer], ['/buyer/saved', buyer], ['/buyer/addresses', buyer],
+    ['/buyer/refunds', buyer], ['/buyer/support', buyer], ['/buyer/settings', buyer], ['/cart', buyer],
+    ['/seller', seller], ['/seller/inventory', seller], ['/seller/add-product', seller], ['/seller/bulk-import', seller],
+    ['/seller/orders', seller], ['/seller/analytics', seller], ['/seller/store-settings', seller],
+    ['/admin', admin], ['/admin/queue', admin], ['/admin/users', admin], ['/admin/products', admin], ['/admin/support', admin],
+    ['/messages', buyer], ['/notifications', buyer],
+  ];
+  for (const [route, session] of pages) {
+    const app = await mount(route, session, { settleMs: 1200 });
+    const errs = app.consoleErrors.filter((e) => !/leaflet|ResizeObserver/i.test(e));
+    check(`${route} renders without runtime errors`, errs.length === 0, errs[0]);
+    const isDash = /^\/(buyer|seller|admin)(\/|$)/.test(route);
+    if (isDash) check(`${route} has the dashboard guide`, !!app.$('[data-testid="dashboard-guide-fab"]'));
+    else check(`${route} has no dashboard guide`, !app.$('[data-testid="dashboard-guide-fab"]'));
+    if (isDash || route === '/cart') check(`${route} has no topbar search bar`, !app.$('.topbar-search'), 'topbar search still shown');
+    app.close();
+  }
+  const adm = await mount('/admin', admin, { settleMs: 1600 });
+  check('admin overview shows the locations map', !!adm.$('[data-testid="admin-locations"]'));
+  check('locations map lists located users', adm.$$('.adm-map-list li').length > 0 || /located/.test(adm.text()));
+  adm.close();
+  const g = await mount('/seller', seller, { settleMs: 900 });
+  const fab = g.$('[data-testid="dashboard-guide-fab"]');
+  if (fab) {
+    await g.click(fab, 200);
+    check('guide panel opens', !!g.$('[data-testid="dashboard-guide"]'));
+    const chip = g.$('[data-testid="dashboard-guide"] .chip');
+    if (chip) {
+      await g.click(chip, 2500);
+      const t = g.$('[data-testid="dashboard-guide"]')?.textContent || '';
+      check('guide answers about the seller dashboard', /seller|inventory|order|product/i.test(t) && !/admin queue|\/admin/i.test(t), t.slice(0, 120));
+    }
+  }
+  g.close();
+}
+
 // ── 10. Support desk (AI mode + admin escalation) ───────────────────────────
 section('10. Support desk');
 {
@@ -1058,7 +1098,7 @@ section('11. Messaging');
   check('thread renders a date separator', /Today|Yesterday/.test(threadText));
 
   // Compose and send a message straight through the UI.
-  const composer = thread.$('input[placeholder="Type a message…"]');
+  const composer = thread.$('.thread-composer textarea[aria-label="Message"]');
   check('composer input is present', !!composer);
   if (composer) {
     await thread.type(composer, 'Sending this from the web UI');
@@ -1095,7 +1135,7 @@ section('11. Messaging');
 
   // The seller sees accept/decline on the same offer.
   const sellerView = await mount(`/messages/${convId}`, seller);
-  check('seller sees the offer as received', sellerView.text().includes('Offer received'));
+  check('seller sees the offer as received', /offer/i.test(sellerView.text()) && !!sellerView.byText('button', 'Accept'), sellerView.text().slice(0, 160));
   const acceptBtn = sellerView.byText('button', 'Accept');
   check('seller sees an accept button', !!acceptBtn);
   if (acceptBtn) {

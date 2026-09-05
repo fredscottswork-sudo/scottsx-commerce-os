@@ -87,6 +87,18 @@ export default async function registerGeoRoute(app: FastifyInstance) {
       ]
     );
 
+    // History for the admin map (best-effort; never fails the request). One
+    // row per minute per user at most, so live tracking does not flood it.
+    pool.query(
+      `INSERT INTO location_pings (user_id, lat, lng, accuracy_m, village, city, region, country, source)
+       SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
+       WHERE NOT EXISTS (
+         SELECT 1 FROM location_pings WHERE user_id = $1 AND created_at > now() - interval '60 seconds'
+       )`,
+      [me.id, lat, lng, accuracyM ?? null, place?.village ?? null, place?.city ?? null, place?.region ?? null, place?.country ?? null,
+        String((request.body as any)?.source ?? 'nearby').slice(0, 32)]
+    ).catch(() => undefined);
+
     return { ok: true, place, position: { lat, lng, accuracyM: accuracyM ?? null } };
   });
 

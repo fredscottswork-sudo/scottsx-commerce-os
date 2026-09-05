@@ -73,30 +73,43 @@ export default function AddProduct() {
     return Object.keys(e).length === 0;
   };
 
-  // ── AI: fill title/description/price from an image + hint ───────────────
+  // ── AI: read the photos (up to 4) + optional hint → full listing ────────
+  const [aiResult, setAiResult] = useState<{ highlights: string[]; detected: string[]; photosAnalyzed: number; provider: string } | null>(null);
   const runAi = async () => {
-    if (!form.imageUrl.trim() && !aiHint.trim()) {
-      toast('Add an image link or a short hint first', 'warning');
+    const photos = form.mediaUrls.slice(0, 4).map((u) => resolveImageUrl(u));
+    if (!photos.length && !aiHint.trim()) {
+      toast('Add a photo (or two) above, or type a short hint first', 'warning');
       return;
     }
     setAiBusy(true);
     try {
       const r = await aiService.generateProduct({
-        imageUrl: form.imageUrl.trim() || undefined,
+        imageUrl: photos[0],
+        imageUrls: photos,
         hint: aiHint.trim() || form.title.trim() || undefined,
       });
+      const highlights = (r as any).highlights as string[] | undefined;
+      const description = highlights?.length
+        ? `${r.description}\n\nHighlights:\n${highlights.map((h) => `• ${h}`).join('\n')}`
+        : r.description;
       setForm((f) => ({
         ...f,
         title: r.title || f.title,
-        description: r.description || f.description,
-        category: r.category || f.category,
+        description: description || f.description,
+        category: CATEGORIES.includes(r.category) ? r.category : f.category,
         brand: r.brand || f.brand,
-        priceMinor: r.suggestedPriceMinor || f.priceMinor,
+        priceMinor: f.priceMinor || r.suggestedPriceMinor || 0,
       }));
       setComparables(r.comparables || []);
+      setAiResult({
+        highlights: highlights ?? [],
+        detected: ((r as any).detected as string[] | undefined) ?? [],
+        photosAnalyzed: Number((r as any).photosAnalyzed ?? photos.length),
+        provider: r.provider,
+      });
       toast(
-        r.comparables?.length
-          ? `Filled in from ${r.comparables.length} similar listing${r.comparables.length > 1 ? 's' : ''}`
+        photos.length
+          ? `Listing drafted from ${Math.min(photos.length, 4)} photo${photos.length > 1 ? 's' : ''}${r.comparables?.length ? ` and ${r.comparables.length} similar listings` : ''}`
           : 'Draft copy generated',
         'success'
       );
@@ -159,20 +172,41 @@ export default function AddProduct() {
           <section className="card ai-assist">
             <div className="card-head">
               <h2 className="card-title"><Wand2 size={17} /> AI listing assistant</h2>
-              <Badge tone="violet">Store-aware</Badge>
+              <Badge tone="violet">{form.mediaUrls.length ? `Reads ${Math.min(form.mediaUrls.length, 4)} photo${form.mediaUrls.length > 1 ? 's' : ''}` : 'Add photos first'}</Badge>
             </div>
             <p className="tiny muted mb-12">
-              Describe the item in a few words. The assistant writes the title and description, picks a category,
-              and suggests a price based on what similar products in this store actually sell for.
+              Upload your photos above — the front shot plus one more works best — then press Generate. The assistant looks at
+              them, writes the title, description and highlights, picks the category and suggests a price from similar live listings.
+              A hint is optional but sharpens the result.
             </p>
+            {form.mediaUrls.length > 0 && (
+              <div className="ai-assist-thumbs" aria-label="Photos the AI will read">
+                {form.mediaUrls.slice(0, 4).map((u, i) => (
+                  <img key={u} src={resolveImageUrl(u)} alt={`Photo ${i + 1}`} className={aiBusy ? 'scanning' : ''} />
+                ))}
+                {form.mediaUrls.length > 4 && <span className="tiny muted-2">+{form.mediaUrls.length - 4} more (first 4 are read)</span>}
+              </div>
+            )}
             <div className="row wrap" style={{ gap: 9 }}>
               <Input className="grow" value={aiHint} onChange={(e) => setAiHint(e.target.value)}
-                placeholder="e.g. Samsung 55 inch 4K smart TV, brand new, warranty"
+                placeholder="Optional hint, e.g. brand new, 128GB, with warranty"
                 onKeyDown={(e) => { if (e.key === 'Enter') void runAi(); }} />
               <Btn variant="primary" loading={aiBusy} icon={<Sparkles size={15} />} onClick={runAi}>
-                Generate
+                {aiBusy ? 'Reading photos…' : 'Generate'}
               </Btn>
             </div>
+            {aiResult && (
+              <div className="ai-assist-result">
+                {aiResult.detected.length > 0 && (
+                  <ul className="ai-assist-detected">
+                    {aiResult.detected.map((d) => <li key={d}>{d}</li>)}
+                  </ul>
+                )}
+                <p className="tiny muted-2">
+                  Filled in the details below from {aiResult.photosAnalyzed} photo{aiResult.photosAnalyzed === 1 ? '' : 's'} — review and edit anything before you submit.
+                </p>
+              </div>
+            )}
           </section>
 
           <section className="card">

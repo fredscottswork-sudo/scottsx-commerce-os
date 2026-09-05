@@ -24,7 +24,7 @@ import {
   type RetrievedProduct,
 } from './catalog-context.js';
 
-export type AgentId = 'shopping' | 'negotiator' | 'support' | 'listing' | 'growth' | 'store';
+export type AgentId = 'shopping' | 'negotiator' | 'support' | 'listing' | 'growth' | 'store' | 'guide';
 
 export interface AgentDef {
   id: AgentId;
@@ -103,7 +103,57 @@ export const AGENTS: AgentDef[] = [
   },
 ];
 
+/**
+ * Dashboard guide — explains THIS user's dashboard only. It is not listed in
+ * AGENTS (no picker card); the dashboard help widget requests it by id, and
+ * the system prompt is built from the caller's real role so a buyer is never
+ * told about seller or admin screens.
+ */
+export const GUIDE_AGENT: AgentDef = {
+  id: 'guide',
+  name: 'Dashboard Guide',
+  tagline: 'Explains the screens and buttons in front of you',
+  audience: 'both',
+  icon: 'compass',
+  starters: ['What can I do on this page?', 'Where do I find my orders?', 'How do I change my settings?'],
+};
+
+export const DASHBOARD_TOURS: Record<'buyer' | 'seller' | 'admin', string> = {
+  buyer: [
+    'Buyer dashboard (/buyer): recent orders, saved items, recent searches, and quick links.',
+    'Orders (/buyer/orders): every order with status (pending → confirmed → shipped → delivered), tracking and the seller\'s contact. Payment is arranged directly with the seller in chat — the platform never takes money.',
+    'Saved (/buyer/saved): favourited products; tap the heart on any product card to add.',
+    'Addresses (/buyer/addresses): delivery addresses; one can be the default.',
+    'Refunds (/buyer/refunds): open a refund request on a delivered order and follow its status.',
+    'Support (/buyer/support): AI help or switch to Admin mode to reach a human.',
+    'Settings (/buyer/settings): profile photo, name, password, theme, notification preferences.',
+    'Messages (/messages): chat with sellers; send photos and price offers, the seller can accept or decline.',
+    'Cart (/cart): items you added; checkout creates one order per seller.',
+    'Nearby (/nearby): stores around your location; AI (/buyer/ai): shopping assistant.',
+  ].join('\n'),
+  seller: [
+    'Seller dashboard (/seller): sales KPIs, pending approvals, low-stock alerts, recent orders.',
+    'Inventory (/seller/inventory): all your products with status — draft, pending (waiting for admin approval), approved (live), rejected (with reason), suspended. Edit, restock, or delete here.',
+    'Add product (/seller/add-product): upload up to 8 photos, then "Generate" lets the AI write title/description/category and suggest a price from the photos. Submitting sends it to admin approval; "Save draft" keeps it private.',
+    'Bulk import (/seller/bulk-import): CSV upload for many products at once.',
+    'Orders (/seller/orders): buyer orders for your products; move them pending → confirmed → shipped → delivered. Arrange payment with the buyer in chat.',
+    'Analytics (/seller/analytics): revenue, views, best sellers, category performance.',
+    'Store settings (/seller/store-settings): store name, logo, description, location, delivery options, opening hours; live-location sharing for the Nearby map.',
+    'Messages (/messages): buyer chats; reply, send photos, accept or decline price offers; save quick replies.',
+    'AI (/seller/ai): Listing Copilot and Growth Advisor.',
+  ].join('\n'),
+  admin: [
+    'Admin overview (/admin): platform stats — users, sellers, products, orders — plus the live location map of buyers and sellers.',
+    'Approvals (/admin/queue): products waiting for review; approve, reject with a reason, or suspend. Vision AI flags suspicious photos.',
+    'Products (/admin/products): every listing with filters and bulk actions.',
+    'Users (/admin/users): search users, change roles, verify sellers (blue tick), delete accounts.',
+    'Support (/admin/support): tickets escalated from buyers/sellers; reply as admin.',
+    'Locations map (on /admin): every user who has shared a location — new and old, buyers and sellers — with last-seen time.',
+  ].join('\n'),
+};
+
 export function getAgent(id?: string): AgentDef {
+  if (id === 'guide') return GUIDE_AGENT;
   return AGENTS.find((a) => a.id === id) ?? AGENTS[0];
 }
 
@@ -139,6 +189,11 @@ export function agentSystemPrompt(agent: AgentDef, role: string): string {
     `The user's role is ${role}.`;
 
   const persona: Record<AgentId, string> = {
+    guide:
+      `You are the in-dashboard guide for a ${role.toUpperCase()} on ScottsTechX. Answer ONLY about the ${role} dashboard described below. ` +
+      `Never mention or describe screens that belong to other roles (${role === 'buyer' ? 'seller or admin' : role === 'seller' ? 'buyer or admin' : 'buyer or seller'} dashboards); if asked, say those are not part of this account. ` +
+      'Give short, step-by-step instructions naming the exact menu item and page. If the user asks about a product to buy, point them to the marketplace rather than answering as a shopping assistant.\n\n' +
+      `THIS USER'S DASHBOARD:\n${DASHBOARD_TOURS[(role === 'seller' || role === 'admin') ? role : 'buyer']}`,
     shopping:
       'You are a personal shopping assistant. Recommend specific items from the context, ' +
       'explain briefly why each fits, and compare on price, rating and stock.',
@@ -262,6 +317,7 @@ export async function buildContext(
  */
 /** What each agent actually does, in its own words. */
 function capabilityBlurb(id: AgentId): string {
+  if (id === 'guide') return 'I explain the pages and buttons in your dashboard and walk you through tasks step by step.';
   switch (id) {
     case 'shopping':
       return [
@@ -590,4 +646,30 @@ function listingAnswer(prompt: string, products: RetrievedProduct[]): string {
 
 function titleCase(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Offline answer for the dashboard guide: pick the tour lines that match the
+ * question's keywords, so even without an LLM key the widget gives a real,
+ * role-scoped answer instead of a catalogue search.
+ */
+export function composeGuideAnswer(role: string, prompt: string): string {
+  const r = (role === 'seller' || role === 'admin') ? role : 'buyer';
+  const lines = DASHBOARD_TOURS[r].split('\n');
+  const words = prompt.toLowerCase().match(/[a-z]{3,}/g) ?? [];
+  const stop = new Set(['the', 'how', 'can', 'where', 'what', 'and', 'for', 'this', 'that', 'with', 'you', 'are', 'does', 'find', 'see', 'page', 'from', 'get', 'into', 'about', 'when', 'why']);
+  const keys = words.filter((w) => !stop.has(w));
+  const scored = lines
+    .map((l) => ({ l, score: keys.reduce((n, k) => n + (l.toLowerCase().includes(k) ? 1 : 0), 0) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+  const otherRoles = r === 'buyer' ? /seller|admin|inventory|approv/ : r === 'seller' ? /admin|approval queue|verify seller/ : /./;
+  if (!scored.length) {
+    if (r !== 'admin' && otherRoles.test(prompt.toLowerCase()) && !/my (product|listing)|approval/.test(prompt.toLowerCase())) {
+      return `That belongs to a different kind of account. As a **${r}**, here is what your dashboard has:\n\n${lines.map((l) => `• ${l}`).join('\n')}`;
+    }
+    return `Here is a quick tour of your **${r} dashboard**:\n\n${lines.map((l) => `• ${l}`).join('\n')}\n\nAsk me about any of these and I will walk you through it.`;
+  }
+  return scored.map((x) => `• ${x.l}`).join('\n\n');
 }

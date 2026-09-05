@@ -13,6 +13,7 @@ import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
 import { BrandMark } from './BrandLogo';
 import { useImageSearch } from './ImageSearchButton';
+import { DashboardGuide } from './DashboardGuide';
 import { stashImageSearchResult } from '../lib/imageSearch';
 import { SEARCH_WATERMARKS, useRotatingPlaceholder } from '../hooks/useRotatingPlaceholder';
 
@@ -138,6 +139,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isHomeRoute = location.pathname === '/';
   const isSearchRoute = location.pathname === '/search';
   const isNearbyRoute = location.pathname === '/nearby';
+  // Dashboards, the cart and open chats are work surfaces, not browsing
+  // surfaces: no topbar search there (the sidebar / bottom nav reach Market).
+  const isDashboardRoute = /^\/(buyer|seller|admin)(\/|$)/.test(location.pathname) && !/^\/seller\/[0-9a-f-]{36}$/i.test(location.pathname);
+  const isCartRoute = location.pathname === '/cart';
+  const isThreadRoute = /^\/messages\/[^/]+$/.test(location.pathname);
+  const hideTopSearch = isAiRoute || isHomeRoute || isSearchRoute || isNearbyRoute || isDashboardRoute || isCartRoute || isThreadRoute;
   if (!user && isAuthRoute) {
     return (
       <div className="auth-shell auth-shell--extra auth-shell--github">
@@ -357,7 +364,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {sidebarHidden ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
           </button>
 
-          {!isAiRoute && !isHomeRoute && !isSearchRoute && !isNearbyRoute && (
+          {!hideTopSearch && (
             <div className="searchbar-zone">
               <form className="searchbar topbar-search searchbar-glow" onSubmit={submitSearch}
                 onDrop={onSearchBarDrop}
@@ -409,10 +416,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </header>
 
-        {!isAiRoute && <MainNav role={user.role} counts={navCounts} />}
+        {!isAiRoute && !isThreadRoute && <MainNav role={user.role} counts={navCounts} />}
 
-        <main className={`content page ${isAiRoute ? 'content--ai' : ''}`} key={location.pathname}>{children}</main>
-        <BottomNav role={user.role} counts={navCounts} />
+        <main className={`content page ${isAiRoute ? 'content--ai' : ''}${isThreadRoute ? ' content--thread' : ''}`} key={location.pathname}>{children}</main>
+        {!isThreadRoute && <BottomNav role={user.role} counts={navCounts} />}
+        {isDashboardRoute && !isAiRoute && <DashboardGuide />}
       </div>
     </div>
   );

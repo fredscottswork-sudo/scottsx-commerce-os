@@ -116,6 +116,51 @@ export default async function registerAdminRoute(app: FastifyInstance) {
   });
 
   // ── Users ─────────────────────────────────────────────────────────────────
+  // ── Locations map: every user who ever shared a position ────────────────
+  app.get('/api/v1/admin/locations', { preHandler: requireAuth }, async (request) => {
+    requireAdmin(request);
+    const q = (request.query ?? {}) as Record<string, string>;
+    const role = q.role === 'buyer' || q.role === 'seller' || q.role === 'admin' ? q.role : null;
+    const since = q.since === '24h' ? "now() - interval '24 hours'" : q.since === '7d' ? "now() - interval '7 days'" : q.since === '30d' ? "now() - interval '30 days'" : null;
+    const { rows } = await pool.query(
+      `SELECT u.id, u.display_name AS name, u.email, u.role, u.profile_photo_url AS "photoUrl",
+              u.created_at AS "joinedAt", u.email_verified AS verified,
+              u.lat, u.lng, u.village, u.city, u.region, u.country, u.place_label AS "placeLabel",
+              u.location_updated_at AS "locationAt",
+              s.store_name AS "storeName", s.verified AS "storeVerified",
+              s.location_sharing AS "liveTracking",
+              (SELECT COUNT(*)::int FROM location_pings lp WHERE lp.user_id = u.id) AS "pingCount",
+              (SELECT lp.accuracy_m FROM location_pings lp WHERE lp.user_id = u.id ORDER BY lp.created_at DESC LIMIT 1) AS "accuracyM"
+       FROM users u
+       LEFT JOIN store_settings s ON s.user_id = u.id
+       WHERE u.lat IS NOT NULL AND u.lng IS NOT NULL
+         ${role ? `AND u.role = '${role}'` : ''}
+         ${since ? `AND u.location_updated_at > ${since}` : ''}
+       ORDER BY u.location_updated_at DESC NULLS LAST
+       LIMIT 2000`
+    );
+    const summary = await pool.query(
+      `SELECT COUNT(*) FILTER (WHERE lat IS NOT NULL)::int AS located,
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE lat IS NOT NULL AND role = 'buyer')::int AS buyers,
+              COUNT(*) FILTER (WHERE lat IS NOT NULL AND role = 'seller')::int AS sellers,
+              COUNT(*) FILTER (WHERE lat IS NOT NULL AND location_updated_at > now() - interval '24 hours')::int AS "activeToday"
+       FROM users`
+    );
+    return { users: rows.map((r) => ({ ...r, lat: Number(r.lat), lng: Number(r.lng) })), summary: summary.rows[0] };
+  });
+
+  app.get('/api/v1/admin/locations/:userId/history', { preHandler: requireAuth }, async (request) => {
+    requireAdmin(request);
+    const { userId } = request.params as { userId: string };
+    const { rows } = await pool.query(
+      `SELECT lat, lng, accuracy_m AS "accuracyM", village, city, region, source, created_at AS "at"
+       FROM location_pings WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200`,
+      [userId]
+    );
+    return { history: rows.map((r) => ({ ...r, lat: Number(r.lat), lng: Number(r.lng) })) };
+  });
+
   app.get('/api/v1/admin/users', { preHandler: requireAuth }, async (request) => {
     requireAdmin(request);
     const q = z

@@ -38,6 +38,7 @@ const askSchema = z.object({
 
 const generateSchema = z.object({
   imageUrl: z.string().optional().default(''),
+  imageUrls: z.array(z.string()).max(8).optional().default([]),
   hint: z.string().optional().default(''),
 });
 
@@ -190,7 +191,7 @@ export default async function registerAiRoute(app: FastifyInstance) {
 
   app.post('/api/v1/ai/v2/generate-product', async (request) => {
     const body = generateSchema.parse(request.body);
-    return generateProduct(pool, { imageUrl: body.imageUrl, hint: body.hint });
+    return generateProduct(pool, { imageUrl: body.imageUrl, imageUrls: body.imageUrls, hint: body.hint });
   });
 
   app.post('/api/v1/ai/search', async (request) => {
