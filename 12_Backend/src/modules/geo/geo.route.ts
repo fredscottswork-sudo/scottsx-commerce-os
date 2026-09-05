@@ -19,13 +19,22 @@ import { ServiceUnavailableError } from '../../errors.js';
 const coordSchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
-  accuracyM: z.coerce.number().min(0).max(100000).optional(),
+  // Browsers report accuracy as NaN/Infinity/'' when unknown — treat as absent.
+  accuracyM: z.preprocess((v) => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(Math.max(n, 0), 100000) : undefined;
+  }, z.number().optional()),
 });
 
 const saveSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
-  accuracyM: z.number().min(0).max(100000).optional(),
+  accuracyM: z.preprocess((v) => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(Math.max(n, 0), 100000) : undefined;
+  }, z.number().optional()),
 });
 
 export default async function registerGeoRoute(app: FastifyInstance) {

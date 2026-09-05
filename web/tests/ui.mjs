@@ -617,8 +617,9 @@ section('4. Nearby stores');
   check('shows the resolved place from the geocoder',
     !!app.$('[data-testid="place-label"]'),
     app.$('[data-testid="place-label"]') ? '' : 'place label missing');
-  check('breaks the place into city / region / country',
-    /City:/.test(t) && /Region:/.test(t) && /Country:/.test(t));
+  check('shows the place hierarchy trail (city › region › country)',
+    !!app.$('.place-trail') && /Uganda/.test(app.$('.place-trail')?.textContent || ''),
+    app.$('.place-trail')?.textContent || 'no trail');
   check('no runtime errors on nearby', app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }

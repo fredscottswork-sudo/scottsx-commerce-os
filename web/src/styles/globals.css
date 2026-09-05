@@ -4217,6 +4217,11 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   margin-left: 8px; font-size: 10px; font-weight: 700; letter-spacing: .02em; vertical-align: middle;
   padding: 2px 6px; border-radius: 999px; color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent);
 }
+.place-approx--busy {
+  color: var(--muted); background: color-mix(in srgb, var(--fg, #111) 6%, transparent);
+  font-weight: 600; letter-spacing: 0; animation: place-busy 1.4s ease-in-out infinite;
+}
+@keyframes place-busy { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 @media (max-width: 620px) {
   .place-banner--exact .place-name { font-size: 15px; }
   .place-trail { font-size: 11px; }

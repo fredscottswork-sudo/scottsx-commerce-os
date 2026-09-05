@@ -12,6 +12,7 @@ import { productService, geoService } from '../api/services';
 import type { NearbySeller, Place } from '../api/types';
 import { formatUgx } from '../api/types';
 import { useToast } from '../store/ToastContext';
+import { namePins, placeRank, resolveBestPlace } from '../lib/geocode';
 import { useAuth } from '../store/AuthContext';
 import {
   Btn, Empty, ErrorBox, PageHeader, Select, SkeletonRows, Switch, Badge, SearchInput,
@@ -50,6 +51,9 @@ export default function Nearby() {
   const [geoDenied, setGeoDenied] = useState(false);
   /** Reported GPS accuracy radius in metres for the current fix. */
   const [accuracyM, setAccuracyM] = useState<number | null>(null);
+  /** A finer place lookup is still running (village may still appear). */
+  const [resolving, setResolving] = useState(false);
+  const placeSeq = useRef(0);
 
   const [sort, setSort] = useState<Sort>('distance');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
@@ -84,7 +88,7 @@ export default function Nearby() {
       setLiveCount(r.liveCount);
       // Only accept the sellers' endpoint place if it is at least as exact
       // as what we already have — never downgrade a village to a city.
-      if (r.place) setPlace((cur) => (cur?.village && !r.place?.village ? cur : r.place));
+      if (r.place) setPlace((cur) => (placeRank(r.place) > placeRank(cur) ? r.place : cur));
       setUpdatedAt(new Date());
       lastFetchCenter.current = at;
       setMoved(false);
@@ -95,35 +99,37 @@ export default function Nearby() {
     }
   }, [q, verifiedOnly, openOnly, sort]);
 
-  const applyPosition = useCallback((next: { lat: number; lng: number }, accuracyM?: number) => {
+  /**
+   * Name the fix. One code path for every source: the API (which also saves
+   * the position for signed-in users), OpenStreetMap from the browser, and
+   * Google when a key is configured. Whatever knows the village wins; a
+   * later, coarser answer can never replace a finer one already shown.
+   */
+  const applyPosition = useCallback((next: { lat: number; lng: number }, rawAcc?: number) => {
+    // Some browsers report NaN/Infinity/undefined accuracy; never forward those.
+    const acc = typeof rawAcc === 'number' && Number.isFinite(rawAcc) && rawAcc >= 0 ? Math.round(rawAcc) : undefined;
     setCenter(next);
     setLocating(false);
-    setAccuracyM(typeof accuracyM === 'number' && Number.isFinite(accuracyM) ? accuracyM : null);
-    if (user && !savedOnce.current) {
-      savedOnce.current = true;
-      geoService.saveMyLocation(next.lat, next.lng, accuracyM)
-        .then((r) => {
-          if (r.place) setPlace((cur) => (cur?.village && !r.place?.village ? cur : r.place));
-          // If the save returned only a city, ask again — the resolver
-          // holds city-only answers for 5s, so this retry hits providers.
-          if (!r.place?.village) {
-            return geoService.reverse(next.lat, next.lng, accuracyM)
-              .then((rr) => { if (rr.place?.village) setPlace(rr.place); });
-          }
-        })
-        .catch(() => undefined);
-    } else {
-      geoService.reverse(next.lat, next.lng, accuracyM)
-        .then((r) => {
-          setPlace((cur) => (cur?.village && !r.place?.village ? cur : r.place));
-          if (!r.place?.village) {
-            return new Promise((res) => setTimeout(res, 2500))
-              .then(() => geoService.reverse(next.lat, next.lng, accuracyM))
-              .then((rr) => { if (rr.place?.village) setPlace(rr.place); });
-          }
-        })
-        .catch(() => undefined);
-    }
+    setAccuracyM(acc ?? null);
+
+    const seq = ++placeSeq.current;
+    setResolving(true);
+    const server: Promise<Place | null> = user && !savedOnce.current
+      ? (savedOnce.current = true, geoService.saveMyLocation(next.lat, next.lng, acc).then((r) => r.place))
+      : geoService.reverse(next.lat, next.lng, acc).then((r) => r.place);
+
+    const approximate = typeof acc === 'number' && acc > 250;
+    const accept = (p: Place | null) => {
+      if (seq !== placeSeq.current || !p) return; // a newer fix superseded this one
+      setPlace((cur) => (placeRank(p) >= placeRank(cur) ? { ...p, approximate } : cur));
+    };
+    // Show the API's answer the moment it lands (at least the city)…
+    server.then(accept).catch(() => undefined);
+    // …then upgrade to the finest village any source can name.
+    void resolveBestPlace(next.lat, next.lng, server).then((best) => {
+      if (seq === placeSeq.current) setResolving(false);
+      accept(best);
+    });
   }, [user]);
 
   useEffect(() => {
@@ -134,13 +140,9 @@ export default function Nearby() {
         try {
           const r = await geoService.myLocation();
           if (!cancelled && r.position) {
-            setCenter(r.position);
             if (r.place) setPlace(r.place);
-            setLocating(false);
-            // Stored places from older builds are city-level; re-resolve now.
-            geoService.reverse(r.position.lat, r.position.lng)
-              .then((rr) => { if (!cancelled && rr.place) setPlace(rr.place); })
-              .catch(() => undefined);
+            savedOnce.current = true; // already stored — do not re-save a stale fix
+            applyPosition(r.position, undefined);
             return;
           }
         } catch {}
@@ -157,38 +159,65 @@ export default function Nearby() {
       return () => { cancelled = true; };
     }
 
-    // Village accuracy depends on the FIX accuracy. The first position a
-    // browser hands over is often a cached wifi/cell fix (±500–2000 m), which
-    // can land in the neighbouring village. So: show the first fix at once,
-    // then keep watching for up to 12s and re-apply whenever a materially
-    // better fix (≤60 m, or 2× better than before) arrives.
+    // Two-stage fix.
+    //  1. getCurrentPosition with a cached fix allowed → something on screen
+    //     within a second (stores + at least the city).
+    //  2. watchPosition with maximumAge:0 for up to 12s → re-apply whenever a
+    //     materially better fix arrives (≤60 m, or 2× better), because the
+    //     village depends on the fix being tighter than the village itself.
     let bestAcc = Infinity;
     let gotAny = false;
-    const watch = navigator.geolocation.watchPosition(
-      (pos) => {
-        if (cancelled) return;
-        const acc = pos.coords.accuracy ?? Infinity;
-        const better = !gotAny || acc <= 60 && acc < bestAcc || acc < bestAcc / 2;
-        if (!better) return;
-        gotAny = true;
-        bestAcc = acc;
-        applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, acc);
-        if (acc <= 25) navigator.geolocation.clearWatch(watch);
-      },
-      (err) => {
-        if (gotAny) return;
-        void fallbackToSavedLocation(
-          err.code === err.PERMISSION_DENIED
-            ? 'Location permission denied. Allow location access to see stores near you.'
-            : 'Could not detect your location. Check that location services are on.'
-        );
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-    const stopAfter = setTimeout(() => navigator.geolocation.clearWatch(watch), 12000);
+    const consider = (pos: GeolocationPosition) => {
+      if (cancelled) return;
+      const acc = pos.coords.accuracy ?? Infinity;
+      const better = !gotAny || (acc <= 60 && acc < bestAcc) || acc < bestAcc / 2;
+      if (!better) return;
+      gotAny = true;
+      bestAcc = acc;
+      applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, acc);
+    };
+    const fail = (err: GeolocationPositionError) => {
+      if (gotAny) return;
+      void fallbackToSavedLocation(
+        err.code === err.PERMISSION_DENIED
+          ? 'Location permission denied. Allow location access to see stores near you.'
+          : 'Could not detect your location. Check that location services are on.'
+      );
+    };
+    let watch: number | null = null;
+    try {
+      navigator.geolocation.getCurrentPosition(consider, fail, { enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60_000 });
+      watch = navigator.geolocation.watchPosition(
+        (pos) => { consider(pos); if ((pos.coords.accuracy ?? Infinity) <= 25 && watch !== null) navigator.geolocation.clearWatch(watch); },
+        (err) => { if (err.code === err.PERMISSION_DENIED) fail(err); },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } catch {
+      void fallbackToSavedLocation('This browser cannot detect your location.');
+    }
+    const stopAfter = setTimeout(() => { if (watch !== null) navigator.geolocation.clearWatch(watch); }, 12000);
 
-    return () => { cancelled = true; clearTimeout(stopAfter); navigator.geolocation.clearWatch(watch); };
+    return () => {
+      cancelled = true;
+      clearTimeout(stopAfter);
+      if (watch !== null) navigator.geolocation.clearWatch(watch);
+    };
   }, [user, applyPosition]);
+
+  /** Fill in villages for pins the API could not name (browser-side OSM). */
+  useEffect(() => {
+    const missing = sellers.filter((s) => !s.village && Number.isFinite(s.lat) && Number.isFinite(s.lng));
+    if (!missing.length) return;
+    return namePins(
+      missing.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng })),
+      (id, village, shortLabel) => {
+        if (!village) return;
+        setSellers((prev) => prev.map((s) => (s.id === id ? { ...s, village, placeLabel: shortLabel } : s)));
+      }
+    );
+    // Only when the set of ids changes, not on every distance re-sort.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellers.map((s) => s.id).join(',')]);
 
   useEffect(() => {
     if (!center) return;
@@ -241,18 +270,34 @@ export default function Nearby() {
   }, []);
 
   const retryLocate = useCallback(() => {
+    if (!navigator.geolocation) return;
     setLocating(true);
     setGeoDenied(false);
     setError('');
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy),
-      () => {
-        setLocating(false);
-        setGeoDenied(true);
-        setError('Location permission is still blocked. Enable it in your browser settings.');
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
+    savedOnce.current = false;
+    let best = Infinity;
+    let got = false;
+    const consider = (pos: GeolocationPosition) => {
+      const acc = pos.coords.accuracy ?? Infinity;
+      if (got && !(acc < best / 2 || (acc <= 60 && acc < best))) return;
+      got = true; best = acc;
+      applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, acc);
+    };
+    const fail = (err: GeolocationPositionError) => {
+      if (got) return;
+      setLocating(false);
+      setGeoDenied(err.code === err.PERMISSION_DENIED);
+      setError(err.code === err.PERMISSION_DENIED
+        ? 'Location permission is still blocked. Enable it in your browser settings.'
+        : 'Could not get a GPS fix. Move outdoors and try again.');
+    };
+    navigator.geolocation.getCurrentPosition(consider, fail, { enableHighAccuracy: false, timeout: 8000, maximumAge: 60_000 });
+    const w = navigator.geolocation.watchPosition(
+      (pos) => { consider(pos); if ((pos.coords.accuracy ?? Infinity) <= 25) navigator.geolocation.clearWatch(w); },
+      (err) => { if (err.code === err.PERMISSION_DENIED) fail(err); },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
+    window.setTimeout(() => navigator.geolocation.clearWatch(w), 12000);
   }, [applyPosition]);
 
   const stats = useMemo(() => ({
@@ -287,13 +332,14 @@ export default function Nearby() {
               </span>
             )}
           </div>
-          {locating ? (
+          {locating && !place ? (
             <strong className="place-name">Detecting your village…</strong>
           ) : place ? (
             <>
               <strong className="place-name" data-testid="place-label">
                 {place.village || place.city || place.region || place.label}
                 {place.approximate && <span className="place-approx" title="GPS fix is coarse — move outdoors for an exact village">~ approx.</span>}
+                {!place.village && resolving && <span className="place-approx place-approx--busy">finding village…</span>}
               </strong>
               <div className="place-trail" aria-label="Location hierarchy">
                 {[place.suburb, place.city, place.region, place.country]

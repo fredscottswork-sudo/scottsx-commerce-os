@@ -33,36 +33,52 @@ export async function resolvePlace(lat: number, lng: number, priority: 'high' | 
   const key = geoCacheKey(lat, lng);
   const cached = geoCache.get(key);
   if (cached && Date.now() - cached.at < GEO_CACHE_TTL) return cached.value;
+  const joined = pending.get(key);
+  if (joined) {
+    const waitMs = priority === 'high' ? 2500 : 300;
+    const r = await Promise.race([joined, new Promise<'wait'>((res) => setTimeout(() => res('wait'), waitMs))]);
+    return r === 'wait' ? reverseGeocode(lat, lng) : r;
+  }
 
   const offline = reverseGeocode(lat, lng);
 
+  // Online lookup runs to completion in the background (so the NEXT request
+  // is a cache hit), but this request never waits more than `waitMs`: if the
+  // village has not arrived by then the caller gets the instant offline
+  // answer and the client upgrades on its next poll.
+  const inflight = onlineLookup(lat, lng, priority, offline).then((best) => {
+    const at = best?.village ? Date.now() : Date.now() - GEO_CACHE_TTL + 5_000;
+    geoCache.set(key, { at, value: best });
+    if (geoCache.size > 500) {
+      const first = geoCache.keys().next().value;
+      if (first) geoCache.delete(first);
+    }
+    return best;
+  });
+  pending.set(key, inflight);
+  inflight.finally(() => { if (pending.get(key) === inflight) pending.delete(key); }).catch(() => undefined);
+
+  const waitMs = priority === 'high' ? 2500 : 300;
+  const timed = await Promise.race([inflight, new Promise<'wait'>((res) => setTimeout(() => res('wait'), waitMs))]);
+  return timed === 'wait' ? offline : timed;
+}
+
+/** In-flight online lookups keyed like the cache, so a poll joins the wait. */
+const pending = new Map<string, Promise<ReverseResult | null>>();
+
+async function onlineLookup(
+  lat: number, lng: number, priority: 'high' | 'low', offline: ReverseResult | null
+): Promise<ReverseResult | null> {
   const withTimeout = <T>(p: Promise<T | null>, ms: number): Promise<T | null> =>
     Promise.race([p.catch(() => null), new Promise<null>((res) => setTimeout(() => res(null), ms))]);
-
-  // Budget = network time + whatever queue is ahead of us, so a busy queue
-  // degrades to "slower", never to "silently city-only".
-  const osmBudget = 3500 + osmQueueDelayMs(priority);
+  const osmBudget = 6000 + osmQueueDelayMs(priority);
   const [viaOsm, viaGoogle] = await Promise.all([
     osmGeocoderConfigured() ? withTimeout(osmReverseGeocode(lat, lng, priority), osmBudget) : Promise.resolve(null),
-    googleGeocoderConfigured() ? withTimeout(googleReverseGeocode(lat, lng), 2000) : Promise.resolve(null),
+    googleGeocoderConfigured() ? withTimeout(googleReverseGeocode(lat, lng), 3000) : Promise.resolve(null),
   ]);
-
-  // Village accuracy: prefer the provider that names a unit BELOW the city.
-  // OSM usually has LC1-level names in Uganda; where it only knows the suburb
-  // but Google knows the neighbourhood (or vice-versa), the finer one leads.
   const rank = (r: ReverseResult | null) => (r?.village ? (r.suburb ? 2 : 1) : 0);
   const ordered = rank(viaGoogle) > rank(viaOsm) ? [viaGoogle, viaOsm] : [viaOsm, viaGoogle];
-  const best = mergePlaces(...ordered, offline);
-
-  // Cache a real village for the full TTL; a city-only answer (provider
-  // timed out or had nothing) is only held 5s so the next tick retries.
-  const at = best?.village ? Date.now() : Date.now() - GEO_CACHE_TTL + 5_000;
-  geoCache.set(key, { at, value: best });
-  if (geoCache.size > 500) {
-    const first = geoCache.keys().next().value;
-    if (first) geoCache.delete(first);
-  }
-  return best;
+  return mergePlaces(...ordered, offline);
 }
 
 /** Field-wise merge: first provider (in priority order) that knows a field wins. */
