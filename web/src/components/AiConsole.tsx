@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Sparkles, ArrowUp, RotateCcw, Zap, AlertCircle, Square,
-  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, ImagePlus, X,
+  ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, ImagePlus, X,
   Copy, Share2, BookOpen, Store, Flame, Wallet, MapPin, Truck, ChevronLeft,
+  History, Plus, MessageSquare, Trash2, PanelLeftClose,
 } from 'lucide-react';
 
 /** Composer watermarks — rotate continuously so the empty field keeps
@@ -82,6 +83,44 @@ function useNarrowScreen(maxWidth = 480): boolean {
     return () => mq.removeEventListener('change', onChange);
   }, [maxWidth]);
   return narrow;
+}
+
+/* ── Chat history (on-device) ─────────────────────────────────────────────
+   Conversations are kept in localStorage per audience: simple, private, and
+   works for guests. Photos are stripped (they are large data URLs). */
+interface SavedChat {
+  id: string;
+  title: string;
+  updatedAt: number;
+  turns: Turn[];
+}
+const HISTORY_MAX = 30;
+function historyKey(audience: string) { return `stx.ai.history.${audience}`; }
+function loadHistory(audience: string): SavedChat[] {
+  try {
+    const raw = localStorage.getItem(historyKey(audience));
+    const list = raw ? (JSON.parse(raw) as SavedChat[]) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+function persistHistory(audience: string, list: SavedChat[]) {
+  try { localStorage.setItem(historyKey(audience), JSON.stringify(list.slice(0, HISTORY_MAX))); } catch { /* quota */ }
+}
+function stripTurns(turns: Turn[]): Turn[] {
+  return turns
+    .filter((t) => !t.pending)
+    .map(({ photo, streaming, ...rest }) => ({ ...rest, photo: photo ? 'attached' : undefined }));
+}
+function titleFor(turns: Turn[]): string {
+  const first = turns.find((t) => t.role === 'user')?.content ?? 'New chat';
+  return first.length > 48 ? `${first.slice(0, 46).trim()}…` : first;
+}
+function relTime(ts: number): string {
+  const d = Date.now() - ts;
+  if (d < 60_000) return 'now';
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`;
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`;
+  return `${Math.floor(d / 86_400_000)}d`;
 }
 
 interface Turn {
@@ -187,7 +226,6 @@ export function AiConsole({
   const [busy, setBusy] = useState(false);
   /** Live status chip while the answer streams ("Searching the catalogue…"). */
   const [stage, setStage] = useState('');
-  const [listening, setListening] = useState(false);
   /** Aborts the in-flight SSE request (Stop button). */
   const abortRef = useRef<AbortController | null>(null);
   /** Drag-over highlight on the composer (a photo is being dragged onto it). */
@@ -206,6 +244,39 @@ export function AiConsole({
   /** True while the on-screen keyboard is up (phones). */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const navigate = useNavigate();
+  const [history, setHistory] = useState<SavedChat[]>(() => loadHistory(audience));
+  const [chatId, setChatId] = useState<string>(() => `${Date.now().toString(36)}`);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  /** Persist the current conversation whenever a complete answer lands. */
+  useEffect(() => {
+    if (!turns.length || turns.some((t) => t.pending)) return;
+    setHistory((prev) => {
+      const entry: SavedChat = { id: chatId, title: titleFor(turns), updatedAt: Date.now(), turns: stripTurns(turns) };
+      const next = [entry, ...prev.filter((c) => c.id !== chatId)];
+      persistHistory(audience, next);
+      return next;
+    });
+  }, [turns, chatId, audience]);
+
+  const newChat = useCallback(() => {
+    abortRef.current?.abort();
+    setTurns([]);
+    setPhoto(null);
+    setInput('');
+    setChatId(`${Date.now().toString(36)}`);
+    setSidebarOpen(false);
+  }, []);
+  const openChat = useCallback((c: SavedChat) => {
+    abortRef.current?.abort();
+    setTurns(c.turns.map((t) => ({ ...t, photo: undefined })));
+    setChatId(c.id);
+    setSidebarOpen(false);
+  }, []);
+  const deleteChat = useCallback((id: string) => {
+    setHistory((prev) => { const next = prev.filter((c) => c.id !== id); persistHistory(audience, next); return next; });
+    if (id === chatId) { setTurns([]); setChatId(`${Date.now().toString(36)}`); }
+  }, [audience, chatId]);
   const watermark = useRotatingPlaceholder(
     audience === 'buyer' ? (narrow ? BUYER_WATERMARKS_SHORT : BUYER_WATERMARKS) : SELLER_WATERMARKS,
     2800
@@ -458,29 +529,6 @@ export function AiConsole({
     }
   }, [agentId, agents, busy, photo, screen, toast, turns]);
 
-  /** Voice — speak your request, the assistant answers. */
-  const startVoice = useCallback(() => {
-    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!Ctor) {
-      toast('Voice input needs Chrome or Edge on this device', 'warning');
-      return;
-    }
-    if (listening) return;
-    const rec: any = new Ctor();
-    rec.lang = 'en-UG';
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onresult = (e: any) => {
-      const heard = e.results?.[0]?.[0]?.transcript ?? '';
-      setListening(false);
-      if (heard.trim()) void send(heard);
-    };
-    rec.onerror = () => { setListening(false); toast('Could not hear you — try again', 'error'); };
-    rec.onend = () => setListening(false);
-    rec.start();
-    setListening(true);
-  }, [listening, send, toast]);
-
   /** Attach a photo to the next CHAT message (compressed on-device first). */
   const attachFile = useCallback(
     async (file: File) => {
@@ -633,6 +681,38 @@ export function AiConsole({
 
       {/* ── Conversation — now full, no agent words above, bigger & flexible ── */}
       <div className="card ai-chat card-flush ai-chat--full">
+        {/* ── History drawer ─────────────────────────────────────────────── */}
+        {sidebarOpen && <button type="button" className="ai-drawer-scrim" aria-label="Close history" onClick={() => setSidebarOpen(false)} />}
+        <aside className={`ai-drawer ${sidebarOpen ? 'ai-drawer--open' : ''}`} aria-label="Chat history" aria-hidden={!sidebarOpen}>
+          <div className="ai-drawer-head">
+            <strong>Chats</strong>
+            <button type="button" className="ai-cap ai-cap--icon" onClick={() => setSidebarOpen(false)} aria-label="Close">
+              <PanelLeftClose size={16} />
+            </button>
+          </div>
+          <button type="button" className="ai-drawer-new" onClick={newChat}>
+            <Plus size={16} /> New chat
+          </button>
+          <div className="ai-drawer-list">
+            {history.length === 0 && (
+              <p className="ai-drawer-empty">Your conversations will appear here. They stay on this device.</p>
+            )}
+            {history.map((c) => (
+              <div key={c.id} className={`ai-drawer-item ${c.id === chatId ? 'is-active' : ''}`}>
+                <button type="button" className="ai-drawer-open" onClick={() => openChat(c)} title={c.title}>
+                  <MessageSquare size={14} />
+                  <span className="ai-drawer-title">{c.title}</span>
+                  <span className="ai-drawer-time">{relTime(c.updatedAt)}</span>
+                </button>
+                <button type="button" className="ai-drawer-del" onClick={() => deleteChat(c.id)} aria-label="Delete chat" title="Delete">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="ai-main">
         <div className="ai-chat-head ai-chat-head--brand">
           {fullHeight && (
             <button
@@ -646,32 +726,36 @@ export function AiConsole({
             </button>
           )}
           <div className="ai-brand" aria-label="ScottsTechX AI">
-            <span className="ai-brand-orb" aria-hidden="true"><BrandMark size={22} className="ai-brand-mark" /></span>
+            <span className="ai-brand-orb" aria-hidden="true"><BrandMark size={30} className="ai-brand-mark" /></span>
             <div className="ai-brand-copy">
               <strong className="ai-brand-name">ScottsTechX <em>AI</em></strong>
-              <span className="ai-brand-sub">{narrow ? 'Marketplace assistant' : `${title} · grounded in the live marketplace`}</span>
+              <span className="ai-brand-sub">
+                <span className={`ai-live-dot ${status?.configured ? 'ai-live-dot--on' : ''}`} aria-hidden="true" />
+                {status?.configured ? 'Live · marketplace assistant' : 'Catalogue mode'}
+              </span>
             </div>
-            <span className={`ai-live ${status?.configured ? 'ai-live--on' : ''}`}>
-              <span className="ai-live-dot" aria-hidden="true" />
-              {status?.configured ? 'Live' : 'Catalogue mode'}
-            </span>
           </div>
           <div className="ai-cap-row">
             <button
               type="button"
-              className={`ai-cap ${listening ? 'ai-cap--active' : ''}`}
-              onClick={startVoice}
-              title="Ask by voice"
-              aria-label="Ask by voice"
+              className={`ai-cap ai-cap--icon ${sidebarOpen ? 'ai-cap--active' : ''}`}
+              onClick={() => setSidebarOpen((v) => !v)}
+              title="Chat history"
+              aria-label="Chat history"
+              aria-expanded={sidebarOpen}
             >
-              <Mic size={15} />
-              {listening ? 'Listening…' : 'Voice'}
+              <History size={17} />
+              {history.length > 0 && <span className="ai-cap-count">{history.length > 9 ? '9+' : history.length}</span>}
             </button>
-            {turns.length > 0 && (
-              <Btn size="sm" variant="ghost" icon={<RotateCcw size={14} />} onClick={() => setTurns([])}>
-                New chat
-              </Btn>
-            )}
+            <button
+              type="button"
+              className="ai-cap ai-cap--icon"
+              onClick={newChat}
+              title="New chat"
+              aria-label="New chat"
+            >
+              <Plus size={18} />
+            </button>
           </div>
         </div>
 
@@ -689,7 +773,8 @@ export function AiConsole({
               ) : (
                 <div className="ai-welcome-bare">
                   <span className="ai-welcome-orb" aria-hidden="true">
-                    <BrandMark size={30} className="ai-brand-mark" />
+                    <BrandMark size={56} className="ai-brand-mark" />
+                    <i className="ai-welcome-shadow" />
                   </span>
                   <h2 className="ai-welcome-title">What are you looking for?</h2>
                   <p className="ai-welcome-sub">Products, prices and sellers across the marketplace — or attach a photo and I’ll find it.</p>
@@ -1011,6 +1096,7 @@ export function AiConsole({
         <p className="ai-disclaimer">
           AI answers are generated — double-check prices and availability with the seller before paying.
         </p>
+        </div>
       </div>
       </div>
     </div>

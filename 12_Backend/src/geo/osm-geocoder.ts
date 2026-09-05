@@ -50,19 +50,41 @@ function isPublicOsm(): boolean {
 }
 
 /* ── 1 request/second gate for the public endpoint ─────────────────────── */
+/* Two-priority queue. `high` = a person asking where THEY are (must answer
+   first); `low` = naming seller pins in the background. Public OSM allows
+   1 req/s, so a page of 12 pins must never delay the buyer's own village. */
 let lastPublicCall = 0;
-let chain: Promise<unknown> = Promise.resolve();
-function gate<T>(fn: () => Promise<T>): Promise<T> {
+const highQ: (() => void)[] = [];
+const lowQ: (() => void)[] = [];
+let pumping = false;
+async function pump() {
+  if (pumping) return;
+  pumping = true;
+  try {
+    while (highQ.length || lowQ.length) {
+      const wait = Math.max(0, lastPublicCall + 1050 - Date.now());
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      const next = highQ.shift() ?? lowQ.shift();
+      if (!next) break;
+      lastPublicCall = Date.now();
+      next();
+    }
+  } finally {
+    pumping = false;
+  }
+}
+function gate<T>(fn: () => Promise<T>, priority: 'high' | 'low'): Promise<T> {
   if (!isPublicOsm()) return fn();
-  const run = async () => {
-    const wait = Math.max(0, lastPublicCall + 1050 - Date.now());
-    if (wait) await new Promise((r) => setTimeout(r, wait));
-    lastPublicCall = Date.now();
-    return fn();
-  };
-  const p = chain.then(run, run);
-  chain = p.catch(() => undefined);
-  return p;
+  return new Promise<T>((resolve, reject) => {
+    (priority === 'high' ? highQ : lowQ).push(() => { fn().then(resolve, reject); });
+    void pump();
+  });
+}
+/** How long a caller would wait in the public queue right now (ms). */
+export function osmQueueDelayMs(priority: 'high' | 'low'): number {
+  if (!isPublicOsm()) return 0;
+  const ahead = priority === 'high' ? highQ.length : highQ.length + lowQ.length;
+  return Math.max(0, lastPublicCall + 1050 - Date.now()) + ahead * 1050;
 }
 
 type Address = Record<string, string | undefined>;
@@ -124,7 +146,7 @@ export function placeFromOsmAddress(a: Address): ReverseResult {
   };
 }
 
-export async function osmReverseGeocode(lat: number, lng: number): Promise<ReverseResult | null> {
+export async function osmReverseGeocode(lat: number, lng: number, priority: 'high' | 'low' = 'high'): Promise<ReverseResult | null> {
   if (!osmGeocoderConfigured()) return null;
   const k = cacheKey(lat, lng);
   const hit = cache.get(k);
@@ -159,7 +181,7 @@ export async function osmReverseGeocode(lat: number, lng: number): Promise<Rever
     } finally {
       clearTimeout(timer);
     }
-  });
+  }, priority);
 
   if (cache.size >= CACHE_MAX) {
     const first = cache.keys().next().value;

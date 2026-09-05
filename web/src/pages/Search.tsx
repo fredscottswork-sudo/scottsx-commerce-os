@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Sparkles, SlidersHorizontal, X, Image as ImageIcon, Mic, MicOff, Search as SearchIcon, Loader2,
+  Sparkles, SlidersHorizontal, X, Image as ImageIcon, Search as SearchIcon, Loader2,
 } from 'lucide-react';
 import { productService, aiService } from '../api/services';
 import type { Product, Facets, AiSearchResult } from '../api/types';
@@ -29,15 +29,6 @@ const SORTS: { id: Sort; label: string }[] = [
 ];
 
 const PAGE_SIZE = 24;
-
-/** Minimal typing for the vendor-prefixed Web Speech API. */
-type SpeechRecognitionLike = {
-  lang: string; continuous: boolean; interimResults: boolean;
-  start: () => void; stop: () => void;
-  onresult: ((e: any) => void) | null;
-  onerror: ((e: any) => void) | null;
-  onend: (() => void) | null;
-};
 
 export default function Search() {
   useSeo({
@@ -77,8 +68,6 @@ export default function Search() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState('');
   const [imageOpen, setImageOpen] = useState(false);
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
 
   useEffect(() => { setInput(q); }, [q]);
@@ -191,40 +180,6 @@ export default function Search() {
     setImageOpen(false);
   };
 
-  const toggleVoice = () => {
-    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!Ctor) { toast('Voice search needs Chrome or Edge on this device', 'warning'); return; }
-    if (listening) { recognitionRef.current?.stop(); setListening(false); return; }
-
-    const rec: SpeechRecognitionLike = new Ctor();
-    rec.lang = 'en-UG';
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onresult = async (e: any) => {
-      const transcript = e.results?.[0]?.[0]?.transcript ?? '';
-      setInput(transcript);
-      setListening(false);
-      if (!transcript) return;
-      setAiBusy(true);
-      try {
-        const r = await aiService.voiceSearch(transcript);
-        setProducts(r.products);
-        setTotal(r.products.length);
-        setAiNote(r.explanation);
-        patch({ q: transcript });
-      } catch (err: any) {
-        toast(err?.message || 'Voice search failed', 'error');
-      } finally {
-        setAiBusy(false);
-      }
-    };
-    rec.onerror = () => { setListening(false); toast('Could not hear you — try again', 'error'); };
-    rec.onend = () => setListening(false);
-    recognitionRef.current = rec;
-    rec.start();
-    setListening(true);
-  };
-
   const activeFilters = useMemo(() => {
     const chips: { label: string; clear: () => void }[] = [];
     if (category) chips.push({ label: category, clear: () => patch({ category: null }) });
@@ -283,10 +238,10 @@ export default function Search() {
 
   return (
     <div className="col-lg">
-      {/* ── Search bar with AI / image / voice ──────────────────────────── */}
+      {/* ── Search bar with AI / image ──────────────────────────── */}
       <div className="search-hero anim-up">
-        <div className="searchbar searchbar-lg searchbar--compact searchbar-glow" style={{ position: 'relative' }}>
-          <SearchIcon size={15} className="muted-2" style={{ flexShrink: 0 }} />
+        <div className="searchbar searchbar-lg searchbar-page searchbar-glow" style={{ position: 'relative' }}>
+          <SearchIcon size={20} className="muted-2" style={{ flexShrink: 0 }} />
           <input
             value={input}
             onChange={(e) => { setInput(e.target.value); setShowSuggest(true); }}
@@ -301,14 +256,10 @@ export default function Search() {
               <X size={13} />
             </button>
           )}
-          <button className={`btn btn-icon btn-sm ${listening ? 'btn-danger' : ''}`} onClick={toggleVoice}
-            title="Voice search" aria-label="Voice search">
-            {listening ? <MicOff size={14} /> : <Mic size={14} />}
+          <button className="btn btn-icon" onClick={() => setImageOpen(true)} title="Search by image" aria-label="Search by image">
+            <ImageIcon size={18} />
           </button>
-          <button className="btn btn-icon btn-sm" onClick={() => setImageOpen(true)} title="Search by image" aria-label="Search by image">
-            <ImageIcon size={14} />
-          </button>
-          <Btn variant="primary" size="sm" onClick={runAiSearch} loading={aiBusy} icon={<Sparkles size={12} />}>
+          <Btn variant="primary" onClick={runAiSearch} loading={aiBusy} icon={<Sparkles size={15} />}>
             Ask AI
           </Btn>
 
@@ -326,11 +277,6 @@ export default function Search() {
           )}
         </div>
 
-        {listening && (
-          <div className="row mt-8 t-danger tiny semi">
-            <span className="pulse-dot" /> Listening… speak now
-          </div>
-        )}
       </div>
 
       {imageOpen && (

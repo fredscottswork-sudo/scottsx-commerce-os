@@ -9,7 +9,7 @@
 import { reverseGeocode } from './gazetteer.js';
 import type { ReverseResult } from './gazetteer.js';
 import { googleReverseGeocode, googleGeocoderConfigured } from './google-geocoder.js';
-import { osmReverseGeocode, osmGeocoderConfigured } from './osm-geocoder.js';
+import { osmReverseGeocode, osmGeocoderConfigured, osmQueueDelayMs } from './osm-geocoder.js';
 
 const geoCache = new Map<string, { at: number; value: ReverseResult | null }>();
 const GEO_CACHE_TTL = 60_000;
@@ -26,7 +26,7 @@ function geoCacheKey(lat: number, lng: number): string {
  * region for a rural fix the gazetteer's region/country fills the gap, so the
  * label is always as complete as the best of the three.
  */
-export async function resolvePlace(lat: number, lng: number): Promise<ReverseResult | null> {
+export async function resolvePlace(lat: number, lng: number, priority: 'high' | 'low' = 'high'): Promise<ReverseResult | null> {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
 
@@ -39,9 +39,12 @@ export async function resolvePlace(lat: number, lng: number): Promise<ReverseRes
   const withTimeout = <T>(p: Promise<T | null>, ms: number): Promise<T | null> =>
     Promise.race([p.catch(() => null), new Promise<null>((res) => setTimeout(() => res(null), ms))]);
 
+  // Budget = network time + whatever queue is ahead of us, so a busy queue
+  // degrades to "slower", never to "silently city-only".
+  const osmBudget = 3500 + osmQueueDelayMs(priority);
   const [viaOsm, viaGoogle] = await Promise.all([
-    osmGeocoderConfigured() ? withTimeout(osmReverseGeocode(lat, lng), 3000) : Promise.resolve(null),
-    googleGeocoderConfigured() ? withTimeout(googleReverseGeocode(lat, lng), 1200) : Promise.resolve(null),
+    osmGeocoderConfigured() ? withTimeout(osmReverseGeocode(lat, lng, priority), osmBudget) : Promise.resolve(null),
+    googleGeocoderConfigured() ? withTimeout(googleReverseGeocode(lat, lng), 2000) : Promise.resolve(null),
   ]);
 
   // Village accuracy: prefer the provider that names a unit BELOW the city.
@@ -51,7 +54,10 @@ export async function resolvePlace(lat: number, lng: number): Promise<ReverseRes
   const ordered = rank(viaGoogle) > rank(viaOsm) ? [viaGoogle, viaOsm] : [viaOsm, viaGoogle];
   const best = mergePlaces(...ordered, offline);
 
-  geoCache.set(key, { at: Date.now(), value: best });
+  // Cache a real village for the full TTL; a city-only answer (provider
+  // timed out or had nothing) is only held 5s so the next tick retries.
+  const at = best?.village ? Date.now() : Date.now() - GEO_CACHE_TTL + 5_000;
+  geoCache.set(key, { at, value: best });
   if (geoCache.size > 500) {
     const first = geoCache.keys().next().value;
     if (first) geoCache.delete(first);
@@ -70,9 +76,21 @@ export function mergePlaces(...sources: (ReverseResult | null)[]): ReverseResult
     }
     return null;
   };
-  const village = first('village');
-  const suburb = first('suburb');
   const city = first('city');
+  // A "village" that is just the city's own name (the offline gazetteer does
+  // this for city centres) is not a village. Skip it so a real one from any
+  // other provider can win.
+  const isRealVillage = (v: string | null | undefined, c: string | null) =>
+    Boolean(v) && (!c || v!.toLowerCase() !== c.toLowerCase());
+  let village: string | null = null;
+  for (const s of known) {
+    if (isRealVillage(s.village, s.city ?? city)) { village = s.village!; break; }
+  }
+  let suburb: string | null = null;
+  for (const s of known) {
+    if (s.suburb && s.suburb !== village && isRealVillage(s.suburb, city)) { suburb = s.suburb; break; }
+  }
+  if (!village && suburb) { village = suburb; suburb = null; }
   const region = first('region');
   const country = first('country');
   const dedupe = (parts: (string | null)[]) => {
@@ -99,12 +117,12 @@ export function mergePlaces(...sources: (ReverseResult | null)[]): ReverseResult
 /** Best-effort, bounded: name many pins at once without stalling the response. */
 export async function resolvePlaces(
   points: { lat: number; lng: number }[],
-  budgetMs = 2500
+  budgetMs = 1500
 ): Promise<(ReverseResult | null)[]> {
   const deadline = new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), budgetMs));
   const results: (ReverseResult | null)[] = points.map((p) => reverseGeocode(p.lat, p.lng));
   const work = Promise.all(
-    points.map((p, i) => resolvePlace(p.lat, p.lng).then((r) => { if (r) results[i] = r; }).catch(() => undefined))
+    points.map((p, i) => resolvePlace(p.lat, p.lng, 'low').then((r) => { if (r) results[i] = r; }).catch(() => undefined))
   );
   await Promise.race([work, deadline]);
   return results;

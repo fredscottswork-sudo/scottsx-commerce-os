@@ -82,7 +82,9 @@ export default function Nearby() {
       setSellers(r.sellers);
       setTotal(r.total ?? r.count);
       setLiveCount(r.liveCount);
-      if (r.place) setPlace(r.place);
+      // Only accept the sellers' endpoint place if it is at least as exact
+      // as what we already have — never downgrade a village to a city.
+      if (r.place) setPlace((cur) => (cur?.village && !r.place?.village ? cur : r.place));
       setUpdatedAt(new Date());
       lastFetchCenter.current = at;
       setMoved(false);
@@ -100,11 +102,26 @@ export default function Nearby() {
     if (user && !savedOnce.current) {
       savedOnce.current = true;
       geoService.saveMyLocation(next.lat, next.lng, accuracyM)
-        .then((r) => { if (r.place) setPlace(r.place); })
+        .then((r) => {
+          if (r.place) setPlace((cur) => (cur?.village && !r.place?.village ? cur : r.place));
+          // If the save returned only a city, ask again — the resolver
+          // holds city-only answers for 5s, so this retry hits providers.
+          if (!r.place?.village) {
+            return geoService.reverse(next.lat, next.lng, accuracyM)
+              .then((rr) => { if (rr.place?.village) setPlace(rr.place); });
+          }
+        })
         .catch(() => undefined);
     } else {
       geoService.reverse(next.lat, next.lng, accuracyM)
-        .then((r) => setPlace(r.place))
+        .then((r) => {
+          setPlace((cur) => (cur?.village && !r.place?.village ? cur : r.place));
+          if (!r.place?.village) {
+            return new Promise((res) => setTimeout(res, 2500))
+              .then(() => geoService.reverse(next.lat, next.lng, accuracyM))
+              .then((rr) => { if (rr.place?.village) setPlace(rr.place); });
+          }
+        })
         .catch(() => undefined);
     }
   }, [user]);
@@ -120,6 +137,10 @@ export default function Nearby() {
             setCenter(r.position);
             if (r.place) setPlace(r.place);
             setLocating(false);
+            // Stored places from older builds are city-level; re-resolve now.
+            geoService.reverse(r.position.lat, r.position.lng)
+              .then((rr) => { if (!cancelled && rr.place) setPlace(rr.place); })
+              .catch(() => undefined);
             return;
           }
         } catch {}
