@@ -21,6 +21,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
+import { resolvePlace } from '../../geo/resolve-place.js';
 import { requireAuth, requireAdmin } from '../../auth.js';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../errors.js';
 import { notify, notifyFavoritesOfNewProduct } from '../notifications/notify.service.js';
@@ -147,7 +148,26 @@ export default async function registerAdminRoute(app: FastifyInstance) {
               COUNT(*) FILTER (WHERE lat IS NOT NULL AND location_updated_at > now() - interval '24 hours')::int AS "activeToday"
        FROM users`
     );
-    return { users: rows.map((r) => ({ ...r, lat: Number(r.lat), lng: Number(r.lng) })), summary: summary.rows[0] };
+    // Older rows have coordinates but no place name (saved before the
+    // geocoder existed). Name them from lat/lng now — the offline gazetteer
+    // answers instantly (city/region/country); the online lookup upgrades
+    // to the village in the background and the next load has it.
+    const users = await Promise.all(rows.map(async (r) => {
+      const out = { ...r, lat: Number(r.lat), lng: Number(r.lng) };
+      if (!out.placeLabel || !out.region) {
+        const p = await resolvePlace(out.lat, out.lng, 'low').catch(() => null);
+        if (p) {
+          out.village = p.village; out.city = p.city; out.region = p.region; out.country = p.country; out.placeLabel = p.label;
+          pool.query(
+            `UPDATE users SET village = COALESCE(village, $2), city = CASE WHEN city = '' OR city IS NULL THEN $3 ELSE city END,
+                    region = COALESCE(region, $4), country = COALESCE(country, $5), place_label = COALESCE(place_label, $6) WHERE id = $1`,
+            [out.id, p.village, p.city ?? '', p.region, p.country, p.label]
+          ).catch(() => undefined);
+        }
+      }
+      return out;
+    }));
+    return { users, summary: summary.rows[0] };
   });
 
   app.get('/api/v1/admin/locations/:userId/history', { preHandler: requireAuth }, async (request) => {

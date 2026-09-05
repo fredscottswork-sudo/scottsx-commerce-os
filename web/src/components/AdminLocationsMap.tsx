@@ -46,6 +46,7 @@ export function AdminLocationsMap() {
   const [history, setHistory] = useState<{ lat: number; lng: number; at: string; accuracyM: number | null; village: string | null; city: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [tilesOk, setTilesOk] = useState<boolean | null>(null);
 
   const mapEl = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -72,15 +73,36 @@ export function AdminLocationsMap() {
   useEffect(() => {
     if (!mapEl.current || map.current) return;
     const m = L.map(mapEl.current, { center: KAMPALA, zoom: 11, zoomControl: true, attributionControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
+    // Primary tiles from OSM; if the browser cannot load them (blocked
+    // network, ad-blocker), fall back to Carto's mirror, and tell the user.
+    let fails = 0;
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, crossOrigin: true,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(m);
+    });
+    osm.on('tileload', () => setTilesOk(true));
+    osm.on('tileerror', () => {
+      fails += 1;
+      if (fails === 4) {
+        m.removeLayer(osm);
+        const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19, subdomains: 'abcd', attribution: '&copy; OpenStreetMap &copy; CARTO',
+        });
+        carto.on('tileload', () => setTilesOk(true));
+        carto.on('tileerror', () => setTilesOk((v) => (v === true ? v : false)));
+        carto.addTo(m);
+      }
+    });
+    osm.addTo(m);
     layer.current = L.layerGroup().addTo(m);
     trail.current = L.layerGroup().addTo(m);
     map.current = m;
-    setTimeout(() => m.invalidateSize(), 50);
-    return () => { m.remove(); map.current = null; };
+    // The card can mount inside a hidden/animating container: re-measure a
+    // few times so the tiles fill the box instead of leaving it grey.
+    [50, 300, 1000].forEach((t) => setTimeout(() => m.invalidateSize(), t));
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => m.invalidateSize()) : null;
+    ro?.observe(mapEl.current);
+    return () => { ro?.disconnect(); m.remove(); map.current = null; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -103,7 +125,7 @@ export function AdminLocationsMap() {
       const live = !!u.locationAt && Date.now() - new Date(u.locationAt).getTime() < 15 * 60_000;
       const color = u.role === 'seller' ? '#0ea5e9' : u.role === 'admin' ? '#a855f7' : '#f59e0b';
       const mk = L.marker([u.lat, u.lng], { icon: dot(color, live), title: u.storeName || u.name || u.email });
-      mk.bindTooltip(`<strong>${u.storeName || u.name || u.email}</strong><br>${u.role} · ${u.village || u.city || '—'}<br><small>${ago(u.locationAt)}</small>`, { direction: 'top', offset: [0, -8] });
+      mk.bindTooltip(`<strong>${u.storeName || u.name || u.email}</strong> <small>${u.village || u.city || `${u.lat.toFixed(3)}, ${u.lng.toFixed(3)}`}</small>`, { direction: 'right', offset: [10, 0], permanent: filtered.length <= 40, className: 'adm-label', opacity: 0.95 });
       mk.on('click', () => setSelected(u));
       mk.addTo(g);
       markers.current.set(u.id, mk);
@@ -168,7 +190,12 @@ export function AdminLocationsMap() {
       </div>
 
       <div className="adm-map-layout">
-        <div className="adm-map" ref={mapEl} aria-label="Map of user locations" />
+        <div className="adm-map-wrap">
+          <div className="adm-map" ref={mapEl} aria-label="Map of user locations" />
+          {tilesOk === false && (
+            <p className="adm-map-note">Map tiles could not be loaded on this network — pins and coordinates still work; use “Open in OSM” for a full map.</p>
+          )}
+        </div>
         <aside className="adm-map-side">
           {error && <p className="err-text tiny">{error}</p>}
           {selected ? (
