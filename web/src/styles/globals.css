@@ -6771,3 +6771,126 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   .adm-map { height: 340px; }
   .adm-map-side { max-height: 300px; }
 }
+
+/* ── Passwordless sign-in / onboarding / guest gate ─────────────────────── */
+.signin-card, .onboarding-card { width: 100%; max-width: 420px; }
+.onboarding-card { max-width: 520px; }
+.signin-reason {
+  display: flex; align-items: center; gap: 8px; margin: -6px 0 14px;
+  padding: 9px 12px; border-radius: 10px; font-size: 13px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); color: var(--text);
+}
+.guest-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px;
+  background: transparent; border: 1px dashed var(--border); color: var(--text-2); font-weight: 600; text-decoration: none;
+}
+.guest-btn:hover { color: var(--text); border-color: var(--text-2); text-decoration: none; }
+.signin-guest-note { margin-top: 12px !important; line-height: 1.5; }
+.signin-back {
+  display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; margin-bottom: 8px;
+  color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.signin-back:hover { color: var(--primary); }
+.signin-mail-badge {
+  width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; margin: 0 auto 12px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary);
+}
+.signin-email { word-break: break-all; color: var(--text); }
+.otp-row { display: flex; gap: 8px; justify-content: center; margin: 6px 0 14px; }
+.otp-box {
+  width: 48px; height: 56px; text-align: center; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;
+  border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface-2, var(--surface)); color: var(--text);
+  transition: border-color .15s, box-shadow .15s, transform .1s; caret-color: var(--primary);
+}
+.otp-box:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent); }
+.otp-box.filled { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
+.otp-box:disabled { opacity: .6; }
+@media (max-width: 380px) { .otp-box { width: 42px; height: 50px; font-size: 20px; } .otp-row { gap: 6px; } }
+.signin-devcode {
+  margin: 0 0 12px; padding: 9px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.5;
+  background: color-mix(in srgb, #f59e0b 12%, transparent); border: 1px solid color-mix(in srgb, #f59e0b 40%, transparent);
+}
+.signin-devcode code { font-size: 15px; font-weight: 800; letter-spacing: .12em; }
+.signin-resend { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin-top: 14px; font-size: 13px; }
+.signin-resend-btn { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0; padding: 0; cursor: pointer; font-size: 13px; }
+.signin-resend-btn:disabled { color: var(--text-2); cursor: default; }
+.linklike { background: none; border: 0; padding: 0; cursor: pointer; font-size: inherit; }
+
+.onboarding-progress { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 18px; }
+.onboarding-progress .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); transition: background .2s, transform .2s; }
+.onboarding-progress .dot.active { background: var(--primary); transform: scale(1.2); }
+.onboarding-progress .dot.done { background: color-mix(in srgb, var(--primary) 55%, var(--border)); }
+.onboarding-progress .bar { width: 46px; height: 2px; background: var(--border); border-radius: 2px; }
+.onboarding-progress .bar.active { background: var(--primary); }
+.role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 4px 0 16px; }
+@media (max-width: 520px) { .role-grid { grid-template-columns: 1fr; } }
+.role-card {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; text-align: left;
+  padding: 18px 16px 16px; border-radius: 16px; cursor: pointer; font: inherit; color: var(--text);
+  background: var(--surface-2, var(--surface)); border: 1.5px solid var(--border);
+  transition: border-color .15s, box-shadow .15s, transform .12s, background .15s;
+}
+.role-card:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); transform: translateY(-1px); }
+.role-card.selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.role-card:focus-visible { outline: none; box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 30%, transparent); }
+.role-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; }
+.role-icon--buyer { background: color-mix(in srgb, #3b82f6 16%, transparent); color: #3b82f6; }
+.role-icon--seller { background: color-mix(in srgb, #10b981 16%, transparent); color: #10b981; }
+.role-title { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+.role-desc { font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.role-check {
+  position: absolute; top: 12px; right: 12px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--primary); color: #fff; opacity: 0; transform: scale(.6); transition: opacity .15s, transform .15s;
+}
+.role-card.selected .role-check { opacity: 1; transform: scale(1); }
+
+.store-setup { display: flex; gap: 16px; align-items: flex-start; }
+@media (max-width: 480px) { .store-setup { flex-direction: column; align-items: center; } .store-setup-fields { width: 100%; } }
+.store-setup-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.logo-drop {
+  position: relative; flex: none; width: 88px; height: 88px; border-radius: 22px; overflow: hidden; cursor: pointer; padding: 0;
+  border: 1.5px dashed var(--border); background: var(--surface-2, var(--surface)); display: grid; place-items: center;
+  transition: border-color .15s, transform .12s;
+}
+.logo-drop:hover { border-color: var(--primary); transform: translateY(-1px); }
+.logo-drop.has-logo { border-style: solid; }
+.logo-drop img { width: 100%; height: 100%; object-fit: cover; }
+.logo-initials { font-size: 28px; font-weight: 800; color: var(--text-2); letter-spacing: .02em; }
+.logo-drop-badge {
+  position: absolute; right: 6px; bottom: 6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--primary); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.25);
+}
+.logo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.logo-hint { font-size: 12px; flex-basis: 100%; }
+.logo-url-details { margin: 12px 0 4px; font-size: 13px; }
+.logo-url-details summary { cursor: pointer; color: var(--text-2); font-weight: 600; }
+.logo-url-details summary:hover { color: var(--primary); }
+.auth-input--plain { margin-top: 8px; width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface-2, var(--surface)); color: var(--text); }
+
+.gate { display: flex; justify-content: center; padding: 48px 16px 64px; }
+.gate-card {
+  width: 100%; max-width: 480px; text-align: center; padding: 34px 28px 28px; border-radius: 22px;
+  background: var(--surface); border: 1px solid var(--border);
+  box-shadow: 0 18px 50px rgba(0,0,0,.14);
+}
+.gate-icon {
+  position: relative; width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; margin: 0 auto 16px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary);
+}
+.gate-lock {
+  position: absolute; right: -4px; bottom: -4px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--text); color: var(--bg);
+}
+.gate-card h1 { font-size: 22px; margin: 0 0 8px; letter-spacing: -0.02em; }
+.gate-body { color: var(--text-2); font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
+.gate-perks { list-style: none; padding: 0; margin: 0 0 20px; display: grid; gap: 6px; text-align: left; }
+.gate-perks li { font-size: 13px; padding-left: 22px; position: relative; color: var(--text); }
+.gate-perks li::before { content: '✓'; position: absolute; left: 4px; color: var(--primary); font-weight: 800; }
+.gate-cta { width: 100%; justify-content: center; gap: 8px; text-decoration: none; }
+.gate-back { display: inline-block; margin-top: 14px; font-size: 13px; color: var(--text-2); }
+.gate-back:hover { color: var(--text); }

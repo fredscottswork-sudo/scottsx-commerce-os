@@ -143,8 +143,8 @@ export default async function registerGoogleRoute(app: FastifyInstance) {
       // 2. New Google account. Insert, or adopt an existing password account
       //    with the same address so the two sign-in methods share one profile.
       const { rows } = await pool.query(
-        `INSERT INTO users (email, display_name, profile_photo_url, google_uid, email_verified, role)
-              VALUES ($1, $2, $3, $4, true, 'buyer')
+        `INSERT INTO users (email, display_name, profile_photo_url, google_uid, email_verified, role, role_chosen)
+              VALUES ($1, $2, $3, $4, true, 'buyer', false)
          ON CONFLICT (email) DO UPDATE
               SET google_uid        = EXCLUDED.google_uid,
                   display_name      = COALESCE(NULLIF(users.display_name, ''), EXCLUDED.display_name),
@@ -161,6 +161,6 @@ export default async function registerGoogleRoute(app: FastifyInstance) {
     // email_verified = true. Keep the gate's cache in step.
     markVerified(user.id);
     const token = await tokenForUser(user);
-    return { token, user: publicUser(user) };
+    return { token, user: publicUser(user), needsOnboarding: !user.role_chosen };
   });
 }

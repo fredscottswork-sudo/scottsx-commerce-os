@@ -201,6 +201,7 @@ async function mount(route, session = null, { settleMs = 1400, google = 'block' 
       phone: session.user.phone ?? '',
       role: session.user.role,
       emailVerified: !!session.user.emailVerified,
+      roleChosen: session.user.roleChosen === undefined ? true : !!session.user.roleChosen,
       profilePhotoUrl: null,
       city: session.user.city ?? '',
     }));
@@ -292,7 +293,7 @@ section('1. Public marketplace (logged out)');
   const app = await mount('/');
   const t = app.text();
   check('home page renders the brand', t.includes('ScottsTechX'));
-  check('shows sign-in and get-started CTAs', t.includes('Sign in') && t.includes('Get started'));
+  check('shows a sign-in CTA for guests', t.includes('Sign in'));
   check('renders real product cards from the API', app.$$('.pcard').length > 0,
     `found ${app.$$('.pcard').length} cards`);
   check('shows a real seeded product title', t.includes(sampleProduct.title),
@@ -584,7 +585,7 @@ section('3b. Seller storefront');
 // ── 4. Nearby (live vs last-known positions) ────────────────────────────────
 section('4. Nearby stores');
 {
-  const app = await mount('/nearby');
+  const app = await mount('/nearby', buyer);
   const t = app.text();
   check('nearby page renders store cards', app.$$('.store-card').length > 0,
     `${app.$$('.store-card').length} stores`);
@@ -878,13 +879,13 @@ section('9. AI console');
 // ── 9b. Public STX AI page (guest, no login) ────────────────────────────────
 section('9b. Public STX AI page');
 {
-  const app = await mount('/ai');
+  const app = await mount('/ai', buyer);
   const t = app.text();
-  check('public AI chat renders for guests', /Ask anything|AI shopper/i.test(t));
+  check('AI chat renders for members', /Ask anything|AI shopper/i.test(t));
   check('starter suggestions are shown', app.$$('.ai-chat-body .chip').length >= 2,
     `${app.$$('.ai-chat-body .chip').length} chips`);
-  check('guests can type to the assistant', !!app.$('.ai-chat-input textarea'));
-  check('no account is needed to use the AI', !/Sign in/i.test(t) || app.window.location.pathname === '/ai',
+  check('members can type to the assistant', !!app.$('.ai-chat-input textarea'));
+  check('the AI page stays on /ai for members', app.window.location.pathname === '/ai',
     `path ${app.window.location.pathname}`);
   const aiBrand = app.$('.ai-brand');
   check('AI page carries the animated ScottsTechX brand', !!aiBrand && /ScottsTechX/i.test(aiBrand.textContent || ''),
@@ -900,7 +901,7 @@ section('9b. Public STX AI page');
 // ── 9c. Composer image selector: exactly ONE, opens the picker directly ─────
 section('9c. One direct image selector');
 {
-  const app = await mount('/ai');
+  const app = await mount('/ai', buyer);
   const composer = app.$('.ai-chat-input');
   const attachBtn = composer && app.$('.ai-chat-input button[aria-label="Attach a photo"]');
   // The old selector opened a modal; it must be gone entirely.
@@ -1317,8 +1318,9 @@ section('15. Google Sign-In');
   check('the button is initialised with our OAuth client id',
     String(app.window.__gisConfig?.client_id || '').endsWith('.apps.googleusercontent.com'),
     String(app.window.__gisConfig?.client_id));
-  check('the email and password form is still offered',
-    !!app.$('input[type="password"]'));
+  check('the email field is offered and there is no password field',
+    !!app.$('#login-email') && !app.$('input[type="password"]'));
+  check('the page offers "Continue as guest"', !!app.$('[data-testid="continue-guest"]'));
 
   // A real Google credential, minted by the backend's own test issuer, is not
   // available here — assert instead that a *rejected* credential surfaces an
@@ -1340,16 +1342,82 @@ section('15. Google Sign-In');
   check('the explanation points at email sign-in',
     /email/i.test(app.$('[data-testid="google-unavailable"]')?.textContent || ''));
   check('email sign-in still works when Google is blocked',
-    !!app.$('input[type="password"]') && !!app.byText('button', 'Sign in'));
+    !!app.$('#login-email') && !!app.byText('button', 'Continue with email'));
   check('no unhandled error escapes when Google is blocked',
     app.consoleErrors.length === 0, app.consoleErrors[0]);
   app.close();
 }
 {
-  // (c) Register page offers the same entry point.
+  // (c) /register is the same passwordless flow now.
   const app = await mount('/register', null, { google: 'ready' });
-  check('the register page also offers Google', !!app.$('[data-testid="google-signin"]'));
-  check("Google's button renders on register", !!app.$('[data-testid="gis-button"]'));
+  check('/register lands on the sign-in page', app.window.location.pathname === '/login',
+    app.window.location.pathname);
+  app.close();
+}
+
+// ── 16. Passwordless email code + onboarding + guest gate ───────────────────
+section('16. Email code sign-in, onboarding, guest gate');
+{
+  // Guests see a gate on Nearby and AI, not the feature.
+  const g1 = await mount('/nearby');
+  check('guest on /nearby sees the sign-in gate', !!g1.$('[data-testid="gate-nearby"]') && !g1.$('.store-card'));
+  check('gate stays on /nearby (no redirect)', g1.window.location.pathname === '/nearby');
+  g1.close();
+  const g2 = await mount('/ai');
+  check('guest on /ai sees the sign-in gate', !!g2.$('[data-testid="gate-ai"]') && !g2.$('.ai-chat-input textarea'));
+  g2.close();
+  const g3 = await mount('/');
+  check('guest can still browse the home page', g3.$$('.pcard').length > 0 && !g3.$('[data-testid^="gate-"]'));
+  g3.close();
+
+  // API: start → wrong code → right code → onboarding as seller.
+  const otpEmail = `otp_${Date.now()}@scottstechx.test`;
+  const start = await apiFetch('/auth/otp/start', { method: 'POST', body: JSON.stringify({ email: otpEmail }) });
+  check('otp/start accepts a new address', start.status === 200 && start.body.isNew === true, JSON.stringify(start.body).slice(0, 120));
+  check('otp/start returns a dev code when no SMTP is configured', /^\d{6}$/.test(String(start.body.devCode || '')));
+  const bad = await apiFetch('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ email: otpEmail, code: '000000' }) });
+  check('a wrong code is rejected', bad.status === 400 && /not correct/i.test(bad.body.error || ''), JSON.stringify(bad.body));
+  const good = await apiFetch('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ email: otpEmail, code: start.body.devCode }) });
+  check('the right code returns a session', good.status === 200 && !!good.body.token, JSON.stringify(good.body).slice(0, 120));
+  check('a new account needs onboarding', good.body.needsOnboarding === true && good.body.user?.roleChosen === false);
+  check('the account is email-verified after the code', good.body.user?.emailVerified === true);
+  const reuse = await apiFetch('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ email: otpEmail, code: start.body.devCode }) });
+  check('a code cannot be used twice', reuse.status === 400);
+  const throttled = await apiFetch('/auth/otp/start', { method: 'POST', body: JSON.stringify({ email: otpEmail }) });
+  check('resend is throttled', throttled.status === 429, String(throttled.status));
+
+  // Onboarding UI: the fresh session lands on /onboarding and both roles offered.
+  const fresh = { token: good.body.token, user: good.body.user };
+  const ob = await mount('/buyer', fresh);
+  check('a not-yet-onboarded account is sent to /onboarding', ob.window.location.pathname === '/onboarding', ob.window.location.pathname);
+  check('onboarding offers buyer and seller', !!ob.$('[data-testid="role-buyer"]') && !!ob.$('[data-testid="role-seller"]'));
+  const cont = ob.$('[data-testid="onboarding-continue"]');
+  check('continue is disabled until a role is picked', !!cont && cont.disabled);
+  await ob.click(ob.$('[data-testid="role-seller"]'), 200);
+  await ob.click(ob.$('[data-testid="onboarding-continue"]'), 400);
+  check('choosing seller asks for a store name', !!ob.$('#ob-store') && !!ob.$('[data-testid="logo-drop"]'));
+  ob.close();
+
+  const onboard = await apiFetch('/auth/onboarding', {
+    method: 'POST', headers: { authorization: `Bearer ${good.body.token}` },
+    body: JSON.stringify({ role: 'seller', storeName: 'OTP Test Store', storeLogoUrl: 'https://example.com/logo.png' }),
+  });
+  check('onboarding as seller succeeds', onboard.status === 200 && onboard.body.user?.role === 'seller' && onboard.body.user?.roleChosen === true,
+    JSON.stringify(onboard.body).slice(0, 160));
+  const st = await apiFetch('/seller/store-settings', { headers: { authorization: `Bearer ${onboard.body.token}` } }).catch(() => ({ status: 0, body: {} }));
+  check('store name and logo were saved', st.status === 200 && st.body?.settings?.storeName === 'OTP Test Store' && st.body?.settings?.storeLogoUrl === 'https://example.com/logo.png',
+    JSON.stringify(st.body).slice(0, 160));
+  const dash = await mount('/seller', { token: onboard.body.token, user: onboard.body.user });
+  check('the new seller reaches the seller dashboard', dash.window.location.pathname === '/seller', dash.window.location.pathname);
+  dash.close();
+
+  // Login UI: email → code screen.
+  const app = await mount('/login');
+  await app.type(app.$('#login-email'), `otpui_${Date.now()}@scottstechx.test`, 200);
+  await app.click(app.byText('button', 'Continue with email'), 1800);
+  check('submitting an email shows the 6-digit code screen', app.$$('[data-testid="otp-inputs"] .otp-box').length === 6,
+    app.text().slice(0, 120));
+  check('the dev code is surfaced when no SMTP is configured', !!app.$('[data-testid="dev-code"]'));
   app.close();
 }
 

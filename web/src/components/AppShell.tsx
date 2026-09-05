@@ -145,7 +145,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isCartRoute = location.pathname === '/cart';
   const isThreadRoute = /^\/messages\/[^/]+$/.test(location.pathname);
   const hideTopSearch = isAiRoute || isHomeRoute || isSearchRoute || isNearbyRoute || isDashboardRoute || isCartRoute || isThreadRoute;
-  if (!user && isAuthRoute) {
+  const isOnboardingRoute = location.pathname === '/onboarding';
+  if ((!user && isAuthRoute) || isOnboardingRoute) {
     return (
       <div className="auth-shell auth-shell--extra auth-shell--github">
         {/* STX logo style extraordinary */}
@@ -204,10 +205,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             {/* "Get started" is 93px at the mobile type scale and pushes row 1
                 23px past a 360px screen. Show the short label on a phone and
                 the full one from 480px up — same link, same destination. */}
-            <Link to="/login" className="btn btn-sm public-cta">Sign in</Link>
-            <Link to="/register" className="btn btn-primary btn-sm public-cta">
-              <span className="cta-long">Get started</span>
-              <span className="cta-short">Join</span>
+            <Link to="/login" className="btn btn-primary btn-sm public-cta">
+              <span className="cta-long">Sign in</span>
+              <span className="cta-short">Sign in</span>
             </Link>
           </div>
           {!isAiRoute && !isHomeRoute && !isSearchRoute && !isNearbyRoute && (

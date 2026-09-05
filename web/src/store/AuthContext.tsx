@@ -15,6 +15,10 @@ interface AuthState {
   ) => Promise<StoredUser>;
   register: (body: { email: string; password: string; displayName: string; phone?: string; role?: string })
     => Promise<{ required: boolean; sent: boolean; devCode?: string } | undefined>;
+  /** Passwordless: confirm the emailed code; returns the signed-in user. */
+  verifyEmailCode: (email: string, code: string) => Promise<StoredUser>;
+  /** First-run role choice (buyer / seller + store). */
+  completeOnboarding: (body: { role: 'buyer' | 'seller'; displayName?: string; storeName?: string; storeLogoUrl?: string | null; city?: string }) => Promise<StoredUser>;
   logout: () => void;
   refresh: () => Promise<void>;
   setUser: (u: StoredUser) => void;
@@ -30,6 +34,7 @@ function toStoredUser(u: any): StoredUser {
     phone: u.phone ?? '',
     role: u.role ?? 'buyer',
     emailVerified: !!u.emailVerified,
+    roleChosen: u.roleChosen === undefined || u.roleChosen === null ? true : !!u.roleChosen,
     profilePhotoUrl: u.profilePhotoUrl ?? u.profile_photo_url ?? null,
     city: u.city ?? '',
     createdAt: u.createdAt ?? u.created_at ?? undefined,
@@ -120,6 +125,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setUser]
   );
 
+  const verifyEmailCode = useCallback(
+    async (email: string, code: string) => {
+      setLoading(true);
+      try {
+        const res = await authService.otpVerify(email, code);
+        if (!res?.token) throw new Error('The server did not return a session. Please try again.');
+        tokenStore.set(res.token);
+        const stored = toStoredUser(res.user);
+        setUser(stored);
+        return stored;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setUser]
+  );
+
+  const completeOnboarding = useCallback(
+    async (body: { role: 'buyer' | 'seller'; displayName?: string; storeName?: string; storeLogoUrl?: string | null; city?: string }) => {
+      const res = await authService.onboarding(body);
+      // The role is inside the JWT, so a fresh token is required for the new
+      // dashboard's requests to be accepted.
+      if (res?.token) tokenStore.set(res.token);
+      const stored = toStoredUser(res.user);
+      setUser(stored);
+      return stored;
+    },
+    [setUser]
+  );
+
   const logout = useCallback(() => {
     forgetGoogleSession();
     tokenStore.clear();
@@ -137,8 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setUser]);
 
   const value = useMemo(
-    () => ({ user, loading, login, loginWithGoogle, loginWithFirebase, register, logout, refresh, setUser }),
-    [user, loading, login, loginWithGoogle, loginWithFirebase, register, logout, refresh, setUser]
+    () => ({ user, loading, login, loginWithGoogle, loginWithFirebase, register, verifyEmailCode, completeOnboarding, logout, refresh, setUser }),
+    [user, loading, login, loginWithGoogle, loginWithFirebase, register, verifyEmailCode, completeOnboarding, logout, refresh, setUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

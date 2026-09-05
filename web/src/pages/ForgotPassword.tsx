@@ -109,7 +109,7 @@ export default function ForgotPassword() {
           {!done && (
             <div className="auth-extra-foot">
               <p className="auth-foot-text">
-                Remembered? <Link to="/login" className="auth-link">Sign in</Link> • <Link to="/register" className="auth-link">Create account</Link>
+                Remembered? <Link to="/login" className="auth-link">Sign in</Link> • <Link to="/login" className="auth-link">Create account</Link>
               </p>
               <div className="auth-trust">
                 <ShieldCheck size={13} /> Secured & encrypted • ScottsTechX

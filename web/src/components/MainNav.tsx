@@ -264,7 +264,7 @@ export function MainNav({ role, counts }: Props) {
             </Link>
           )}
           {!role && (
-            <Link to="/register" className="mainnav-link mainnav-cta">
+            <Link to="/login" className="mainnav-link mainnav-cta">
               <Store size={15} /> <span>Sell on ScottsTechX</span>
             </Link>
           )}

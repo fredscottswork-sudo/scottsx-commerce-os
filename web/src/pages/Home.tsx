@@ -302,7 +302,7 @@ export default function Home() {
 
       <div className="card card-pad mt-24 row-between wrap" style={{ contentVisibility: 'auto', containIntrinsicSize: '80px' } as any}>
         <div><strong>Are you a seller?</strong><div className="muted">List products, manage inventory and track orders on the web.</div></div>
-        <Link to="/register"><Btn variant="primary" className="join-cta">Open a store</Btn></Link>
+        <Link to="/login"><Btn variant="primary" className="join-cta">Open a store</Btn></Link>
       </div>
     </>
   );

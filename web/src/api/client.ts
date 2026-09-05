@@ -96,6 +96,8 @@ export interface StoredUser {
   phone: string;
   role: 'buyer' | 'seller' | 'admin';
   emailVerified: boolean;
+  /** False for a brand-new account that has not picked buyer/seller yet. */
+  roleChosen?: boolean;
   profilePhotoUrl: string | null;
   city: string;
   createdAt?: string;

@@ -45,7 +45,7 @@ const USER_CANCELLED = new Set([
   'auth/user-cancelled',
 ]);
 
-export default function GoogleButton({ redirectTo = '/' }: { redirectTo?: string }) {
+export default function GoogleButton({ redirectTo = '/', divider = true }: { redirectTo?: string; divider?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const { loginWithGoogle, loginWithFirebase } = useAuth();
   const { toast } = useToast();
@@ -57,9 +57,14 @@ export default function GoogleButton({ redirectTo = '/' }: { redirectTo?: string
   const [error, setError] = useState('');
 
   const land = useCallback(
-    (user: { role: string; displayName: string; email: string }) => {
-      toast(`Welcome, ${user.displayName || user.email}`, 'success');
-      navigate(user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : redirectTo);
+    (user: { role: string; displayName: string; email: string; roleChosen?: boolean }) => {
+      // First sign-in: pick buyer / seller before landing anywhere.
+      if (user.roleChosen === false && user.role !== 'admin') {
+        navigate('/onboarding', { replace: true });
+        return;
+      }
+      toast(`Welcome back, ${user.displayName || user.email}`, 'success');
+      navigate(user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : user.role === 'buyer' ? '/buyer' : redirectTo);
     },
     [navigate, redirectTo, toast]
   );
@@ -154,7 +159,7 @@ export default function GoogleButton({ redirectTo = '/' }: { redirectTo?: string
 
   return (
     <div className="google-signin" data-testid="google-signin" data-status={status} data-mode={mode}>
-      <div className="google-divider"><span>or</span></div>
+      {divider && <div className="google-divider"><span>or</span></div>}
 
       {mode === 'firebase' ? (
         <button
@@ -183,7 +188,7 @@ export default function GoogleButton({ redirectTo = '/' }: { redirectTo?: string
       )}
       {status === 'unavailable' && (
         <div className="google-fallback muted" data-testid="google-unavailable">
-          Google Sign-In is unavailable right now — please use your email and password.
+          Google Sign-In is unavailable right now — please continue with your email instead.
         </div>
       )}
       {error && (

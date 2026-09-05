@@ -24,6 +24,7 @@ import registerAuthRoute from './modules/auth/login.route.js';
 import registerFirebaseAuthRoute from './modules/auth/firebase-auth.route.js';
 import registerGoogleRoute from './modules/auth/google.route.js';
 import { registerVerifyRoutes } from './modules/auth/verify.route.js';
+import registerOtpRoutes from './modules/auth/otp.route.js';
 import { registerResetRoutes } from './modules/auth/reset.route.js';
 import registerProductsRoute from './modules/products/products.route.js';
 import registerStoreSettingsRoute from './modules/seller/store-settings.route.js';
@@ -135,6 +136,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerFirebaseAuthRoute(app);
   registerGoogleRoute(app);
   registerVerifyRoutes(app);
+  registerOtpRoutes(app);
   registerResetRoutes(app);
   registerProductsRoute(app);
   registerStoreSettingsRoute(app);

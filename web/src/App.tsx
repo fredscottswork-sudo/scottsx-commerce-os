@@ -6,7 +6,8 @@ import { useSeo } from './hooks/useSeo';
 import { Loading } from './components/ui';
 
 import Login from './pages/Login';
-import Register from './pages/Register';
+import Onboarding from './pages/Onboarding';
+import SignInGate from './components/SignInGate';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -74,6 +75,8 @@ function RequireRole({ role, children }: { role: 'buyer' | 'seller' | 'admin'; c
   // An unverified address is not a usable account. This is the gate: signing
   // up no longer drops you straight into a dashboard.
   if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
+  // A brand-new account picks buyer / seller before it sees any dashboard.
+  if (user.roleChosen === false && user.role !== 'admin') return <Navigate to="/onboarding" replace />;
   if (user.role !== role) {
     // Auto-redirect each role to its own home.
     const home = user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : '/buyer';
@@ -87,6 +90,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   useSeo({ noIndex: true });
   if (!user) return <Navigate to="/login" replace />;
   if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
+  if (user.roleChosen === false && user.role !== 'admin') return <Navigate to="/onboarding" replace />;
   return <>{children}</>;
 }
 
@@ -96,6 +100,7 @@ function RedirectByRole() {
   // Never bounce an unverified account into a dashboard — that is exactly the
   // "logged in without verifying" behaviour this gate exists to stop.
   if (!user.emailVerified) return <Navigate to="/verify-email" replace />;
+  if (user.roleChosen === false && user.role !== 'admin') return <Navigate to="/onboarding" replace />;
   return <Navigate to={user.role === 'admin' ? '/admin' : user.role === 'seller' ? '/seller' : '/buyer'} replace />;
 }
 
@@ -127,7 +132,17 @@ export default function App() {
           {/* public */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={user ? <RedirectByRole /> : <Login />} />
-          <Route path="/register" element={user ? <RedirectByRole /> : <Register />} />
+          {/* Sign-up and sign-in are the same passwordless flow now. */}
+          <Route path="/register" element={<Navigate to="/login" replace />} />
+          <Route
+            path="/onboarding"
+            element={
+              !user ? <Navigate to="/login" replace />
+              : !user.emailVerified ? <Navigate to="/verify-email" replace />
+              : user.roleChosen === false && user.role !== 'admin' ? <Onboarding />
+              : <RedirectByRole />
+            }
+          />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route
@@ -146,9 +161,10 @@ export default function App() {
           />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/seller/:id" element={<SellerStorefront />} />
-          <Route path="/nearby" element={<Nearby />} />
+          {/* Guests may browse, but Nearby and the AI Shopper need an account. */}
+          <Route path="/nearby" element={<SignInGate feature="nearby"><Nearby /></SignInGate>} />
           <Route path="/search" element={<Search />} />
-          <Route path="/ai" element={<Ai />} />
+          <Route path="/ai" element={<SignInGate feature="ai"><Ai /></SignInGate>} />
           <Route path="/cms/:slug" element={<CmsPage />} />
 
           {/* public cart — guest browsing, login deferred to checkout */}

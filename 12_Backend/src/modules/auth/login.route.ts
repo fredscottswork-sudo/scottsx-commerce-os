@@ -66,6 +66,8 @@ export function publicUser(row: any) {
     phone: row.phone ?? '',
     role: row.role,
     emailVerified: !!row.email_verified,
+    /** False until the user picked buyer/seller in onboarding (new accounts). */
+    roleChosen: row.role_chosen === undefined || row.role_chosen === null ? true : !!row.role_chosen,
     firebaseUid: row.firebase_uid ?? null,
     profilePhotoUrl: row.profile_photo_url ?? null,
     city: row.city ?? '',
@@ -101,8 +103,8 @@ export default async function registerAuthRoute(app: FastifyInstance) {
       // nothing stopped fake@nowhere.invalid from signing up. A code is mailed
       // immediately after this insert and the flag is set only once the user
       // proves they can read that inbox.
-      `INSERT INTO users (email, password_hash, display_name, phone, role, city, email_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, false)
+      `INSERT INTO users (email, password_hash, display_name, phone, role, city, email_verified, role_chosen)
+       VALUES ($1, $2, $3, $4, $5, $6, false, true)
        RETURNING *`,
       [body.email, hash, body.displayName, body.phone, body.role, body.city]
     );

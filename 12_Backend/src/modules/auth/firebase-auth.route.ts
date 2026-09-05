@@ -97,8 +97,8 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
         user = rows[0];
       } else {
         const { rows } = await pool.query(
-          `INSERT INTO users (email, display_name, profile_photo_url, firebase_uid, email_verified, role, phone)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO users (email, display_name, profile_photo_url, firebase_uid, email_verified, role, phone, role_chosen)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING *`,
           [
             email,
@@ -108,6 +108,8 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
             emailVerified,
             profile.role === 'seller' ? 'seller' : 'buyer',
             profile.phone || '',
+            // Google popup with no role in the profile → onboarding picks it.
+            !!profile.role,
           ]
         );
         user = rows[0];
@@ -145,6 +147,7 @@ export default async function registerFirebaseAuthRoute(app: FastifyInstance) {
       // Lets the client decide whether to show "check your inbox" without
       // having to re-read the token itself.
       emailVerified: user.email_verified === true,
+      needsOnboarding: !user.role_chosen,
     });
   });
 

@@ -172,7 +172,7 @@ export default function Cart() {
             <Btn size="sm" icon={<LogIn size={14} />} onClick={() => navigate('/login', { state: { from: '/cart' } })}>
               Sign in
             </Btn>
-            <Btn size="sm" variant="primary" onClick={() => navigate('/register')}>Create account</Btn>
+            <Btn size="sm" variant="primary" onClick={() => navigate('/login')}>Create account</Btn>
           </div>
         </div>
       )}

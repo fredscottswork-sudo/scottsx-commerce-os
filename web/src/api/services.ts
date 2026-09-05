@@ -111,9 +111,20 @@ export const authService = {
     idToken: string,
     profile?: { displayName?: string; phone?: string; role?: string; storeName?: string }
   ) =>
-    api<{ token: string; user: any; emailVerified?: boolean }>('/auth/firebase/sign-in', {
+    api<{ token: string; user: any; emailVerified?: boolean; needsOnboarding?: boolean }>('/auth/firebase/sign-in', {
       method: 'POST', auth: false, body: { idToken, ...(profile ?? {}) },
     }),
+  /** Passwordless: email a 6-digit sign-in code. */
+  otpStart: (email: string) =>
+    api<{ sent: boolean; isNew: boolean; expiresInMin: number; resendInSec: number; devCode?: string }>(
+      '/auth/otp/start', { method: 'POST', auth: false, body: { email } }),
+  /** Passwordless: exchange the code for a session (creates the account on first use). */
+  otpVerify: (email: string, code: string) =>
+    api<{ token: string; user: any; needsOnboarding: boolean }>(
+      '/auth/otp/verify', { method: 'POST', auth: false, body: { email, code } }),
+  /** First-run choice: buyer, or seller with a store name + logo. */
+  onboarding: (body: { role: 'buyer' | 'seller'; displayName?: string; storeName?: string; storeLogoUrl?: string | null; city?: string }) =>
+    api<{ token: string; user: any }>('/auth/onboarding', { method: 'POST', body }),
   upgradeToSeller: () => api<{ token: string; user: any }>('/auth/upgrade-to-seller', { method: 'POST' }),
   uploadPhoto: (file: File) => {
     const form = new FormData();
