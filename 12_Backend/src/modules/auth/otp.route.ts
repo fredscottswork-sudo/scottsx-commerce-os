@@ -18,7 +18,7 @@ import { getPool } from '../../db.js';
 import { requireAuth, authedUser, markVerified, tokenForUser } from '../../auth.js';
 import { publicUser } from './login.route.js';
 import { ValidationError, TooManyRequestsError, ServiceUnavailableError, UnauthorizedError } from '../../errors.js';
-import { sendMail, mailConfigured, devCodesAllowed, verificationUndeliverable } from '../../mail.js';
+import { sendMail, devCodesAllowed, verificationUndeliverable } from '../../mail.js';
 
 const CODE_TTL_MIN = 15;
 const MAX_ATTEMPTS = 6;
@@ -116,16 +116,26 @@ export default async function registerOtpRoutes(app: FastifyInstance) {
     );
 
     let delivered = false;
+    let reason = '';
     try {
       const { subject, text } = codeEmail(code, isNew);
       const res = await sendMail(email, subject, text);
       delivered = res.delivered;
-      if (!delivered && mailConfigured()) console.error('[otp] could not send code to', email, '-', res.reason);
+      reason = res.reason || '';
     } catch (e: any) {
-      console.error('[otp] mailer threw', e?.message);
+      reason = e?.message || 'mailer threw';
+      console.error('[otp] mailer threw', reason);
     }
     if (!delivered && !devCodesAllowed()) {
-      throw new ServiceUnavailableError('We could not send the email right now. Please try again in a moment or continue with Google.');
+      // Do not burn the user's cool-down on a failure that was ours.
+      await pool.query('DELETE FROM email_verifications WHERE email = $1 AND purpose = $2 AND code_hash = $3', [email, 'login', hash(code)]);
+      const hint = /535|auth|credential|password/i.test(reason) ? ' (mail server rejected the login)'
+        : /timed out|ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(reason) ? ' (mail server unreachable)'
+        : /STARTTLS|wrong version|handshake|SSL/i.test(reason) ? ' (TLS/port mismatch)'
+        : '';
+      throw new ServiceUnavailableError(
+        `We could not send the email right now${hint}. Please try again in a moment or continue with Google.`
+      );
     }
 
     return {

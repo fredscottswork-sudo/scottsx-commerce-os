@@ -25,6 +25,7 @@ import registerFirebaseAuthRoute from './modules/auth/firebase-auth.route.js';
 import registerGoogleRoute from './modules/auth/google.route.js';
 import { registerVerifyRoutes } from './modules/auth/verify.route.js';
 import registerOtpRoutes from './modules/auth/otp.route.js';
+import { mailSummary } from './mail.js';
 import { registerResetRoutes } from './modules/auth/reset.route.js';
 import registerProductsRoute from './modules/products/products.route.js';
 import registerStoreSettingsRoute from './modules/seller/store-settings.route.js';
@@ -104,6 +105,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/api/v1/healthz', async () => ({ ok: true, db: 'connected' }));
+  // Operator diagnostics for outbound email: is SMTP configured, which mode,
+  // and the reason for the most recent failure. No secrets are exposed.
+  app.get('/api/v1/mail/status', async () => mailSummary());
 
   // Landing page for the API root. Opening the API host in a browser used to
   // return a bare {"error":"Not Found"}, which reads as "the site is broken"
