@@ -1910,10 +1910,11 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   width: min(300px, 86vw); display: flex; flex-direction: column;
   background: var(--surface); border-right: 1px solid var(--border);
   box-shadow: 0 20px 60px -20px rgba(0,0,0,.45);
-  transform: translateX(-104%); transition: transform 280ms cubic-bezier(.2,.7,.2,1);
+  transform: translateX(-104%);
+  transition: transform 280ms cubic-bezier(.2,.7,.2,1), visibility 0s linear 280ms;
   visibility: hidden;
 }
-.ai-drawer--open { transform: none; visibility: visible; }
+.ai-drawer--open { transform: none; visibility: visible; transition: transform 280ms cubic-bezier(.2,.7,.2,1), visibility 0s; }
 .ai-drawer-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 10px 10px 16px; border-bottom: 1px solid var(--border);
@@ -2017,10 +2018,11 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   width: min(300px, 86vw); display: flex; flex-direction: column;
   background: var(--surface); border-right: 1px solid var(--border);
   box-shadow: 0 20px 60px -20px rgba(0,0,0,.45);
-  transform: translateX(-104%); transition: transform 280ms cubic-bezier(.2,.7,.2,1);
+  transform: translateX(-104%);
+  transition: transform 280ms cubic-bezier(.2,.7,.2,1), visibility 0s linear 280ms;
   visibility: hidden;
 }
-.ai-drawer--open { transform: none; visibility: visible; }
+.ai-drawer--open { transform: none; visibility: visible; transition: transform 280ms cubic-bezier(.2,.7,.2,1), visibility 0s; }
 .ai-drawer-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 10px 10px 16px; border-bottom: 1px solid var(--border);
@@ -2250,39 +2252,44 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   pointer-events: none; z-index: 2;
 }
 /* One pill: [ + ] [ textarea .............. ] [ ↑ ] */
+/* Open composer: no box, no border — just the text and the toolbar. */
 .ai-composer {
   position: relative;
   display: flex; flex-direction: column; gap: 0;
   min-height: 132px;                     /* desktop: ~120–160px resting */
-  padding: 12px 14px 10px; border-radius: 22px;
-  border: 1px solid var(--border); background: var(--surface-2);
+  padding: 10px 6px 4px; border: 0; border-radius: 0; background: transparent;
   cursor: text;
-  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .ai-composer-field { position: relative; flex: 1 1 auto; display: flex; min-height: 0; }
 .ai-composer-bar { display: flex; align-items: center; gap: 8px; padding-top: 6px; }
 .ai-composer-hint { flex: 1; font-size: 11px; color: var(--text-3); text-align: right; padding-right: 6px; opacity: 0; transition: opacity 200ms; }
 .ai-composer:focus-within .ai-composer-hint { opacity: 1; }
-.ai-composer:focus-within {
-  border-color: transparent;
-  background: var(--surface);
+
+/* The whole input area is the frame. A blue light travels around its border
+   while the assistant is working (and a fainter one while focused). The
+   frame is a 2px mask ring so only the edge is painted, not the surface. */
+.ai-chat-input { position: relative; isolation: isolate; }
+.ai-chat-input::before {
+  content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  border-radius: inherit; padding: 2px;
+  background: conic-gradient(from var(--ring-a, 0deg),
+    transparent 0deg, transparent 250deg,
+    color-mix(in srgb, var(--primary) 30%, transparent) 300deg,
+    var(--primary) 340deg, #22d3ee 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: 0; transition: opacity 240ms ease;
 }
-/* A slow, thin gradient ring travels around the composer while focused. */
-.ai-composer::before {
-  content: ''; position: absolute; inset: -1px; border-radius: inherit; z-index: -1; pointer-events: none;
-  background: conic-gradient(from var(--ring-a, 0deg), var(--primary), #22d3ee, #8b5cf6, var(--primary));
-  opacity: 0; transition: opacity 260ms ease;
-}
-.ai-composer:focus-within::before { opacity: .9; animation: aiRing 4s linear infinite; }
-.ai-composer::after {
-  content: ''; position: absolute; inset: -6px; border-radius: 30px; z-index: -2; pointer-events: none;
-  background: radial-gradient(60% 100% at 50% 100%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%);
-  opacity: 0; transition: opacity 320ms ease;
-}
-.ai-composer:focus-within::after { opacity: 1; }
+.ai-chat-input:focus-within::before { opacity: .55; animation: aiRing 5s linear infinite; }
+.ai-chat-input--busy::before { opacity: 1; animation: aiRing 2.2s linear infinite; }
 @property --ring-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes aiRing { to { --ring-a: 360deg; } }
-.ai-composer { isolation: isolate; }
+/* Browsers without @property: fall back to a static top edge glow. */
+@supports not (background: conic-gradient(from var(--x, 0deg), red, blue)) {
+  .ai-chat-input:focus-within::before, .ai-chat-input--busy::before {
+    background: linear-gradient(90deg, transparent, var(--primary), transparent); animation: none;
+  }
+}
 .ai-composer textarea {
   flex: 1 1 auto; width: 100%; min-width: 0; resize: none;
   min-height: 72px; max-height: 320px;
@@ -5631,7 +5638,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   background: var(--surface);
   border-top: 1px solid var(--border);
   padding: 10px 14px 12px;
-  border-radius: 0;
+  border-radius: 18px 18px 0 0;
 }
 @media (max-width: 620px) {
   .ai-console--noagents { gap: 0; }
@@ -5644,7 +5651,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
     gap: 6px;
   }
-  .ai-composer { border-radius: 20px; min-height: 108px; padding: 10px 12px 8px; }   /* mobile: ~100–140px */
+  .ai-composer { min-height: 108px; padding: 8px 4px 2px; }   /* mobile: ~100–140px */
   .ai-composer textarea { min-height: 56px; max-height: 220px; }
   .ai-composer-bar { padding-top: 4px; }
   .ai-chat-img, .ai-send { width: 38px; height: 38px; }

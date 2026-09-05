@@ -241,12 +241,23 @@ export function AiConsole({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const narrow = useNarrowScreen();
+  /** Below this the history panel is an overlay drawer; above, a docked sidebar. */
+  const drawerMode = useNarrowScreen(960);
   /** True while the on-screen keyboard is up (phones). */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const navigate = useNavigate();
   const [history, setHistory] = useState<SavedChat[]>(() => loadHistory(audience));
   const [chatId, setChatId] = useState<string>(() => `${Date.now().toString(36)}`);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpenRaw] = useState<boolean>(() => {
+    try { return localStorage.getItem('stx.ai.sidebar') === '1' && window.innerWidth > 960; } catch { return false; }
+  });
+  const setSidebarOpen = useCallback((v: boolean | ((p: boolean) => boolean)) => {
+    setSidebarOpenRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      try { localStorage.setItem('stx.ai.sidebar', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   /** Persist the current conversation whenever a complete answer lands. */
   useEffect(() => {
@@ -259,20 +270,24 @@ export function AiConsole({
     });
   }, [turns, chatId, audience]);
 
+  /** Start a fresh conversation. The sidebar stays as it is (open stays
+   *  open) and the previous chat remains at the top of the list. */
   const newChat = useCallback(() => {
     abortRef.current?.abort();
     setTurns([]);
     setPhoto(null);
     setInput('');
     setChatId(`${Date.now().toString(36)}`);
-    setSidebarOpen(false);
-  }, []);
+    if (drawerMode) setSidebarOpen(false);
+    window.setTimeout(() => inputRef.current?.focus(), 50);
+  }, [drawerMode, setSidebarOpen]);
   const openChat = useCallback((c: SavedChat) => {
     abortRef.current?.abort();
     setTurns(c.turns.map((t) => ({ ...t, photo: undefined })));
     setChatId(c.id);
-    setSidebarOpen(false);
-  }, []);
+    // Phones: the drawer covers the chat, so close it. Desktop: keep it docked.
+    if (drawerMode) setSidebarOpen(false);
+  }, [drawerMode, setSidebarOpen]);
   const deleteChat = useCallback((id: string) => {
     setHistory((prev) => { const next = prev.filter((c) => c.id !== id); persistHistory(audience, next); return next; });
     if (id === chatId) { setTurns([]); setChatId(`${Date.now().toString(36)}`); }
@@ -992,7 +1007,7 @@ export function AiConsole({
         )}
 
         <form
-          className={`ai-chat-input${dragOver ? ' ai-chat-input--drop' : ''}${photo ? ' ai-chat-input--photo' : ''}`}
+          className={`ai-chat-input${dragOver ? ' ai-chat-input--drop' : ''}${photo ? ' ai-chat-input--photo' : ''}${busy ? ' ai-chat-input--busy' : ''}`}
           onSubmit={(e) => {
             e.preventDefault();
             const text = input.trim() || (photo ? 'What can you tell me from this photo?' : '');
