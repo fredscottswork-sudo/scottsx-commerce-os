@@ -302,7 +302,7 @@ section('1. Public marketplace (logged out)');
     `got ${app.window.document.documentElement.getAttribute('data-theme')}`);
   check('no runtime errors on the home page', app.consoleErrors.length === 0, app.consoleErrors[0]);
   check('home has exactly one search bar (nothing small above it)',
-    app.$$('.home-searchbar input').length === 1 && app.$$('.public-search').length === 0,
+    app.$$('.home-searchbar input:not([type="file"])').length === 1 && app.$$('.public-search').length === 0,
     `${app.$$('.public-search').length} topbar search bars on the home page`);
   check('home opens with the first even row of categories', app.$$('.cat-grid-even .cat-tile').length === 8,
     `${app.$$('.cat-grid-even .cat-tile').length} tiles`);
@@ -941,40 +941,44 @@ section('9d. Dashboard top nav overlap');
   app.close();
 }
 
-// ── 9e. Search bar image upload is an inline panel (no modal) ──────────────
-section('9e. Inline image search panel');
+// ── 9e. Search-bar photo search works like the AI composer ─────────────────
+// One button → native file picker → search. No panel, no drop zone, no image
+// URL or hint fields anywhere.
+section('9e. One-tap photo search');
 {
   const app = await mount('/cms/about');
   await new Promise((r) => setTimeout(r, 300));
   const shellCam = [...app.$$('button[aria-label="Search by image"]')]
     .find((b) => !!b.closest?.('.searchbar-zone'));
-  check('shell search bar has a camera button', !!shellCam);
+  check('shell search bar has a photo button', !!shellCam);
   if (shellCam) {
-    await app.click(shellCam, 350);
-    check('camera opens an inline panel under the search bar (no modal)',
-      !!app.$('.search-img-panel .visual-search') && !app.$('.modal'),
-      app.$('.modal') ? 'modal still opened' : 'no panel');
-    check('panel offers a drop zone', !!app.$('.search-img-panel .vs-drop'));
-    check('panel exposes the image URL field', !!app.$('.search-img-panel input[aria-label="Image URL"]'));
-    check('panel has a close button', !!app.$('.search-img-panel button[aria-label="Close image search"]'));
-    const close = app.$('.search-img-panel button[aria-label="Close image search"]');
-    if (close) await app.click(close, 120);
-    check('panel closes', !app.$('.search-img-panel .visual-search'));
-  } else {
-    check('camera opens an inline panel under the search bar (no modal)', false, 'no shell camera');
+    const fileInput = shellCam.closest('form')?.querySelector('input[type="file"]');
+    check('a hidden file picker sits beside it (accept=image/*)',
+      !!fileInput && fileInput.getAttribute('accept') === 'image/*',
+      fileInput ? `accept=${fileInput.getAttribute('accept')}` : 'no file input');
+    let triggered = false;
+    fileInput?.addEventListener('click', () => { triggered = true; });
+    await app.click(shellCam, 250);
+    check('pressing it opens the file picker directly (no panel/modal)',
+      triggered && !app.$('.search-img-panel') && !app.$('.visual-search') && !app.$('.modal'),
+      triggered ? 'a panel still opened' : 'picker not triggered');
+    check('no image-URL or hint fields anywhere',
+      !app.$('input[aria-label="Image URL"]') && !app.$('input[aria-label="Describe the item (optional)"]'));
   }
   app.close();
 
   const sp = await mount('/search');
   await new Promise((r) => setTimeout(r, 400));
   const cam2 = [...sp.$$('button[aria-label="Search by image"]')].find((b) => !b.closest?.('.searchbar-zone'));
-  check('search page has its own search-by-image button', !!cam2);
+  check('search page has its own photo button', !!cam2);
   if (cam2) {
-    await sp.click(cam2, 350);
-    check('search page shows the inline panel (no modal)',
-      !!sp.$('.search-img-panel--page .visual-search') && !sp.$('.modal'), 'no panel');
-  } else {
-    check('search page shows the inline panel (no modal)', false, 'no camera button');
+    const fi = cam2.parentElement?.querySelector('input[type="file"]');
+    let triggered = false;
+    fi?.addEventListener('click', () => { triggered = true; });
+    await sp.click(cam2, 250);
+    check('search page button opens the picker directly (no panel)',
+      triggered && !sp.$('.search-img-panel') && !sp.$('.visual-search') && !sp.$('.modal'),
+      triggered ? 'panel opened' : 'picker not triggered');
   }
   sp.close();
 }

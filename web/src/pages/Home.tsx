@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, memo } from 'react';
 import { Link } from 'react-router-dom';
-import { CreditCard, MessageCircle, MapPin, Search, ShoppingBag, Sparkles, Camera, ChevronDown } from 'lucide-react';
+import { CreditCard, MessageCircle, MapPin, Search, ShoppingBag, Sparkles, ImagePlus, Loader2, ChevronDown } from 'lucide-react';
 import { productService, geoService } from '../api/services';
-import type { Product, NearbySeller } from '../api/types';
+import type { Product, NearbySeller, AiSearchResult } from '../api/types';
+import { useImageSearch } from '../components/ImageSearchButton';
+import { stashImageSearchResult } from '../lib/imageSearch';
 import { ProductGrid } from '../components/ProductCard';
 import VerifiedStoreCarousel from '../components/VerifiedStoreCarousel';
 import ExtraDealDisplay from '../components/ExtraDealDisplay';
@@ -147,11 +149,11 @@ export default function Home() {
     ? categoryTiles
     : categoryTiles.slice(0, SHOWCASE_PREVIEW);
 
-  /** Camera shortcut: open the (more capable) search page image modal. */
-  const openImageSearch = () => {
-    try { sessionStorage.setItem('stx:open-image-search', '1'); } catch { /* ignore */ }
+  /** One-tap photo search (same flow as the AI composer): pick → results on /search. */
+  const imgSearch = useImageSearch(useCallback((r: AiSearchResult) => {
+    stashImageSearchResult(r);
     window.location.href = '/search?img=1';
-  };
+  }, []));
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim().toLowerCase()), 250);
@@ -237,8 +239,10 @@ export default function Home() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={watermark} aria-label="Search products" />
           {q && <button className="home-searchbar-clear" onClick={() => setQ('')} aria-label="Clear search"><span>×</span></button>}
           <div className="home-searchbar-divider" aria-hidden="true" />
-          <button className="home-searchbar-cam" onClick={openImageSearch} title="Search by image" aria-label="Search by image">
-            <Camera size={14} />
+          {imgSearch.input}
+          <button className="home-searchbar-cam" onClick={imgSearch.open} disabled={imgSearch.busy}
+            aria-busy={imgSearch.busy || undefined} title="Search with a photo" aria-label="Search by image">
+            {imgSearch.busy ? <Loader2 size={14} className="anim-spin" /> : <ImagePlus size={14} />}
           </button>
           <button className="home-searchbar-ai" onClick={() => q.trim() && (window.location.href = `/search?q=${encodeURIComponent(q.trim())}`)}><Sparkles size={12} /> AI</button>
         </div>

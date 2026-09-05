@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, ShoppingBag, Heart, MapPin, MessageCircle, Bell,
   Settings, Store, BarChart3, Users, LogOut, Sun, Moon, PlusCircle,
   Receipt, LifeBuoy, Sparkles, ShieldCheck, ShoppingCart, X, Search,
-  Upload, ClipboardCheck, Headphones, Camera, PanelLeftClose, PanelLeftOpen,
+  Upload, ClipboardCheck, Headphones, ImagePlus, Loader2, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../store/ThemeContext';
@@ -12,7 +12,7 @@ import { useCart } from '../store/CartContext';
 import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
 import { BrandMark } from './BrandLogo';
-import { VisualSearch } from './VisualSearch';
+import { useImageSearch } from './ImageSearchButton';
 import { stashImageSearchResult } from '../lib/imageSearch';
 import { SEARCH_WATERMARKS, useRotatingPlaceholder } from '../hooks/useRotatingPlaceholder';
 
@@ -32,10 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(readSidebarHidden);
-  const [imgSearchOpen, setImgSearchOpen] = useState(false);
   /** Photo dropped/pasted onto the search bar → pre-loaded into the panel. */
-  const [imgPanelFile, setImgPanelFile] = useState<File | null>(null);
-  const [imgPanelSeq, setImgPanelSeq] = useState(0);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [query, setQuery] = useState('');
@@ -59,27 +56,21 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const onImageResults = useCallback((r: any) => {
     stashImageSearchResult(r);
-    setImgSearchOpen(false);
     navigate('/search?img=1');
   }, [navigate]);
 
-  /** A photo dropped or pasted onto the search bar: open the panel with it. */
-  const openImagePanelWithFile = useCallback((f: File) => {
-    if (!/^image\//.test(f.type)) return;
-    setImgPanelFile(f);
-    setImgPanelSeq((s) => s + 1);
-    setImgSearchOpen(true);
-  }, []);
+  // Same one-tap photo flow as the AI composer: button → file picker → search.
+  const imgSearch = useImageSearch(onImageResults);
+  const { searchFile: searchImageFile } = imgSearch;
 
   const onSearchBarDrop = useCallback(
     (e: React.DragEvent) => {
       if (e.dataTransfer?.files?.length) {
         e.preventDefault();
-        const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith('image/'));
-        if (f) openImagePanelWithFile(f);
+        void searchImageFile(Array.from(e.dataTransfer.files).find((x) => x.type.startsWith('image/')));
       }
     },
-    [openImagePanelWithFile]
+    [searchImageFile]
   );
 
   const onSearchBarPaste = useCallback(
@@ -87,30 +78,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/'));
       if (f) {
         e.preventDefault();
-        openImagePanelWithFile(f);
+        void searchImageFile(f);
       }
     },
-    [openImagePanelWithFile]
-  );
-
-  /** Inline image panel (Google-Lens style) drawn under the search bar. */
-  const imagePanel = (
-    <div className="search-img-panel" role="dialog" aria-label="Search by image">
-      <div className="search-img-panel-head">
-        <span className="semi row" style={{ gap: 7 }}>
-          <Camera size={14} /> Search by image
-        </span>
-        <button type="button" className="btn btn-icon search-img-close" aria-label="Close image search"
-          onClick={() => setImgSearchOpen(false)}>
-          <X size={15} />
-        </button>
-      </div>
-      <VisualSearch key={imgPanelSeq} compact bare initialFile={imgPanelFile} showResults={false}
-        onResults={onImageResults} />
-      <p className="tiny muted-2 mt-8" style={{ margin: '8px 0 0' }}>
-        Drop or paste a photo onto the search bar, or click the box above.
-      </p>
-    </div>
+    [searchImageFile]
   );
 
   useEffect(() => () => { mounted.current = false; }, []);
@@ -245,12 +216,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                   placeholder={watermark}
                   aria-label="Search products"
                 />
-                <button type="button" className="btn btn-icon search-cam" onClick={() => setImgSearchOpen((v) => !v)}
-                  title="Search by image" aria-label="Search by image">
-                  <Camera size={17} />
+                {imgSearch.input}
+                <button type="button" className="btn btn-icon search-cam" onClick={imgSearch.open}
+                  disabled={imgSearch.busy} aria-busy={imgSearch.busy || undefined}
+                  title="Search with a photo" aria-label="Search by image">
+                  {imgSearch.busy ? <Loader2 size={17} className="anim-spin" /> : <ImagePlus size={17} />}
                 </button>
               </form>
-              {imgSearchOpen && imagePanel}
             </div>
           )}
         </header>
@@ -398,12 +370,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                   placeholder={watermark}
                   aria-label="Search products"
                 />
-                <button type="button" className="btn btn-icon search-cam" onClick={() => setImgSearchOpen((v) => !v)}
-                  title="Search by image" aria-label="Search by image">
-                  <Camera size={17} />
+                {imgSearch.input}
+                <button type="button" className="btn btn-icon search-cam" onClick={imgSearch.open}
+                  disabled={imgSearch.busy} aria-busy={imgSearch.busy || undefined}
+                  title="Search with a photo" aria-label="Search by image">
+                  {imgSearch.busy ? <Loader2 size={17} className="anim-spin" /> : <ImagePlus size={17} />}
                 </button>
               </form>
-              {imgSearchOpen && imagePanel}
             </div>
           )}
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Sparkles, SlidersHorizontal, X, Image as ImageIcon, Search as SearchIcon, Loader2,
+  Sparkles, SlidersHorizontal, X, ImagePlus, Search as SearchIcon, Loader2,
 } from 'lucide-react';
 import { productService, aiService } from '../api/services';
 import type { Product, Facets, AiSearchResult } from '../api/types';
@@ -9,7 +9,7 @@ import { formatUgx } from '../api/types';
 import { useCart } from '../store/CartContext';
 import { useToast } from '../store/ToastContext';
 import { ProductGrid } from '../components/ProductCard';
-import { VisualSearch } from '../components/VisualSearch';
+import { useImageSearch } from '../components/ImageSearchButton';
 import {
   Btn, Empty, ErrorBox, SkeletonGrid, Field, Input, Select, Switch, Pagination, Modal, RichText,
 } from '../components/ui';
@@ -67,8 +67,8 @@ export default function Search() {
 
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState('');
-  const [imageOpen, setImageOpen] = useState(false);
   const watermark = useRotatingPlaceholder(SEARCH_WATERMARKS);
+  const openImagePickerOnMount = useRef(false);
 
   useEffect(() => { setInput(q); }, [q]);
 
@@ -86,7 +86,7 @@ export default function Search() {
     try {
       if (sessionStorage.getItem('stx:open-image-search') === '1') {
         sessionStorage.removeItem('stx:open-image-search');
-        setImageOpen(true);
+        openImagePickerOnMount.current = true;
       }
     } catch { /* ignore */ }
   }, []);
@@ -173,12 +173,17 @@ export default function Search() {
     }
   };
 
-  const onImageResults = (r: AiSearchResult) => {
+  const onImageResults = useCallback((r: AiSearchResult) => {
     setProducts(r.products);
     setTotal(r.products.length);
     setAiNote(r.explanation);
-    setImageOpen(false);
-  };
+  }, []);
+  const imgSearch = useImageSearch(onImageResults);
+  // Home's camera forwarded us here: open the picker right away.
+  useEffect(() => {
+    if (openImagePickerOnMount.current) { openImagePickerOnMount.current = false; imgSearch.open(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const activeFilters = useMemo(() => {
     const chips: { label: string; clear: () => void }[] = [];
@@ -240,7 +245,10 @@ export default function Search() {
     <div className="col-lg">
       {/* ── Search bar with AI / image ──────────────────────────── */}
       <div className="search-hero anim-up">
-        <div className="searchbar searchbar-lg searchbar-page searchbar-glow" style={{ position: 'relative' }}>
+        <div className="searchbar searchbar-lg searchbar-page searchbar-glow" style={{ position: 'relative' }}
+          onDrop={(e) => { const f = Array.from(e.dataTransfer?.files ?? []).find((x) => x.type.startsWith('image/')); if (f) { e.preventDefault(); void imgSearch.searchFile(f); } }}
+          onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); }}
+          onPaste={(e) => { const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/')); if (f) { e.preventDefault(); void imgSearch.searchFile(f); } }}>
           <SearchIcon size={20} className="muted-2" style={{ flexShrink: 0 }} />
           <input
             value={input}
@@ -256,8 +264,10 @@ export default function Search() {
               <X size={13} />
             </button>
           )}
-          <button className="btn btn-icon" onClick={() => setImageOpen(true)} title="Search by image" aria-label="Search by image">
-            <ImageIcon size={18} />
+          {imgSearch.input}
+          <button className="btn btn-icon" onClick={imgSearch.open} disabled={imgSearch.busy}
+            aria-busy={imgSearch.busy || undefined} title="Search with a photo" aria-label="Search by image">
+            {imgSearch.busy ? <Loader2 size={18} className="anim-spin" /> : <ImagePlus size={18} />}
           </button>
           <Btn variant="primary" onClick={runAiSearch} loading={aiBusy} icon={<Sparkles size={15} />}>
             Ask AI
@@ -278,24 +288,6 @@ export default function Search() {
         </div>
 
       </div>
-
-      {imageOpen && (
-        <div className="search-img-panel search-img-panel--page mt-10">
-          <div className="search-img-panel-head">
-            <span className="semi row" style={{ gap: 7 }}>
-              <ImageIcon size={14} /> Search by image
-            </span>
-            <button type="button" className="btn btn-icon search-img-close" aria-label="Close image search"
-              onClick={() => setImageOpen(false)}>
-              <X size={15} />
-            </button>
-          </div>
-          <VisualSearch compact bare showResults={false} onResults={onImageResults} />
-          <p className="tiny muted-2" style={{ margin: '8px 0 0' }}>
-            Drop or paste a photo onto the search bar, or click the box above.
-          </p>
-        </div>
-      )}
 
       {aiNote && (
         <div className="card ai-note anim-up">

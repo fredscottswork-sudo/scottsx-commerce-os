@@ -6545,67 +6545,12 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 }
 
 /* ── Visual search (snap it, find it) ────────────────────────────────────── */
-.visual-search { display: flex; flex-direction: column; }
 
 /* Inline image-search panel under the topbar/public search bar (Google Lens
    style). Positioned below the input as a floating card; the host form wraps
    it in .searchbar-zone so it can drop out of the flow. */
 .searchbar-zone { position: relative; flex: 1 1 auto; min-width: 0; }
 .searchbar-zone .searchbar { width: 100%; }
-.search-img-panel {
-  position: absolute; left: 0; right: 0; top: calc(100% + 8px); z-index: 45;
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  backdrop-filter: blur(16px) saturate(1.1); -webkit-backdrop-filter: blur(16px) saturate(1.1);
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
-  border-radius: var(--radius);
-  box-shadow: 0 26px 60px -22px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0,0,0,0.04);
-  padding: 14px; max-height: min(72vh, 560px); overflow-y: auto;
-  animation: searchImgPanelIn 0.22s var(--ease-out) both;
-}
-.search-img-panel--page {
-  position: static; max-height: none;
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: var(--shadow-md, 0 10px 30px -18px rgba(0,0,0,0.35));
-}
-@keyframes searchImgPanelIn {
-  from { opacity: 0; transform: translateY(-6px) scale(0.99); }
-  to { opacity: 1; transform: none; }
-}
-.search-img-panel-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin-bottom: 10px;
-}
-.search-img-close {
-  width: 30px; height: 30px; border-radius: 9px; flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
-  cursor: pointer;
-}
-.search-img-close:hover { color: var(--primary); border-color: var(--primary); }
-.search-img-panel .vs-drop { min-height: 96px; }
-@media (max-width: 620px) {
-  .search-img-panel { padding: 11px; }
-}
-.vs-drop {
-  border: 1.5px dashed color-mix(in srgb, var(--primary) 55%, var(--border));
-  border-radius: var(--radius); background: var(--surface-2);
-  min-height: 118px; display: grid; place-items: center; cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
-}
-.vs-drop:hover { border-color: var(--primary); background: var(--primary-soft); }
-.vs-drop--over {
-  border-style: solid; border-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 14%, var(--surface-2));
-  box-shadow: inset 0 0 0 2px var(--primary);
-}
-.vs-drop-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px; text-align: center; }
-.vs-preview {
-  max-width: 100%; max-height: 150px; object-fit: contain;
-  border-radius: var(--radius-sm); padding: 8px;
-}
-.vs-or { display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; color: var(--text-3); font-size: var(--fs-sm); }
-.vs-or::before, .vs-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 .searchbar-sm { padding: 5px 6px 5px 11px; gap: 6px; border-radius: var(--radius-sm); }
 .searchbar-sm input { font-size: var(--fs-sm); }
 @media (max-width: 1180px) {
