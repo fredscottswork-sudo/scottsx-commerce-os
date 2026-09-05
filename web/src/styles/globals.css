@@ -1770,6 +1770,16 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
    still reachable from the header and the bottom nav. */
 @media (max-width: 960px) {
   body.ai-immersive .mainnav { display: none; }
+  /* ONE header on a phone: the app/public topbar is hidden on the AI routes
+     and the chat's own header (with a back button) is the only bar. That
+     returns ~100px of a 780px screen to the conversation. */
+  body.ai-immersive .public-topbar,
+  body.ai-immersive .topbar { display: none; }
+  body.ai-immersive .ai-back { display: inline-flex; }
+  body.ai-immersive .ai-console-full .ai-chat-head--brand {
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 10px 8px !important;
+    position: sticky; top: 0; z-index: 5;
+  }
   body.ai-immersive .ai-console-full .ai-chat-head { padding: 7px 12px; }
   body.ai-immersive .ai-console-full { gap: 8px; }
 }
@@ -1825,6 +1835,52 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .bubble-ai { box-shadow: none; }
 .bubble-user { box-shadow: none; }
 
+/* ── Tasteful motion ──────────────────────────────────────────────────── */
+/* Soft ambient wash behind the welcome hero: two very slow, very faint
+   gradients. Blurred, low-opacity, no hard shapes — feels like light, not
+   like floating balls. */
+.ai-welcome--bare { position: relative; isolation: isolate; }
+.ai-welcome--bare::before {
+  content: ''; position: absolute; inset: -20% -10%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(40% 35% at 30% 40%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 70%),
+    radial-gradient(35% 30% at 72% 55%, color-mix(in srgb, #8b5cf6 10%, transparent), transparent 70%);
+  filter: blur(30px);
+  animation: aiWash 18s ease-in-out infinite alternate;
+}
+@keyframes aiWash { from { transform: translate3d(-2%, 0, 0) scale(1); } to { transform: translate3d(2%, 3%, 0) scale(1.06); } }
+/* Hero enters once. */
+.ai-welcome-orb { animation: aiHeroIn 520ms cubic-bezier(.2,.7,.2,1) both; }
+.ai-welcome-title { animation: aiHeroIn 520ms cubic-bezier(.2,.7,.2,1) 80ms both; }
+.ai-welcome-sub { animation: aiHeroIn 520ms cubic-bezier(.2,.7,.2,1) 160ms both; }
+.ai-welcome .chip { animation: aiHeroIn 460ms cubic-bezier(.2,.7,.2,1) both; }
+.ai-welcome .chip:nth-child(1) { animation-delay: 240ms; }
+.ai-welcome .chip:nth-child(2) { animation-delay: 300ms; }
+.ai-welcome .chip:nth-child(3) { animation-delay: 360ms; }
+.ai-welcome .chip:nth-child(4) { animation-delay: 420ms; }
+.ai-welcome .chip:nth-child(n+5) { animation-delay: 480ms; }
+@keyframes aiHeroIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+/* Bubbles slide in from their side. */
+.ai-turn .bubble-row.user .bubble { animation: aiBubbleR 260ms cubic-bezier(.2,.7,.2,1) both; }
+.ai-turn .bubble-row.assistant .bubble { animation: aiBubbleL 260ms cubic-bezier(.2,.7,.2,1) both; }
+@keyframes aiBubbleR { from { opacity: 0; transform: translate(10px, 6px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes aiBubbleL { from { opacity: 0; transform: translate(-10px, 6px) scale(.98); } to { opacity: 1; transform: none; } }
+/* Assistant avatar breathes softly only while an answer is in flight. */
+.ai-turn:last-child .bubble-row.assistant:has(.ai-stream-state, .stream-caret, .ai-stage) .ai-avatar {
+  animation: aiAvatarPulse 1.6s ease-in-out infinite;
+}
+@keyframes aiAvatarPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 35%, transparent); }
+  50% { box-shadow: 0 0 0 6px transparent; }
+}
+/* Product results reveal after the text. */
+.ai-results { animation: aiHeroIn 420ms cubic-bezier(.2,.7,.2,1) 120ms both; }
+/* Send button: gentle pop when it becomes ready. */
+.ai-send--ready { animation: aiSendPop 260ms cubic-bezier(.2,.7,.2,1); }
+@keyframes aiSendPop { from { transform: scale(.85); } to { transform: none; } }
+/* Quick actions slide up when the toolbar first appears. */
+.ai-quickbar { animation: aiHeroIn 320ms cubic-bezier(.2,.7,.2,1) both; }
+
 /* Welcome hero (full-screen AI pages): static mark + a clear question. */
 .ai-welcome-orb {
   position: relative; width: 60px; height: 60px; border-radius: 18px;
@@ -1843,7 +1899,9 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .ai-chat.card { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .ai-turn, .stream-caret, .ai-stage::before, .typing i { animation: none !important; }
+  .ai-turn, .stream-caret, .ai-stage::before, .typing i, .ai-welcome--bare::before,
+  .ai-welcome-orb, .ai-welcome-title, .ai-welcome-sub, .ai-welcome .chip, .bubble, .ai-avatar,
+  .ai-results, .ai-send--ready, .ai-quickbar, .ai-wm { animation: none !important; }
 }
 
 .ai-chat { display: flex; flex-direction: column; height: calc(100vh - var(--topbar-h) - 60px); min-height: 520px; }
@@ -2014,6 +2072,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 }
 /* One pill: [ + ] [ textarea .............. ] [ ↑ ] */
 .ai-composer {
+  position: relative;
   display: flex; align-items: flex-end; gap: 6px;
   padding: 5px 5px 5px 6px; border-radius: 24px;
   border: 1px solid var(--border); background: var(--surface-2);
@@ -2031,6 +2090,25 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   line-height: 1.4; outline: none; box-shadow: none;
 }
 .ai-composer textarea::placeholder { color: var(--text-3); }
+/* Animated watermark: sits over the empty textarea, slides up + fades on each
+   rotation (placeholder text itself cannot be animated). */
+.ai-wm {
+  position: absolute; left: 50px; right: 50px; top: 50%; transform: translateY(-50%);
+  pointer-events: none; color: var(--text-3); font-size: 16px; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: aiWmIn 420ms cubic-bezier(.2,.7,.2,1) both;
+}
+@keyframes aiWmIn {
+  from { opacity: 0; transform: translateY(calc(-50% + 8px)); }
+  to { opacity: 1; transform: translateY(-50%); }
+}
+/* Mobile back button (the page has ONE header — this one). */
+.ai-back {
+  display: none; flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0;
+  background: transparent; color: var(--text-2); cursor: pointer; align-items: center; justify-content: center;
+  margin-right: -2px;
+}
+.ai-back:hover { background: var(--surface-2); color: var(--text); }
 .ai-chat-img, .ai-send {
   flex: none; width: 38px; height: 38px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
@@ -3898,6 +3976,10 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .place-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; margin-top: 3px; font-size: 12px; color: var(--text-2); }
 .place-trail-part { display: inline-flex; align-items: center; gap: 2px; }
 .place-trail-sep { color: var(--text-3); margin: 0 3px; }
+.place-approx {
+  margin-left: 8px; font-size: 10px; font-weight: 700; letter-spacing: .02em; vertical-align: middle;
+  padding: 2px 6px; border-radius: 999px; color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
 @media (max-width: 620px) {
   .place-banner--exact .place-name { font-size: 15px; }
   .place-trail { font-size: 11px; }

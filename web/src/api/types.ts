@@ -187,6 +187,8 @@ export interface NearbySeller {
   withinServiceRadius: boolean;
   /** Human place for the pin: "Kireka, Central Region". */
   placeLabel: string;
+  /** Exact village / neighbourhood of the store pin, when known. */
+  village?: string | null;
 }
 
 /** Reverse-geocoding result: where a coordinate is (Google Maps in background) */
@@ -196,6 +198,8 @@ export interface Place {
   suburb?: string | null;
   /** Nearest named road when known. */
   road?: string | null;
+  /** GPS fix was too coarse (>250 m) to pin one village. */
+  approximate?: boolean;
   city: string | null;
   region: string | null;
   country: string | null;

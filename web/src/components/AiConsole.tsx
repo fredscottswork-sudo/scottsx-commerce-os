@@ -1,10 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Sparkles, ArrowUp, RotateCcw, Zap, AlertCircle, Square,
   ShoppingBag, Tag, LifeBuoy, TrendingUp, Compass, Bot, Mic, ImagePlus, X,
-  Copy, Share2, BookOpen, Store, Flame, Wallet, MapPin, Truck,
+  Copy, Share2, BookOpen, Store, Flame, Wallet, MapPin, Truck, ChevronLeft,
 } from 'lucide-react';
+
+/** Composer watermarks — rotate continuously so the empty field keeps
+ *  suggesting what the assistant can do for a shopper / a seller. */
+const BUYER_WATERMARKS = [
+  'Ask anything about the market…',
+  'Cheapest phones under 1.5M…',
+  'Compare two products for me…',
+  'What can I buy near me now?',
+  'Attach a photo — I’ll find it…',
+  'Best sneakers under 200k…',
+  'Which seller is verified for TVs?',
+  'Show me today’s flash deals…',
+] as const;
+const BUYER_WATERMARKS_SHORT = [
+  'Ask anything…',
+  'Phones under 1.5M…',
+  'Compare two items…',
+  'What’s near me?',
+  'Snap a photo…',
+  'Sneakers under 200k…',
+  'Today’s deals…',
+] as const;
+const SELLER_WATERMARKS = [
+  'Ask about your store…',
+  'What should I stock next?',
+  'Write a listing for this photo…',
+  'How do I price against the market?',
+  'Which of my products sell best?',
+  'Draft a reply to a buyer…',
+] as const;
 import { aiService } from '../api/services';
 import { type AiAgent, type AiAnswer, type Product } from '../api/types';
 import { compressImage } from '../lib/imageSearch';
@@ -13,6 +43,7 @@ import { useCart } from '../store/CartContext';
 import { ProductGrid } from './ProductCard';
 import { Btn, RichText, Badge } from './ui';
 import { BrandMark } from './BrandLogo';
+import { useRotatingPlaceholder } from '../hooks/useRotatingPlaceholder';
 
 /**
  * The API describes each agent with a lucide icon NAME ('shopping-bag',
@@ -174,6 +205,11 @@ export function AiConsole({
   const narrow = useNarrowScreen();
   /** True while the on-screen keyboard is up (phones). */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const navigate = useNavigate();
+  const watermark = useRotatingPlaceholder(
+    audience === 'buyer' ? (narrow ? BUYER_WATERMARKS_SHORT : BUYER_WATERMARKS) : SELLER_WATERMARKS,
+    2800
+  );
 
   /**
    * Mobile keyboard. When the soft keyboard opens, the layout viewport does
@@ -598,6 +634,17 @@ export function AiConsole({
       {/* ── Conversation — now full, no agent words above, bigger & flexible ── */}
       <div className="card ai-chat card-flush ai-chat--full">
         <div className="ai-chat-head ai-chat-head--brand">
+          {fullHeight && (
+            <button
+              type="button"
+              className="ai-back"
+              onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+              aria-label="Back"
+              title="Back"
+            >
+              <ChevronLeft size={20} />
+            </button>
+          )}
           <div className="ai-brand" aria-label="ScottsTechX AI">
             <span className="ai-brand-orb" aria-hidden="true"><BrandMark size={22} className="ai-brand-mark" /></span>
             <div className="ai-brand-copy">
@@ -919,6 +966,9 @@ export function AiConsole({
             >
               <ImagePlus size={18} />
             </button>
+            {!input && !photo && (
+              <span className="ai-wm" aria-hidden="true" key={watermark}>{watermark}</span>
+            )}
             <textarea
               ref={inputRef}
               rows={1}
@@ -938,15 +988,7 @@ export function AiConsole({
                 }
               }}
               enterKeyHint="send"
-              placeholder={
-                photo
-                  ? 'Ask about this photo…'
-                  : narrow
-                    ? (audience === 'buyer' ? 'Ask anything…' : 'Ask about your store…')
-                    : audience === 'buyer'
-                      ? 'Ask anything — “cheapest phones under 2M”, “compare these two”…'
-                      : 'Ask about pricing, listings, buyers — “what should I stock next?”'
-              }
+              placeholder={photo ? 'Ask about this photo…' : ''}
               aria-label="Message the assistant"
             />
             <button

@@ -140,6 +140,8 @@ export interface ReverseResult {
   suburb?: string | null;
   /** Nearest named road, when the provider knows it. */
   road?: string | null;
+  /** True when the GPS fix was too coarse to pin a single village. */
+  approximate?: boolean;
   /** The town or city the fix belongs to. */
   city: string | null;
   /** Admin-1 area: region / state / province / district. */

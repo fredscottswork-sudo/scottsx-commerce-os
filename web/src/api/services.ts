@@ -646,9 +646,9 @@ export const adminService = {
 
 // ── Location — fast Google Maps background ───────────────────────────────
 export const geoService = {
-  reverse: (lat: number, lng: number) =>
+  reverse: (lat: number, lng: number, accuracyM?: number) =>
     api<{ place: Place; query: { lat: number; lng: number } }>(
-      `/geo/reverse?lat=${lat}&lng=${lng}`,
+      `/geo/reverse?lat=${lat}&lng=${lng}${typeof accuracyM === 'number' ? `&accuracyM=${Math.round(accuracyM)}` : ''}`,
       { auth: false }
     ),
   status: () => api<{ ready: boolean; source: string; coverage: string }>('/geo/status', { auth: false }),

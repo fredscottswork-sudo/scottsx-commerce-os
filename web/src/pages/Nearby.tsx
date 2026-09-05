@@ -30,6 +30,15 @@ function metresBetween(a: { lat: number; lng: number }, b: { lat: number; lng: n
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/** "Bukoto, Kampala" minus a leading "Bukoto, " → " · Kampala". */
+function restOfLabel(label: string, village: string): string {
+  if (!label) return '';
+  const rest = label.toLowerCase().startsWith(village.toLowerCase())
+    ? label.slice(village.length).replace(/^[,\s·]+/, '')
+    : label;
+  return rest && rest.toLowerCase() !== village.toLowerCase() ? ` · ${rest}` : '';
+}
+
 export default function Nearby() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -94,7 +103,7 @@ export default function Nearby() {
         .then((r) => { if (r.place) setPlace(r.place); })
         .catch(() => undefined);
     } else {
-      geoService.reverse(next.lat, next.lng)
+      geoService.reverse(next.lat, next.lng, accuracyM)
         .then((r) => setPlace(r.place))
         .catch(() => undefined);
     }
@@ -127,22 +136,37 @@ export default function Nearby() {
       return () => { cancelled = true; };
     }
 
-    navigator.geolocation.getCurrentPosition(
+    // Village accuracy depends on the FIX accuracy. The first position a
+    // browser hands over is often a cached wifi/cell fix (±500–2000 m), which
+    // can land in the neighbouring village. So: show the first fix at once,
+    // then keep watching for up to 12s and re-apply whenever a materially
+    // better fix (≤60 m, or 2× better than before) arrives.
+    let bestAcc = Infinity;
+    let gotAny = false;
+    const watch = navigator.geolocation.watchPosition(
       (pos) => {
         if (cancelled) return;
-        applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, pos.coords.accuracy);
+        const acc = pos.coords.accuracy ?? Infinity;
+        const better = !gotAny || acc <= 60 && acc < bestAcc || acc < bestAcc / 2;
+        if (!better) return;
+        gotAny = true;
+        bestAcc = acc;
+        applyPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }, acc);
+        if (acc <= 25) navigator.geolocation.clearWatch(watch);
       },
       (err) => {
+        if (gotAny) return;
         void fallbackToSavedLocation(
           err.code === err.PERMISSION_DENIED
             ? 'Location permission denied. Allow location access to see stores near you.'
             : 'Could not detect your location. Check that location services are on.'
         );
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
+    const stopAfter = setTimeout(() => navigator.geolocation.clearWatch(watch), 12000);
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(stopAfter); navigator.geolocation.clearWatch(watch); };
   }, [user, applyPosition]);
 
   useEffect(() => {
@@ -248,6 +272,7 @@ export default function Nearby() {
             <>
               <strong className="place-name" data-testid="place-label">
                 {place.village || place.city || place.region || place.label}
+                {place.approximate && <span className="place-approx" title="GPS fix is coarse — move outdoors for an exact village">~ approx.</span>}
               </strong>
               <div className="place-trail" aria-label="Location hierarchy">
                 {[place.suburb, place.city, place.region, place.country]
@@ -337,8 +362,11 @@ export default function Nearby() {
                   <div className="tiny muted mt-4" style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
                     <Star size={11} style={{ color: 'var(--warning)' }} fill="currentColor" /> {Number(s.rating || 0).toFixed(1)} · <Package size={11} /> {s.productCount}
                   </div>
-                  <div className="tiny muted mt-4 ellipsis" style={{ fontSize: 11 }}>
-                    <MapPin size={11} /> {s.placeLabel || s.address || s.city || '—'}
+                  <div className="tiny muted mt-4 ellipsis store-village" style={{ fontSize: 11 }}>
+                    <MapPin size={11} />{' '}
+                    {s.village ? (
+                      <><strong style={{ color: 'var(--text)' }}>{s.village}</strong>{restOfLabel(s.placeLabel, s.village)}</>
+                    ) : (s.placeLabel || s.address || s.city || '—')}
                   </div>
                   <div className="row wrap mt-8" style={{ gap: 5 }}>
                     {s.live ? (

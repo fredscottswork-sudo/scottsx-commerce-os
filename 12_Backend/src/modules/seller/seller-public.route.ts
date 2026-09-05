@@ -12,6 +12,7 @@ import { getPool } from '../../db.js';
 import { requireAuth, requireSeller } from '../../auth.js';
 import { NotFoundError } from '../../errors.js';
 import { reverseGeocode } from '../../geo/gazetteer.js';
+import { resolvePlace, resolvePlaces } from '../../geo/resolve-place.js';
 import { rowsToProducts } from '../products/products.service.js';
 
 const nearbySchema = z.object({
@@ -161,13 +162,26 @@ export default async function registerSellerPublicRoute(app: FastifyInstance) {
     const total = sellers.length;
     const page = sellers.slice(0, limit);
 
+    // Exact village names for the buyer and for every pin on this page
+    // (OSM + Google + offline, merged; cached ~110 m; bounded to 2.5s so a
+    // slow provider can only degrade a label back to the offline name).
+    const [buyerPlace, pinPlaces] = await Promise.all([
+      resolvePlace(lat, lng),
+      resolvePlaces(page.map((s) => ({ lat: s.lat, lng: s.lng }))),
+    ]);
+    page.forEach((s, i) => {
+      const pl = pinPlaces[i];
+      if (pl?.shortLabel) s.placeLabel = pl.shortLabel;
+      (s as any).village = pl?.village ?? null;
+    });
+
     return {
       sellers: page,
       count: page.length,
       total,
       liveCount: page.filter((s) => s.live).length,
-      /** Where the buyer is, named — "Kabalagala, Kampala, Central Region, Uganda". */
-      place: reverseGeocode(lat, lng),
+      /** Where the buyer is, named — "Nsimbiziwoome, Bukoto, Kampala, Central Region, Uganda". */
+      place: buyerPlace ?? reverseGeocode(lat, lng),
       center: { lat, lng, radiusKm: radiusKm ?? null },
       generatedAt: new Date().toISOString(),
     };

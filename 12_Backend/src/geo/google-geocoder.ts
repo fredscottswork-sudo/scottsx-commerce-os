@@ -1,6 +1,7 @@
 /**
- * ScottsTechX — Google Maps reverse geocoding (fast path)
- * Uses lat/lng to identify village via Google Maps in background, <1s
+ * ScottsTechX — Google Maps reverse geocoding.
+ * Scans every result's components for the smallest named area (neighborhood /
+ * sublocality) so the village is found even when the top result is a street.
  */
 import type { ReverseResult } from './gazetteer.js';
 
@@ -31,48 +32,58 @@ export async function googleReverseGeocode(lat: number, lng: number): Promise<Re
   const cached = cache.get(k);
   if (cached && Date.now() - cached.at < CACHE_TTL) return cached.value;
 
+  // No result_type filter: Google returns several results ordered from most
+  // to least specific (street address → sublocality → locality …). Scanning
+  // ALL of them for the smallest component gives the village even when the
+  // first result is a plain street address that lacks a sublocality.
   const url =
     'https://maps.googleapis.com/maps/api/geocode/json' +
     `?latlng=${encodeURIComponent(`${lat},${lng}`)}` +
-    '&result_type=sublocality|neighborhood|locality|administrative_area_level_2|administrative_area_level_1|country' +
+    '&language=en' +
     `&key=${encodeURIComponent(key)}`;
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 800); // must be <1s
+    const timer = setTimeout(() => controller.abort(), 1500);
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) return null;
     const payload: any = await res.json();
     if (payload.status !== 'OK' || !payload.results?.length) return null;
 
-    const primary = payload.results[0];
-    const comps = primary.address_components || [];
+    const all: any[] = payload.results.flatMap((r: any) => r.address_components || []);
+    const first = (types: string[]) => pick(all, types);
 
-    // Parse village-like names: sublocality, neighborhood, ward
     const village =
-      pick(comps, ['sublocality_level_1', 'sublocality', 'neighborhood', 'ward']) ||
-      pick(comps, ['sublocality_level_2', 'sublocality_level_3']) ||
+      first(['neighborhood', 'sublocality_level_3', 'sublocality_level_2']) ||
+      first(['sublocality_level_1', 'sublocality', 'ward']) ||
       null;
-    const city = pick(comps, ['locality', 'postal_town']) || null;
-    const region = pick(comps, ['administrative_area_level_1', 'administrative_area_level_2']) || null;
-    const countryComp = comps.find((c: any) => c.types.includes('country'));
+    const suburbRaw = first(['sublocality_level_1', 'sublocality']);
+    const suburb = suburbRaw && suburbRaw !== village ? suburbRaw : null;
+    const road = first(['route']);
+    const city = first(['locality', 'postal_town', 'administrative_area_level_3']) || null;
+    const region = first(['administrative_area_level_1', 'administrative_area_level_2']) || null;
+    const countryComp = all.find((c: any) => c.types.includes('country'));
     const country = countryComp?.long_name ?? null;
     const countryCode = countryComp?.short_name ?? null;
 
-    const parts = [village, city, region, country].filter(Boolean) as string[];
-    const shortParts = [village || city, region || country].filter(Boolean) as string[];
-    const dedupe = (a: string[]) => a.filter((p, i) => i === 0 || p !== a[i - 1]);
+    const dedupe = (a: (string | null)[]) => {
+      const out: string[] = [];
+      for (const p of a) if (p && !out.some((x) => x.toLowerCase() === p.toLowerCase())) out.push(p);
+      return out;
+    };
 
     const result: ReverseResult = {
       village,
+      suburb,
+      road,
       city,
       region,
       country,
       countryCode,
       accuracyKm: 0,
-      label: dedupe(parts).join(', '),
-      shortLabel: dedupe(shortParts).join(', '),
+      label: dedupe([village, suburb, city, region, country]).join(', '),
+      shortLabel: dedupe([village || city, village && city ? city : region || country]).join(', '),
       source: 'google',
     };
 
