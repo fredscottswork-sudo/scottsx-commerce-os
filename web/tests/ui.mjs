@@ -308,7 +308,7 @@ section('1. Public marketplace (logged out)');
   check('shows a real seeded product title', t.includes(sampleProduct.title),
     `expected "${sampleProduct.title}"`);
   check('prices are formatted as UGX', /UGX\s[\d,]+/.test(t));
-  check('dark theme is the default', app.window.document.documentElement.getAttribute('data-theme') === 'dark',
+  check('light theme is the default', app.window.document.documentElement.getAttribute('data-theme') === 'light',
     `got ${app.window.document.documentElement.getAttribute('data-theme')}`);
   check('no runtime errors on the home page', app.consoleErrors.length === 0, app.consoleErrors[0]);
   check('home has exactly one search bar (nothing small above it)',
@@ -1276,16 +1276,16 @@ section('13b. Theming');
 {
   const app = await mount('/buyer', buyer);
   const root = app.window.document.documentElement;
-  check('starts in dark mode', root.getAttribute('data-theme') === 'dark');
+  check('starts in light mode', root.getAttribute('data-theme') === 'light');
 
   const themeBtn = [...app.$$('button')].find((b) => /^(Light|Dark)$/i.test((b.textContent || '').trim()));
   if (themeBtn) {
     await app.click(themeBtn, 600);
-    check('toggling switches to light mode', root.getAttribute('data-theme') === 'light',
+    check('toggling switches to dark mode', root.getAttribute('data-theme') === 'dark',
       `got ${root.getAttribute('data-theme')}`);
-    check('theme choice is persisted', app.window.localStorage.getItem('stx_theme') === 'light');
+    check('theme choice is persisted', app.window.localStorage.getItem('stx_theme') === 'dark');
   } else {
-    check('toggling switches to light mode', false, 'theme button not found');
+    check('toggling switches to dark mode', false, 'theme button not found');
   }
   app.close();
 }

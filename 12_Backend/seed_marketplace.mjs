@@ -148,8 +148,8 @@ async function main() {
   for (const s of SELLERS) {
     const c = CITIES[s.city] ?? CITIES.Kampala;
     const { rows } = await client.query(
-      `INSERT INTO users (email, password_hash, role, display_name, phone, email_verified, lat, lng, city)
-       VALUES ($1, $2, 'seller', $3, $4, true, $5, $6, $7)
+      `INSERT INTO users (email, password_hash, role, display_name, phone, email_verified, lat, lng, city, role_chosen)
+       VALUES ($1, $2, 'seller', $3, $4, true, $5, $6, $7, true)
        RETURNING id`,
       [s.email, passwordHash, s.storeName, s.phone, c.lat, c.lng, s.city]
     );

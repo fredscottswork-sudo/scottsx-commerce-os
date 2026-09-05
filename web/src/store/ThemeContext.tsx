@@ -22,7 +22,7 @@ function systemPrefersDark(): boolean {
 
 function readStored(): ThemeMode {
   const saved = localStorage.getItem(KEY);
-  return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'dark';
+  return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'light';
 }
 
 function resolve(mode: ThemeMode): 'light' | 'dark' {
