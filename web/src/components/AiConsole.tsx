@@ -115,6 +115,10 @@ function titleFor(turns: Turn[]): string {
   const first = turns.find((t) => t.role === 'user')?.content ?? 'New chat';
   return first.length > 48 ? `${first.slice(0, 46).trim()}…` : first;
 }
+function previewFor(turns: Turn[]): string {
+  const last = [...turns].reverse().find((t) => t.role === 'assistant' && t.content);
+  return (last?.content ?? '').replace(/[*#_`>\n]+/g, ' ').trim().slice(0, 90);
+}
 function relTime(ts: number): string {
   const d = Date.now() - ts;
   if (d < 60_000) return 'now';
@@ -713,21 +717,33 @@ export function AiConsole({
           </button>
           <div className="ai-drawer-list">
             {history.length === 0 && (
-              <p className="ai-drawer-empty">Your conversations will appear here. They stay on this device.</p>
+              <p className="ai-drawer-empty">No chats yet. Ask anything and it will be saved here, on this device.</p>
             )}
-            {history.map((c) => (
-              <div key={c.id} className={`ai-drawer-item ${c.id === chatId ? 'is-active' : ''}`}>
-                <button type="button" className="ai-drawer-open" onClick={() => openChat(c)} title={c.title}>
-                  <MessageSquare size={14} />
-                  <span className="ai-drawer-title">{c.title}</span>
-                  <span className="ai-drawer-time">{relTime(c.updatedAt)}</span>
-                </button>
-                <button type="button" className="ai-drawer-del" onClick={() => deleteChat(c.id)} aria-label="Delete chat" title="Delete">
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
+            {(['Today', 'Earlier'] as const).map((group) => {
+              const cutoff = new Date(); cutoff.setHours(0, 0, 0, 0);
+              const items = history.filter((c) => (group === 'Today' ? c.updatedAt >= cutoff.getTime() : c.updatedAt < cutoff.getTime()));
+              if (!items.length) return null;
+              return (
+                <div key={group}>
+                  <div className="ai-drawer-label">{group}</div>
+                  {items.map((c) => (
+                    <div key={c.id} className={`ai-drawer-item ${c.id === chatId ? 'is-active' : ''}`}>
+                      <button type="button" className="ai-drawer-open" onClick={() => openChat(c)} title={c.title}>
+                        <MessageSquare size={14} />
+                        <span className="ai-drawer-title">{c.title}</span>
+                        <span className="ai-drawer-time">{relTime(c.updatedAt)}</span>
+                        <span className="ai-drawer-preview">{previewFor(c.turns) || `${c.turns.length} messages`}</span>
+                      </button>
+                      <button type="button" className="ai-drawer-del" onClick={() => deleteChat(c.id)} aria-label="Delete chat" title="Delete">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
+          <div className="ai-drawer-foot"><History size={12} /> Saved on this device · {history.length}/{HISTORY_MAX}</div>
         </aside>
 
         <div className="ai-main">
