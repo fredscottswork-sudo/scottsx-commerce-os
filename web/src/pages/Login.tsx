@@ -9,7 +9,7 @@
  * straight to their dashboard. Guests land on the marketplace home; Nearby and
  * the AI Shopper ask them to sign in when they get there.
  */
-import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../store/ToastContext';
@@ -22,6 +22,55 @@ import { useSeo } from '../hooks/useSeo';
 import { Mail, ArrowRight, ArrowLeft, AlertCircle, ShieldCheck, Compass, RefreshCw, MapPin, Sparkles, MessageCircle } from 'lucide-react';
 
 const CODE_LEN = 6;
+
+/** Same photos and claims as the mobile marketplace advert on the home page. */
+const SIDE_SLIDES = [
+  { id: 'chat', img: '/ads/chat.jpg', accent: '#38bdf8', kicker: 'Message first', title: 'Talk to the seller before you buy', icon: <MessageCircle size={14} /> },
+  { id: 'nearby', img: '/ads/nearby.jpg', accent: '#34d399', kicker: 'Nearby', title: 'Real stores in your village, right now', icon: <MapPin size={14} /> },
+  { id: 'ai', img: '/ads/ai.jpg', accent: '#a78bfa', kicker: 'AI shopper', title: 'Snap a photo. We find it and the best price.', icon: <Sparkles size={14} /> },
+  { id: 'genuine', img: '/ads/genuine.jpg', accent: '#fbbf24', kicker: 'Verified sellers', title: 'Local, genuine and delivered to your door', icon: <ShieldCheck size={14} /> },
+] as const;
+
+function SidePanel() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const t = setInterval(() => setIdx((i) => (i + 1) % SIDE_SLIDES.length), reduce ? 9000 : 5500);
+    return () => clearInterval(t);
+  }, []);
+  const active = SIDE_SLIDES[idx];
+  return (
+    <aside className="ali-side" aria-hidden="true">
+      {SIDE_SLIDES.map((sl, i) => (
+        <div
+          key={sl.id}
+          className={`ali-slide${i === idx ? ' is-active' : ''}`}
+          style={{ backgroundImage: `url(${sl.img})` } as CSSProperties}
+        />
+      ))}
+      <div className="ali-scrim" />
+      <div className="ali-side-inner">
+        <AnimatedWordmark />
+        <h1>Uganda's marketplace for verified tech &amp; more</h1>
+        <div className="ali-claim" key={active.id}>
+          <span className="ali-kicker" style={{ color: active.accent }}>{active.icon}{active.kicker}</span>
+          <strong>{active.title}</strong>
+        </div>
+        <ul className="ali-perks">
+          <li><ShieldCheck size={18} /><div><strong>Verified sellers</strong><span>Every store is checked before it can list.</span></div></li>
+          <li><MapPin size={18} /><div><strong>Shop nearby</strong><span>Find stores around you on a live map.</span></div></li>
+          <li><Sparkles size={18} /><div><strong>AI Shopper</strong><span>Compare prices and stock in one chat.</span></div></li>
+          <li><MessageCircle size={18} /><div><strong>Chat &amp; bargain</strong><span>Message sellers and make offers directly.</span></div></li>
+        </ul>
+        <div className="ali-dots">
+          {SIDE_SLIDES.map((sl, i) => (
+            <button key={sl.id} type="button" tabIndex={-1} className={`ali-dot${i === idx ? ' active' : ''}`} onClick={() => setIdx(i)} />
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
 
 function nextRoute(u: { role: string; roleChosen?: boolean }, fallback?: string): string {
   if (u.roleChosen === false && u.role !== 'admin') return '/onboarding';
@@ -145,23 +194,7 @@ export default function Login() {
 
   return (
     <div className="ali-auth">
-      <aside className="ali-side" aria-hidden="true">
-        <div className="ali-side-inner">
-          <AnimatedWordmark />
-          <h1>Uganda's marketplace for verified tech &amp; more</h1>
-          <ul className="ali-perks">
-            <li><ShieldCheck size={18} /><div><strong>Verified sellers</strong><span>Every store is checked before it can list.</span></div></li>
-            <li><MapPin size={18} /><div><strong>Shop nearby</strong><span>Find stores around you on a live map.</span></div></li>
-            <li><Sparkles size={18} /><div><strong>AI Shopper</strong><span>Compare prices and stock in one chat.</span></div></li>
-            <li><MessageCircle size={18} /><div><strong>Chat &amp; bargain</strong><span>Message sellers and make offers directly.</span></div></li>
-          </ul>
-          <div className="ali-side-stats">
-            <div><strong>10k+</strong><span>stores</span></div>
-            <div><strong>UGX</strong><span>local prices</span></div>
-            <div><strong>24/7</strong><span>support</span></div>
-          </div>
-        </div>
-      </aside>
+      <SidePanel />
 
       <div className="ali-card" data-step={step}>
           <div className="ali-card-brand show-900" aria-hidden="true"><AnimatedWordmark compact /></div>
