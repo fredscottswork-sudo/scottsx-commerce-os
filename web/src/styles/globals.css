@@ -2261,7 +2261,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
   position: relative;
 }
-.ai-chat-input--drop { box-shadow: inset 0 0 0 2px var(--primary); }
+.ai-chat-input--drop { border-color: var(--primary); }
 .ai-chat-input--drop::after {
   content: 'Drop the photo to attach it';
   position: absolute; inset: 4px; border-radius: var(--radius-sm);
@@ -2404,7 +2404,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .ai-quick:disabled { opacity: 0.5; cursor: default; }
 
 .ai-disclaimer {
-  flex: 0 0 auto; margin: 0; padding: 0 14px 10px;
+  flex: 0 0 auto; margin: -6px 0 0; padding: 0 14px 10px;
   font-size: 10px; line-height: 1.45; color: var(--text-3);
   text-align: center; background: var(--surface-2);
 }
@@ -5545,7 +5545,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .ai-console-full .ai-chat-input,
 .ai-console-full .ai-composer,
 .ai-console-full .ai-quickbar { width: 100%; max-width: none; box-sizing: border-box; }
-.ai-console-full .ai-chat-input { padding-inline: clamp(12px, 3vw, 40px); }
+.ai-console-full .ai-chat-input { padding-inline: 16px; }
 .ai-console-full .ai-chat-body { padding-inline: clamp(12px, 3vw, 40px); }
 .ai-console-full .ai-quickbar { padding-inline: clamp(12px, 3vw, 40px); }
 /* Very wide monitors: keep lines readable by centring the conversation
@@ -5593,7 +5593,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   }
   .ai-console-full .ai-chat { border-radius: 0; height: calc(100dvh - 291px); min-height: 260px; }
   .ai-console-full .ai-chat-body { padding: 10px 8px; }
-  .ai-console-full .ai-chat-input { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
+  .ai-console-full .ai-chat-input { padding: 8px 12px; }
 }
 
 
@@ -5647,15 +5647,28 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   min-height: 0;
   padding: 18px 14px;
 }
+/* Floating composer: a fully rounded box "in the air" — detached from the
+   screen edges and the bottom, with its own depth. The wrapper keeps it
+   pinned; the box itself carries the frame, the shadow and the light ring. */
 .ai-console-full.ai-console--noagents .ai-chat-input {
   position: sticky;
   bottom: 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-bottom: 0;
   padding: 10px 14px 12px;
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -8px 24px -18px rgba(0,0,0,.35);
+  border-radius: 24px;
+  width: calc(100% - 2 * clamp(12px, 3vw, 40px));
+  margin: 8px auto 14px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.04) inset,
+    0 10px 30px -14px rgba(0,0,0,.45),
+    0 2px 8px -4px rgba(0,0,0,.25);
+}
+/* A soft fade behind the floating box so transcript text does not collide
+   with it as it scrolls underneath. */
+.ai-console-full.ai-console--noagents .ai-chat-input::after {
+  content: ''; position: absolute; left: -100vw; right: -100vw; top: -28px; bottom: -14px; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--bg) 40%);
 }
 @media (max-width: 620px) {
   .ai-console--noagents { gap: 0; }
@@ -5665,8 +5678,11 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   .ai-welcome-title { font-size: 20px; }
   .ai-welcome-sub { font-size: 13px; }
   .ai-console-full.ai-console--noagents .ai-chat-input {
-    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    padding: 8px 12px 8px;
     gap: 6px;
+    border-radius: 22px;
+    width: calc(100% - 20px);
+    margin: 6px auto calc(10px + env(safe-area-inset-bottom));
   }
   .ai-composer { min-height: 108px; padding: 8px 4px 2px; }   /* mobile: ~100–140px */
   .ai-composer textarea { min-height: 56px; max-height: 220px; }
