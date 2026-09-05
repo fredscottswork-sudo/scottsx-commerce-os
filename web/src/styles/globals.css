@@ -2543,6 +2543,9 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
     margin-inline: calc(var(--content-pad) * -1);
     width: calc(100% + var(--content-pad) * 2);
   }
+  /* The dedicated AI pages already zero the content gutter, so no bleed. */
+  .public-content--ai .ai-console-full,
+  .content--ai .ai-console-full { margin-inline: 0; width: 100%; }
   .ai-console-full .ai-agents .col { padding-inline: var(--content-pad); }
 
   .ai-console-full .ai-chat {
@@ -5503,6 +5506,32 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   margin: 0;
   height: 100%;
 }
+/* Full-width surface: the console is a single column edge to edge on the
+   dedicated AI pages (no 248px agent column, no centred max-width), and the
+   card, transcript and composer all stretch to it. */
+.ai-console-full {
+  display: flex !important;
+  flex-direction: column;
+  grid-template-columns: none;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+.ai-console-full .ai-chat--full,
+.ai-console-full .ai-main,
+.ai-console-full .ai-chat-body,
+.ai-console-full .ai-chat-input,
+.ai-console-full .ai-composer,
+.ai-console-full .ai-quickbar { width: 100%; max-width: none; box-sizing: border-box; }
+.ai-console-full .ai-chat-input { padding-inline: clamp(12px, 3vw, 40px); }
+.ai-console-full .ai-chat-body { padding-inline: clamp(12px, 3vw, 40px); }
+.ai-console-full .ai-quickbar { padding-inline: clamp(12px, 3vw, 40px); }
+/* Very wide monitors: keep lines readable by centring the conversation
+   column, but let the composer box itself stay wide. */
+@media (min-width: 1500px) {
+  .ai-console-full .ai-turn, .ai-console-full .ai-welcome { width: 100%; max-width: 1240px; margin-inline: auto; }
+  .ai-console-full .ai-composer { max-width: 1240px; margin-inline: auto; }
+}
 .public-content--ai .ai-console-full,
 .content--ai .ai-console-full {
   height: calc(100dvh - var(--ai-surface-top, 0px) - var(--bottom-chrome, 0px));
@@ -5542,7 +5571,7 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   }
   .ai-console-full .ai-chat { border-radius: 0; height: calc(100dvh - 291px); min-height: 260px; }
   .ai-console-full .ai-chat-body { padding: 10px 8px; }
-  .ai-console-full .ai-chat-input { padding: 8px; }
+  .ai-console-full .ai-chat-input { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
 }
 
 
