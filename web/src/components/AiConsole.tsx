@@ -324,7 +324,10 @@ export function AiConsole({
     const el = inputRef.current;
     if (!el) return;
     el.style.height = '0px';
-    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+    // Grows with the text between the CSS min-height and this cap; the
+    // container adds the toolbar row beneath.
+    const cap = window.matchMedia('(max-width: 620px)').matches ? 220 : 320;
+    el.style.height = `${Math.min(el.scrollHeight, cap)}px`;
   }, []);
   useEffect(() => { autosize(); }, [input, autosize]);
 
@@ -1032,7 +1035,7 @@ export function AiConsole({
               </span>
             </div>
           )}
-          <div className="ai-composer">
+          <div className="ai-composer" onClick={(e) => { if (e.target === e.currentTarget) inputRef.current?.focus(); }}>
             <input
               ref={fileRef}
               type="file"
@@ -1042,15 +1045,7 @@ export function AiConsole({
               aria-hidden
               tabIndex={-1}
             />
-            <button
-              type="button"
-              className="ai-chat-img"
-              onClick={() => fileRef.current?.click()}
-              title="Attach a photo for the assistant to analyze"
-              aria-label="Attach a photo"
-            >
-              <ImagePlus size={18} />
-            </button>
+            <div className="ai-composer-field">
             {!input && !photo && (
               <span className="ai-wm" aria-hidden="true" key={watermark}>{watermark}</span>
             )}
@@ -1076,6 +1071,20 @@ export function AiConsole({
               placeholder={photo ? 'Ask about this photo…' : ''}
               aria-label="Message the assistant"
             />
+            </div>
+            <div className="ai-composer-bar">
+            <button
+              type="button"
+              className="ai-chat-img"
+              onClick={() => fileRef.current?.click()}
+              title="Attach a photo for the assistant to analyze"
+              aria-label="Attach a photo"
+            >
+              <ImagePlus size={18} />
+            </button>
+              <span className="ai-composer-hint" aria-hidden="true">
+                {narrow ? '' : 'Enter to send · Shift+Enter for a new line'}
+              </span>
             <button
               type={busy ? 'button' : 'submit'}
               className={`ai-send${busy ? ' ai-send--stop' : ''}${!busy && (input.trim() || photo) ? ' ai-send--ready' : ''}`}
@@ -1091,6 +1100,7 @@ export function AiConsole({
             >
               {busy ? <Square size={15} /> : <ArrowUp size={18} strokeWidth={2.5} />}
             </button>
+            </div>
           </div>
         </form>
         <p className="ai-disclaimer">

@@ -2252,11 +2252,17 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 /* One pill: [ + ] [ textarea .............. ] [ ↑ ] */
 .ai-composer {
   position: relative;
-  display: flex; align-items: flex-end; gap: 6px;
-  padding: 5px 5px 5px 6px; border-radius: 24px;
+  display: flex; flex-direction: column; gap: 0;
+  min-height: 132px;                     /* desktop: ~120–160px resting */
+  padding: 12px 14px 10px; border-radius: 22px;
   border: 1px solid var(--border); background: var(--surface-2);
+  cursor: text;
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
+.ai-composer-field { position: relative; flex: 1 1 auto; display: flex; min-height: 0; }
+.ai-composer-bar { display: flex; align-items: center; gap: 8px; padding-top: 6px; }
+.ai-composer-hint { flex: 1; font-size: 11px; color: var(--text-3); text-align: right; padding-right: 6px; opacity: 0; transition: opacity 200ms; }
+.ai-composer:focus-within .ai-composer-hint { opacity: 1; }
 .ai-composer:focus-within {
   border-color: transparent;
   background: var(--surface);
@@ -2278,23 +2284,24 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 @keyframes aiRing { to { --ring-a: 360deg; } }
 .ai-composer { isolation: isolate; }
 .ai-composer textarea {
-  flex: 1 1 auto; min-width: 0; resize: none; min-height: 40px; max-height: 180px;
-  padding: 10px 6px; border: 0; background: transparent; color: var(--text);
+  flex: 1 1 auto; width: 100%; min-width: 0; resize: none;
+  min-height: 72px; max-height: 320px;
+  padding: 2px 2px 4px; border: 0; background: transparent; color: var(--text);
   font-family: inherit; font-size: 16px; /* ≥16px: iOS will not zoom the page */
-  line-height: 1.4; outline: none; box-shadow: none;
+  line-height: 1.5; outline: none; box-shadow: none; overflow-y: auto;
 }
 .ai-composer textarea::placeholder { color: var(--text-3); }
 /* Animated watermark: sits over the empty textarea, slides up + fades on each
    rotation (placeholder text itself cannot be animated). */
 .ai-wm {
-  position: absolute; left: 50px; right: 50px; top: 50%; transform: translateY(-50%);
-  pointer-events: none; color: var(--text-3); font-size: 16px; line-height: 1.4;
+  position: absolute; left: 2px; right: 2px; top: 2px;
+  pointer-events: none; color: var(--text-3); font-size: 16px; line-height: 1.5;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   animation: aiWmIn 420ms cubic-bezier(.2,.7,.2,1) both;
 }
 @keyframes aiWmIn {
-  from { opacity: 0; transform: translateY(calc(-50% + 8px)); }
-  to { opacity: 1; transform: translateY(-50%); }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
 }
 /* Mobile back button (the page has ONE header — this one). */
 .ai-back {
@@ -2304,14 +2311,15 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 }
 .ai-back:hover { background: var(--surface-2); color: var(--text); }
 .ai-chat-img, .ai-send {
-  flex: none; width: 38px; height: 38px; border-radius: 50%;
+  flex: none; width: 40px; height: 40px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; cursor: pointer; padding: 0;
   transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
     transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
 }
-.ai-chat-img { background: transparent; color: var(--text-2); }
+.ai-chat-img { background: var(--surface); color: var(--text-2); box-shadow: 0 0 0 1px var(--border); }
+.ai-send { margin-left: auto; }
 .ai-chat-img:hover { background: var(--primary-soft); color: var(--primary); }
 .ai-send { background: var(--border); color: var(--text-3); }
 .ai-send:disabled { cursor: default; opacity: 0.6; }
@@ -5607,8 +5615,10 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
     gap: 6px;
   }
-  .ai-composer { border-radius: 22px; }
-  .ai-composer textarea { min-height: 38px; padding: 9px 4px; }
+  .ai-composer { border-radius: 20px; min-height: 108px; padding: 10px 12px 8px; }   /* mobile: ~100–140px */
+  .ai-composer textarea { min-height: 56px; max-height: 220px; }
+  .ai-composer-bar { padding-top: 4px; }
+  .ai-chat-img, .ai-send { width: 38px; height: 38px; }
   .ai-quickbar { padding: 6px 10px 0; }
   .ai-disclaimer { display: none; } /* one line of legal text is not worth 24px of a phone */
 }
@@ -5620,6 +5630,8 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   body.ai-immersive .ai-console--kbd .ai-chat-head .ai-brand-sub { display: none; }
   body.ai-immersive .ai-console--kbd .ai-quickbar { display: none; }
   body.ai-immersive .ai-console--kbd .ai-chat-input { padding-bottom: 8px; }
+  body.ai-immersive .ai-console--kbd .ai-composer { min-height: 96px; }
+  body.ai-immersive .ai-console--kbd .ai-composer textarea { min-height: 48px; }
 }
 
 
