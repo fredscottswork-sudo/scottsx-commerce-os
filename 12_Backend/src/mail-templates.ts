@@ -2,8 +2,8 @@
  * Branded HTML emails.
  *
  * Table-based, inline-styled, no external CSS — the only thing that renders
- * consistently across Gmail, Outlook, Apple Mail and Yahoo. The logo is the
- * PNG the web app already serves at /brand/, so no attachment is needed.
+ * consistently across Gmail, Outlook, Apple Mail and Yahoo. The header is a text
+ * wordmark (no image, no link) — nothing external to load or block.
  */
 
 const FALLBACK_WEB_URL = 'https://scottstechx-web.onrender.com';
@@ -27,8 +27,6 @@ interface Layout {
 }
 
 function layout(o: Layout): string {
-  const base = webUrl();
-  const logo = `${base}/brand/scottstechx-logo-transparent.png`;
   const year = new Date().getFullYear();
   return `<!doctype html>
 <html lang="en">
@@ -44,7 +42,10 @@ function layout(o: Layout): string {
 <tr><td align="center" style="padding:32px 16px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
     <tr><td align="center" style="padding:0 0 22px;">
-      <a href="${base}" style="text-decoration:none;"><img src="${logo}" width="220" alt="ScottsTechX" style="display:block;width:220px;max-width:70%;height:auto;border:0;"></a>
+      <div style="font-size:28px;font-weight:800;letter-spacing:.08em;line-height:1;">
+        <span style="color:#e2e8f0;">SCOTTS</span><span style="color:#5b9bff;">TECHX</span>
+      </div>
+      <div style="margin-top:8px;font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#64748b;">Innovate. Integrate. Elevate.</div>
     </td></tr>
     <tr><td style="background:#ffffff;border-radius:18px;padding:36px 32px 28px;">
       <h1 style="margin:0 0 10px;font-size:22px;line-height:1.3;color:#0f172a;letter-spacing:-0.01em;">${esc(o.title)}</h1>
@@ -56,8 +57,6 @@ function layout(o: Layout): string {
     </td></tr>
     <tr><td align="center" style="padding:22px 12px 0;font-size:12px;line-height:1.7;color:#64748b;">
       ScottsTechX Enterprises (U) Ltd &middot; Kampala, Uganda<br>
-      <a href="${base}" style="color:#5b9bff;text-decoration:none;">${esc(base.replace(/^https?:\/\//, ''))}</a>
-      &nbsp;&middot;&nbsp; Innovate. Integrate. Elevate.<br>
       <span style="color:#475569;">&copy; ${year} ScottsTechX. This is an automated message; replies are not monitored.</span>
     </td></tr>
   </table>
