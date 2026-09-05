@@ -96,10 +96,9 @@ export default function Onboarding() {
   const initials = (storeName.trim() || 'S').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
-    <div className="auth-form auth-form--solo auth-form--extra">
-      <div className="auth-card auth-card--extra auth-card--github auth-card--better onboarding-card" data-step={step}>
-        <div className="auth-card-glow" aria-hidden="true" />
-        <div className="auth-card-inner">
+    <div className="ali-auth ali-auth--center">
+      <div className="ali-card ali-card--wide onboarding-card" data-step={step}>
+        <div>
           <div className="onboarding-progress" aria-hidden="true">
             <span className={`dot ${step === 'role' ? 'active' : 'done'}`} />
             <span className={`bar ${step === 'store' ? 'active' : ''}`} />

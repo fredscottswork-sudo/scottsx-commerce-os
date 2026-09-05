@@ -118,14 +118,14 @@ class SmtpError extends Error {
  * replies, upgrades to TLS via STARTTLS when needed, authenticates with
  * PLAIN or LOGIN, and returns a precise reason on any failure.
  */
-async function smtpSend(to: string, subject: string, text: string): Promise<MailResult> {
+async function smtpSend(to: string, subject: string, text: string, html?: string): Promise<MailResult> {
   const port = Number(process.env.SMTP_PORT || 465);
   const secure = secureMode(port);
-  const first = await smtpAttempt(to, subject, text, secure);
+  const first = await smtpAttempt(to, subject, text, secure, html);
   // Operators frequently set a non-standard port that is actually implicit
   // TLS (e.g. 2465, 8465). If plaintext got no greeting, try TLS once.
   if (!first.delivered && !secure && process.env.SMTP_SECURE !== 'false' && /no SMTP greeting/.test(first.reason || '')) {
-    const second = await smtpAttempt(to, subject, text, true);
+    const second = await smtpAttempt(to, subject, text, true, html);
     if (second.delivered) console.warn(`[mail] port ${port} is implicit TLS — set SMTP_SECURE=true to skip the plaintext attempt`);
     // The TLS attempt got a real conversation going (or a real refusal) —
     // its reason is the informative one.
@@ -134,7 +134,7 @@ async function smtpSend(to: string, subject: string, text: string): Promise<Mail
   return first;
 }
 
-async function smtpAttempt(to: string, subject: string, text: string, secure: boolean): Promise<MailResult> {
+async function smtpAttempt(to: string, subject: string, text: string, secure: boolean, html?: string): Promise<MailResult> {
   const host = process.env.SMTP_HOST!;
   const port = Number(process.env.SMTP_PORT || 465);
   const user = process.env.SMTP_USER!;
@@ -241,19 +241,37 @@ async function smtpAttempt(to: string, subject: string, text: string, secure: bo
     await cmd(`RCPT TO:<${to}>`, [250, 251]);
     await cmd('DATA', [354]);
 
-    const body = text.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..');
-    const msg = [
+    const crlf = (v: string) => v.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..');
+    const head = [
       `From: ${headerValue(from.display)} <${from.address}>`,
       `To: <${to}>`,
       `Subject: ${headerValue(subject)}`,
       `Date: ${new Date().toUTCString()}`,
       `Message-ID: <${Date.now()}.${Math.random().toString(36).slice(2)}@${from.address.split('@')[1] || 'scottstechx.ug'}>`,
       'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=utf-8',
-      'Content-Transfer-Encoding: 8bit',
-      '',
-      body,
-    ].join('\r\n');
+    ];
+    let msg: string;
+    if (html) {
+      const b = `stx_${Date.now().toString(36)}`;
+      msg = [
+        ...head,
+        `Content-Type: multipart/alternative; boundary="${b}"`,
+        '',
+        `--${b}`,
+        'Content-Type: text/plain; charset=utf-8',
+        'Content-Transfer-Encoding: 8bit',
+        '',
+        crlf(text),
+        `--${b}`,
+        'Content-Type: text/html; charset=utf-8',
+        'Content-Transfer-Encoding: 8bit',
+        '',
+        crlf(html),
+        `--${b}--`,
+      ].join('\r\n');
+    } else {
+      msg = [...head, 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', crlf(text)].join('\r\n');
+    }
     await cmd(`${msg}\r\n.`, [250]);
     try { await cmd('QUIT', [221]); } catch { /* some servers just close */ }
     return { delivered: true };
@@ -270,7 +288,7 @@ async function smtpAttempt(to: string, subject: string, text: string, secure: bo
 }
 
 /** Send through a transactional-email HTTP API. */
-async function apiSend(provider: HttpProvider, to: string, subject: string, text: string): Promise<MailResult> {
+async function apiSend(provider: HttpProvider, to: string, subject: string, text: string, html?: string): Promise<MailResult> {
   const from = parseFrom();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15000);
@@ -280,11 +298,11 @@ async function apiSend(provider: HttpProvider, to: string, subject: string, text
   if (provider === 'brevo') {
     url = (process.env.MAIL_API_BASE || 'https://api.brevo.com') + '/v3/smtp/email';
     headers = { 'api-key': process.env.BREVO_API_KEY!, 'content-type': 'application/json', accept: 'application/json' };
-    body = { sender: { name: from.display, email: from.address }, to: [{ email: to }], subject, textContent: text };
+    body = { sender: { name: from.display, email: from.address }, to: [{ email: to }], subject, textContent: text, ...(html ? { htmlContent: html } : {}) };
   } else if (provider === 'resend') {
     url = (process.env.MAIL_API_BASE || 'https://api.resend.com') + '/emails';
     headers = { authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'content-type': 'application/json' };
-    body = { from: `${from.display} <${from.address}>`, to: [to], subject, text };
+    body = { from: `${from.display} <${from.address}>`, to: [to], subject, text, ...(html ? { html } : {}) };
   } else {
     url = (process.env.MAIL_API_BASE || 'https://api.sendgrid.com') + '/v3/mail/send';
     headers = { authorization: `Bearer ${process.env.SENDGRID_API_KEY}`, 'content-type': 'application/json' };
@@ -292,7 +310,7 @@ async function apiSend(provider: HttpProvider, to: string, subject: string, text
       personalizations: [{ to: [{ email: to }] }],
       from: { email: from.address, name: from.display },
       subject,
-      content: [{ type: 'text/plain', value: text }],
+      content: [{ type: 'text/plain', value: text }, ...(html ? [{ type: 'text/html', value: html }] : [])],
     };
   }
   try {
@@ -307,7 +325,7 @@ async function apiSend(provider: HttpProvider, to: string, subject: string, text
   }
 }
 
-export async function sendMail(to: string, subject: string, text: string): Promise<MailResult> {
+export async function sendMail(to: string, subject: string, text: string, html?: string): Promise<MailResult> {
   if (!mailConfigured()) {
     console.log(`[mail] (no SMTP configured) to=${to} subject="${subject}"\n${text}`);
     return { delivered: false, reason: 'smtp-not-configured' };
@@ -315,10 +333,10 @@ export async function sendMail(to: string, subject: string, text: string): Promi
   let res: MailResult;
   const api = httpProvider();
   try {
-    res = api ? await apiSend(api, to, subject, text) : await smtpSend(to, subject, text);
+    res = api ? await apiSend(api, to, subject, text, html) : await smtpSend(to, subject, text, html);
     // API configured but failing and SMTP is also available → try SMTP too.
     if (!res.delivered && api && smtpConfigured()) {
-      const viaSmtp = await smtpSend(to, subject, text);
+      const viaSmtp = await smtpSend(to, subject, text, html);
       if (viaSmtp.delivered) res = viaSmtp;
       else res = { delivered: false, reason: `${res.reason}; smtp: ${viaSmtp.reason}` };
     }

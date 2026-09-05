@@ -11,7 +11,7 @@ import { useTheme } from '../store/ThemeContext';
 import { useCart } from '../store/CartContext';
 import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
-import { BrandMark } from './BrandLogo';
+import { BrandMark, BrandLockup } from './BrandLogo';
 import { useImageSearch } from './ImageSearchButton';
 import { DashboardGuide } from './DashboardGuide';
 import { stashImageSearchResult } from '../lib/imageSearch';
@@ -146,11 +146,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isThreadRoute = /^\/messages\/[^/]+$/.test(location.pathname);
   const hideTopSearch = isAiRoute || isHomeRoute || isSearchRoute || isNearbyRoute || isDashboardRoute || isCartRoute || isThreadRoute;
   const isOnboardingRoute = location.pathname === '/onboarding';
+  // /login and /onboarding use a flat, marketplace-style layout (think
+  // Alibaba's sign-in): plain background, brand top-left, no decorative
+  // logo backdrop. The older password-reset screens keep the glass look.
+  const isFlatAuth = location.pathname === '/login' || isOnboardingRoute;
   if ((!user && isAuthRoute) || isOnboardingRoute) {
     return (
-      <div className="auth-shell auth-shell--extra auth-shell--github">
-        {/* STX logo style extraordinary */}
-        <div className="auth-bg auth-bg--stx" aria-hidden="true">
+      <div className={`auth-shell ${isFlatAuth ? 'auth-shell--flat' : 'auth-shell--extra auth-shell--github'}`}>
+        {!isFlatAuth && <div className="auth-bg auth-bg--stx" aria-hidden="true">
           <div className="auth-stx-mesh" />
           <div className="auth-stx-grid" />
           <div className="auth-logo-bg auth-logo-bg--main" />
@@ -160,12 +163,19 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="auth-logo-glow" />
           <div className="auth-logo-glow auth-logo-glow--2" />
           <div className="auth-stx-ring" />
-        </div>
-        <header className="auth-topbar">
-          <Link to="/" className="auth-back" aria-label="Back to marketplace">
-            ← <span className="hide-sm">Marketplace</span><span className="show-sm">Back</span>
-          </Link>
+        </div>}
+        <header className={`auth-topbar ${isFlatAuth ? 'auth-topbar--flat' : ''}`}>
+          {isFlatAuth ? (
+            <Link to="/" className="auth-brand-home" aria-label="ScottsTechX home">
+              <BrandLockup width={150} />
+            </Link>
+          ) : (
+            <Link to="/" className="auth-back" aria-label="Back to marketplace">
+              ← <span className="hide-sm">Marketplace</span><span className="show-sm">Back</span>
+            </Link>
+          )}
           <span className="grow" />
+          {isFlatAuth && <Link to="/" className="auth-topbar-link hide-sm">Back to marketplace</Link>}
           <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
             {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>

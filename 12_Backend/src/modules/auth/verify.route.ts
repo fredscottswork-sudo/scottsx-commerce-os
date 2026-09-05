@@ -25,6 +25,7 @@ import { getPool } from '../../db.js';
 import { requireAuth, markVerified, tokenForUser } from '../../auth.js';
 import { publicUser } from './login.route.js';
 import { ValidationError, TooManyRequestsError } from '../../errors.js';
+import { verifyEmailEmail } from '../../mail-templates.js';
 import { sendMail, mailConfigured, devCodesAllowed } from '../../mail.js';
 
 const CODE_TTL_MIN = 15;
@@ -155,16 +156,8 @@ export async function issueVerification(userId: string, email: string, displayNa
   try {
     // Link only. No code is printed here: the website has no way to enter one,
     // so including it would invite people to try something that cannot work.
-    const res = await sendMail(
-      email,
-      'Confirm your ScottsTechX email address',
-      `Hello${displayName ? ` ${displayName}` : ''},\n\n`
-        + `Confirm your email address to finish setting up your ScottsTechX account:\n\n`
-        + `${link}\n\n`
-        + `This link expires in ${CODE_TTL_MIN} minutes and can only be used once.\n\n`
-        + `If the link does not open, copy it into your browser's address bar.\n\n`
-        + `If you did not create this account you can ignore this email.\n`
-    );
+    const m = verifyEmailEmail(code, { ttlMin: CODE_TTL_MIN, link, displayName: displayName || undefined });
+    const res = await sendMail(email, m.subject, m.text, m.html);
     delivered = res.delivered;
     if (!res.delivered && mailConfigured()) {
       console.error('[verify] could not send code to', email, '-', res.reason);

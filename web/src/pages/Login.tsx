@@ -19,7 +19,7 @@ import { authService } from '../api/services';
 import GoogleButton from '../components/GoogleButton';
 import { BrandMark } from '../components/BrandLogo';
 import { useSeo } from '../hooks/useSeo';
-import { Mail, ArrowRight, ArrowLeft, AlertCircle, ShieldCheck, Compass, RefreshCw } from 'lucide-react';
+import { Mail, ArrowRight, ArrowLeft, AlertCircle, ShieldCheck, Compass, RefreshCw, MapPin, Sparkles, MessageCircle } from 'lucide-react';
 
 const CODE_LEN = 6;
 
@@ -144,18 +144,31 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-form auth-form--solo auth-form--extra">
-      <div className="auth-card auth-card--extra auth-card--github auth-card--better signin-card" data-step={step}>
-        <div className="auth-card-glow" aria-hidden="true" />
-        <div className="auth-card-inner">
+    <div className="ali-auth">
+      <aside className="ali-side" aria-hidden="true">
+        <div className="ali-side-inner">
+          <BrandMark size={56} />
+          <h1>Uganda's marketplace for verified tech &amp; more</h1>
+          <ul className="ali-perks">
+            <li><ShieldCheck size={18} /><div><strong>Verified sellers</strong><span>Every store is checked before it can list.</span></div></li>
+            <li><MapPin size={18} /><div><strong>Shop nearby</strong><span>Find stores around you on a live map.</span></div></li>
+            <li><Sparkles size={18} /><div><strong>AI Shopper</strong><span>Compare prices and stock in one chat.</span></div></li>
+            <li><MessageCircle size={18} /><div><strong>Chat &amp; bargain</strong><span>Message sellers and make offers directly.</span></div></li>
+          </ul>
+          <div className="ali-side-stats">
+            <div><strong>10k+</strong><span>stores</span></div>
+            <div><strong>UGX</strong><span>local prices</span></div>
+            <div><strong>24/7</strong><span>support</span></div>
+          </div>
+        </div>
+      </aside>
+
+      <div className="ali-card" data-step={step}>
           {step === 'email' ? (
             <>
-              <div className="auth-card-head">
-                <div className="auth-logo-wrap">
-                  <BrandMark size={52} className="auth-logo-top auth-logo-top--mark" />
-                </div>
-                <h2>Welcome to ScottsTechX</h2>
-                <p className="muted">Enter your email — we'll send you a one-time code. No password needed.</p>
+              <div className="ali-head">
+                <h2>Sign in or create account</h2>
+                <p className="muted">One email, one code. No password to remember.</p>
               </div>
 
               {reason && (
@@ -200,18 +213,16 @@ export default function Login() {
                 </Btn>
               </form>
 
-              <div className="auth-extra-foot">
-                <div className="auth-divider"><span>or</span></div>
+              <div className="ali-alt">
+                <div className="auth-divider"><span>or continue with</span></div>
                 <GoogleButton divider={false} />
                 <Link to="/" className="btn btn-block btn-lg guest-btn" data-testid="continue-guest">
                   <Compass size={17} /> <span>Continue as guest</span>
                 </Link>
-                <p className="auth-foot-text signin-guest-note">
-                  Guests can browse the marketplace. Sign in to use <strong>Nearby</strong>, the <strong>AI Shopper</strong>, orders and messages.
+                <p className="ali-legal">
+                  By continuing you agree to our <Link to="/cms/terms">Terms of Use</Link> and <Link to="/cms/privacy">Privacy Policy</Link>.
+                  Guests can browse; <strong>Nearby</strong>, the <strong>AI Shopper</strong>, orders and messages need an account.
                 </p>
-                <div className="auth-trust">
-                  <ShieldCheck size={13} /> Codes expire in 15 minutes and work once
-                </div>
               </div>
             </>
           ) : (
@@ -219,9 +230,9 @@ export default function Login() {
               <button type="button" className="signin-back" onClick={() => { setStep('email'); setError(''); }}>
                 <ArrowLeft size={15} /> Use a different email
               </button>
-              <div className="auth-card-head">
+              <div className="ali-head">
                 <div className="signin-mail-badge" aria-hidden="true"><Mail size={22} /></div>
-                <h2>Check your inbox</h2>
+                <h2>Enter the code we emailed</h2>
                 <p className="muted">
                   We sent a 6-digit code to <strong className="signin-email">{email}</strong>.
                   {isNew ? ' Entering it creates your account.' : ''}
@@ -289,7 +300,6 @@ export default function Login() {
               </div>
             </>
           )}
-        </div>
       </div>
     </div>
   );

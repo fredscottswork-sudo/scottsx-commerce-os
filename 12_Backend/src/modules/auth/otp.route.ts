@@ -19,6 +19,7 @@ import { requireAuth, authedUser, markVerified, tokenForUser } from '../../auth.
 import { publicUser } from './login.route.js';
 import { ValidationError, TooManyRequestsError, ServiceUnavailableError, UnauthorizedError } from '../../errors.js';
 import { sendMail, devCodesAllowed, verificationUndeliverable } from '../../mail.js';
+import { signInCodeEmail } from '../../mail-templates.js';
 
 const CODE_TTL_MIN = 15;
 const MAX_ATTEMPTS = 6;
@@ -42,16 +43,6 @@ const onboardingSchema = z.object({
   storeDescription: z.string().trim().max(600).optional(),
   city: z.string().trim().max(120).optional(),
 });
-
-function codeEmail(code: string, isNew: boolean) {
-  const subject = `${code} is your ScottsTechX sign-in code`;
-  const text =
-    `Your ScottsTechX ${isNew ? 'sign-up' : 'sign-in'} code is:\n\n` +
-    `    ${code}\n\n` +
-    `Enter it on the page where you typed your email. It expires in ${CODE_TTL_MIN} minutes and works once.\n\n` +
-    `If you did not request this, you can ignore this email — nobody can sign in without the code.\n`;
-  return { subject, text };
-}
 
 export default async function registerOtpRoutes(app: FastifyInstance) {
   const pool = getPool();
@@ -118,8 +109,8 @@ export default async function registerOtpRoutes(app: FastifyInstance) {
     let delivered = false;
     let reason = '';
     try {
-      const { subject, text } = codeEmail(code, isNew);
-      const res = await sendMail(email, subject, text);
+      const { subject, text, html } = signInCodeEmail(code, { isNew, ttlMin: CODE_TTL_MIN, email });
+      const res = await sendMail(email, subject, text, html);
       delivered = res.delivered;
       reason = res.reason || '';
     } catch (e: any) {

@@ -6894,3 +6894,62 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
 .gate-cta { width: 100%; justify-content: center; gap: 8px; text-decoration: none; }
 .gate-back { display: inline-block; margin-top: 14px; font-size: 13px; color: var(--text-2); }
 .gate-back:hover { color: var(--text); }
+
+/* ── Flat marketplace-style auth (Alibaba-like) ─────────────────────────── */
+.auth-shell--flat { background: var(--bg); }
+.auth-topbar--flat {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 10px 24px; min-height: 60px;
+}
+.auth-brand-home { display: inline-flex; align-items: center; text-decoration: none; }
+.auth-brand-home .brand-lockup { width: 150px; }
+[data-theme='light'] .auth-brand-home .brand-lockup { filter: brightness(0.25) contrast(1.1); }
+.auth-topbar-link { font-size: 13px; color: var(--text-2); text-decoration: none; margin-right: 8px; }
+.auth-topbar-link:hover { color: var(--primary); }
+
+.ali-auth {
+  width: 100%; min-height: calc(100dvh - 60px);
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 480px);
+  align-items: center; gap: 48px;
+  max-width: 1120px; margin: 0 auto; padding: 40px 24px 56px;
+}
+.ali-auth--center { grid-template-columns: minmax(0, 560px); justify-content: center; }
+.ali-side { display: flex; }
+.ali-side-inner { max-width: 500px; }
+.ali-side h1 { font-size: clamp(26px, 3.2vw, 38px); line-height: 1.15; letter-spacing: -0.02em; margin: 18px 0 26px; color: var(--text); }
+.ali-perks { list-style: none; margin: 0 0 28px; padding: 0; display: grid; gap: 16px; }
+.ali-perks li { display: flex; gap: 14px; align-items: flex-start; }
+.ali-perks li > svg { flex: none; margin-top: 3px; color: var(--primary); }
+.ali-perks strong { display: block; font-size: 15px; letter-spacing: -0.01em; }
+.ali-perks span { display: block; font-size: 13.5px; color: var(--text-2); line-height: 1.5; }
+.ali-side-stats { display: flex; gap: 28px; padding-top: 22px; border-top: 1px solid var(--border); }
+.ali-side-stats strong { display: block; font-size: 20px; letter-spacing: -0.02em; }
+.ali-side-stats span { font-size: 12px; color: var(--text-2); text-transform: uppercase; letter-spacing: .06em; }
+
+.ali-card {
+  width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 32px 32px 26px; box-shadow: 0 8px 30px rgba(0,0,0,.08);
+}
+.ali-card--wide { max-width: 560px; }
+.ali-head { margin-bottom: 20px; }
+.ali-head h2 { font-size: 24px; letter-spacing: -0.02em; margin: 0 0 6px; }
+.ali-head p { margin: 0; font-size: 14px; }
+.ali-card .signin-mail-badge { margin: 0 0 12px; }
+.ali-card .auth-submit { min-height: 48px !important; font-size: 15px !important; }
+.ali-alt { margin-top: 18px; }
+.ali-alt .auth-divider { margin: 6px 0 14px; }
+.ali-legal { margin: 16px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-2); }
+.ali-legal a { color: var(--primary); }
+.ali-card .otp-row { justify-content: flex-start; }
+.ali-card .signin-resend { justify-content: flex-start; }
+.ali-card .onboarding-progress { justify-content: flex-start; }
+.ali-card .auth-card-head { align-items: flex-start; text-align: left; }
+.ali-card .auth-card-head .auth-logo-wrap { display: none; }
+
+@media (max-width: 900px) {
+  .ali-auth { grid-template-columns: minmax(0, 480px); justify-content: center; gap: 0; padding: 20px 14px 40px; }
+  .ali-side { display: none; }
+  .ali-card { padding: 24px 20px 20px; }
+  .auth-topbar--flat { padding: 8px 14px; min-height: 54px; }
+  .auth-brand-home .brand-lockup { width: 124px; }
+}

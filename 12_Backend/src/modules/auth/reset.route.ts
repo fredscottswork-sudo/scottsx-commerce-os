@@ -28,6 +28,7 @@ import { getPool } from '../../db.js';
 import { hashPassword } from '../../auth.js';
 import { ValidationError } from '../../errors.js';
 import { sendMail, mailConfigured, devCodesAllowed } from '../../mail.js';
+import { passwordResetEmail } from '../../mail-templates.js';
 
 const TOKEN_TTL_MIN = 30;
 const MAX_ATTEMPTS = 6;
@@ -133,15 +134,8 @@ export async function registerResetRoutes(app: FastifyInstance) {
     // constant. A flaky mail server must not turn "request a reset" into a
     // client-visible failure the user reads as "endpoint isn't live".
     try {
-      const res = await sendMail(
-        user.email,
-        'Reset your ScottsTechX password',
-        `Hello${user.display_name ? ` ${user.display_name}` : ''},\n\n`
-          + `You asked to reset the password on your ScottsTechX account.\n\n`
-          + `${link}\n\n`
-          + `This link expires in ${TOKEN_TTL_MIN} minutes and works only once.\n\n`
-          + `If you did not ask for this, you can ignore this email — your password stays unchanged.\n`
-      );
+      const m = passwordResetEmail(link, { ttlMin: TOKEN_TTL_MIN, displayName: user.display_name || undefined });
+      const res = await sendMail(user.email, m.subject, m.text, m.html);
       if (!res.delivered && mailConfigured()) {
         console.error('[reset] could not send reset link to', user.email, '-', res.reason);
       }
