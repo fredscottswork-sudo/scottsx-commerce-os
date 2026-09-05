@@ -11,7 +11,7 @@
 import 'dotenv/config';
 import { buildApp } from './app.js';
 import { initDatabase, closeDatabase, getPool } from './db.js';
-import { mailConfigured, devCodesAllowed } from './mail.js';
+import { mailConfigured, devCodesAllowed, mailSummary } from './mail.js';
 import { roboflowConfigured } from './modules/vision/roboflow.service.js';
 import { nvidiaVisionConfigured } from './modules/ai/assistant.service.js';
 
@@ -41,7 +41,7 @@ async function main() {
   // Say plainly which verification mode this server is in. A silent fallback
   // is how "anyone can verify any address" ships unnoticed.
   if (mailConfigured()) {
-    console.log('[server] email verification: SMTP configured — codes are emailed');
+    console.log(`[server] email verification: ${mailSummary().transport} configured — codes are emailed`);
   } else if (devCodesAllowed()) {
     console.warn(
       '[server] email verification: NO MAILER — codes are returned in API responses.\n' +

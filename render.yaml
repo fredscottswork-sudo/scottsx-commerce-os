@@ -166,12 +166,19 @@ services:
       - key: PUBLIC_API_URL
         sync: false
 
-      # ── Verification email (SMTP) ─────────────────────────────────────────
-      # Sign-in codes are emailed through this account.
-      #   SMTP_PORT 465 = implicit TLS, 587 = STARTTLS (both supported).
-      #   Gmail/Zoho need an APP password, not the account password.
-      #   MAIL_FROM must be an address the provider allows you to send as.
-      # Diagnose at GET /api/v1/mail/status (shows the last SMTP error).
+      # ── Sign-in code emails ───────────────────────────────────────────────
+      # NOTE: Render FREE web services block outbound SMTP ports (25/465/587)
+      # since Sept 2025, so Gmail-over-SMTP cannot work on a free instance.
+      # Use an HTTP email API instead (works on every tier). Set ONE of:
+      #   BREVO_API_KEY     free 300 emails/day  — https://app.brevo.com/settings/keys/api
+      #   RESEND_API_KEY    free 100 emails/day  — https://resend.com/api-keys
+      #   SENDGRID_API_KEY
+      # and MAIL_FROM = a sender that provider has verified for you
+      # (on Brevo you can verify your gmail address as a sender in 1 minute).
+      # SMTP_* below is the alternative for paid instances / other hosts.
+      # Diagnose at GET /api/v1/mail/status (shows the last error, no secrets).
+      - key: BREVO_API_KEY
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

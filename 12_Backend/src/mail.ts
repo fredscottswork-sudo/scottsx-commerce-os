@@ -4,7 +4,16 @@
  * Deliberately dependency-free: a small, correct SMTP client rather than
  * nodemailer, because the only messages this app sends are short codes.
  *
- * Configure with:
+ * Two transports, tried in this order:
+ *
+ *   1. HTTP email API — works everywhere, including hosts that block SMTP
+ *      ports (Render's free tier does). Set ONE of:
+ *        BREVO_API_KEY     https://app.brevo.com/settings/keys/api  (300/day free)
+ *        RESEND_API_KEY    https://resend.com/api-keys              (100/day free)
+ *        SENDGRID_API_KEY  https://app.sendgrid.com/settings/api_keys
+ *      plus MAIL_FROM — an address that provider has verified for you.
+ *
+ *   2. SMTP — classic. Configure with:
  *   SMTP_HOST            e.g. smtp.gmail.com, smtp-relay.brevo.com, smtp.zoho.com
  *   SMTP_PORT            465 (implicit TLS) or 587 / 25 (STARTTLS). Default 465.
  *   SMTP_SECURE          optional override: "true" = implicit TLS, "false" = STARTTLS
@@ -28,8 +37,20 @@ export interface MailResult {
   reason?: string;
 }
 
-export function mailConfigured(): boolean {
+function smtpConfigured(): boolean {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+type HttpProvider = 'brevo' | 'resend' | 'sendgrid';
+function httpProvider(): HttpProvider | null {
+  if (process.env.BREVO_API_KEY) return 'brevo';
+  if (process.env.RESEND_API_KEY) return 'resend';
+  if (process.env.SENDGRID_API_KEY) return 'sendgrid';
+  return null;
+}
+
+export function mailConfigured(): boolean {
+  return httpProvider() !== null || smtpConfigured();
 }
 
 /**
@@ -62,11 +83,13 @@ function parseFrom(): { address: string; display: string } {
 export function mailSummary() {
   const { address } = parseFrom();
   const port = Number(process.env.SMTP_PORT || 465);
+  const api = httpProvider();
   return {
     configured: mailConfigured(),
-    host: process.env.SMTP_HOST || null,
-    port,
-    mode: !process.env.SMTP_HOST ? 'log' : secureMode(port) ? 'tls' : 'starttls',
+    transport: api ? `api:${api}` : smtpConfigured() ? 'smtp' : 'log',
+    host: api ? null : process.env.SMTP_HOST || null,
+    port: api ? null : port,
+    mode: api ? api : !process.env.SMTP_HOST ? 'log' : secureMode(port) ? 'tls' : 'starttls',
     from: address,
     devCodes: devCodesAllowed(),
     lastError: lastMailError,
@@ -246,14 +269,59 @@ async function smtpAttempt(to: string, subject: string, text: string, secure: bo
   }
 }
 
+/** Send through a transactional-email HTTP API. */
+async function apiSend(provider: HttpProvider, to: string, subject: string, text: string): Promise<MailResult> {
+  const from = parseFrom();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  let url: string;
+  let headers: Record<string, string>;
+  let body: unknown;
+  if (provider === 'brevo') {
+    url = (process.env.MAIL_API_BASE || 'https://api.brevo.com') + '/v3/smtp/email';
+    headers = { 'api-key': process.env.BREVO_API_KEY!, 'content-type': 'application/json', accept: 'application/json' };
+    body = { sender: { name: from.display, email: from.address }, to: [{ email: to }], subject, textContent: text };
+  } else if (provider === 'resend') {
+    url = (process.env.MAIL_API_BASE || 'https://api.resend.com') + '/emails';
+    headers = { authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'content-type': 'application/json' };
+    body = { from: `${from.display} <${from.address}>`, to: [to], subject, text };
+  } else {
+    url = (process.env.MAIL_API_BASE || 'https://api.sendgrid.com') + '/v3/mail/send';
+    headers = { authorization: `Bearer ${process.env.SENDGRID_API_KEY}`, 'content-type': 'application/json' };
+    body = {
+      personalizations: [{ to: [{ email: to }] }],
+      from: { email: from.address, name: from.display },
+      subject,
+      content: [{ type: 'text/plain', value: text }],
+    };
+  }
+  try {
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: ctrl.signal });
+    if (res.ok) return { delivered: true };
+    const detail = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
+    return { delivered: false, reason: `${provider} api ${res.status}: ${detail || res.statusText}` };
+  } catch (e: any) {
+    return { delivered: false, reason: `${provider} api: ${e?.name === 'AbortError' ? 'timed out' : e?.message || String(e)}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function sendMail(to: string, subject: string, text: string): Promise<MailResult> {
   if (!mailConfigured()) {
     console.log(`[mail] (no SMTP configured) to=${to} subject="${subject}"\n${text}`);
     return { delivered: false, reason: 'smtp-not-configured' };
   }
   let res: MailResult;
+  const api = httpProvider();
   try {
-    res = await smtpSend(to, subject, text);
+    res = api ? await apiSend(api, to, subject, text) : await smtpSend(to, subject, text);
+    // API configured but failing and SMTP is also available → try SMTP too.
+    if (!res.delivered && api && smtpConfigured()) {
+      const viaSmtp = await smtpSend(to, subject, text);
+      if (viaSmtp.delivered) res = viaSmtp;
+      else res = { delivered: false, reason: `${res.reason}; smtp: ${viaSmtp.reason}` };
+    }
   } catch (e: any) {
     res = { delivered: false, reason: e?.message || 'send failed' };
   }
@@ -262,7 +330,7 @@ export async function sendMail(to: string, subject: string, text: string): Promi
     console.log(`[mail] delivered to=${to} subject="${subject}"`);
   } else {
     lastMailError = { at: new Date().toISOString(), reason: res.reason || 'unknown', to };
-    console.error(`[mail] FAILED to=${to} via ${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 465} — ${res.reason}`);
+    console.error(`[mail] FAILED to=${to} via ${api ? `${api} api` : `${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 465}`} — ${res.reason}`);
   }
   return res;
 }
