@@ -158,21 +158,39 @@ export async function seedIfEmpty(): Promise<void> {
   execSync('node seed_marketplace.mjs', { cwd: BACKEND_ROOT, stdio: 'inherit' });
 }
 
-/** Ensure a platform admin account exists (for the web console). */
+/**
+ * Ensure the platform admin exists and is the ONLY admin.
+ *
+ * The admin is identified by email (ADMIN_EMAILS, default scottstechx@gmail.com).
+ * Any other row that holds role='admin' — e.g. the old seeded
+ * admin@scottstechx.ug — is demoted to buyer so there is exactly one console
+ * owner. The admin signs in like everyone else (email code or Google); a
+ * password is only set when ADMIN_PASSWORD is provided.
+ */
 export async function ensureAdmin(): Promise<void> {
-  const { rows } = await getPool().query(`SELECT 1 FROM users WHERE role = 'admin' LIMIT 1`);
-  if (rows.length > 0) return;
-  const email = process.env.ADMIN_EMAIL || 'admin@scottstechx.ug';
-  const password = process.env.ADMIN_PASSWORD || 'Admin123!';
-  const { hashPassword } = await import('./auth.js');
-  const hash = await hashPassword(password);
-  await getPool().query(
-    `INSERT INTO users (email, password_hash, role, display_name, email_verified)
-     VALUES ($1, $2, 'admin', $3, true)
-     ON CONFLICT (email) DO UPDATE SET role = 'admin', password_hash = EXCLUDED.password_hash`,
-    [email, hash, 'Platform Admin']
+  const { adminEmails } = await import('./admin-emails.js');
+  const emails = adminEmails();
+  const pool = getPool();
+  for (const email of emails) {
+    await pool.query(
+      `INSERT INTO users (email, role, display_name, email_verified, role_chosen)
+       VALUES ($1, 'admin', 'ScottsTechX Admin', true, true)
+       ON CONFLICT (email) DO UPDATE SET role = 'admin', role_chosen = true, email_verified = true, updated_at = now()`,
+      [email]
+    );
+    if (process.env.ADMIN_PASSWORD) {
+      const { hashPassword } = await import('./auth.js');
+      const hash = await hashPassword(process.env.ADMIN_PASSWORD);
+      await pool.query('UPDATE users SET password_hash = $2 WHERE email = $1', [email, hash]);
+    }
+  }
+  const demoted = await pool.query(
+    `UPDATE users SET role = 'buyer', updated_at = now()
+      WHERE role = 'admin' AND NOT (lower(email) = ANY($1::text[])) RETURNING email`,
+    [emails]
   );
-  console.log(`[db] admin account ready (${email})`);
+  if (demoted.rowCount) console.log(`[db] demoted non-allow-listed admins: ${demoted.rows.map((r) => r.email).join(', ')}`);
+  console.log(`[db] admin account ready (${emails.join(', ')})`);
 }
 
 /**

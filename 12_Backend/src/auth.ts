@@ -1,3 +1,4 @@
+import { effectiveRole, isAdminEmail } from './admin-emails.js';
 /**
  * ScottsTechX — auth helpers.
  *
@@ -61,7 +62,8 @@ export async function tokenForUser(user: {
   return signJwt({
     sub: user.id,
     email: user.email,
-    role: user.role,
+    // Admin is decided by the email allow-list, never by the row alone.
+    role: effectiveRole(user.email, user.role),
     name: user.display_name ?? '',
   });
 }
@@ -179,6 +181,6 @@ export function requireSeller(request: FastifyRequest): AuthUser {
 /** Read the authenticated user and require the platform admin role. */
 export function requireAdmin(request: FastifyRequest): AuthUser {
   const user = authedUser(request);
-  if (user.role !== 'admin') throw new ForbiddenError('Admin role required');
+  if (user.role !== 'admin' || !isAdminEmail(user.email)) throw new ForbiddenError('Admin role required');
   return user;
 }

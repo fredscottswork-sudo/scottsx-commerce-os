@@ -258,7 +258,16 @@ const sampleProduct = seedProducts.body.products[0];
 /** Products whose stock the run consumes; restored in Cleanup. */
 const stockToRestore = [];
 
-const admin = await login('admin@scottstechx.ug', 'Admin123!');
+// The admin is identified by email (scottstechx@gmail.com) and signs in with
+// the passwordless code like everyone else; in dev the code is returned.
+const admin = await (async () => {
+  const email = 'scottstechx@gmail.com';
+  const st = await apiFetch('/auth/otp/start', { method: 'POST', body: JSON.stringify({ email }) });
+  if (!st.body?.devCode) throw new Error(`admin otp start failed: ${JSON.stringify(st.body)}`);
+  const v = await apiFetch('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ email, code: st.body.devCode }) });
+  if (v.status !== 200 || v.body.user?.role !== 'admin') throw new Error(`admin otp verify failed: ${JSON.stringify(v.body)}`);
+  return v.body;
+})();
 const seller = await login('techhub@scottstechx.ug', 'Seller123!');
 
 // A dedicated buyer so cart/order assertions never collide with real data.

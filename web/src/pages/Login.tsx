@@ -17,7 +17,7 @@ import { Btn } from '../components/ui';
 import { ApiError } from '../api/client';
 import { authService } from '../api/services';
 import GoogleButton from '../components/GoogleButton';
-import { BrandMark } from '../components/BrandLogo';
+import AnimatedWordmark from '../components/AnimatedWordmark';
 import { useSeo } from '../hooks/useSeo';
 import { Mail, ArrowRight, ArrowLeft, AlertCircle, ShieldCheck, Compass, RefreshCw, MapPin, Sparkles, MessageCircle } from 'lucide-react';
 
@@ -147,7 +147,7 @@ export default function Login() {
     <div className="ali-auth">
       <aside className="ali-side" aria-hidden="true">
         <div className="ali-side-inner">
-          <BrandMark size={56} />
+          <AnimatedWordmark />
           <h1>Uganda's marketplace for verified tech &amp; more</h1>
           <ul className="ali-perks">
             <li><ShieldCheck size={18} /><div><strong>Verified sellers</strong><span>Every store is checked before it can list.</span></div></li>
@@ -164,6 +164,7 @@ export default function Login() {
       </aside>
 
       <div className="ali-card" data-step={step}>
+          <div className="ali-card-brand show-900" aria-hidden="true"><AnimatedWordmark compact /></div>
           {step === 'email' ? (
             <>
               <div className="ali-head">
@@ -220,6 +221,7 @@ export default function Login() {
                   <Compass size={17} /> <span>Continue as guest</span>
                 </Link>
                 <p className="ali-legal">
+                  <Link to="/">← Back to marketplace</Link><br />
                   By continuing you agree to our <Link to="/cms/terms">Terms of Use</Link> and <Link to="/cms/privacy">Privacy Policy</Link>.
                   Guests can browse; <strong>Nearby</strong>, the <strong>AI Shopper</strong>, orders and messages need an account.
                 </p>

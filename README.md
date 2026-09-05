@@ -14,7 +14,7 @@ ScottsTechX/
 
 **One backend, one database — three clients:** the Android app and the web app are both
 clients of the same Fastify + Postgres API and see the same real-time data. The web app adds
-a platform **admin** role (`admin@scottstechx.ug` / `Admin123!`) with user management and
+a platform **admin** role (only `scottstechx@gmail.com`, signs in with the normal email code / Google) with user management and
 product moderation endpoints (`/api/v1/admin/*`, admin-only, backend-enforced).
 
 ---

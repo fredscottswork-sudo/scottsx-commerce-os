@@ -11,7 +11,7 @@ import { useTheme } from '../store/ThemeContext';
 import { useCart } from '../store/CartContext';
 import { buyerService, chatService } from '../api/services';
 import { MainNav, BottomNav } from './MainNav';
-import { BrandMark, BrandLockup } from './BrandLogo';
+import { BrandMark } from './BrandLogo';
 import { useImageSearch } from './ImageSearchButton';
 import { DashboardGuide } from './DashboardGuide';
 import { stashImageSearchResult } from '../lib/imageSearch';
@@ -164,22 +164,21 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="auth-logo-glow auth-logo-glow--2" />
           <div className="auth-stx-ring" />
         </div>}
-        <header className={`auth-topbar ${isFlatAuth ? 'auth-topbar--flat' : ''}`}>
-          {isFlatAuth ? (
-            <Link to="/" className="auth-brand-home" aria-label="ScottsTechX home">
-              <BrandLockup width={150} />
-            </Link>
-          ) : (
-            <Link to="/" className="auth-back" aria-label="Back to marketplace">
-              ← <span className="hide-sm">Marketplace</span><span className="show-sm">Back</span>
-            </Link>
-          )}
+        {isFlatAuth ? (
+          <button className="btn btn-icon auth-theme-fab" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
+            {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        ) : (
+        <header className="auth-topbar">
+          <Link to="/" className="auth-back" aria-label="Back to marketplace">
+            ← <span className="hide-sm">Marketplace</span><span className="show-sm">Back</span>
+          </Link>
           <span className="grow" />
-          {isFlatAuth && <Link to="/" className="auth-topbar-link hide-sm">Back to marketplace</Link>}
           <button className="btn btn-icon" onClick={toggle} aria-label="Toggle theme" title="Toggle dark / light">
             {resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </header>
+        )}
         <main className="auth-main">{children}</main>
       </div>
     );

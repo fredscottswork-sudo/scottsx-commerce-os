@@ -8,6 +8,7 @@
  *   PATCH /api/v1/auth/me
  *   PATCH /api/v1/me/location
  */
+import { effectiveRole } from '../../admin-emails.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../../db.js';
@@ -64,7 +65,7 @@ export function publicUser(row: any) {
     email: row.email,
     displayName: row.display_name ?? '',
     phone: row.phone ?? '',
-    role: row.role,
+    role: effectiveRole(row.email, row.role),
     emailVerified: !!row.email_verified,
     /** False until the user picked buyer/seller in onboarding (new accounts). */
     roleChosen: row.role_chosen === undefined || row.role_chosen === null ? true : !!row.role_chosen,

@@ -6953,3 +6953,33 @@ body.ai-immersive .ai-chat-body { min-height: 0; }
   .auth-topbar--flat { padding: 8px 14px; min-height: 54px; }
   .auth-brand-home .brand-lockup { width: 124px; }
 }
+
+/* ── Animated text wordmark (sign-in) ───────────────────────────────────── */
+.auth-theme-fab { position: fixed; top: 14px; right: 14px; z-index: 5; }
+.auth-shell--flat .auth-main { min-height: 100dvh; }
+.auth-shell--flat .ali-auth { min-height: 100dvh; }
+.wordmark { display: inline-flex; flex-direction: column; gap: 4px; }
+.wordmark-main { display: flex; font-weight: 900; font-size: 34px; letter-spacing: .12em; line-height: 1; }
+.wordmark--compact .wordmark-main { font-size: 22px; letter-spacing: .14em; }
+.wordmark-ch {
+  display: inline-block; opacity: 0; transform: translateY(14px) rotateX(60deg);
+  animation: wm-in .6s cubic-bezier(.2,.8,.2,1) forwards, wm-sheen 6s linear 1.4s infinite;
+  background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.wordmark-ch--a { background-image: linear-gradient(100deg, var(--text) 0%, var(--text) 35%, #fff 50%, var(--text) 65%, var(--text) 100%); }
+.wordmark-ch--b { background-image: linear-gradient(100deg, #2f7bff 0%, #5b9bff 35%, #bfe0ff 50%, #5b9bff 65%, #2f7bff 100%); }
+[data-theme='light'] .wordmark-ch--a { background-image: linear-gradient(100deg, #0f172a 0%, #0f172a 35%, #94a3b8 50%, #0f172a 65%, #0f172a 100%); }
+.wordmark-sub, .wordmark-tag { font-size: 11px; letter-spacing: .32em; text-transform: uppercase; color: var(--text-2); }
+.wordmark-sub { opacity: 0; animation: wm-fade .8s ease .8s forwards; margin-left: 2px; }
+.wordmark-tag { display: flex; gap: 10px; margin-top: 2px; }
+.wordmark-tag span { opacity: 0; transform: translateX(-6px); animation: wm-fade .6s ease forwards; }
+.wordmark--compact .wordmark-tag { font-size: 9.5px; letter-spacing: .26em; }
+@keyframes wm-in { to { opacity: 1; transform: none; } }
+@keyframes wm-fade { to { opacity: 1; transform: none; } }
+@keyframes wm-sheen { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-ch, .wordmark-sub, .wordmark-tag span { animation: none; opacity: 1; transform: none; }
+  .wordmark-ch { background-position: 50% 0; }
+}
+.ali-card-brand { display: none; margin-bottom: 18px; }
+@media (max-width: 900px) { .ali-card-brand { display: block; } }

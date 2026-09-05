@@ -40,9 +40,10 @@ Ordered by how hard they block you.
    ```
 3. **A decision about seeding.** `SEED_DATABASE` and `CREATE_ADMIN` default to
    **on**, so a fresh production database will auto-create 6 fake sellers, 24
-   fake products, and an admin with the *published* password `Admin123!`.
-   For a real launch set `SEED_DATABASE=false` and a strong `ADMIN_PASSWORD`.
-   For a demo, leave seeding on — but still change the admin password.
+   fake products. The admin account is `scottstechx@gmail.com` (override with
+   `ADMIN_EMAILS`); it has no password and signs in with the normal email
+   code / Google flow, so there is nothing to rotate. Any other row marked
+   admin is demoted at boot. For a real launch set `SEED_DATABASE=false`.
 
 ### Blocking for the APK
 

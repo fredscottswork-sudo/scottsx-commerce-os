@@ -91,8 +91,11 @@ services:
       # Render prompts for these. If ADMIN_PASSWORD is left empty the code
       # falls back to "Admin123!", which is published in this repository — so
       # set a real one.
-      - key: ADMIN_EMAIL
-        sync: false
+      # The ONLY account allowed to be admin (comma-separate for several).
+      # The admin signs in with the normal email-code / Google flow.
+      - key: ADMIN_EMAILS
+        value: scottstechx@gmail.com
+      # Optional: also allow the classic password login for the admin.
       - key: ADMIN_PASSWORD
         sync: false
 
